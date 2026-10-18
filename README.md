@@ -96,7 +96,8 @@ packages/sdk/      @cloak/sdk: launches (createLaunch, bid, revealAll, settle, c
                    (shieldHype, buy, sell, batch, send, unshield, balances, on-device prover, relayer client)
 services/keeper/   Auto-reveals after the drand round, settles launches, relays private trades (POST /relay),
                    and settles + pays out private batch rounds.
-apps/web/          The launch page (Vite + React): sealed bid form, sealed→revealed demand curve, fair-launch card, trade, create
+apps/web/          The site (Vite + React): landing, app (launches, launch page, private swap, portfolio, create), docs, SDK.
+                   Brand colors: the 4 tokens in apps/web/src/brand.css drive the whole theme (light + dark).
 e2e/               run.mjs (launch flow, 13 checks), private.mjs (private trading, 18 checks), seed.mjs, deploy.mjs
 docs/DESIGN.md     Research, design, roadmap
 ```

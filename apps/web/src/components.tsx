@@ -4,6 +4,7 @@ import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, type Aucti
 import { FACTORY, txLink } from "./config";
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
+import { useApp } from "./state";
 
 const WAD = 10n ** 18n;
 const errMsg = (e: unknown) => {
@@ -66,12 +67,12 @@ export function DemandChart({ s, curve }: { s: AuctionState; curve: bigint[] }) 
       </div>
       <div className="legend">
         {sealed ? (
-          <span><i className="sw" style={{ background: "#050606", boxShadow: "inset 0 0 0 1px #333" }} />Bids are hashes + timelock ciphertexts. Nobody, not even the sequencer, can see this chart yet.</span>
+          <span><i className="sw" style={{ background: "var(--sealed)" }} />Bids are hashes + timelock ciphertexts. Nobody, not even the sequencer, can see this chart yet.</span>
         ) : (
           <>
-            <span><i className="sw" style={{ background: "var(--accent)" }} />filled</span>
-            <span><i className="sw" style={{ background: "repeating-linear-gradient(135deg,var(--accent) 0 3px,rgba(95,227,196,.45) 3px 6px)" }} />pro rata</span>
-            <span><i className="sw" style={{ background: "#3a403e" }} />below price, refunded</span>
+            <span><i className="sw" style={{ background: "var(--signal)" }} />filled</span>
+            <span><i className="sw" style={{ background: "repeating-linear-gradient(135deg,var(--signal) 0 3px,var(--signal-line) 3px 6px)" }} />pro rata</span>
+            <span><i className="sw" style={{ background: "var(--line-strong)" }} />below price, refunded</span>
           </>
         )}
       </div>
@@ -82,6 +83,7 @@ export function DemandChart({ s, curve }: { s: AuctionState; curve: bigint[] }) 
 // ───────────────────────────── bid ─────────────────────────────
 
 export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet | null; onDone: () => void }) {
+  const { connect } = useApp();
   const defaultPrice = formatEther(s.minPrice + BigInt(Math.floor(s.numTicks / 4)) * s.tickSize);
   const [maxPrice, setMaxPrice] = useState(defaultPrice);
   const [qty, setQty] = useState("10000");
@@ -164,7 +166,7 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
         <div className="row"><span className="mute">You lock</span><span className="mono">{quote ? `${hype(deposit)} HYPE` : "—"}</span></div>
         <div className="row"><span className="mute">Visible on-chain</span><span>a hash + <span className="sealed" style={{ width: 54, height: 12 }} /></span></div>
       </div>
-      <button className="btn btn-accent btn-block" disabled={!wallet || !quote || busy} onClick={submit}>
+      <button className="btn btn-ink btn-block" disabled={!!wallet && (!quote || busy)} onClick={wallet ? submit : () => connect()}>
         {!wallet ? "Connect a wallet to bid" : busy ? "Sealing & committing…" : "Seal bid"}
       </button>
       {err && <div className="err">{err}</div>}
@@ -300,7 +302,7 @@ export function FairLaunchCard({ s }: { s: AuctionState }) {
       </div>
       <div className="fl">
         <div className="row"><span className="mute">Clearing price</span><span className="mono">{hype(s.clearingPrice)} HYPE</span></div>
-        <div className="row"><span className="mute">Pool opening price</span><span className="mono">{poolPrice ? `${hype(poolPrice)} HYPE` : "—"}</span></div>
+        <div className="row"><span className="mute">Pool price now</span><span className="mono">{poolPrice ? `${hype(poolPrice)} HYPE` : "—"}</span></div>
         <div className="row"><span className="mute">Sold</span><span className="mono">{tokens(s.sold)} {s.tokenSymbol}</span></div>
         <div className="row"><span className="mute">Raised</span><span className="mono">{hype(s.raised)} HYPE</span></div>
         <div className="row"><span className="mute">Liquidity</span><span className="mono">{lp ? `${hype(lp.hype)} HYPE + ${tokens(lp.tok)}` : "—"}</span></div>
@@ -315,6 +317,7 @@ export function FairLaunchCard({ s }: { s: AuctionState }) {
 // ───────────────────────────── trade ─────────────────────────────
 
 export function TradeCard({ s, wallet }: { s: AuctionState; wallet: Wallet | null }) {
+  const { connect } = useApp();
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [amt, setAmt] = useState("0.01");
   const [out, setOut] = useState<bigint>(0n);
@@ -379,7 +382,7 @@ export function TradeCard({ s, wallet }: { s: AuctionState; wallet: Wallet | nul
       <div className="summary">
         <div className="row"><span className="mute">You receive ≈</span><span className="mono">{side === "buy" ? `${tokens(out)} ${s.tokenSymbol}` : `${hype(out)} HYPE`}</span></div>
       </div>
-      <button className="btn btn-primary btn-block" disabled={!wallet || busy || out === 0n} onClick={trade}>
+      <button className="btn btn-primary btn-block" disabled={!!wallet && (busy || out === 0n)} onClick={wallet ? trade : () => connect()}>
         {!wallet ? "Connect a wallet" : busy ? "Swapping…" : side === "buy" ? `Buy ${s.tokenSymbol}` : `Sell ${s.tokenSymbol}`}
       </button>
       {msg.err && <div className="err">{msg.err}</div>}
@@ -390,36 +393,8 @@ export function TradeCard({ s, wallet }: { s: AuctionState; wallet: Wallet | nul
 
 // ───────────────────────────── launches + create ─────────────────────────────
 
-export function LaunchList({ current, onPick }: { current?: Address; onPick: (a: Address) => void }) {
-  const [list, setList] = useState<{ auction: Address; symbol: string; phase: string }[]>([]);
-  useEffect(() => {
-    if (!FACTORY) return;
-    const c = new Cloak(publicClient, undefined, FACTORY);
-    c.listLaunches()
-      .then((ls) => Promise.all(ls.reverse().slice(0, 8).map(async (l) => {
-        const st = await c.getAuction(l.auction);
-        return { auction: l.auction, symbol: st.tokenSymbol, phase: st.phase };
-      })))
-      .then(setList)
-      .catch(() => {});
-  }, [current]);
-  if (list.length < 2) return null;
-  return (
-    <div className="card">
-      <div className="card-head"><h3>Launches</h3></div>
-      <div className="launches">
-        {list.map((l) => (
-          <a key={l.auction} href={`?a=${l.auction}`} className="launch-item" onClick={(e) => { e.preventDefault(); onPick(l.auction); }} style={l.auction === current ? { borderColor: "var(--accent)" } : undefined}>
-            <span><b>{l.symbol}</b> <span className="mono faint xs">{short(l.auction)}</span></span>
-            <span className="pill">{l.phase}</span>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onCreated: (a: Address) => void }) {
+  const { connect } = useApp();
   const [f, setF] = useState({ name: "", symbol: "", supply: "1000000", minPrice: "0.000001", tick: "0.000001", commitMin: "10", revealMin: "3", lpPct: "50", lock: "burn" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -477,7 +452,7 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
           <option value="180">Lock LP 180 days</option>
         </select>
       </div>
-      <button className="btn btn-primary btn-block" disabled={!wallet || !FACTORY || busy || !f.name || !f.symbol} onClick={create}>
+      <button className="btn btn-primary btn-block" disabled={!FACTORY || (!!wallet && (busy || !f.name || !f.symbol))} onClick={wallet ? create : () => connect()}>
         {!FACTORY ? "Set VITE_FACTORY to enable" : !wallet ? "Connect a wallet" : busy ? "Deploying…" : "Create sealed-bid launch"}
       </button>
       {err && <div className="err">{err}</div>}

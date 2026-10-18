@@ -1,0 +1,22 @@
+/*
+ * Cloak brand — the ONLY place brand colors live. Swap these four and the whole site follows.
+ *
+ *   --brand-ink     text, primary buttons, the dark sections (developer block, footer)
+ *   --brand-paper   page background
+ *   --brand-signal  the accent: "sealed / private / live" states, links, highlights
+ *   --brand-seal    secondary accent: the clearing price, warnings, the public side of comparisons
+ */
+:root {
+  --brand-ink: #0b0d0e;
+  --brand-paper: #f7f7f4;
+  --brand-signal: #1f9d7a;
+  --brand-seal: #c9852e;
+}
+
+/* Dark theme reuses the same four colors, inverted where it makes sense. */
+:root[data-theme="dark"] {
+  --brand-ink: #f3f3ef;
+  --brand-paper: #0a0b0c;
+  --brand-signal: #4fdcb8;
+  --brand-seal: #e3a95a;
+}

@@ -3,10 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#08090a" />
     <link rel="icon" href="/logo.svg" />
-    <title>Cloak · Sealed-bid launches on Elysium</title>
-    <meta name="description" content="Fair token launches on Elysium: sealed bids nobody can front-run, one clearing price for everyone, liquidity locked at that price." />
+    <title>Cloak · Fair launches and private trading on Elysium</title>
+    <meta name="description" content="Launches nobody can snipe, trades nobody can trace. Sealed-bid launches with one clearing price and locked liquidity, then private balances, swaps, batches and sends on Elysium." />
+    <script>
+      try {
+        var t = localStorage.getItem("cloak.theme") || "auto";
+        var d = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = d ? "dark" : "light";
+      } catch (e) { document.documentElement.dataset.theme = "light"; }
+    </script>
   </head>
   <body>
     <div id="root"></div>
