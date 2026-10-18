@@ -117,9 +117,14 @@ async function tickBatches() {
         batchCursor.open.delete(k);
         continue;
       }
-      const h = await walletClient.writeContract({ ...c, functionName: "claim", args: [ids] });
-      await publicClient.waitForTransactionReceipt({ hash: h });
-      log(token, `paid out ${ids.length} private orders of round ${round} ${h}`);
+      // only orders not yet paid (after a restart the keeper re-scans old rounds)
+      const done = await Promise.all(ids.map((id) => publicClient.readContract({ ...c, functionName: "orders", args: [id] }).then((o) => o[3])));
+      const unpaid = ids.filter((_, i) => !done[i]);
+      if (unpaid.length > 0) {
+        const h = await walletClient.writeContract({ ...c, functionName: "claim", args: [unpaid] });
+        await publicClient.waitForTransactionReceipt({ hash: h });
+        log(token, `paid out ${unpaid.length} private orders of round ${round} ${h}`);
+      }
       batchCursor.open.delete(k);
     } catch (e) {
       log(token, `batch error: ${e.shortMessage ?? e.message}`);

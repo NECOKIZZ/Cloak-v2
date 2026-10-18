@@ -57,21 +57,22 @@ export function relayerSubmitter(url: string): Submitter {
 /** Submit from a wallet directly — works, but that wallet pays gas and appears as the sender. Use for tests/relayers. */
 export function walletSubmitter(publicClient: PublicClient, wallet: Wallet, router: Address, batcher?: Address): Submitter {
   return async (call) => {
-    if (call.kind === "placeOrder") {
-      if (!batcher) throw new Error("no batcher configured");
-      const h = await wallet.writeContract({ address: batcher, abi: privateBatcherAbi, functionName: "placeOrder", args: [call.pool, call.proof, call.extData] as never });
-      const rc = await publicClient.waitForTransactionReceipt({ hash: h });
-      if (rc.status !== "success") throw new Error(`order reverted: ${h}`);
-      return h;
-    }
     // viem cannot infer the nested tuple types through the union; the shapes match the ABI exactly.
-    const args = [call.proof, call.extData] as never;
-    const hash =
-      call.kind === "privateSwap"
-        ? await wallet.writeContract({ address: router, abi: privateRouterAbi, functionName: "privateSwap", args: [call.pool, call.proof, call.extData] as never })
-        : call.kind === "unshieldHype"
-          ? await wallet.writeContract({ address: router, abi: privateRouterAbi, functionName: "unshieldHype", args })
-          : await wallet.writeContract({ address: call.pool, abi: shieldedPoolAbi, functionName: "transact", args });
+    const req =
+      call.kind === "placeOrder"
+        ? { address: batcher!, abi: privateBatcherAbi, functionName: "placeOrder", args: [call.pool, call.proof, call.extData] }
+        : call.kind === "privateSwap"
+          ? { address: router, abi: privateRouterAbi, functionName: "privateSwap", args: [call.pool, call.proof, call.extData] }
+          : call.kind === "unshieldHype"
+            ? { address: router, abi: privateRouterAbi, functionName: "unshieldHype", args: [call.proof, call.extData] }
+            : { address: call.pool, abi: shieldedPoolAbi, functionName: "transact", args: [call.proof, call.extData] };
+    if (call.kind === "placeOrder" && !batcher) throw new Error("no batcher configured");
+    // Pad the estimate: state can change between estimation and inclusion (e.g. an order landing in a new batch round
+    // writes fresh storage, ~60k more gas). Unused gas is refunded.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const est = await publicClient.estimateContractGas({ ...req, account: wallet.account } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hash = await wallet.writeContract({ ...req, gas: (est * 13n) / 10n + 100_000n } as any);
     const r = await publicClient.waitForTransactionReceipt({ hash });
     if (r.status !== "success") throw new Error(`shielded call reverted: ${hash}`);
     return hash;
