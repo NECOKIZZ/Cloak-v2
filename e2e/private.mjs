@@ -162,6 +162,9 @@ const roundSecs = await d.publicClient.readContract({ ...bc, functionName: "roun
 for (const r of rounds) {
   await waitChainTime(d.publicClient, Number((r + 1n) * roundSecs), { mine });
   if (mine) await mine();
+  await sleep(local ? 0 : 8000); // a hosted keeper may settle first
+  const st = await d.publicClient.readContract({ ...bc, functionName: "batches", args: [token, r] });
+  if (st[6]) continue; // already settled by a keeper
   const h = await relayer.walletClient.writeContract({ ...bc, functionName: "settle", args: [token, r] });
   await d.publicClient.waitForTransactionReceipt({ hash: h });
   txs.batchSettle = h;
