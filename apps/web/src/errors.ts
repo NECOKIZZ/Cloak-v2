@@ -51,6 +51,7 @@ const RULES: [RegExp, string][] = [
   [/unauthorized|code:4100\b|not been authorized/, "Your wallet hasn't approved this site yet. Connect again and approve the connection."],
   [/disconnected|code:490[01]\b/, "Your wallet is disconnected. Reconnect it and try again."],
   [/no browser wallet|window\.ethereum/, "No wallet found in this browser. Install one (like MetaMask or Rabby), or use WalletConnect."],
+  [/returned no data \("0x"\)|does not have the function/, "There's no Cloak contract at that address on this network. Check the link."],
   // input
   [/invaliddecimalnumber|not a valid decimal number|cannot convert .* to a bigint|invalid number/, "Enter numbers only, like 0.01."],
   [/integeroutofrange|not in safe .* integer range|out of range/, "That number is out of range. Use a positive amount."],

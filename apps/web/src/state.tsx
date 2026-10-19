@@ -129,6 +129,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       id = localStorage.getItem("cloak.wallet");
     } catch {}
     if (!id || id === "walletconnect") return;
+    if (id === "dev") {
+      if (IS_LOCAL) connectBurner().then((w) => (setWallet(w), setWalletInfo({ name: "Dev wallet" }))).catch(() => {});
+      return;
+    }
     const t = setTimeout(async () => {
       const opt = installedWallets().find((o) => o.id === id);
       if (!opt) return;
@@ -171,6 +175,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (w) {
       setWallet(w);
       setWalletInfo({ name: "Dev wallet" });
+      try {
+        localStorage.setItem("cloak.wallet", "dev");
+      } catch {}
     }
     setModal(false);
     pending.current?.(w);
@@ -207,8 +214,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const submit = RELAYER_URL ? relayerSubmitter(RELAYER_URL) : walletSubmitter(publicClient, w, ROUTER, BATCHER);
       const p = new CloakPrivate(publicClient, ROUTER, keys, getProver, submit, ROUTER_BLOCK, BATCHER);
       await p.loadMarkets();
-      setPriv(p);
       setPrivAddress(await p.address());
+      setPriv(p);
       getProver(); // warm the 12 MB circuit download
       return p;
     } catch (e) {

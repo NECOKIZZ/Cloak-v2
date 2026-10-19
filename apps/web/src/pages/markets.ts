@@ -63,10 +63,15 @@ export function useMarkets() {
 
 export async function quote(m: Market, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
   if (amountIn <= 0n) return 0n;
+  // live reserves, so the quote reflects trades made since the markets were loaded
+  const [rH, rT] = await Promise.all([
+    publicClient.readContract({ address: m.pair, abi: cloakPairAbi, functionName: "reserveHype" }),
+    publicClient.readContract({ address: m.pair, abi: cloakPairAbi, functionName: "reserveToken" }),
+  ]);
   return publicClient.readContract({
     address: m.pair,
     abi: cloakPairAbi,
     functionName: "getAmountOut",
-    args: side === "buy" ? [amountIn, m.reserveHype, m.reserveToken] : [amountIn, m.reserveToken, m.reserveHype],
+    args: side === "buy" ? [amountIn, rH, rT] : [amountIn, rT, rH],
   });
 }

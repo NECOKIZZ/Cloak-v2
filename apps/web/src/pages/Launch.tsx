@@ -30,6 +30,7 @@ export function Launch({ auction }: { auction: Address }) {
   const [keeper, setKeeper] = useState<{ keeper: string } | null>(null);
   const [busy, setBusy] = useState("");
   const [privMarket, setPrivMarket] = useState<boolean | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const meta = useTokenMeta(auction);
 
   const refresh = useCallback(async () => {
@@ -42,7 +43,9 @@ export function Launch({ auction }: { auction: Address }) {
       setCurve([...c]);
       if (wallet) setMine(await readCloak.bidsOf(auction, wallet.account.address));
     } catch (e) {
-      setError(friendly(e));
+      // no contract (or not an auction) at this address: show a clear page instead of an error banner
+      if (/returned no data|"0x"|does not have the function|reverted/i.test(String((e as Error)?.message))) setNotFound(true);
+      else setError(friendly(e));
     }
   }, [auction, wallet]);
 
@@ -88,6 +91,14 @@ export function Launch({ auction }: { auction: Address }) {
     });
   }
 
+  if (notFound && !s)
+    return (
+      <div className="empty">
+        <h3>No launch at this address</h3>
+        <p className="mute small"><span className="mono">{short(auction)}</span> isn't a Cloak launch on this network. Check the link, or pick one from the list.</p>
+        <Link to="/app" className="btn btn-ink" style={{ marginTop: 14 }}>See all launches</Link>
+      </div>
+    );
   if (!s) return <div className="empty">Loading launch {short(auction)}…</div>;
   const phaseIdx = PHASES.findIndex((p) => p.k === s.phase);
   const target = s.phase === "commit" ? s.commitEnd : s.phase === "reveal" ? s.revealEnd : 0;

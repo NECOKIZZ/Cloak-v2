@@ -65,10 +65,13 @@ export function Portfolio() {
     setRes({});
     let a: bigint;
     try {
-      a = parseEther(amt || "0");
+      a = parseEther(amt.trim() || "0");
     } catch {
       return setRes({ err: "Enter an amount, like 0.01." });
     }
+    if (a <= 0n) return setRes({ err: "Enter an amount above zero." });
+    const have = bals[asset];
+    if (tab !== "shield" && have !== undefined && a > have) return setRes({ err: `You have ${fmt(have, asset)} private ${sym}. Enter that or less.` });
     try {
       if (tab === "shield") {
         setBusy("Depositing into your private balance…");
