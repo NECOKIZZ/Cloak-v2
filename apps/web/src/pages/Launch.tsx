@@ -6,6 +6,7 @@ import { addrLink, KEEPER_URL, ROUTER } from "../config";
 import { duration, hype, short, tokens } from "../format";
 import { Link } from "../router";
 import { useApp } from "../state";
+import { LaunchRecord } from "./LaunchRecord";
 import { friendly } from "../errors";
 import { Icon } from "../ui";
 import { publicClient, readCloak } from "../wallet";
@@ -140,6 +141,7 @@ export function Launch({ auction }: { auction: Address }) {
           <DemandChart s={s} curve={curve} />
           <FairLaunchCard s={s} />
           <MyBids s={s} wallet={wallet} bids={mine} onDone={refresh} />
+          <LaunchRecord s={s} />
         </div>
         <div className="col">
           {s.phase === "commit" && <BidCard s={s} wallet={wallet} onDone={refresh} />}

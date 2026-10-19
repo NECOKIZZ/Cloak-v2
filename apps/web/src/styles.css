@@ -612,3 +612,17 @@ html.snap { scroll-snap-type: y proximity; }
 .vol-side > div { display: grid; gap: 4px; padding: 14px 16px; border-radius: var(--r-md); background: var(--raised); border: 1px solid var(--line); }
 .vol-side b { font: 400 24px var(--font-display); letter-spacing: -0.02em; }
 @media (max-width: 900px) { .vol-hero { grid-template-columns: minmax(0, 1fr); padding: 22px; } }
+
+/* ───────────── launch on-chain record ───────────── */
+.rec-contracts { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.rec { list-style: none; margin: 0; padding: 0; position: relative; }
+.rec::before { content: ""; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 1px; background: var(--line-strong); }
+.rec li { display: flex; gap: 14px; padding: 10px 0; position: relative; }
+.rec-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--raised); border: 2px solid var(--mute); flex: none; margin-top: 4px; z-index: 1; }
+.rec-bid .rec-dot, .rec-reveal .rec-dot { border-color: var(--signal); }
+.rec-settle .rec-dot { border-color: var(--seal); background: var(--seal); }
+.rec-claim .rec-dot, .rec-trade .rec-dot { border-color: var(--signal); background: var(--signal); }
+.rec-body { min-width: 0; flex: 1; }
+.rec-top { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; flex-wrap: wrap; }
+.rec-tag { font: 600 10.5px var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); margin-right: 8px; }
+.rec-body p { margin: 3px 0 0; }
