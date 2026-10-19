@@ -387,6 +387,8 @@ select.input { font-family: var(--font-body); font-size: 14px; }
 .token-avatar { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font: 500 15px var(--font-display); color: var(--on-ink); background: var(--brand-ink); }
 .token-avatar.sm { width: 28px; height: 28px; border-radius: 9px; font-size: 11px; }
 .token-avatar.hype { background: var(--signal); color: #fff; }
+.token-icon { display: inline-grid; place-items: center; flex: none; border-radius: 50%; box-shadow: 0 0 0 1px var(--line); }
+.token-letters { font: 500 11px var(--font-display); letter-spacing: -0.02em; color: var(--on-ink); background: var(--brand-ink); }
 
 /* ───────────── private swap ───────────── */
 .swap-wrap { display: grid; grid-template-columns: minmax(0, 480px) minmax(0, 1fr); gap: 24px; align-items: start; }

@@ -5,7 +5,7 @@ import { BATCHER, txLink } from "../config";
 import { hype, tokens } from "../format";
 import { Link, useRoute } from "../router";
 import { getProver, useApp } from "../state";
-import { Icon } from "../ui";
+import { Icon, TokenIcon } from "../ui";
 import { quote, useMarkets, type Market } from "./markets";
 
 function TokenSel({ label, onPick, markets, hypeSide }: { label: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean }) {
@@ -13,7 +13,7 @@ function TokenSel({ label, onPick, markets, hypeSide }: { label: string; onPick?
   return (
     <div style={{ position: "relative" }}>
       <button className="token-sel" onClick={() => onPick && setOpen(!open)} style={!onPick ? { cursor: "default" } : undefined}>
-        <span className={`token-avatar sm ${hypeSide ? "hype" : ""}`}>{label.slice(0, 2)}</span>
+        <TokenIcon symbol={label} />
         {label}
         {onPick && <Icon.chev size={14} />}
       </button>
@@ -21,7 +21,7 @@ function TokenSel({ label, onPick, markets, hypeSide }: { label: string; onPick?
         <div className="menu">
           {markets.map((m) => (
             <button key={m.token} onClick={() => { onPick?.(m); setOpen(false); }}>
-              <span className="token-avatar sm">{m.symbol.slice(0, 2)}</span>
+              <TokenIcon symbol={m.symbol} />
               <span style={{ textAlign: "left" }}>{m.symbol}<div className="xs mute">{m.name}</div></span>
             </button>
           ))}

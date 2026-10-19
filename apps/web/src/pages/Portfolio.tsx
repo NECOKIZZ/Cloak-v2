@@ -3,7 +3,7 @@ import { formatEther, isAddress, parseEther, type Address, type Hex } from "viem
 import { txLink } from "../config";
 import { hype, tokens } from "../format";
 import { getProver, useApp } from "../state";
-import { Icon } from "../ui";
+import { Icon, TokenIcon } from "../ui";
 import { useMarkets } from "./markets";
 
 type Tab = "shield" | "send" | "withdraw";
@@ -107,7 +107,7 @@ export function Portfolio() {
         {assets.map((x) => (
           <div key={x.key} className="bal">
             <div className="row-flex" style={{ gap: 10 }}>
-              <span className={`token-avatar sm ${x.key === "HYPE" ? "hype" : ""}`}>{x.label.slice(0, 2)}</span>
+              <TokenIcon symbol={x.label} />
               <span style={{ fontWeight: 500 }}>{x.label}</span>
               <span className="spacer" />
               <span className="xs signal">● only you</span>

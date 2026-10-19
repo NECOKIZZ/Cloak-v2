@@ -13,6 +13,13 @@ export function Logo({ size = 28, inverse }: { size?: number; inverse?: boolean 
   );
 }
 
+/** Coin icon: the official HYPE mark, the Cloak hood for $CLOAK, letters for other launch tokens. */
+export function TokenIcon({ symbol, size = 28 }: { symbol: string; size?: number }) {
+  const src = { HYPE: "/tokens/hype.svg", WHYPE: "/tokens/hype.svg", CLOAK: "/tokens/cloak.svg" }[symbol.toUpperCase()];
+  if (src) return <img className="token-icon" src={src} alt={symbol} width={size} height={size} />;
+  return <span className="token-icon token-letters" style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}>{symbol.slice(0, 2)}</span>;
+}
+
 const P = (d: string) => (props: { size?: number }) => (
   <svg viewBox="0 0 24 24" width={props.size ?? 18} height={props.size ?? 18} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <path d={d} />

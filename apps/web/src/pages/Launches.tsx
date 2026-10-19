@@ -4,6 +4,7 @@ import type { AuctionState } from "@cloak/sdk";
 import { FACTORY } from "../config";
 import { duration, hype, tokens } from "../format";
 import { Link } from "../router";
+import { TokenIcon } from "../ui";
 import { readCloak } from "../wallet";
 
 const PHASE: Record<string, [string, string]> = {
@@ -46,7 +47,7 @@ export function Launches() {
           const t = s.phase === "commit" ? s.commitEnd - now : s.phase === "reveal" ? s.revealEnd - now : 0;
           return (
             <Link key={s.address} to={`/app/launch/${s.address}`} className="launch-item">
-              <span className="token-avatar">{s.tokenSymbol.slice(0, 2)}</span>
+              <TokenIcon symbol={s.tokenSymbol} size={44} />
               <span>
                 <b style={{ fontWeight: 500 }}>{s.tokenName}</b> <span className="mute">${s.tokenSymbol}</span>
                 <div className="xs mute" style={{ marginTop: 2 }}>
