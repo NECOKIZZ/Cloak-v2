@@ -1,18 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "../router";
-import { Announce, EXPLORER, Footer, GITHUB, Icon, Nav, Section } from "../ui";
+import { Announce, EXPLORER, Footer, GITHUB, Icon, Logo, Nav, Section } from "../ui";
 
-const PUBLIC = [
-  { k: "Launch buy", who: "Bot 0x7a3…", amt: "40,000", u: "SHADE" },
-  { k: "Wallet balance", who: "0x19c…e4", amt: "12.4", u: "HYPE" },
-  { k: "Swap", who: "From 0xbe1…", amt: "2,250", u: "CLOAK" },
-  { k: "Payment", who: "To 0x44f…", amt: "380", u: "HYPE" },
-];
-const SEALED = [
-  { k: "Sealed bid", who: "Bidder" },
-  { k: "Private trade", who: "Trader" },
-  { k: "Private send", who: "To" },
-  { k: "Batch order", who: "Order" },
+// each public card has a sealed twin; it turns into it as it crosses the Cloak line
+const PAIRS = [
+  { pub: { k: "Launch buy", who: "Bot 0x7a3…", amt: "40,000", u: "SHADE" }, seal: { k: "Sealed bid", who: "Bidder" } },
+  { pub: { k: "Wallet balance", who: "0x19c…e4", amt: "12.4", u: "HYPE" }, seal: { k: "Private balance", who: "Owner" } },
+  { pub: { k: "Swap", who: "From 0xbe1…", amt: "2,250", u: "CLOAK" }, seal: { k: "Private trade", who: "Trader" } },
+  { pub: { k: "Payment", who: "To 0x44f…", amt: "380", u: "HYPE" }, seal: { k: "Private send", who: "To" } },
+  { pub: { k: "Market sell", who: "From 0x5d2…", amt: "18,500", u: "SHADE" }, seal: { k: "Batch order", who: "Order" } },
 ];
 
 function Ticket({ k, who, amt, u, sealed }: { k: string; who: string; amt?: string; u?: string; sealed?: boolean }) {
@@ -29,14 +25,17 @@ function Ticket({ k, who, amt, u, sealed }: { k: string; who: string; amt?: stri
 }
 
 function Strip() {
-  const cards = [...PUBLIC.map((c) => <Ticket key={c.k} {...c} />), ...SEALED.map((c) => <Ticket key={c.k + "s"} {...c} sealed />)];
+  // the same row is drawn twice in lockstep: public cards left of the line, their sealed twins right of it
+  const row = (sealed: boolean) => {
+    const cards = PAIRS.map((p, i) => <Ticket key={i} {...(sealed ? p.seal : p.pub)} sealed={sealed} />);
+    return <div className="strip-track">{cards}{cards.map((c, i) => <div key={`d${i}`} style={{ display: "contents" }}>{c}</div>)}</div>;
+  };
   return (
     <>
-      <div className="strip">
-        <div className="strip-track">
-          {cards}
-          {cards.map((c, i) => <div key={`dup${i}`} style={{ display: "contents" }}>{c}</div>)}
-        </div>
+      <div className="seal-strip">
+        <div className="seal-layer is-public">{row(false)}</div>
+        <div className="seal-layer is-sealed" aria-hidden="true">{row(true)}</div>
+        <div className="seal-line"><span><Logo />Cloak</span></div>
       </div>
       <div className="strip-legend"><span>What a launch or trade normally reveals</span><span>What Cloak lets the world see</span></div>
     </>

@@ -132,14 +132,15 @@ export function Footer() {
   const T: Theme[] = ["light", "dark", "auto"];
   return (
     <footer className="footer">
-      <div className="wrap footer-in">
+      <div className="footer-card">
+      <div className="footer-in">
         <div className="footer-grid">
           <div>
-            <div className="brand"><Logo />Cloak</div>
+            <div className="brand"><Logo inverse />Cloak</div>
             <p className="tag">Private launches and trades on a public chain.</p>
             <div className="row-flex" style={{ gap: 6 }}>
               <a className="icon-btn" href={GITHUB} target="_blank" rel="noreferrer" aria-label="GitHub"><Icon.github /></a>
-              <Link to="/app" className="btn btn-ink btn-sm">Open app</Link>
+              <Link to="/app" className="btn btn-primary btn-sm">Open app</Link>
             </div>
           </div>
           <div>
@@ -181,6 +182,7 @@ export function Footer() {
       </div>
       <div className="footer-art">
         <img src="/hero/crowd.webp" alt="A piazza at dusk full of identical hooded figures; one of them turns back to look at you" width={2000} height={800} loading="lazy" />
+      </div>
       </div>
     </footer>
   );
