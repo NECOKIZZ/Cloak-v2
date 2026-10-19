@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "../router";
 import { Announce, EXPLORER, Footer, GITHUB, Icon, Nav, Section } from "../ui";
 
@@ -114,24 +114,98 @@ function Demos() {
   );
 }
 
+/** Two aligned portraits; the uncloaked one shows through a soft circle that follows the pointer. */
+function Uncloak() {
+  const stage = useRef<HTMLDivElement>(null);
+  const [touch, setTouch] = useState(false);
+  useEffect(() => {
+    const el = stage.current;
+    if (!el) return;
+    setTouch(matchMedia("(hover: none)").matches);
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const cur = { x: 0.5, y: 0.36, r: 0 };
+    const tgt = { x: 0.5, y: 0.36, r: 0 };
+    let inside = false, peekUntil = 0, speed = 0, raf = 0, last = { x: 0, y: 0 };
+    const base = () => Math.max(80, Math.min(180, el.clientWidth * 0.12));
+    const move = (e: PointerEvent) => {
+      const b = el.getBoundingClientRect();
+      const x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height;
+      speed = Math.min(1, speed + Math.hypot(x - last.x, y - last.y) * 6);
+      last = { x, y };
+      Object.assign(tgt, { x, y });
+      inside = true;
+      peekUntil = 0;
+    };
+    const leave = () => (inside = false);
+    const up = (e: PointerEvent) => e.pointerType !== "mouse" && leave();
+    const frame = () => {
+      speed *= 0.92;
+      const peeking = !inside && performance.now() < peekUntil;
+      if (peeking) Object.assign(tgt, { x: 0.5, y: 0.36 });
+      tgt.r = inside || peeking ? base() * (1 + speed * 0.35) : 0;
+      const k = still ? 1 : 0.14;
+      cur.x += (tgt.x - cur.x) * k;
+      cur.y += (tgt.y - cur.y) * k;
+      cur.r += (tgt.r - cur.r) * (still ? 1 : 0.1);
+      el.style.setProperty("--x", `${(cur.x * 100).toFixed(2)}%`);
+      el.style.setProperty("--y", `${(cur.y * 100).toFixed(2)}%`);
+      el.style.setProperty("--r", `${cur.r.toFixed(1)}px`);
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    // a short peek at the face on load, so people know there's someone under the hood
+    const peek = still ? 0 : window.setTimeout(() => {
+      if (!inside) peekUntil = performance.now() + 1500;
+    }, 900);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerdown", move);
+    el.addEventListener("pointerleave", leave);
+    el.addEventListener("pointerup", up);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(peek);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerdown", move);
+      el.removeEventListener("pointerleave", leave);
+      el.removeEventListener("pointerup", up);
+    };
+  }, []);
+  return (
+    <>
+      <div className="uncloak" ref={stage}>
+        <div className="uncloak-figure">
+          <img src="/hero/cloaked.webp" alt="A figure hidden under a black hooded cloak" width={1400} height={933} draggable={false} />
+          <img src="/hero/man.webp" alt="" aria-hidden="true" className="uncloak-reveal" width={1400} height={933} draggable={false} />
+        </div>
+        <h1 className="uncloak-title">Launch sealed.<br />Trade unseen.</h1>
+      </div>
+      <div className="uncloak-hint xs">{touch ? "Touch and drag to uncloak" : "Move your cursor over him"}</div>
+    </>
+  );
+}
+
 export function Landing() {
   return (
     <>
       <Announce />
       <Nav />
       <main>
-        <section className="wrap" style={{ paddingTop: 12 }}>
-          <div className="hero-panel">
-            <span className="pill hero-live"><span className="dot live" />Live on Elysium testnet</span>
-            <h1 className="display">Launches nobody<br />can snipe.<br /><span style={{ color: "var(--mute)" }}>Trades nobody can trace.</span></h1>
-            <p className="lede" style={{ marginTop: 26 }}>
-              Cloak is the private launch and trading layer for Elysium. Bids stay sealed until bidding closes, everyone pays one fair price, and afterwards you hold and trade from a balance only you can see.
+        <section className="hero">
+          <div className="wrap hero-top">
+            <span className="pill"><span className="dot live" />Live on Elysium testnet</span>
+          </div>
+          <Uncloak />
+          <div className="wrap hero-foot">
+            <p className="lede">
+              Sealed-bid launches nobody can snipe, and private trades nobody can trace. Everyone pays one fair price, and afterwards you hold and trade from a balance only you can see.
             </p>
             <div className="hero-actions">
               <Link to="/app" className="btn btn-ink btn-lg">Open app</Link>
               <Link to="/docs" className="arrow" style={{ fontWeight: 500 }}>Read the docs</Link>
             </div>
           </div>
+        </section>
+        <section className="wrap">
           <div className="pillars">
             <div className="pillar">
               <div className="eyebrow">The launch</div>

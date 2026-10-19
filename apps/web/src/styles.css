@@ -140,18 +140,32 @@ a { color: inherit; text-decoration: none; }
 .burger { display: none; }
 
 /* ───────────── landing ───────────── */
-.hero-panel {
-  position: relative; overflow: hidden; border-radius: var(--r-lg); min-height: 620px; padding: 64px;
-  display: flex; flex-direction: column; justify-content: flex-end;
-  background:
-    radial-gradient(60% 70% at 85% 30%, color-mix(in srgb, var(--brand-signal) 26%, transparent), transparent 70%),
-    radial-gradient(45% 55% at 20% 15%, color-mix(in srgb, var(--brand-ink) 9%, transparent), transparent 70%),
-    radial-gradient(50% 60% at 60% 95%, color-mix(in srgb, var(--brand-signal) 14%, transparent), transparent 70%),
-    var(--card);
+.hero { padding-top: 18px; }
+.hero-top { display: flex; justify-content: center; }
+.uncloak { position: relative; width: min(1240px, 100%); margin: 0 auto; isolation: isolate; background: var(--bg); touch-action: pan-y; user-select: none; }
+.uncloak::before {
+  content: ""; position: absolute; inset: 4% 18% 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(50% 55% at 50% 45%, color-mix(in srgb, var(--brand-signal) 12%, transparent), transparent 70%);
 }
-.hero-panel::after { content: ""; position: absolute; inset: 0; background: radial-gradient(30% 40% at 70% 55%, color-mix(in srgb, var(--brand-paper) 70%, transparent), transparent 70%); filter: blur(20px); animation: drift 14s ease-in-out infinite alternate; pointer-events: none; }
-@keyframes drift { to { transform: translate(-8%, 6%) scale(1.15); } }
-.hero-panel > * { position: relative; z-index: 1; }
+:root[data-theme="dark"] .uncloak::before { background: radial-gradient(48% 55% at 50% 42%, color-mix(in srgb, var(--brand-ink) 16%, transparent), transparent 72%); }
+.uncloak-figure { position: relative; -webkit-mask-image: linear-gradient(#000 86%, transparent 100%); mask-image: linear-gradient(#000 86%, transparent 100%); }
+.uncloak-figure img { display: block; width: 100%; height: auto; pointer-events: none; -webkit-user-drag: none; }
+.uncloak-reveal {
+  position: absolute; inset: 0;
+  --m: radial-gradient(circle var(--r, 0px) at var(--x, 50%) var(--y, 36%), #000 0%, #000 52%, rgba(0, 0, 0, 0.55) 74%, transparent 100%);
+  -webkit-mask-image: var(--m); mask-image: var(--m);
+}
+.uncloak-title {
+  position: absolute; left: 0; right: 0; bottom: 9%; z-index: 2; pointer-events: none; text-align: center;
+  font: 450 clamp(46px, 10.4vw, 156px)/0.9 var(--font-display); letter-spacing: -0.055em;
+  color: #fff; mix-blend-mode: difference;
+}
+.uncloak-hint { text-align: center; color: var(--mute); pointer-events: none; letter-spacing: 0.02em; margin-top: 6px; }
+.hero { overflow-x: clip; }
+.hero-foot { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 26px; }
+.hero-foot .lede { max-width: 640px; }
+@media (max-width: 640px) { .uncloak { width: 150%; left: -25%; } .uncloak-title { bottom: 11%; } }
+.hero-foot .hero-actions { justify-content: center; margin-top: 26px; }
 .display { font: 300 clamp(44px, 6.4vw, 92px)/0.98 var(--font-display); letter-spacing: -0.045em; }
 .display-2 { font: 300 clamp(34px, 4.2vw, 58px)/1.04 var(--font-display); letter-spacing: -0.04em; }
 .lede { font-size: clamp(16px, 1.4vw, 19px); color: var(--soft); max-width: 600px; line-height: 1.55; }
@@ -416,7 +430,6 @@ select.input { font-family: var(--font-body); font-size: 14px; }
   .nav-links.open { display: flex; position: absolute; top: 68px; left: 0; right: 0; flex-direction: column; background: var(--bg); padding: 12px 20px 20px; border-bottom: 1px solid var(--line); }
   .burger { display: inline-grid; }
   .nav-right .hide-m { display: none; }
-  .hero-panel { padding: 40px 26px; min-height: 560px; }
   .pillars, .demo-grid, .steps, .uses, .compare, .dev, .split, .three, .launch-hero { grid-template-columns: 1fr; }
   .steps .step, .use { min-height: 170px; }
   .dev { padding: 48px 26px; }
