@@ -51,6 +51,9 @@ const RULES: [RegExp, string][] = [
   [/unauthorized|code:4100\b|not been authorized/, "Your wallet hasn't approved this site yet. Connect again and approve the connection."],
   [/disconnected|code:490[01]\b/, "Your wallet is disconnected. Reconnect it and try again."],
   [/no browser wallet|window\.ethereum/, "No wallet found in this browser. Install one (like MetaMask or Rabby), or use WalletConnect."],
+  // input
+  [/invaliddecimalnumber|not a valid decimal number|cannot convert .* to a bigint|invalid number/, "Enter numbers only, like 0.01."],
+  [/integeroutofrange|not in safe .* integer range|out of range/, "That number is out of range. Use a positive amount."],
   // funds and gas
   [/insufficient funds|exceeds (the )?balance|not enough balance/, `Not enough testnet HYPE in your wallet to cover this and the gas. Get some from ${FAUCET}.`],
   [/insufficient private balance/, "Not enough private balance for this. Shield more HYPE on the Portfolio page first."],

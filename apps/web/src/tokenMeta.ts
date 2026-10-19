@@ -48,6 +48,8 @@ async function parseMeta(uri: string): Promise<TokenMeta> {
     const url = safeImage(uri);
     if (!url) return {};
     if (/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(url)) return { image: url };
+    // only follow links that are metadata files; a plain website link (e.g. a repo) isn't one
+    if (!/\.json(\?|$)/i.test(url) && !url.startsWith("https://ipfs.io/ipfs/")) return {};
     const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
     const j = await r.json();
     return { image: safeImage(j.image), description: typeof j.description === "string" ? j.description.slice(0, 400) : undefined };

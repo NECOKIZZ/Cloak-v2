@@ -123,6 +123,12 @@ export function Launch({ auction }: { auction: Address }) {
               <div className="small mute">The reveal window has closed. Anyone can settle.</div>
               <button className="btn btn-ink" style={{ marginTop: 12 }} disabled={!wallet || !!busy} onClick={() => run("settle", (c) => c.settle(s.address))}>{busy === "settle" ? "Settling…" : "Settle launch"}</button>
             </>
+          ) : s.failed ? (
+            <>
+              <div className="small mute">This launch didn't fill</div>
+              <div className="countdown" style={{ fontSize: 28 }}>No clearing price</div>
+              <div className="xs mute">Not enough valid bids above the minimum price. Every deposit is refundable in full.</div>
+            </>
           ) : (
             <>
               <div className="small mute">Cleared at</div>

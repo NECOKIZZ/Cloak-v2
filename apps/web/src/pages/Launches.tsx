@@ -44,7 +44,7 @@ export function Launches() {
       {list?.length === 0 && <div className="empty"><h3>No launches yet</h3>Be the first: create a sealed-bid launch.</div>}
       <div className="launches">
         {list?.map((s) => {
-          const [label, tone] = PHASE[s.phase];
+          const [label, tone] = s.failed ? ["Didn't fill", "warn"] : PHASE[s.phase];
           const t = s.phase === "commit" ? s.commitEnd - now : s.phase === "reveal" ? s.revealEnd - now : 0;
           return (
             <Link key={s.address} to={`/app/launch/${s.address}`} className="launch-item">
@@ -52,7 +52,7 @@ export function Launches() {
               <span>
                 <b style={{ fontWeight: 500 }}>{s.tokenName}</b> <span className="mute">${s.tokenSymbol}</span>
                 <div className="xs mute" style={{ marginTop: 2 }}>
-                  {s.settled ? `Cleared at ${hype(s.clearingPrice)} HYPE · ${tokens(s.sold)} sold · ${s.reveals} bidders` : `${tokens(s.saleSupply)} for sale · ${s.commits} sealed bids`}
+                  {s.failed ? `Didn't fill · ${s.commits} sealed bid${s.commits === 1 ? "" : "s"} · deposits refundable` : s.settled ? `Cleared at ${hype(s.clearingPrice)} HYPE · ${tokens(s.sold)} sold · ${s.reveals} bidders` : `${tokens(s.saleSupply)} for sale · ${s.commits} sealed bids`}
                 </div>
               </span>
               <span className="mono small mute">{t > 0 ? duration(t) : ""}</span>

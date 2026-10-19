@@ -635,3 +635,4 @@ html.snap { scroll-snap-type: y proximity; }
 .img-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
 .img-copy b { font-weight: 500; font-size: 14px; }
 textarea.input { resize: vertical; font: inherit; line-height: 1.45; height: auto; padding-top: 10px; padding-bottom: 10px; }
+.hint { font-size: 13px; color: var(--seal); background: color-mix(in srgb, var(--brand-seal) 10%, transparent); border-radius: 10px; padding: 8px 12px; margin: 0 0 10px; line-height: 1.45; }

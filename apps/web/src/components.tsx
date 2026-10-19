@@ -102,9 +102,31 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     }
   }, [maxPrice, qty, s.minPrice, s.tickSize, s.numTicks]);
   const deposit = quote ? (bucket && bucket >= quote.cost ? bucket : quote.deposit) : 0n;
+  const [walletBal, setWalletBal] = useState<bigint | null>(null);
+  useEffect(() => {
+    if (!wallet) return;
+    publicClient.getBalance({ address: wallet.account.address }).then(setWalletBal).catch(() => {});
+  }, [wallet, ok]);
+  // explain why the bid can't be placed yet, instead of a silent disabled button
+  const problem = (() => {
+    const num = (v: string) => /^\s*\d*\.?\d+\s*$/.test(v);
+    if (!num(maxPrice) || !num(qty)) return "Enter numbers only, like 0.00002.";
+    let p = 0n, q = 0n;
+    try {
+      p = parseEther(maxPrice.trim());
+      q = parseEther(qty.trim());
+    } catch {
+      return "That number has too many decimals.";
+    }
+    if (q === 0n) return "Enter how many tokens you want.";
+    if (p < s.minPrice) return `Your max price is below this launch's minimum of ${hype(s.minPrice)} HYPE.`;
+    if (!quote) return "Those amounts don't work for this launch. Try a different price or quantity.";
+    if (wallet && walletBal !== null && deposit > walletBal) return `Your wallet has ${hype(walletBal)} HYPE, which isn't enough for this deposit. Pick a smaller one or get testnet HYPE from the faucet.`;
+    return "";
+  })();
 
   async function submit() {
-    if (!wallet || !quote) return;
+    if (!wallet || !quote || problem) return;
     setBusy(true);
     setErr("");
     setOk(undefined);
@@ -152,6 +174,7 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
               key={b.toString()}
               className={`bucket ${deposit === b ? "on" : ""}`}
               disabled={!quote || b < quote.cost}
+              title={walletBal !== null && b > walletBal ? "More than your wallet balance" : undefined}
               onClick={() => setBucket(b)}
             >
               {hype(b)}
@@ -165,7 +188,8 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
         <div className="row"><span className="mute">You lock</span><span className="mono">{quote ? `${hype(deposit)} HYPE` : "—"}</span></div>
         <div className="row"><span className="mute">Visible on-chain</span><span>a hash + <span className="sealed" style={{ width: 54, height: 12 }} /></span></div>
       </div>
-      <button className="btn btn-ink btn-block" disabled={!!wallet && (!quote || busy)} onClick={wallet ? submit : () => connect()}>
+      {problem && <div className="hint">{problem}</div>}
+      <button className="btn btn-ink btn-block" disabled={!!wallet && (!!problem || busy)} onClick={wallet ? submit : () => connect()}>
         {!wallet ? "Connect a wallet to bid" : busy ? "Sealing & committing…" : "Seal bid"}
       </button>
       {err && <div className="err">{err}</div>}
@@ -415,8 +439,24 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
     }
   }
 
+  function check(): string {
+    const num = (v: string) => /^\s*\d*\.?\d+\s*$/.test(v) && Number(v) > 0;
+    if (!f.name.trim()) return "Give the token a name.";
+    if (f.name.trim().length > 40) return "Keep the name under 40 characters.";
+    if (!/^[A-Za-z0-9]{1,11}$/.test(f.symbol.trim())) return "The symbol should be 1 to 11 letters or numbers, like SHADE.";
+    if (!num(f.supply)) return "Tokens for sale must be a number above zero, like 1000000.";
+    if (!num(f.minPrice)) return "Min price must be a number above zero, like 0.000001.";
+    if (!num(f.tick)) return "Price step must be a number above zero, like 0.000001.";
+    if (!/^\d+(\.\d+)?$/.test(f.lpPct.trim()) || Number(f.lpPct) > 100) return "LP share must be between 0 and 100.";
+    if (!num(f.commitMin) || Number(f.commitMin) < 0.5) return "The bidding window must be at least 0.5 minutes.";
+    if (!num(f.revealMin) || Number(f.revealMin) < 0.5) return "The reveal window must be at least 0.5 minutes.";
+    return "";
+  }
+
   async function create() {
     if (!wallet || !FACTORY) return;
+    const bad = check();
+    if (bad) return setErr(bad);
     setBusy(true);
     setErr("");
     try {
@@ -426,8 +466,8 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
       const c = new Cloak(publicClient, wallet, FACTORY);
       const supply = parseEther(f.supply);
       const r = await c.createLaunch({
-        name: f.name,
-        symbol: f.symbol,
+        name: f.name.trim(),
+        symbol: f.symbol.trim().toUpperCase(),
         saleSupply: supply,
         lpReserve: supply,
         minPrice: parseEther(f.minPrice),
