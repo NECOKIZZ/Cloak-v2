@@ -144,7 +144,7 @@ a { color: inherit; text-decoration: none; }
 .uncloak {
   /* the figure is taller than the screen; the fade starts where the screen ends (figure is 3:2) */
   --rest: calc(100svh - var(--head, 106px));
-  --w: min(1700px, 240vw, calc(var(--rest) * 1.8));
+  --w: min(1700px, 240vw, calc(var(--rest) * 1.95));
   --h: calc(var(--w) / 1.5);
   --halo: radial-gradient(50% 55% at 50% 45%, color-mix(in srgb, var(--brand-signal) 12%, transparent), transparent 70%);
   position: relative; width: var(--w); left: 50%; transform: translateX(-50%);
@@ -154,7 +154,17 @@ a { color: inherit; text-decoration: none; }
 .uncloak::before { content: ""; position: absolute; inset: 4% 18% 0; z-index: -1; pointer-events: none; background: var(--halo); }
 .uncloak-figure {
   position: relative;
-  --fade: linear-gradient(#000 min(var(--rest), calc(var(--h) * 0.8)), transparent 100%);
+  /* eased fade that starts just above the bottom of the screen */
+  --s: min(calc(var(--rest) - 6svh), calc(var(--h) * 0.68));
+  --fade: linear-gradient(#000 var(--s),
+    rgba(0, 0, 0, 0.96) calc(var(--s) + (100% - var(--s)) * 0.12),
+    rgba(0, 0, 0, 0.86) calc(var(--s) + (100% - var(--s)) * 0.26),
+    rgba(0, 0, 0, 0.7) calc(var(--s) + (100% - var(--s)) * 0.4),
+    rgba(0, 0, 0, 0.5) calc(var(--s) + (100% - var(--s)) * 0.54),
+    rgba(0, 0, 0, 0.3) calc(var(--s) + (100% - var(--s)) * 0.68),
+    rgba(0, 0, 0, 0.14) calc(var(--s) + (100% - var(--s)) * 0.82),
+    rgba(0, 0, 0, 0.04) calc(var(--s) + (100% - var(--s)) * 0.93),
+    transparent 100%);
   -webkit-mask-image: var(--fade); mask-image: var(--fade);
 }
 .uncloak-figure img { display: block; width: 100%; height: auto; pointer-events: none; -webkit-user-drag: none; }
