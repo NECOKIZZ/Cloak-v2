@@ -140,9 +140,10 @@ a { color: inherit; text-decoration: none; }
 .burger { display: none; }
 
 /* ───────────── landing ───────────── */
-.hero { padding-top: 18px; }
-.hero-top { display: flex; justify-content: center; }
-.uncloak { position: relative; width: min(1240px, 100%); margin: 0 auto; isolation: isolate; background: var(--bg); touch-action: pan-y; user-select: none; }
+.hero { padding-top: 4px; }
+.uncloak { position: relative; container-type: inline-size;
+  /* sized by height so the hero, lede and buttons fit one laptop screen (figure is 3:2) */
+  width: clamp(min(100%, 520px), calc((100svh - 272px) * 1.5), min(1240px, 100%)); margin: 0 auto; isolation: isolate; background: var(--bg); touch-action: pan-y; user-select: none; }
 .uncloak::before {
   content: ""; position: absolute; inset: 4% 18% 0; z-index: -1; pointer-events: none;
   background: radial-gradient(50% 55% at 50% 45%, color-mix(in srgb, var(--brand-signal) 12%, transparent), transparent 70%);
@@ -151,21 +152,20 @@ a { color: inherit; text-decoration: none; }
 .uncloak-figure { position: relative; -webkit-mask-image: linear-gradient(#000 86%, transparent 100%); mask-image: linear-gradient(#000 86%, transparent 100%); }
 .uncloak-figure img { display: block; width: 100%; height: auto; pointer-events: none; -webkit-user-drag: none; }
 .uncloak-reveal {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; opacity: var(--o, 0);
   --m: radial-gradient(circle var(--r, 0px) at var(--x, 50%) var(--y, 36%), #000 0%, #000 52%, rgba(0, 0, 0, 0.55) 74%, transparent 100%);
   -webkit-mask-image: var(--m); mask-image: var(--m);
 }
 .uncloak-title {
   position: absolute; left: 0; right: 0; bottom: 9%; z-index: 2; pointer-events: none; text-align: center;
-  font: 450 clamp(46px, 10.4vw, 156px)/0.9 var(--font-display); letter-spacing: -0.055em;
+  font: 450 clamp(40px, 12.4cqw, 156px)/0.9 var(--font-display); letter-spacing: -0.055em;
   color: #fff; mix-blend-mode: difference;
 }
-.uncloak-hint { text-align: center; color: var(--mute); pointer-events: none; letter-spacing: 0.02em; margin-top: 6px; }
 .hero { overflow-x: clip; }
-.hero-foot { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 26px; }
+.hero-foot { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 10px; }
 .hero-foot .lede { max-width: 640px; }
 @media (max-width: 640px) { .uncloak { width: 150%; left: -25%; } .uncloak-title { bottom: 11%; } }
-.hero-foot .hero-actions { justify-content: center; margin-top: 26px; }
+.hero-foot .hero-actions { justify-content: center; margin-top: 20px; }
 .display { font: 300 clamp(44px, 6.4vw, 92px)/0.98 var(--font-display); letter-spacing: -0.045em; }
 .display-2 { font: 300 clamp(34px, 4.2vw, 58px)/1.04 var(--font-display); letter-spacing: -0.04em; }
 .lede { font-size: clamp(16px, 1.4vw, 19px); color: var(--soft); max-width: 600px; line-height: 1.55; }

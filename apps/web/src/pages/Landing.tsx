@@ -117,11 +117,9 @@ function Demos() {
 /** Two aligned portraits; the uncloaked one shows through a soft circle that follows the pointer. */
 function Uncloak() {
   const stage = useRef<HTMLDivElement>(null);
-  const [touch, setTouch] = useState(false);
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
-    setTouch(matchMedia("(hover: none)").matches);
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const cur = { x: 0.5, y: 0.36, r: 0 };
     const tgt = { x: 0.5, y: 0.36, r: 0 };
@@ -150,6 +148,7 @@ function Uncloak() {
       el.style.setProperty("--x", `${(cur.x * 100).toFixed(2)}%`);
       el.style.setProperty("--y", `${(cur.y * 100).toFixed(2)}%`);
       el.style.setProperty("--r", `${cur.r.toFixed(1)}px`);
+      el.style.setProperty("--o", cur.r < 1 ? "0" : "1");
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -171,16 +170,13 @@ function Uncloak() {
     };
   }, []);
   return (
-    <>
-      <div className="uncloak" ref={stage}>
+    <div className="uncloak" ref={stage}>
         <div className="uncloak-figure">
           <img src="/hero/cloaked.webp" alt="A figure hidden under a black hooded cloak" width={1400} height={933} draggable={false} />
           <img src="/hero/man.webp" alt="" aria-hidden="true" className="uncloak-reveal" width={1400} height={933} draggable={false} />
         </div>
         <h1 className="uncloak-title">Launch sealed.<br />Trade unseen.</h1>
-      </div>
-      <div className="uncloak-hint xs">{touch ? "Touch and drag to uncloak" : "Move your cursor over him"}</div>
-    </>
+    </div>
   );
 }
 
@@ -191,13 +187,10 @@ export function Landing() {
       <Nav />
       <main>
         <section className="hero">
-          <div className="wrap hero-top">
-            <span className="pill"><span className="dot live" />Live on Elysium testnet</span>
-          </div>
           <Uncloak />
           <div className="wrap hero-foot">
             <p className="lede">
-              Sealed-bid launches nobody can snipe, and private trades nobody can trace. Everyone pays one fair price, and afterwards you hold and trade from a balance only you can see.
+              Sealed-bid launches nobody can snipe, and private trades nobody can trace. One fair price for everyone, and a balance only you can see.
             </p>
             <div className="hero-actions">
               <Link to="/app" className="btn btn-ink btn-lg">Open app</Link>
