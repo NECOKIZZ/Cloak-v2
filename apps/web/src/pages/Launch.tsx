@@ -8,7 +8,8 @@ import { Link } from "../router";
 import { useApp } from "../state";
 import { LaunchRecord } from "./LaunchRecord";
 import { friendly } from "../errors";
-import { Icon } from "../ui";
+import { Icon, TokenIcon } from "../ui";
+import { useTokenMeta } from "../tokenMeta";
 import { publicClient, readCloak } from "../wallet";
 
 type MyBidsT = Awaited<ReturnType<typeof readCloak.bidsOf>>;
@@ -29,6 +30,7 @@ export function Launch({ auction }: { auction: Address }) {
   const [keeper, setKeeper] = useState<{ keeper: string } | null>(null);
   const [busy, setBusy] = useState("");
   const [privMarket, setPrivMarket] = useState<boolean | null>(null);
+  const meta = useTokenMeta(auction);
 
   const refresh = useCallback(async () => {
     try {
@@ -100,7 +102,8 @@ export function Launch({ auction }: { auction: Address }) {
       <div className="launch-hero">
         <div className="launch-title">
           <span className="eyebrow"><span className="dot live" style={{ marginRight: 8 }} />Sealed-bid launch</span>
-          <h1 style={{ marginTop: 12 }}>{s.tokenName} <span>${s.tokenSymbol}</span></h1>
+          <h1 style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 16 }}><TokenIcon symbol={s.tokenSymbol} token={s.token} size={52} /><span style={{ color: "inherit" }}>{s.tokenName} <span>${s.tokenSymbol}</span></span></h1>
+          {meta?.description && <p className="small soft" style={{ marginTop: 12, maxWidth: 560 }}>{meta.description}</p>}
           <p className="mute small" style={{ marginTop: 12, maxWidth: 520 }}>
             Bids stay sealed until bidding closes, hidden even from the sequencer. Every winner pays one clearing price, and liquidity is locked at that price.
           </p>

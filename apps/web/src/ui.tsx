@@ -4,6 +4,7 @@ import { useApp, type Theme } from "./state";
 import { IS_LOCAL, chain } from "./config";
 import { short } from "./format";
 import { addElysium } from "./wallet";
+import { useTokenMeta } from "./tokenMeta";
 import { FAUCET_URL } from "./walletModal";
 
 /** The hood monogram. `size` is its height; it takes the ink color (or the light one on dark panels). */
@@ -16,9 +17,12 @@ export function Logo({ size = 28, inverse }: { size?: number; inverse?: boolean 
 }
 
 /** Coin icon: the official HYPE mark, the Cloak hood for $CLOAK, letters for other launch tokens. */
-export function TokenIcon({ symbol, size = 28 }: { symbol: string; size?: number }) {
-  const src = { HYPE: "/tokens/hype.svg", WHYPE: "/tokens/hype.svg", CLOAK: "/tokens/cloak.svg" }[symbol.toUpperCase()];
-  if (src) return <img className="token-icon" src={src} alt={symbol} width={size} height={size} />;
+export function TokenIcon({ symbol, size = 28, token }: { symbol: string; size?: number; token?: string }) {
+  const meta = useTokenMeta(token);
+  const builtin = { HYPE: "/tokens/hype.svg", WHYPE: "/tokens/hype.svg", CLOAK: "/tokens/cloak.svg" }[symbol.toUpperCase()];
+  // HYPE always uses its official mark; launch tokens use the image uploaded at launch, if any
+  const src = builtin === "/tokens/hype.svg" ? builtin : meta?.image ?? builtin;
+  if (src) return <img className="token-icon" src={src} alt={symbol} width={size} height={size} style={{ objectFit: "cover" }} />;
   return <span className="token-icon token-letters" style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}>{symbol.slice(0, 2)}</span>;
 }
 

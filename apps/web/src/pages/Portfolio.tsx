@@ -108,7 +108,7 @@ export function Portfolio() {
         {assets.map((x) => (
           <div key={x.key} className="bal">
             <div className="row-flex" style={{ gap: 10 }}>
-              <TokenIcon symbol={x.label} />
+              <TokenIcon symbol={x.label} token={x.key === "HYPE" ? undefined : x.key} />
               <span style={{ fontWeight: 500 }}>{x.label}</span>
               <span className="spacer" />
               <span className="xs signal">● only you</span>

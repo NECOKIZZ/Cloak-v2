@@ -6,6 +6,7 @@ import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
 import { useApp } from "./state";
 import { friendly } from "./errors";
+import { compressImage, encodeMeta, loadAllMeta } from "./tokenMeta";
 
 const WAD = 10n ** 18n;
 const errMsg = friendly;
@@ -393,10 +394,26 @@ export function TradeCard({ s, wallet }: { s: AuctionState; wallet: Wallet | nul
 
 export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onCreated: (a: Address) => void }) {
   const { connect } = useApp();
+  const [image, setImage] = useState("");
+  const [desc, setDesc] = useState("");
+  const [imgBusy, setImgBusy] = useState(false);
   const [f, setF] = useState({ name: "", symbol: "", supply: "1000000", minPrice: "0.000001", tick: "0.000001", commitMin: "10", revealMin: "3", lpPct: "50", lock: "burn" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+
+  async function pickImage(file?: File) {
+    if (!file) return;
+    setErr("");
+    setImgBusy(true);
+    try {
+      setImage(await compressImage(file));
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setImgBusy(false);
+    }
+  }
 
   async function create() {
     if (!wallet || !FACTORY) return;
@@ -420,7 +437,9 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
         revealEnd,
         lpBps: Math.round(Number(f.lpPct) * 100),
         lpLockUntil: f.lock === "burn" ? "burn" : revealEnd + Number(f.lock) * 86400,
+        metadataURI: encodeMeta({ image, description: desc }),
       });
+      loadAllMeta(true);
       onCreated(r.auction);
     } catch (e) {
       setErr(errMsg(e));
@@ -432,6 +451,26 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
   return (
     <div className="card">
       <div className="card-head"><h3>Launch a token</h3><span className="pill">for projects & launchpads</span></div>
+      <div className="field">
+        <label><span>Token image</span><span>optional</span></label>
+        <label
+          className={`img-drop ${image ? "has" : ""}`}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); pickImage(e.dataTransfer.files[0]); }}
+        >
+          <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { pickImage(e.target.files?.[0]); e.target.value = ""; }} />
+          {image ? <img src={image} alt="Token image preview" /> : <span className="img-ph">{(f.symbol || "?").slice(0, 2).toUpperCase()}</span>}
+          <span className="img-copy">
+            <b>{imgBusy ? "Preparing image…" : image ? "Change image" : "Upload an image"}</b>
+            <span className="xs mute">PNG, JPG, WebP or GIF. Drop it here or click. It's cropped to a square, shrunk to 256 × 256 and stored on-chain with the launch.</span>
+          </span>
+          {image && <button type="button" className="btn btn-text btn-sm" onClick={(e) => { e.preventDefault(); setImage(""); }}>Remove</button>}
+        </label>
+      </div>
+      <div className="field">
+        <label><span>Description</span><span>{desc.length}/280</span></label>
+        <textarea className="input" rows={2} maxLength={280} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="One or two lines about the project" />
+      </div>
       <div className="fl" style={{ gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
         <div className="field"><label>Name</label><input className="input" value={f.name} onChange={set("name")} placeholder="Shade" /></div>
         <div className="field"><label>Symbol</label><input className="input" value={f.symbol} onChange={set("symbol")} placeholder="SHADE" /></div>

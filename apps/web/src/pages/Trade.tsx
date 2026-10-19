@@ -9,12 +9,12 @@ import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { quote, useMarkets, type Market } from "./markets";
 
-function TokenSel({ label, onPick, markets, hypeSide }: { label: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean }) {
+function TokenSel({ label, token, onPick, markets }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ position: "relative" }}>
       <button className="token-sel" onClick={() => onPick && setOpen(!open)} style={!onPick ? { cursor: "default" } : undefined}>
-        <TokenIcon symbol={label} />
+        <TokenIcon symbol={label} token={token} />
         {label}
         {onPick && <Icon.chev size={14} />}
       </button>
@@ -22,7 +22,7 @@ function TokenSel({ label, onPick, markets, hypeSide }: { label: string; onPick?
         <div className="menu">
           {markets.map((m) => (
             <button key={m.token} onClick={() => { onPick?.(m); setOpen(false); }}>
-              <TokenIcon symbol={m.symbol} />
+              <TokenIcon symbol={m.symbol} token={m.token} />
               <span style={{ textAlign: "left" }}>{m.symbol}<div className="xs mute">{m.name}</div></span>
             </button>
           ))}
@@ -156,7 +156,7 @@ export function Trade() {
                 <div className="k"><span>You pay (private)</span>{fromBal !== undefined && <span className="link" onClick={() => setAmt(formatEther(fromBal))}>Balance {fmtIn(fromBal)}</span>}</div>
                 <div className="amt">
                   <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" aria-label="Amount" />
-                  {side === "buy" ? <TokenSel label="HYPE" hypeSide /> : <TokenSel label={market.symbol} markets={markets!} onPick={setMarket} />}
+                  {side === "buy" ? <TokenSel label="HYPE" hypeSide /> : <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} />}
                 </div>
               </div>
               <button className="flip" aria-label="Switch direction" onClick={() => { setSide(side === "buy" ? "sell" : "buy"); setAmt(""); setRes({}); }}><Icon.arrowDown /></button>
@@ -164,7 +164,7 @@ export function Trade() {
                 <div className="k"><span>You receive (private)</span>{bal && <span>Balance {side === "buy" ? tokens(bal.tok) : hype(bal.hype)}</span>}</div>
                 <div className="amt">
                   <input value={q ? fmtOut(q).replace(/,/g, "") : ""} readOnly placeholder="0" aria-label="Estimated output" />
-                  {side === "buy" ? <TokenSel label={market.symbol} markets={markets!} onPick={setMarket} /> : <TokenSel label="HYPE" hypeSide />}
+                  {side === "buy" ? <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} /> : <TokenSel label="HYPE" hypeSide />}
                 </div>
               </div>
               {BATCHER && (

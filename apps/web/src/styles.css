@@ -626,3 +626,12 @@ html.snap { scroll-snap-type: y proximity; }
 .rec-top { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; flex-wrap: wrap; }
 .rec-tag { font: 600 10.5px var(--font-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); margin-right: 8px; }
 .rec-body p { margin: 3px 0 0; }
+
+/* token image upload */
+.img-drop { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: var(--r-md); border: 1px dashed var(--line-strong); background: var(--card); cursor: pointer; transition: border-color 0.15s; }
+.img-drop:hover { border-color: var(--signal); }
+.img-drop img, .img-ph { width: 64px; height: 64px; border-radius: 50%; flex: none; object-fit: cover; }
+.img-ph { display: grid; place-items: center; background: var(--brand-ink); color: var(--on-ink); font: 500 20px var(--font-display); }
+.img-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.img-copy b { font-weight: 500; font-size: 14px; }
+textarea.input { resize: vertical; font: inherit; line-height: 1.45; height: auto; padding-top: 10px; padding-bottom: 10px; }

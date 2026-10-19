@@ -48,7 +48,7 @@ export function Launches() {
           const t = s.phase === "commit" ? s.commitEnd - now : s.phase === "reveal" ? s.revealEnd - now : 0;
           return (
             <Link key={s.address} to={`/app/launch/${s.address}`} className="launch-item">
-              <TokenIcon symbol={s.tokenSymbol} size={44} />
+              <TokenIcon symbol={s.tokenSymbol} token={s.token} size={44} />
               <span>
                 <b style={{ fontWeight: 500 }}>{s.tokenName}</b> <span className="mute">${s.tokenSymbol}</span>
                 <div className="xs mute" style={{ marginTop: 2 }}>
