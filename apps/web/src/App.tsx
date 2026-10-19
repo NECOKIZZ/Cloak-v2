@@ -4,6 +4,7 @@ import { AppShell } from "./pages/AppShell";
 import { Create } from "./pages/Create";
 import { Docs } from "./pages/Docs";
 import { Landing } from "./pages/Landing";
+import { Pitch } from "./pages/Pitch";
 import { Launch } from "./pages/Launch";
 import { Launches } from "./pages/Launches";
 import { Portfolio } from "./pages/Portfolio";
@@ -24,6 +25,7 @@ function Routes() {
   if (path === "/") return <Landing />;
   if (path === "/docs") return <Docs />;
   if (path === "/sdk") return <Sdk />;
+  if (path === "/pitch") return <Pitch />;
   if (path.startsWith("/app")) {
     const m = path.match(/^\/app\/launch\/(0x[0-9a-fA-F]{40})$/);
     const page = m ? <Launch key={m[1]} auction={m[1] as Address} />

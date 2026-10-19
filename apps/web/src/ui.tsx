@@ -168,6 +168,7 @@ export function Footer() {
               <li><Link to="/docs#private-trading">Private trading</Link></li>
               <li><Link to="/docs#batch-auctions">Batch auctions</Link></li>
               <li><Link to="/docs#what-stays-private">What stays private</Link></li>
+              <li><Link to="/pitch">Pitch</Link></li>
             </ul>
           </div>
         </div>
