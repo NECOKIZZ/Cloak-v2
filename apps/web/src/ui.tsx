@@ -3,6 +3,8 @@ import { Link, useRoute } from "./router";
 import { useApp, type Theme } from "./state";
 import { IS_LOCAL, chain } from "./config";
 import { short } from "./format";
+import { addElysium } from "./wallet";
+import { FAUCET_URL } from "./walletModal";
 
 /** The hood monogram. `size` is its height; it takes the ink color (or the light one on dark panels). */
 export function Logo({ size = 28, inverse }: { size?: number; inverse?: boolean }) {
@@ -63,14 +65,33 @@ export function ThemeToggle() {
   );
 }
 
-export function WalletButton({ compact }: { compact?: boolean }) {
-  const { wallet, connect } = useApp();
-  if (wallet) return <span className="pill mono">{short(wallet.account.address)}</span>;
+export function WalletButton(_: { compact?: boolean }) {
+  const { wallet, walletInfo, connect, disconnect, provider, wrongChain, switchNetwork, toast } = useApp();
+  const [open, setOpen] = useState(false);
+  if (!wallet) return <button className="btn btn-ink btn-sm" onClick={() => connect()}>Connect wallet</button>;
+  if (wrongChain) return <button className="btn btn-sm wrong-net" onClick={switchNetwork}>Switch to Elysium</button>;
+  const addr = wallet.account.address;
   return (
-    <>
-      {IS_LOCAL && !compact && <button className="btn btn-ghost btn-sm" onClick={() => connect("burner")}>Dev wallet</button>}
-      <button className="btn btn-ink btn-sm" onClick={() => connect()}>Connect</button>
-    </>
+    <div className="wallet-menu">
+      <button className="btn btn-ghost btn-sm wallet-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {walletInfo?.icon ? <img src={walletInfo.icon} alt="" width={18} height={18} /> : <span className="dot" />}
+        <span className="mono">{short(addr)}</span>
+        <Icon.chev size={13} />
+      </button>
+      {open && (
+        <>
+          <div className="menu-scrim" onClick={() => setOpen(false)} />
+          <div className="menu wallet-dd" onClick={() => setOpen(false)}>
+            <div className="wallet-dd-head"><span className="xs mute">Connected with {walletInfo?.name ?? "wallet"}</span><span className="mono small">{short(addr)}</span></div>
+            <button onClick={() => { navigator.clipboard?.writeText(addr).catch(() => {}); toast("Address copied"); }}><Icon.copy size={15} />Copy address</button>
+            {EXPLORER && <a href={`${EXPLORER}/address/${addr}`} target="_blank" rel="noreferrer"><Icon.eye size={15} />View on explorer</a>}
+            {provider && <button onClick={() => addElysium(provider).then(() => toast("Elysium testnet added to your wallet")).catch(() => toast("Your wallet didn't add the network"))}><Icon.plus size={15} />Add Elysium testnet</button>}
+            <a href={FAUCET_URL} target="_blank" rel="noreferrer"><Icon.wallet size={15} />Get testnet HYPE</a>
+            <button onClick={disconnect}><Icon.arrowDown size={15} />Disconnect</button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -97,6 +118,7 @@ const LINKS = [
   { to: "/app", label: "Launches", match: (p: string) => p === "/app" || p.startsWith("/app/launch") || p === "/app/create" },
   { to: "/app/trade", label: "Trade", match: (p: string) => p.startsWith("/app/trade") },
   { to: "/app/portfolio", label: "Portfolio", match: (p: string) => p.startsWith("/app/portfolio") },
+  { to: "/app/volume", label: "Volume", match: (p: string) => p.startsWith("/app/volume") },
   { to: "/docs", label: "Docs", match: (p: string) => p.startsWith("/docs") },
   { to: "/sdk", label: "SDK", match: (p: string) => p.startsWith("/sdk") },
 ];

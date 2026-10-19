@@ -5,6 +5,7 @@ import { FACTORY } from "../config";
 import { duration, hype, tokens } from "../format";
 import { Link } from "../router";
 import { TokenIcon } from "../ui";
+import { friendly } from "../errors";
 import { readCloak } from "../wallet";
 
 const PHASE: Record<string, [string, string]> = {
@@ -24,7 +25,7 @@ export function Launches() {
       const ls = await readCloak.listLaunches();
       const states = await Promise.all(ls.map((l) => readCloak.getAuction(l.auction as Address)));
       setList(states.reverse());
-    })().catch((e) => setErr(e.shortMessage ?? e.message));
+    })().catch((e) => setErr(friendly(e)));
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
     return () => clearInterval(t);
   }, []);

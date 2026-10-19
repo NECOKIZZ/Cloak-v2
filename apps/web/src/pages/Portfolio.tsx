@@ -3,6 +3,7 @@ import { formatEther, isAddress, parseEther, type Address, type Hex } from "viem
 import { txLink } from "../config";
 import { hype, tokens } from "../format";
 import { getProver, useApp } from "../state";
+import { friendly, Hint } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { useMarkets } from "./markets";
 
@@ -66,7 +67,7 @@ export function Portfolio() {
     try {
       a = parseEther(amt || "0");
     } catch {
-      return setRes({ err: "Enter a valid amount" });
+      return setRes({ err: "Enter an amount, like 0.01." });
     }
     try {
       if (tab === "shield") {
@@ -77,18 +78,18 @@ export function Portfolio() {
         setBusy("Loading the prover…");
         await getProver();
         if (tab === "send") {
-          if (!to.startsWith("cloak:")) throw new Error("Paste the recipient's cloak: address");
+          if (!to.startsWith("cloak:")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
           const tx = await priv.send(asset === "HYPE" ? priv.hypeMarket.token : asset, to, a, setBusy);
           setRes({ ok: "Sent privately. The chain can't see who paid whom, or how much.", tx });
         } else {
-          if (!isAddress(to)) throw new Error("Enter the 0x address to withdraw to (a fresh one keeps you unlinkable)");
+          if (!isAddress(to)) throw new Hint("Enter the 0x address to withdraw to. A brand-new address keeps you unlinkable.");
           const tx = asset === "HYPE" ? await priv.unshieldHype(to, a, setBusy) : await priv.unshieldToken(asset, to, a, setBusy);
           setRes({ ok: `${amt} ${sym} withdrawn to ${to.slice(0, 6)}…${to.slice(-4)}.`, tx });
         }
       }
       refresh();
     } catch (e) {
-      setRes({ err: (e as { shortMessage?: string }).shortMessage ?? (e as Error).message });
+      setRes({ err: friendly(e) });
     } finally {
       setBusy("");
     }

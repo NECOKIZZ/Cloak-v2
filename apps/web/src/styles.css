@@ -577,3 +577,38 @@ html.snap { scroll-snap-type: y proximity; }
   .pitch-rail { display: none; }
   .p-card { padding: 24px; }
 }
+
+/* ───────────── wallet connect ───────────── */
+.wallet-modal { width: min(420px, 100%); padding: 24px; }
+.wm-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.wm-head h2 { font-size: 24px; }
+.wm-head p { margin: 6px 0 0; }
+.wm-list { display: grid; gap: 8px; margin-top: 20px; }
+.wm-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; font: 500 15px var(--font-body); text-align: left; transition: border-color 0.15s, background 0.15s; }
+.wm-item:hover:not(:disabled) { border-color: var(--signal); background: var(--signal-soft); }
+.wm-item:disabled { opacity: 0.6; cursor: progress; }
+.wm-item img, .wm-blank { width: 28px; height: 28px; border-radius: 8px; flex: none; }
+.wm-blank { background: var(--card-2); }
+.wm-name { flex: 1; }
+.wm-tag { font-size: 12px; color: var(--mute); font-weight: 400; }
+.wm-empty { display: grid; gap: 4px; padding: 16px; border-radius: 14px; border: 1px dashed var(--line-strong); }
+.wm-setup { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.wm-steps { display: flex; gap: 8px; flex-wrap: wrap; }
+.wallet-menu { position: relative; }
+.wallet-btn { gap: 8px; }
+.wallet-btn img { border-radius: 5px; }
+.wallet-dd { min-width: 230px; z-index: 30; }
+.wallet-dd a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--text); font: 14px var(--font-body); }
+.wallet-dd a:hover { background: var(--card); }
+.wallet-dd-head { display: grid; gap: 2px; padding: 8px 10px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.menu-scrim { position: fixed; inset: 0; z-index: 25; }
+.wrong-net { background: var(--seal); color: #fff; }
+
+/* ───────────── volume ───────────── */
+.vol-hero { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 18px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 28px; }
+.vol-big { display: flex; align-items: center; gap: 14px; font: 300 clamp(40px, 6vw, 72px)/1 var(--font-display); letter-spacing: -0.045em; margin: 14px 0 12px; }
+.vol-big span { font-size: 0.35em; color: var(--mute); letter-spacing: 0; }
+.vol-side { display: grid; gap: 12px; align-content: center; }
+.vol-side > div { display: grid; gap: 4px; padding: 14px 16px; border-radius: var(--r-md); background: var(--raised); border: 1px solid var(--line); }
+.vol-side b { font: 400 24px var(--font-display); letter-spacing: -0.02em; }
+@media (max-width: 900px) { .vol-hero { grid-template-columns: minmax(0, 1fr); padding: 22px; } }

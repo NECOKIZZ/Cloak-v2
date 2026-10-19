@@ -6,6 +6,7 @@ import { addrLink, KEEPER_URL, ROUTER } from "../config";
 import { duration, hype, short, tokens } from "../format";
 import { Link } from "../router";
 import { useApp } from "../state";
+import { friendly } from "../errors";
 import { Icon } from "../ui";
 import { publicClient, readCloak } from "../wallet";
 
@@ -38,7 +39,7 @@ export function Launch({ auction }: { auction: Address }) {
       setCurve([...c]);
       if (wallet) setMine(await readCloak.bidsOf(auction, wallet.account.address));
     } catch (e) {
-      setError((e as { shortMessage?: string }).shortMessage ?? (e as Error).message);
+      setError(friendly(e));
     }
   }, [auction, wallet]);
 
@@ -66,7 +67,7 @@ export function Launch({ auction }: { auction: Address }) {
       await fn(new Cloak(publicClient, wallet));
       await refresh();
     } catch (e) {
-      setError((e as { shortMessage?: string }).shortMessage ?? (e as Error).message);
+      setError(friendly(e));
     } finally {
       setBusy("");
     }
@@ -76,7 +77,7 @@ export function Launch({ auction }: { auction: Address }) {
     if (!wallet || !ROUTER || !s) return;
     const n = await readCloak.listLaunches();
     const idx = n.findIndex((l) => l.auction.toLowerCase() === s.address.toLowerCase());
-    if (idx < 0) return setError("launch not found in factory");
+    if (idx < 0) return setError("This launch wasn't made with the Cloak factory, so it can't get private trading.");
     await run("enable", async () => {
       const h = await wallet.writeContract({ address: ROUTER!, abi: privateRouterAbi, functionName: "createPool", args: [BigInt(idx)] });
       await publicClient.waitForTransactionReceipt({ hash: h });

@@ -10,6 +10,7 @@ import { Launches } from "./pages/Launches";
 import { Portfolio } from "./pages/Portfolio";
 import { Sdk } from "./pages/Sdk";
 import { Trade } from "./pages/Trade";
+import { Volume } from "./pages/Volume";
 import { navigate, useRoute } from "./router";
 import { AppProvider } from "./state";
 import { Nav } from "./ui";
@@ -32,6 +33,7 @@ function Routes() {
       : path === "/app/trade" ? <Trade />
       : path === "/app/portfolio" ? <Portfolio />
       : path === "/app/create" ? <Create />
+      : path === "/app/volume" ? <Volume />
       : <Launches />;
     return <AppShell>{page}</AppShell>;
   }

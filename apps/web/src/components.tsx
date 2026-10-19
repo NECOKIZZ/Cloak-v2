@@ -5,12 +5,10 @@ import { FACTORY, txLink } from "./config";
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
 import { useApp } from "./state";
+import { friendly } from "./errors";
 
 const WAD = 10n ** 18n;
-const errMsg = (e: unknown) => {
-  const x = e as { shortMessage?: string; message?: string };
-  return x.shortMessage ?? x.message ?? String(e);
-};
+const errMsg = friendly;
 
 function Tx({ hash, label = "view tx" }: { hash?: Hex; label?: string }) {
   if (!hash) return null;

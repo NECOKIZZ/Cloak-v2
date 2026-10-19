@@ -58,6 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="eyebrow">Private</div>
           {item("/app/trade", "Trade", Icon.swap, path.startsWith("/app/trade"))}
           {item("/app/portfolio", "Portfolio", Icon.wallet, path.startsWith("/app/portfolio"))}
+          {item("/app/volume", "Volume", Icon.layers, path.startsWith("/app/volume"))}
           <div className="eyebrow">Learn</div>
           {item("/docs", "Docs", Icon.book, false)}
           {item("/sdk", "SDK", Icon.code, false)}

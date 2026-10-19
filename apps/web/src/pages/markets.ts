@@ -3,6 +3,7 @@ import type { Address } from "viem";
 import { cloakPairAbi, cloakTokenAbi, privateRouterAbi } from "@cloak/sdk";
 import { ROUTER } from "../config";
 import { publicClient } from "../wallet";
+import { friendly } from "../errors";
 
 export interface Market {
   token: Address;
@@ -49,7 +50,7 @@ export function useMarkets() {
   const [err, setErr] = useState("");
   useEffect(() => {
     let alive = true;
-    const go = () => loadMarkets().then((m) => alive && setMarkets(m)).catch((e) => alive && setErr(e.shortMessage ?? e.message));
+    const go = () => loadMarkets().then((m) => alive && setMarkets(m)).catch((e) => alive && setErr(friendly(e)));
     go();
     const t = setInterval(go, 15_000);
     return () => {

@@ -1,7 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { CloakPrivate, loadProver, relayerSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloak/sdk";
 import { BATCHER, RELAYER_URL, ROUTER, ROUTER_BLOCK } from "./config";
-import { connectBurner, connectInjected, publicClient } from "./wallet";
+import { chain, IS_LOCAL } from "./config";
+import { friendly } from "./errors";
+import { WalletModal } from "./walletModal";
+import { connectBurner, connectProvider, ensureElysium, installedWallets, publicClient, silentReconnect, walletConnectProvider, walletFor, type Eip1193, type WalletOption } from "./wallet";
 
 let proverPromise: Promise<Prover> | null = null;
 export const getProver = () => (proverPromise ??= loadProver("/circuits"));
@@ -11,6 +14,11 @@ export type Theme = "light" | "dark" | "auto";
 interface AppState {
   wallet: Wallet | null;
   connect: (kind?: "injected" | "burner") => Promise<Wallet | null>;
+  disconnect: () => void;
+  walletInfo: { name: string; icon?: string } | null;
+  provider: Eip1193 | null;
+  wrongChain: boolean;
+  switchNetwork: () => Promise<void>;
   priv: CloakPrivate | null;
   privAddress: string;
   unlock: () => Promise<CloakPrivate | null>;
@@ -65,22 +73,130 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToast(""), 2600);
   }, []);
 
-  const connect = useCallback(async (kind: "injected" | "burner" = "injected") => {
+  // ── wallet: a modal lists every installed wallet (EIP-6963) plus WalletConnect ──
+  const [walletInfo, setWalletInfo] = useState<{ name: string; icon?: string } | null>(null);
+  const [provider, setProvider] = useState<Eip1193 | null>(null);
+  const [wrongChain, setWrongChain] = useState(false);
+  const [modal, setModal] = useState(false);
+  const pending = useRef<((w: Wallet | null) => void) | null>(null);
+
+  const attach = useCallback((eth: Eip1193, w: Wallet, info: { name: string; icon?: string }, id: string) => {
+    setProvider(eth);
+    setWallet(w);
+    setWalletInfo(info);
+    setWrongChain(false);
+    setError("");
     try {
-      const w = kind === "burner" ? await connectBurner() : await connectInjected();
-      setWallet(w);
-      setError("");
-      return w;
-    } catch (e) {
-      setError((e as Error).message);
-      return null;
-    }
+      localStorage.setItem("cloak.wallet", id);
+    } catch {}
   }, []);
+
+  const disconnect = useCallback(() => {
+    provider?.disconnect?.().catch(() => {});
+    setProvider(null);
+    setWallet(null);
+    setWalletInfo(null);
+    setPriv(null);
+    setPrivAddress("");
+    setWrongChain(false);
+    try {
+      localStorage.removeItem("cloak.wallet");
+    } catch {}
+  }, [provider]);
+
+  // follow the wallet when the user switches account or network in it
+  useEffect(() => {
+    if (!provider?.on) return;
+    const onAccounts = (accs: string[]) => {
+      if (!accs?.length) return disconnect();
+      setWallet(walletFor(provider, accs[0] as `0x${string}`));
+      setPriv(null); // private keys come from the wallet, so a new account means a new private account
+      setPrivAddress("");
+    };
+    const onChain = (id: string) => setWrongChain(Number(id) !== chain.id);
+    provider.on("accountsChanged", onAccounts as never);
+    provider.on("chainChanged", onChain as never);
+    return () => {
+      provider.removeListener?.("accountsChanged", onAccounts as never);
+      provider.removeListener?.("chainChanged", onChain as never);
+    };
+  }, [provider, disconnect]);
+
+  // reconnect without a popup to the wallet used last time
+  useEffect(() => {
+    let id: string | null = null;
+    try {
+      id = localStorage.getItem("cloak.wallet");
+    } catch {}
+    if (!id || id === "walletconnect") return;
+    const t = setTimeout(async () => {
+      const opt = installedWallets().find((o) => o.id === id);
+      if (!opt) return;
+      const w = await silentReconnect(opt.provider).catch(() => null);
+      if (w) attach(opt.provider, w, { name: opt.name, icon: opt.icon }, opt.id);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [attach]);
+
+  const connect = useCallback(async (kind: "injected" | "burner" = "injected") => {
+    if (kind === "burner") {
+      try {
+        const w = await connectBurner();
+        setWallet(w);
+        setWalletInfo({ name: "Dev wallet" });
+        return w;
+      } catch (e) {
+        setError(friendly(e));
+        return null;
+      }
+    }
+    return new Promise<Wallet | null>((res) => {
+      pending.current = res;
+      setModal(true);
+    });
+  }, []);
+
+  const pick = useCallback(async (opt: WalletOption | "walletconnect") => {
+    const eth = opt === "walletconnect" ? await walletConnectProvider() : opt.provider;
+    const w = await connectProvider(eth);
+    const info = opt === "walletconnect" ? { name: "WalletConnect" } : { name: opt.name, icon: opt.icon };
+    attach(eth, w, info, opt === "walletconnect" ? "walletconnect" : opt.id);
+    setModal(false);
+    pending.current?.(w);
+    pending.current = null;
+  }, [attach]);
+
+  const devPick = useCallback(async () => {
+    const w = await connectBurner().catch((e) => (setError(friendly(e)), null));
+    if (w) {
+      setWallet(w);
+      setWalletInfo({ name: "Dev wallet" });
+    }
+    setModal(false);
+    pending.current?.(w);
+    pending.current = null;
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setModal(false);
+    pending.current?.(null);
+    pending.current = null;
+  }, []);
+
+  const switchNetwork = useCallback(async () => {
+    if (!provider) return;
+    try {
+      await ensureElysium(provider);
+      setWrongChain(false);
+    } catch (e) {
+      setError(friendly(e));
+    }
+  }, [provider]);
 
   const unlock = useCallback(async () => {
     if (priv) return priv;
     if (!ROUTER) {
-      setError("Private trading isn't configured on this deployment (VITE_ROUTER).");
+      setError("Private trading isn't available on this deployment yet.");
       return null;
     }
     const w = wallet ?? (await connect());
@@ -96,7 +212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       getProver(); // warm the 12 MB circuit download
       return p;
     } catch (e) {
-      setError((e as { shortMessage?: string }).shortMessage ?? (e as Error).message);
+      setError(friendly(e));
       return null;
     } finally {
       setUnlocking(false);
@@ -104,8 +220,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [priv, wallet, connect]);
 
   return (
-    <Ctx.Provider value={{ wallet, connect, priv, privAddress, unlock, unlocking, error, setError, theme, setTheme, toast }}>
+    <Ctx.Provider value={{ wallet, connect, disconnect, walletInfo, provider, wrongChain, switchNetwork, priv, privAddress, unlock, unlocking, error, setError, theme, setTheme, toast }}>
       {children}
+      {modal && <WalletModal onPick={pick} onClose={closeModal} onDevWallet={IS_LOCAL ? devPick : undefined} />}
       {toastMsg && <div className="toast">{toastMsg}</div>}
     </Ctx.Provider>
   );

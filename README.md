@@ -108,7 +108,8 @@ packages/sdk/      @cloak/sdk: launches (createLaunch, bid, revealAll, settle, c
 services/keeper/   Auto-reveals after the drand round, settles launches, relays private trades (POST /relay),
                    and settles + pays out private batch rounds.
 apps/web/          The site (Vite + React): landing (hover-to-uncloak hero), app (launches, launch page, private swap,
-                   portfolio, create), docs, SDK and pitch (/pitch). Deployed on Vercel (apps/web/vercel.json).
+                   portfolio, create, volume), docs, SDK and pitch (/pitch). Wallet modal lists every installed wallet
+                   (EIP-6963) plus WalletConnect; src/errors.ts turns every error into a plain sentence. Deployed on Vercel.
 e2e/               run.mjs (launch flow, 13 checks), private.mjs (private trading, 18 checks), seed.mjs, deploy.mjs
 docs/DESIGN.md     Research, design, roadmap
 ```
@@ -176,7 +177,7 @@ cd apps/web && VITE_FACTORY=0x… pnpm build  # static site
 
 | Part | Where | Notes |
 |---|---|---|
-| Site | **Vercel**, at [cloak.boblabs.tech](https://cloak.boblabs.tech) | Root directory `apps/web`. `vercel.json` handles the monorepo build and SPA routes. Env: `VITE_KEEPER_URL`; contract addresses come from `apps/web/.env.production`. |
+| Site | **Vercel**, at [cloak.boblabs.tech](https://cloak.boblabs.tech) | Root directory `apps/web`. `vercel.json` handles the monorepo build and SPA routes. Env: `VITE_KEEPER_URL`, and optionally `VITE_WC_PROJECT_ID` (a free [Reown](https://cloud.reown.com) project ID) to show WalletConnect in the connect modal. Contract addresses come from `apps/web/.env.production`. |
 | Keeper + relayer | **Render** free web service, [cloak-keeper.onrender.com](https://cloak-keeper.onrender.com) | `node services/keeper/index.mjs`. Env: `KEEPER_PK`, `FACTORY`, `START_BLOCK`, `ROUTER`, `BATCHER`, `BATCHER_BLOCK` (see `render.yaml`). The relayer wallet pays gas for private transactions, so keep it topped up with testnet HYPE. |
 
 The free Render instance sleeps after ~15 minutes idle and takes a few seconds to wake. Bids can still be opened from the launch page without it, but private trades wait for it.

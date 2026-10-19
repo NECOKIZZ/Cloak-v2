@@ -5,6 +5,7 @@ import { BATCHER, txLink } from "../config";
 import { hype, tokens } from "../format";
 import { Link, useRoute } from "../router";
 import { getProver, useApp } from "../state";
+import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { quote, useMarkets, type Market } from "./markets";
 
@@ -122,7 +123,7 @@ export function Trade() {
       }
       refreshBal();
     } catch (e) {
-      setRes({ err: (e as { shortMessage?: string }).shortMessage ?? (e as Error).message });
+      setRes({ err: friendly(e) });
     } finally {
       setBusy("");
     }
