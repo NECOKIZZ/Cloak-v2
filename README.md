@@ -7,7 +7,7 @@
 
 # Cloak: private launches and private trading for Elysium
 
-**Live: [cloak.boblabs.tech](https://cloak.boblabs.tech)** · [App](https://cloak.boblabs.tech/app) · [Private swap](https://cloak.boblabs.tech/app/trade) · [Docs](https://cloak.boblabs.tech/docs) · [SDK](https://cloak.boblabs.tech/sdk) · [Pitch](https://cloak.boblabs.tech/pitch)
+**Live: [cloak.boblabs.tech](https://cloak.boblabs.tech)** · [Demo video](https://youtu.be/KNeKiuxBAYA) · [App](https://cloak.boblabs.tech/app) · [Private swap](https://cloak.boblabs.tech/app/trade) · [Docs](https://cloak.boblabs.tech/docs) · [SDK](https://cloak.boblabs.tech/sdk) · [Pitch](https://cloak.boblabs.tech/pitch)
 
 > **Launches nobody can snipe, and trades nobody can trace.** Bids stay sealed until bidding closes, hidden even from the sequencer. Every winner pays **one clearing price**, and liquidity is seeded at that price and locked by the contract. After launch, anyone can hold, send, buy and sell the token **from a private balance**: trades are proven on your device and sent by a relayer, so your wallet never appears on them. **Batch mode** also hides how much you traded, and **private sends** hide the amount completely.
 

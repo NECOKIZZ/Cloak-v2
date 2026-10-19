@@ -37,7 +37,7 @@
 
 ## 🎬 3. Product Demo
 
-[Demo video link, 60–120 s]
+**Demo video:** https://youtu.be/KNeKiuxBAYA
 
 Try it live on Elysium testnet: connect a wallet → place a sealed bid → shield HYPE → make a private swap, a batch order and a private send → watch it all in the on-chain record and the Volume tab.
 
