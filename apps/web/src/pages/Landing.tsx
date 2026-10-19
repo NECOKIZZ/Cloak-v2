@@ -179,12 +179,11 @@ function Uncloak() {
           <img src="/hero/cloaked.webp" alt="A figure hidden under a black hooded cloak" width={1400} height={933} draggable={false} />
           <img src="/hero/man.webp" alt="" aria-hidden="true" className="uncloak-reveal" width={1400} height={933} draggable={false} />
         </div>
-      <div className="hero-copy">
-        <h1 className="uncloak-title">Launch sealed.<br />Trade unseen.</h1>
-        <div className="hero-actions">
-          <Link to="/app" className="btn btn-ink btn-lg">Open app</Link>
-          <Link to="/docs" className="btn btn-ghost btn-lg">Read the docs</Link>
-        </div>
+      {/* the title blends with the figure (black on the page, white on the cloak), so it sits directly in the stage */}
+      <h1 className="uncloak-title">Launch sealed.<br />Trade unseen.</h1>
+      <div className="hero-actions hero-cta">
+        <Link to="/app" className="btn btn-ink btn-lg">Open app</Link>
+        <Link to="/docs" className="btn btn-ghost btn-lg">Read the docs</Link>
       </div>
     </div>
   );
