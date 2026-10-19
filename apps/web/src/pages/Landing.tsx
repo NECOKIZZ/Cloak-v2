@@ -124,6 +124,9 @@ function Uncloak() {
     const cur = { x: 0.5, y: 0.36, r: 0 };
     const tgt = { x: 0.5, y: 0.36, r: 0 };
     let inside = false, peekUntil = 0, speed = 0, raf = 0, last = { x: 0, y: 0 };
+    const fit = () => el.style.setProperty("--head", `${Math.max(0, el.getBoundingClientRect().top + scrollY)}px`);
+    fit();
+    addEventListener("resize", fit);
     const base = () => Math.max(80, Math.min(180, el.clientWidth * 0.12));
     const move = (e: PointerEvent) => {
       const b = el.getBoundingClientRect();
@@ -148,7 +151,7 @@ function Uncloak() {
       el.style.setProperty("--x", `${(cur.x * 100).toFixed(2)}%`);
       el.style.setProperty("--y", `${(cur.y * 100).toFixed(2)}%`);
       el.style.setProperty("--r", `${cur.r.toFixed(1)}px`);
-      el.style.setProperty("--o", cur.r < 1 ? "0" : "1");
+      el.style.setProperty("--o", Math.min(1, Math.max(0, (cur.r - 6) / 40)).toFixed(3));
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -162,6 +165,7 @@ function Uncloak() {
     el.addEventListener("pointerup", up);
     return () => {
       cancelAnimationFrame(raf);
+      removeEventListener("resize", fit);
       clearTimeout(peek);
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerdown", move);
@@ -175,7 +179,13 @@ function Uncloak() {
           <img src="/hero/cloaked.webp" alt="A figure hidden under a black hooded cloak" width={1400} height={933} draggable={false} />
           <img src="/hero/man.webp" alt="" aria-hidden="true" className="uncloak-reveal" width={1400} height={933} draggable={false} />
         </div>
+      <div className="hero-copy">
         <h1 className="uncloak-title">Launch sealed.<br />Trade unseen.</h1>
+        <div className="hero-actions">
+          <Link to="/app" className="btn btn-ink btn-lg">Open app</Link>
+          <Link to="/docs" className="btn btn-ghost btn-lg">Read the docs</Link>
+        </div>
+      </div>
     </div>
   );
 }
@@ -188,15 +198,6 @@ export function Landing() {
       <main>
         <section className="hero">
           <Uncloak />
-          <div className="wrap hero-foot">
-            <p className="lede">
-              Sealed-bid launches nobody can snipe, and private trades nobody can trace. One fair price for everyone, and a balance only you can see.
-            </p>
-            <div className="hero-actions">
-              <Link to="/app" className="btn btn-ink btn-lg">Open app</Link>
-              <Link to="/docs" className="arrow" style={{ fontWeight: 500 }}>Read the docs</Link>
-            </div>
-          </div>
         </section>
         <section className="wrap">
           <div className="pillars">
