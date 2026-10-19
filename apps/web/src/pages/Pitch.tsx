@@ -175,7 +175,7 @@ export function Pitch() {
           <h2 className="p-h">Team</h2>
           <div className="p-team">
             <div className="p-card">
-              <div className="brand" style={{ fontSize: 22 }}><Logo size={34} />Bob Labs</div>
+              <div className="brand" style={{ fontSize: 22 }}>Bob Labs</div>
               <p style={{ marginTop: 14 }}>We build privacy tools for public chains. Cloak grew out of Veil, our sealed-bid launch from Metropolis, rebuilt for Elysium with a private vault and batch trading on top.</p>
               <div className="row-flex" style={{ gap: 14, marginTop: 18, flexWrap: "wrap" }}>
                 <a className="arrow" href="https://boblabs.tech" target="_blank" rel="noreferrer">boblabs.tech</a>

@@ -1,5 +1,5 @@
 /*
- * Cloak brand — the ONLY place brand colors live. Swap these four and the whole site follows.
+ * Cloak brand (option A, "Elysium teal") — the ONLY place brand colors live. Swap these four and the whole site follows.
  *
  *   --brand-ink     text, primary buttons, the dark sections (developer block, footer)
  *   --brand-paper   page background
@@ -7,16 +7,16 @@
  *   --brand-seal    secondary accent: the clearing price, warnings, the public side of comparisons
  */
 :root {
-  --brand-ink: #0b0d0e;
-  --brand-paper: #f7f7f4;
-  --brand-signal: #1f9d7a;
+  --brand-ink: #10161a;    /* the logo's blue-black */
+  --brand-paper: #f8f7f4;  /* Elysium's warm paper */
+  --brand-signal: #2d7388; /* Elysium's petrol teal */
   --brand-seal: #c9852e;
 }
 
 /* Dark theme reuses the same four colors, inverted where it makes sense. */
 :root[data-theme="dark"] {
-  --brand-ink: #f3f3ef;
-  --brand-paper: #0a0b0c;
-  --brand-signal: #4fdcb8;
+  --brand-ink: #eef1f0;
+  --brand-paper: #0b1013;
+  --brand-signal: #6cb6cb;
   --brand-seal: #e3a95a;
 }

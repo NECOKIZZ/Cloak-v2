@@ -35,7 +35,7 @@ function Strip() {
       <div className="seal-strip">
         <div className="seal-layer is-public">{row(false)}</div>
         <div className="seal-layer is-sealed" aria-hidden="true">{row(true)}</div>
-        <div className="seal-line"><span><Logo />Cloak</span></div>
+        <div className="seal-line"><span><Logo size={15} />Cloak</span></div>
       </div>
       <div className="strip-legend"><span>What a launch or trade normally reveals</span><span>What Cloak lets the world see</span></div>
     </>

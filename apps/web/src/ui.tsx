@@ -4,14 +4,11 @@ import { useApp, type Theme } from "./state";
 import { IS_LOCAL, chain } from "./config";
 import { short } from "./format";
 
+/** The hood monogram. `size` is its height; it takes the ink color (or the light one on dark panels). */
 export function Logo({ size = 28, inverse }: { size?: number; inverse?: boolean }) {
-  const bg = inverse ? "var(--on-deep)" : "var(--brand-ink)";
-  const fg = inverse ? "var(--deep)" : "var(--brand-paper)";
   return (
-    <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden>
-      <rect width="32" height="32" rx="9" fill={bg} />
-      <path d="M16 6.5c-4.7 0-8 3.8-8 8.6V25l2.7-1.8 2.7 1.8 2.6-1.8 2.6 1.8 2.7-1.8L24 25v-9.9c0-4.8-3.3-8.6-8-8.6z" fill="none" stroke={fg} strokeWidth="1.7" strokeLinejoin="round" />
-      <rect x="11.2" y="13.4" width="9.6" height="3.8" rx="1.1" fill="var(--brand-signal)" />
+    <svg viewBox="0 0 279 322" height={size} width={Math.round((size * 279) / 322)} aria-hidden className="logo-mark">
+      <path d="M149.671 0C119.989 12.7135 73.3456 40.2595 58.5046 74.1622C41.5434 118.659 37.3031 192.822 3.38073 266.984C-2.97971 279.697 -0.859564 288.173 13.9815 294.53C62.7449 317.838 117.869 326.314 160.272 319.957C209.035 315.719 247.198 298.768 279 275.459L232.357 209.773C213.275 230.962 187.834 243.676 160.272 245.795C117.869 250.032 86.0665 226.724 86.0665 186.465C86.0665 137.73 115.749 93.2324 149.671 69.9243C172.993 84.7568 194.194 108.065 206.915 133.492L257.799 103.827C234.477 57.2108 189.954 19.0703 149.671 0Z" fill={inverse ? "var(--on-deep)" : "var(--brand-ink)"} />
     </svg>
   );
 }
