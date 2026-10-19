@@ -1,10 +1,21 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/brand/cloak-mark-light.svg">
+    <img src="apps/web/public/brand/cloak-mark.svg" alt="Cloak" height="72">
+  </picture>
+</p>
+
 # Cloak: private launches and private trading for Elysium
+
+**Live: [cloak.boblabs.tech](https://cloak.boblabs.tech)** · [App](https://cloak.boblabs.tech/app) · [Private swap](https://cloak.boblabs.tech/app/trade) · [Docs](https://cloak.boblabs.tech/docs) · [SDK](https://cloak.boblabs.tech/sdk) · [Pitch](https://cloak.boblabs.tech/pitch)
 
 > **Launches nobody can snipe, and trades nobody can trace.** Bids stay sealed until bidding closes, hidden even from the sequencer. Every winner pays **one clearing price**, and liquidity is seeded at that price and locked by the contract. After launch, anyone can hold, send, buy and sell the token **from a private balance**: trades are proven on your device and sent by a relayer, so your wallet never appears on them. **Batch mode** also hides how much you traded, and **private sends** hide the amount completely.
 
 Plain-English walkthrough: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
 
-Built for the **Ascend hackathon** on Kinetiq's **Elysium** testnet (chain `99801`). Ported from [Veil](https://github.com/Bob-Elly/Veil), our Monad Metropolis private-payments project.
+Built by **[Bob Labs](https://boblabs.tech)** for the **Ascend hackathon** on Kinetiq's **Elysium** testnet (chain `99801`). Ported from [Veil](https://github.com/Bob-Elly/Veil), our Monad Metropolis private-payments project.
+
+**Try it in about two minutes:** open [the app](https://cloak.boblabs.tech/app), connect a wallet (it adds Elysium testnet for you), get testnet HYPE from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), then place a sealed bid, or shield HYPE and make a private swap, send or batch order. Testnet only, play money.
 
 ---
 
@@ -96,8 +107,8 @@ packages/sdk/      @cloak/sdk: launches (createLaunch, bid, revealAll, settle, c
                    (shieldHype, buy, sell, batch, send, unshield, balances, on-device prover, relayer client)
 services/keeper/   Auto-reveals after the drand round, settles launches, relays private trades (POST /relay),
                    and settles + pays out private batch rounds.
-apps/web/          The site (Vite + React): landing, app (launches, launch page, private swap, portfolio, create), docs, SDK.
-                   Brand colors: the 4 tokens in apps/web/src/brand.css drive the whole theme (light + dark).
+apps/web/          The site (Vite + React): landing (hover-to-uncloak hero), app (launches, launch page, private swap,
+                   portfolio, create), docs, SDK and pitch (/pitch). Deployed on Vercel (apps/web/vercel.json).
 e2e/               run.mjs (launch flow, 13 checks), private.mjs (private trading, 18 checks), seed.mjs, deploy.mjs
 docs/DESIGN.md     Research, design, roadmap
 ```
@@ -158,8 +169,17 @@ cp .env.example .env                        # DEPLOYER_PK with testnet HYPE
 DEPLOYER_PK=0x… pnpm deploy:factory               # → deployments/elysium-testnet-factory.json
 DEPLOYER_PK=0x… FACTORY=0x… RPC_URL=https://testnet-rpc.elysium.kinetiq.xyz pnpm e2e   # real run → explorer links in deployments/elysium-testnet.json
 KEEPER_PK=0x… FACTORY=0x… pnpm keeper
-cd apps/web && VITE_FACTORY=0x… pnpm build  # static site; render.yaml deploys the page + keeper
+cd apps/web && VITE_FACTORY=0x… pnpm build  # static site
 ```
+
+### Hosting (how the live version runs)
+
+| Part | Where | Notes |
+|---|---|---|
+| Site | **Vercel**, at [cloak.boblabs.tech](https://cloak.boblabs.tech) | Root directory `apps/web`. `vercel.json` handles the monorepo build and SPA routes. Env: `VITE_KEEPER_URL`; contract addresses come from `apps/web/.env.production`. |
+| Keeper + relayer | **Render** free web service, [cloak-keeper.onrender.com](https://cloak-keeper.onrender.com) | `node services/keeper/index.mjs`. Env: `KEEPER_PK`, `FACTORY`, `START_BLOCK`, `ROUTER`, `BATCHER`, `BATCHER_BLOCK` (see `render.yaml`). The relayer wallet pays gas for private transactions, so keep it topped up with testnet HYPE. |
+
+The free Render instance sleeps after ~15 minutes idle and takes a few seconds to wake. Bids can still be opened from the launch page without it, but private trades wait for it.
 
 ## Honest limits
 
@@ -179,6 +199,17 @@ cd apps/web && VITE_FACTORY=0x… pnpm build  # static site; render.yaml deploys
 - The sequencer can delay transactions. The reveal window, anyone-can-reveal and Elysium's delayed-inbox forced inclusion mitigate this.
 - Deposits are visible; buckets only blur them. Unlinkable funding through a Veil-style private pool is on the roadmap.
 - Not audited. Testnet only.
+
+## Brand
+
+The hood monogram lives in [`apps/web/public/brand/`](apps/web/public/brand). The whole site is themed from four tokens in [`apps/web/src/brand.css`](apps/web/src/brand.css), tuned to Elysium's palette:
+
+| Token | Light | Dark | Used for |
+|---|---|---|---|
+| Ink | `#10161A` | `#EEF1F0` | text, logo, primary buttons |
+| Paper | `#F8F7F4` | `#0B1013` | page background |
+| Signal | `#2D7388` | `#6CB6CB` | private / sealed / live states |
+| Seal | `#C9852E` | `#E3A95A` | clearing price, warnings |
 
 ## Roadmap
 
