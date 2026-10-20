@@ -113,6 +113,37 @@ New:
 
 ---
 
+## Revenue model
+
+**Today Cloak earns nothing.** On testnet:
+- The 0.3% pool fee stays in the pool, and since the LP is burned or locked, nobody collects it.
+- `ShieldedPool`'s `relayer` + `fee` field only covers the relayer's gas.
+- Batch fills cross at mid-price with no fee.
+
+Fees switch on before mainnet:
+
+| Stream | Rate | Where it's collected |
+|---|---|---|
+| **Launch fee** (main revenue) | 1 to 2% of a successful raise | `feeBps` and `feeTo` on the factory, taken in `CloakAuction` at settlement |
+| **Private trading fee** | about 0.1 to 0.2% of private swaps and batch fills | In the same transaction as the relayer fee |
+| **Relayer margin** | gas plus a small markup | Our relayer, until open relayers compete it down (item 10) |
+| **Pool fee switch** (optional) | 0.05 of the pool's 0.3% | `CloakPair`, the Uniswap v2 fee-switch model |
+| **B2B** (later) | revenue share and paid tiers | A share of the launch fee for launchpads that embed the widget, hosted indexer and API tiers, premium launch options |
+
+**Rough sizing (illustrative):**
+- **Launch fees:** 100 mainnet launches a month at a $50k average raise and a 1.5% fee is about $75k a month.
+- **Trading fees:** $2M a month of private volume at 0.15% is about $3k a month.
+- So launches are the business, and private trading is what keeps users around.
+
+**Rules we commit to:**
+- No fee on a failed launch or a refund.
+- Locked liquidity is never touched.
+- Fee rates are capped in the contracts.
+- Fee changes are announced on-chain ahead of time, behind a delay.
+- No admin can withdraw users' funds.
+
+---
+
 ## What we would pick first
 
 If we only do three things after Ascend:

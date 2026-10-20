@@ -89,6 +89,16 @@ Try it live on Elysium testnet: connect a wallet → place a sealed bid → shie
 
 ## 🚀 5. After Launch
 
+**Revenue model.** Testnet takes no fees. On mainnet:
+- **Launch fee:** 1 to 2% of each *successful* raise. This is the main revenue, and Cloak only earns when a fair launch actually clears. Failed launches and refunds pay nothing.
+- **Private trading fee:** about 0.1 to 0.2% on private swaps and batch fills, collected alongside the relayer fee.
+- **Relayer margin:** gas plus a small markup, which shrinks as open relayers compete.
+- **B2B:** a share of the launch fee for launchpads that embed Cloak, plus paid hosted API tiers.
+
+Example: 100 launches a month at a $50k average raise is about $75k a month from launch fees alone.
+
+Rates are capped in the contracts, changes are announced on-chain behind a delay, and locked liquidity is never touched.
+
 - **Mainnet:** fees switched on (launch, batch and relaying), and more launchpads using the SDK.
 - **More private order types:** private limit orders, and private positions on HyperCore through Elysium's direct connection.
 - **More keepers:** anyone can already run one, so the network gets more resilient as it grows.
