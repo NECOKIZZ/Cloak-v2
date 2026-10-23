@@ -24,7 +24,10 @@ A **[Bob Labs](https://github.com/NECOKIZZ)** product, live on Kinetiq's **Elysi
 | Contract | Address |
 |---|---|
 | **CloakFactory** | [`0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c) |
-| **Live launch: Shade ($SHADE)**, bidding until Mon 20 Oct 18:00 UTC | [`0x62eD7ca5C77f779C25b88b4A68fD399DAab0b9b3`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x62eD7ca5C77f779C25b88b4A68fD399DAab0b9b3) |
+| **PrivateRouter** (private swaps and vaults) | [`0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41) |
+| **PrivateBatcher** (batch auctions) | [`0xf6582cc5a84fccf74e571e652fb7b603a2c25812`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xf6582cc5a84fccf74e571e652fb7b603a2c25812) |
+
+Source is verified on the explorer for the factory, router, batcher, both shielded vaults, the Groth16 verifier, WHYPE and the demo launch's auction, token and pool. None of them has an owner or admin key.
 
 **A full real run on testnet** (`pnpm e2e`, 13/13 checks): 5 fresh bidders, sealed bids, keeper auto-reveal from the drand beacon, one clearing price, pool seeded at that price with the LP burned, then the first trade:
 
@@ -177,10 +180,10 @@ cd apps/web && VITE_FACTORY=0x… pnpm build  # static site
 
 | Part | Where | Notes |
 |---|---|---|
-| Site | **Vercel**, at [cloak.boblabs.tech](https://cloak.boblabs.tech) | Root directory `apps/web`. `vercel.json` handles the monorepo build and SPA routes. Env: `VITE_KEEPER_URL`, and optionally `VITE_WC_PROJECT_ID` (a free [Reown](https://cloud.reown.com) project ID) to show WalletConnect in the connect modal. Contract addresses come from `apps/web/.env.production`. |
-| Keeper + relayer | **Render** free web service, [cloak-keeper.onrender.com](https://cloak-keeper.onrender.com) | `node services/keeper/index.mjs`. Env: `KEEPER_PK`, `FACTORY`, `START_BLOCK`, `ROUTER`, `BATCHER`, `BATCHER_BLOCK` (see `render.yaml`). The relayer wallet pays gas for private transactions, so keep it topped up with testnet HYPE. |
+| Site | **Vercel**, at [cloak.boblabs.tech](https://cloak.boblabs.tech) | Root directory `apps/web`. `vercel.json` handles the monorepo build, SPA routes, security headers (CSP, frame and referrer policy) and long-lived caching for hashed assets. Env: `VITE_KEEPER_URL`, and optionally `VITE_WC_PROJECT_ID` (a free [Reown](https://cloud.reown.com) project ID) to show WalletConnect in the connect modal. Contract addresses come from `apps/web/.env.production`. |
+| Keeper + relayer | **Render** web service, [cloak-keeper.onrender.com](https://cloak-keeper.onrender.com) | `node services/keeper/index.mjs`. Env: `KEEPER_PK`, `FACTORY`, `START_BLOCK`, `ROUTER`, `BATCHER`, `BATCHER_BLOCK` (see `render.yaml`), plus optional `CORS_ORIGINS` (default: the Cloak site and localhost) and `RELAY_PER_MIN` (default 20 relay requests per IP per minute). Requests over 64 KB or malformed are refused before anything is simulated. The relayer wallet pays gas for private transactions, so keep it topped up with testnet HYPE. |
 
-The free Render instance sleeps after ~15 minutes idle and takes a few seconds to wake. Bids can still be opened from the launch page without it, but private trades wait for it.
+`GET /health` returns the keeper's status. A scheduled GitHub workflow (`.github/workflows/keeper-ping.yml`) pings it every 10 minutes so the host doesn't sleep. Bids can still be opened from the launch page without the keeper, but private trades wait for it.
 
 ## Honest limits
 
@@ -214,4 +217,4 @@ The hood monogram lives in [`apps/web/public/brand/`](apps/web/public/brand). Th
 
 ## Roadmap
 
-See [docs/DESIGN.md](docs/DESIGN.md#8-beyond-launch-private-trading-on-elysium): private launch bids funded straight from a shielded balance, timelock-sealed batch orders (hide side and size until the round clears), orders spread across the round, claim links, a private perps vault on HyperCore, and kHYPE bids.
+The product roadmap (token pages, SDK on npm, an MCP server for agents, holder proofs) and the revenue model are in [docs/ROADMAP.md](docs/ROADMAP.md). Protocol work is in [docs/DESIGN.md](docs/DESIGN.md#8-beyond-launch-private-trading-on-elysium): private launch bids funded straight from a shielded balance, timelock-sealed batch orders (hide side and size until the round clears), orders spread across the round, claim links, a private perps vault on HyperCore, and kHYPE bids.
