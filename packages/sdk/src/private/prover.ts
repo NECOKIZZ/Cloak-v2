@@ -1,5 +1,3 @@
-import * as snarkjs from "snarkjs";
-
 export interface ProofArgs {
   a: [bigint, bigint];
   b: [[bigint, bigint], [bigint, bigint]];
@@ -17,6 +15,7 @@ const str = (v: unknown): unknown => (Array.isArray(v) ? v.map(str) : String(v))
 /** Groth16 prover for the 2-in/2-out circuit (`transaction2x2`). Runs on the user's device. */
 export function createProver(wasm: Uint8Array, zkey: Uint8Array): Prover {
   return async (input) => {
+    const snarkjs = await import("snarkjs"); // ~1 MB, loaded on the first proof only
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
       Object.fromEntries(Object.entries(input).map(([k, v]) => [k, str(v)])),
       wasm,

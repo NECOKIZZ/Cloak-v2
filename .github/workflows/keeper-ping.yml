@@ -1,0 +1,11 @@
+name: keeper ping
+# The keeper runs on a host that sleeps when idle; a light ping keeps reveals, settles and relaying instant.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 60 https://cloak-keeper.onrender.com/health > /dev/null

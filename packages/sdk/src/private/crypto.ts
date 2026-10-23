@@ -1,5 +1,4 @@
 // Private-account cryptography: Poseidon notes, x25519-encrypted memos, deterministic keys.
-import { buildPoseidon } from "circomlibjs";
 import { x25519 } from "@noble/curves/ed25519";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha";
 import { hkdf } from "@noble/hashes/hkdf";
@@ -19,7 +18,7 @@ export const randomKeyIndex = () => Number(BigInt(toHex(randomBytes(4))) % 0xfff
 
 let _poseidon: any;
 export async function poseidon(inputs: bigint[]): Promise<bigint> {
-  _poseidon ??= await buildPoseidon();
+  _poseidon ??= await (await import("circomlibjs")).buildPoseidon(); // loaded on first use
   return _poseidon.F.toObject(_poseidon(inputs.map((x) => BigInt(x))));
 }
 

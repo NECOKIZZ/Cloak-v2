@@ -22,13 +22,7 @@
     <meta name="twitter:description" content="Sealed-bid launches nobody can snipe, and private trading nobody can trace. Live on Elysium testnet." />
     <meta name="twitter:image" content="https://cloak.boblabs.tech/og.jpg" />
     <meta name="twitter:image:alt" content="Cloak: a hooded figure, half revealed, next to the line Launch sealed. Trade unseen." />
-    <script>
-      try {
-        var t = localStorage.getItem("cloak.theme") || "auto";
-        var d = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.dataset.theme = d ? "dark" : "light";
-      } catch (e) { document.documentElement.dataset.theme = "light"; }
-    </script>
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

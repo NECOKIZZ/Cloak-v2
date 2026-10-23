@@ -166,26 +166,66 @@ async function relay(body) {
   return submit({ kind, pool, proof, extData });
 }
 
-const send = (res, code, obj) => {
-  res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type" });
-  res.end(JSON.stringify(obj));
+// Browsers may only call the relayer from these sites. Other apps run their own keeper or set CORS_ORIGINS.
+const ORIGINS = (process.env.CORS_ORIGINS ?? "https://cloak.boblabs.tech,http://localhost:5173,http://localhost:4173").split(",").map((s) => s.trim());
+const MAX_BODY = 64 * 1024;
+const LIMIT = Number(process.env.RELAY_PER_MIN ?? 20); // relay requests per IP per minute
+const hits = new Map();
+setInterval(() => hits.clear(), 60_000).unref();
+const limited = (req) => {
+  const ip = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
+  const n = (hits.get(ip) ?? 0) + 1;
+  hits.set(ip, n);
+  return n > LIMIT;
+};
+
+const send = (req, res, code, obj) => {
+  const origin = req.headers.origin;
+  const allow = ORIGINS.includes("*") ? "*" : origin && ORIGINS.includes(origin) ? origin : ORIGINS[0];
+  res.writeHead(code, { "content-type": "application/json", "access-control-allow-origin": allow, "access-control-allow-headers": "content-type", vary: "origin", "x-content-type-options": "nosniff" });
+  res.end(code === 204 ? undefined : JSON.stringify(obj));
 };
 
 createServer((req, res) => {
-  if (req.method === "OPTIONS") return send(res, 204, {});
-  if (req.method === "POST" && req.url === "/relay") {
+  const path = (req.url ?? "/").split("?")[0];
+  if (req.method === "OPTIONS") return send(req, res, 204, {});
+  if (req.method === "POST" && path === "/relay") {
+    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
     let body = "";
-    req.on("data", (c) => (body += c));
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > MAX_BODY) {
+        send(req, res, 413, { error: "request too large" });
+        req.destroy();
+        return;
+      }
+      body += c;
+    });
     req.on("end", async () => {
+      if (size > MAX_BODY) return;
+      let parsed;
       try {
-        const txHash = await relay(JSON.parse(body));
+        parsed = JSON.parse(body);
+      } catch {
+        return send(req, res, 400, { error: "malformed request" });
+      }
+      if (!parsed || typeof parsed !== "object" || typeof parsed.proof !== "object" || typeof parsed.extData !== "object" || !parsed.proof || !parsed.extData) {
+        return send(req, res, 400, { error: "malformed request" });
+      }
+      try {
+        const txHash = await relay(parsed);
         console.log(`[relay] ${txHash}`);
-        send(res, 200, { txHash });
+        send(req, res, 200, { txHash });
       } catch (e) {
-        send(res, e.status ?? 400, { error: e.shortMessage ?? e.message });
+        // contract reverts carry a short message the app translates; anything else is a bad payload
+        send(req, res, e.status ?? 400, { error: e.status || e.shortMessage ? e.shortMessage ?? e.message : "malformed request" });
       }
     });
     return;
   }
-  send(res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null });
+  if (req.method === "GET" && (path === "/" || path === "/health")) {
+    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null });
+  }
+  send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));
