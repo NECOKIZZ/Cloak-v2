@@ -1,4 +1,4 @@
-// Private-account cryptography, ported from Veil: Poseidon notes, x25519-encrypted memos, deterministic keys.
+// Private-account cryptography: Poseidon notes, x25519-encrypted memos, deterministic keys.
 import { buildPoseidon } from "circomlibjs";
 import { x25519 } from "@noble/curves/ed25519";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha";

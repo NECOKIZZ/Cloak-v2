@@ -214,7 +214,7 @@ export function Landing() {
             <div className="pillar">
               <div className="eyebrow">The SDK</div>
               <h3>Plug it into any launchpad</h3>
-              <p>One package gives an Elysium launchpad sealed launches, locked liquidity and private trading. It's built for Ascend.</p>
+              <p>One package gives an Elysium launchpad sealed launches, locked liquidity and private trading.</p>
               <Link to="/sdk" className="arrow">Explore the SDK</Link>
             </div>
           </div>
@@ -250,7 +250,7 @@ export function Landing() {
             <div className="use"><Icon.swap /><h3>Private trading</h3><p>Buy and sell from your private balance. Your wallet is never on the trade.</p></div>
             <div className="use"><Icon.layers /><h3>Batch auctions</h3><p>Standard-size orders, crossed at the fair price. Nobody can tell how much you moved.</p></div>
             <div className="use"><Icon.send /><h3>Private payments</h3><p>Pay anyone's cloak address. No sender, no recipient and no amount on-chain.</p></div>
-            <div className="use"><Icon.users /><h3>Launchpads</h3><p>Add all of it with one SDK call. It's designed as Ascend's fair-launch mode.</p></div>
+            <div className="use"><Icon.users /><h3>Launchpads</h3><p>Add all of it with one SDK call, as a fair-launch mode next to what you already run.</p></div>
           </div>
         </Section>
 

@@ -13,7 +13,7 @@
 
 Plain-English walkthrough: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
 
-Built by **[Bob Labs](https://github.com/NECOKIZZ)** for the **Ascend hackathon** on Kinetiq's **Elysium** testnet (chain `99801`). Ported from [Veil](https://github.com/Bob-Elly/Veil), our Monad Metropolis private-payments project.
+A **[Bob Labs](https://github.com/NECOKIZZ)** product, live on Kinetiq's **Elysium** testnet (chain `99801`) at [cloak.boblabs.tech](https://cloak.boblabs.tech).
 
 **Try it in about two minutes:** open [the app](https://cloak.boblabs.tech/app), connect a wallet (it adds Elysium testnet for you), get testnet HYPE from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), then place a sealed bid, or shield HYPE and make a private swap, send or batch order. Testnet only, play money.
 
@@ -41,22 +41,22 @@ That run's addresses: auction `0xE11293758BF75b84Acd6cae98669642FcFB8760F`, toke
 
 No keeper is required: once the drand round is out, the launch page shows **Open all sealed bids**, so anyone can reveal from the browser.
 
-## Private trading (Gloam-style, for launch tokens)
+## Private trading for launch tokens
 
-Veil (our Monad project) and [Gloam](https://gloam.trade) give stablecoins private balances. Cloak extends that to **trading launchpad tokens**:
+Private balances usually stop at stablecoins. Cloak extends them to **trading launchpad tokens**:
 
 ```
  your wallet ──shield──▶ private HYPE ──private buy──▶ private $TOKEN ──private sell──▶ private HYPE ──withdraw──▶ any fresh address
    (public, once)          (hidden)      (relayer)        (hidden)        (relayer)        (hidden)       (relayer)
 ```
 
-- **ShieldedPool** (ported from Veil): one per asset (WHYPE plus each launch token). A balance is a set of encrypted notes. Spending one needs a Groth16 proof (2-in/2-out circuit, Poseidon Merkle tree) generated **on your device** in about 3–4 s.
+- **ShieldedPool**: one per asset (WHYPE plus each launch token). A balance is a set of encrypted notes. Spending one needs a Groth16 proof (2-in/2-out circuit, Poseidon Merkle tree) generated **on your device** in about 3–4 s.
 - **PrivateRouter**: a private buy spends a WHYPE note, swaps through the launch's own `CloakPair`, and deposits the tokens as a new note for you. A private sell does the reverse. The swap instructions (pair, output pool, min out, your output note) are inside `ExtData.data`, which **the proof commits to**, so the relayer can submit your trade but cannot change it.
 - **One-time keys**: every note that enters a pool publicly (your shield deposit, every swap output) goes to a fresh key derived from your account, so those entries can't be linked to each other or to your main key.
 - **Your account** comes from one wallet signature (free, no transaction). Nothing is stored on a server.
 - **Relayer** (`services/keeper`, `POST /relay`): dry-runs your call, then submits it and pays gas. It is the on-chain sender of every private trade.
 - **Only real Cloak launches**: pools can only be created for a settled launch from the Cloak factory, and the router only swaps through that launch's pair.
-- **Private sends**: a transfer inside a vault to someone's `cloak:` address. The chain sees that a private transaction happened, but not who sent it, who received it or how much moved (Gloam/Veil-style payments).
+- **Private sends**: a transfer inside a vault to someone's `cloak:` address. The chain sees that a private transaction happened, but not who sent it, who received it or how much moved.
 - **Batch mode (PrivateBatcher), which hides trade size**: your amount is split into **standard sizes** (1, 2 or 5 × 10ⁿ) that everyone uses, and the orders go into a round (30 s on testnet). When the round ends, buys and sells **cross each other at the pool's mid-price** (no fee, no price impact), and only the **net** difference trades through the pool, in one swap. Every buyer in the round gets the same price, and so does every seller. Outputs come back as private notes to one-time keys. Observers see "round N: 7 standard-size orders, net +0.4 HYPE hit the pool", not who placed which or how much any one trader moved. A price guard (settle-time mid within `maxSlippageBps` of the average at order time) stops a settler from sandwiching the batch. If a round can't settle, every order is refunded after a delay.
 
 | Live on Elysium testnet | |
@@ -94,14 +94,14 @@ Cloak makes a launch **indifferent to who orders it**:
 | **Hidden bid size** | Deposits are rounded up to 1/2/5 × 10ⁿ buckets at any price scale. Your real bid can be anything below your deposit, and the excess is refunded, so a deposit only reveals the order of magnitude. |
 | **One clearing price** | `settle()` walks up to 256 price ticks from high to low. The first tick where demand covers supply sets the price for **everyone**. Bids at that tick fill pro rata, and lower bids are refunded in full. Gas is O(ticks), not O(bids). |
 | **Liquidity at the discovered price** | Part of the raise (`lpBps`), plus matching tokens, seeds a `CloakPair` **at exactly the clearing price**, so there is no first-block arbitrage. LP shares are **burned** or **time-locked** in the auction contract. Unsold tokens are burned. |
-| **Fair-launch record** | `FairLaunch` event: clearing price, sold, raised, LP amounts and lock, bidder count. The page renders it as a verified badge, and a launchpad (Ascend's HyperCore graduation criteria) can read it straight from chain. |
+| **Fair-launch record** | `FairLaunch` event: clearing price, sold, raised, LP amounts and lock, bidder count. The page renders it as a verified badge, and a launchpad on Elysium (for example Ascend, for its HyperCore graduation criteria) can read it straight from chain. |
 | **Censorship-tolerant reveals** | Anyone can reveal anyone's bid, and `revealBatch` skips bad entries. Bids whose ciphertext is garbage can't be withheld strategically: unrevealed deposits lose `noRevealPenaltyBps` (burned, never paid to the creator). |
 
 ## Layout
 
 ```
 contracts/         Foundry: CloakAuction, CloakFactory, CloakToken (fixed supply, no owner), CloakPair (HYPE/token AMM)
-contracts/src/shielded/  ShieldedPool, PrivateRouter, PrivateBatcher, WHYPE, Groth16 verifier, Merkle tree (from Veil)
+contracts/src/shielded/  ShieldedPool, PrivateRouter, PrivateBatcher, WHYPE, Groth16 verifier, Merkle tree
 circuits/          transaction2x2.circom (2-in/2-out notes); built artifacts in apps/web/public/circuits
 packages/sdk/      @cloak/sdk: launches (createLaunch, bid, revealAll, settle, claimAll) + CloakPrivate
                    (shieldHype, buy, sell, batch, send, unshield, balances, on-device prover, relayer client)
@@ -190,7 +190,7 @@ The free Render instance sleeps after ~15 minutes idle and takes a few seconds t
 - **Batch anonymity needs company.** If you're the only one in a round, your orders add up to your trade. More users per round means more privacy. Orders placed back-to-back by one client could be linked by timing (spreading orders across a round is a client-side upgrade).
 - **Timing can still link you.** Shielding 1 HYPE and immediately buying with exactly 1 HYPE is easy to connect, especially while few people use the pools. Wait, and trade different amounts.
 - **Relayer trust:** the relayer can refuse or delay your trade, and it sees your IP. It cannot steal, alter or redirect anything, because the proof binds every field. Anyone can run one.
-- **Trusted setup:** the Groth16 keys come from Veil's development ceremony. Production would need a public multi-party ceremony.
+- **Trusted setup:** the Groth16 keys come from a development setup. Production needs a public multi-party ceremony.
 - **Not hidden from front-running:** trades hit the public AMM with a 1% slippage limit. Sealed batch trading (roadmap) would also hide trades until they clear.
 
 **Launch auction**
@@ -198,7 +198,7 @@ The free Render instance sleeps after ~15 minutes idle and takes a few seconds t
 - Sealed bids stop **ordering** games, not **many-wallet** games. Uniform pricing removes most of the reason to split bids, though.
 - tlock relies on the drand League of Entropy threshold network. A threshold collusion could decrypt early.
 - The sequencer can delay transactions. The reveal window, anyone-can-reveal and Elysium's delayed-inbox forced inclusion mitigate this.
-- Deposits are visible; buckets only blur them. Unlinkable funding through a Veil-style private pool is on the roadmap.
+- Deposits are visible; buckets only blur them. Unlinkable funding from a shielded balance is on the roadmap.
 - Not audited. Testnet only.
 
 ## Brand
@@ -214,4 +214,4 @@ The hood monogram lives in [`apps/web/public/brand/`](apps/web/public/brand). Th
 
 ## Roadmap
 
-See [docs/DESIGN.md](docs/DESIGN.md#8-beyond-launch-private-trading-on-elysium): private launch bids funded straight from a shielded balance, timelock-sealed batch orders (hide side and size until the round clears), orders spread across the round, claim links (Veil), a private perps vault on HyperCore, and kHYPE bids.
+See [docs/DESIGN.md](docs/DESIGN.md#8-beyond-launch-private-trading-on-elysium): private launch bids funded straight from a shielded balance, timelock-sealed batch orders (hide side and size until the round clears), orders spread across the round, claim links, a private perps vault on HyperCore, and kHYPE bids.

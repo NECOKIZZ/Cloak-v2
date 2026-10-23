@@ -7,7 +7,7 @@ import {IPoseidon2} from "./interfaces/IHasher.sol";
 /// @dev Node hash = Poseidon(left, right). Empty leaf = 0, zeros[i+1] = Poseidon(zeros[i], zeros[i]).
 ///      Must match `src/merkleproof.circom` and the SDK tree exactly.
 ///      Every root ever produced stays valid forever (`knownRoots`), so a proof built
-///      against an older root still lands after other transactions (Monad: 300 ms blocks).
+///      against an older root still lands after other transactions (Elysium: ~300 ms blocks).
 abstract contract MerkleTreeWithHistory {
     uint256 public constant FIELD_SIZE =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;

@@ -5,11 +5,11 @@ Cloak today covers the moment of launch: a sealed-bid auction, one fair price, l
 1. **What happens to a token after it launches.** Today the story stops at "Trading", and there's very little to do on a launch page once it settles.
 2. **How Cloak reaches people who never open our site:** launchpads, developers and AI agents.
 
-Gloam.trade is our reference point. It does private payments (hold, pay, payroll, proofs) and ships an SDK, an MCP server and a /verify page around that. Cloak is in a different lane, launches and trading, but the same pattern works for us: the core product, then packages that let other people build on it, then trust pages that let anyone check it.
+The plan follows one pattern: the core product, then packages that let other people build on it, then trust pages that let anyone check it.
 
 ---
 
-## Now · straight after Ascend (2 to 4 weeks)
+## Now · next 2 to 4 weeks
 
 ### 1. Launch pages that stay alive after settlement
 A settled launch should become the token's home page, not a finished receipt.
@@ -23,13 +23,13 @@ A settled launch should become the token's home page, not a finished receipt.
 Everything a team needs after their launch, in one place.
 - Their launches, raise, clearing price, holder count and LP status.
 - Edit the description and links. This needs a small metadata registry contract, since `metadataURI` is fixed at creation today.
-- **Private airdrops:** paste or upload a CSV of `cloak:` addresses and amounts, and Cloak pays each one from the creator's private balance (Gloam's payroll idea, applied to token distribution). Recipients get tokens without the list showing up on a block explorer as a set of wallets to farm.
+- **Private airdrops:** paste or upload a CSV of `cloak:` addresses and amounts, and Cloak pays each one from the creator's private balance. Recipients get tokens without the list showing up on a block explorer as a set of wallets to farm.
 - **Claim links** for people who don't have a cloak address yet: send a private amount to a link, and the person who opens it claims it.
 
 ### 3. `@cloak/sdk` on npm
 The SDK already exists in `packages/sdk`. Publish it, along with:
 - **`@cloak/react`:** hooks (`useLaunch`, `useBid`, `usePrivateBalance`, `usePrivateSwap`) so launchpads don't have to rebuild our state layer.
-- **`@cloak/widget`:** a drop-in `<cloak-launch auction="0x…">` web component (with an iframe fallback). It lets Ascend, or any site, embed a sealed-bid box in one line.
+- **`@cloak/widget`:** a drop-in `<cloak-launch auction="0x…">` web component (with an iframe fallback). It lets any launchpad or site embed a sealed-bid box in one line.
 - Versioned ABIs and deployment addresses per chain, so integrators never copy addresses by hand.
 
 ### 4. Indexer API
@@ -73,7 +73,7 @@ The same actions as the MCP server, for scripts and power users:
 It's mostly a thin wrapper over the SDK, so it's cheap to build once the SDK is published.
 
 ### 8. Private holder proofs
-Gloam's "prove" feature, applied to tokens.
+Selective disclosure, applied to tokens.
 - Prove "I hold at least X $TOKEN" (or "I was in the sealed auction") without revealing the balance or wallet.
 - Use cases:
   - token-gated Telegram and Discord groups
@@ -97,7 +97,7 @@ Gloam's "prove" feature, applied to tokens.
 
 ## Later · protocol (before and around mainnet)
 
-Already planned in the submission:
+Already planned:
 - **Bid funding from a private balance,** so a deposit can't be linked to the bidder.
 - **Timelock-sealed batch orders** that hide side and size until the round clears.
 - **A security audit,** a public trusted-setup ceremony and protocol fees.
@@ -108,7 +108,7 @@ New:
   - **vested claims:** buyers' tokens unlock over time, set by the creator
   - **a creator allocation with a public vesting schedule**
   - **a second-round sale** that reuses the same sealed auction
-- **Private positions on HyperCore** through Elysium's link to it, which hides liquidation prices (the "whale hunting" problem in the submission).
+- **Private positions on HyperCore** through Elysium's link to it, which hides liquidation prices (the "whale hunting" problem).
 - **More chains** that share the same contracts. The SDK, MCP server and widget already take a chain id.
 
 ---
@@ -146,10 +146,10 @@ Fees switch on before mainnet:
 
 ## What we would pick first
 
-If we only do three things after Ascend:
+If we only do three things next:
 
 1. **Living launch pages with public buy and sell (item 1).** This fixes "after launching, what next?" for every user, every day.
-2. **SDK on npm plus the widget (item 3).** This is how Ascend and other launchpads actually adopt Cloak.
+2. **SDK on npm plus the widget (item 3).** This is how launchpads on Elysium, such as Ascend, actually adopt Cloak.
 3. **The MCP server (item 6).** It's the most distinctive story: private launches and trades for AI agents. It also reuses the SDK, so it's mostly packaging.
 
 The indexer (item 4) quietly supports all three, so it should be built alongside them.

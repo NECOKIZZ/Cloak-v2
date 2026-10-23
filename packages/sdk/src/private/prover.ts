@@ -14,7 +14,7 @@ export type Prover = (input: Record<string, unknown>) => Promise<ProofArgs>;
 
 const str = (v: unknown): unknown => (Array.isArray(v) ? v.map(str) : String(v));
 
-/** Groth16 prover for the 2-in/2-out circuit (Veil's `transaction2x2`). Runs on the user's device. */
+/** Groth16 prover for the 2-in/2-out circuit (`transaction2x2`). Runs on the user's device. */
 export function createProver(wasm: Uint8Array, zkey: Uint8Array): Prover {
   return async (input) => {
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(

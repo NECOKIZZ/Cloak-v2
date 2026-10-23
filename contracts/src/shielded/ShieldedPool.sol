@@ -12,11 +12,11 @@ interface IERC20 {
 }
 
 /// @title ShieldedPool — private balances for ONE ERC-20 (one pool per asset: WHYPE, each launch token).
-/// @notice Ported from Veil (Monad). Notes are commitments Poseidon(amount, pubKey, blinding) in a depth-20 tree;
+/// @notice Notes are commitments Poseidon(amount, pubKey, blinding) in a depth-20 tree;
 ///         `transact` spends 2 notes and creates 2 with a Groth16 proof (2-in/2-out), and can also deposit
 ///         (extAmount > 0) or withdraw (extAmount < 0) to `recipient`.
 ///
-///         Cloak change vs Veil: `ExtData.data` — opaque bytes bound into `extDataHash`, so whatever a contract
+///         `ExtData.data` — opaque bytes bound into `extDataHash`, so whatever a contract
 ///         recipient does with a withdrawal (the PrivateRouter: swap into another pool) is fixed by the proof and a
 ///         relayer cannot alter it.
 /// @dev No owner, no pause, no admin: nobody can move pooled funds.

@@ -3,7 +3,7 @@
 > **Nobody can see your bid until it can no longer be front-run: not bots, not other bidders, not the sequencer.**
 > Everyone pays one clearing price. Liquidity is seeded at that price and locked by the contract.
 
-Ported from [Veil](https://github.com/Bob-Elly/Veil) (Monad Metropolis, private payments) for the Ascend hackathon on the Elysium testnet.
+Cloak is built by Bob Labs and runs on Kinetiq's Elysium testnet.
 
 ---
 
@@ -16,14 +16,14 @@ Ported from [Veil](https://github.com/Bob-Elly/Veil) (Monad Metropolis, private 
 | **250–320 ms blocks** (target 100–200 ms) | Humans can't compete on timing. Any launch that rewards speed is a launch for bots. |
 | **Timeboost on the roadmap** | Express-lane auctions will make ordering *explicitly* purchasable. Launches that are indifferent to ordering become more valuable, not less. |
 | **Delayed inbox on HyperEVM (forced inclusion)** | A censored reveal can still be forced on-chain. We use this as the backstop for the reveal phase. |
-| **HyperCore spot / HIP-3 graduation via Ascend** | Ascend promotes launches that "meet specific criteria" to HyperCore. A **fair, auditable clearing price** is the natural reference price for that listing. |
+| **HyperCore spot / HIP-3 graduation from launchpads** | Launchpads on Elysium such as Ascend promote launches that "meet specific criteria" to HyperCore. A **fair, auditable clearing price** is the natural reference price for that listing. |
 | **Gas = HYPE; Kinetiq's core product is kHYPE (liquid-staked HYPE)** | Bidding in HYPE is native. Bidding in **kHYPE** lets bidders keep earning staking yield while their bid is locked (stretch goal). |
 
-Ascend hasn't published its launch mechanics yet (bonding curve? fixed price?). Its revenue goes to HYPE, KNTQ and builders, and it has no token of its own. That leaves a gap: **Cloak is the fair-launch module Ascend (or any Elysium launchpad) can plug in.**
+Launchpads on Elysium mostly default to bonding curves or fixed-price sales, both of which reward ordering. That leaves a gap: **Cloak is the fair-launch module any Elysium launchpad can plug in.**
 
 ---
 
-## 2. Core mechanism (the required scope)
+## 2. Core mechanism
 
 ```
  COMMIT ──────────▶ REVEAL ──────────▶ SETTLE ──────────▶ CLAIM
@@ -42,7 +42,7 @@ Non-revealed bids are refunded minus a small penalty that goes to LP. With auto-
 
 ---
 
-## 3. What makes it innovative (the pitch)
+## 3. What sets it apart
 
 ### ★ 3.1 Auto-reveal with drand timelock encryption: no "come back and reveal" step
 Plain commit-reveal has a UX problem: you have to return and reveal, or you lose your bid. Cloak encrypts the bid preimage with **[tlock](https://github.com/drand/tlock-js)** to the drand round that fires when the commit phase ends. The ciphertext is posted in the commit event.
@@ -51,19 +51,19 @@ Plain commit-reveal has a UX problem: you have to return and reveal, or you lose
 - After the deadline, the drand beacon releases the key, so **anyone** (a keeper, another bidder, the frontend) can decrypt it and call `reveal`.
 - The contract doesn't verify BLS. It only checks `keccak(preimage) == h`. The decryptor can't forge a bid; it can only open the bid that was committed.
 
-This gives you **sealed bids with one-click UX**. The demo moment: close the laptop after bidding, and the bid still reveals.
+This gives you **sealed bids with one-click UX**: close the laptop after bidding, and the bid still reveals.
 
 ### ★ 3.2 Hidden bid size (over-collateralized commitments)
 Naive commit-reveal hides the price but leaks the **deposit amount**, which is a strong signal. In Cloak you lock any amount ≥ your real bid, and the excess is refunded at claim. Quick-pick budgets (e.g. 1 / 5 / 25 / 100 HYPE) put bidders into anonymity sets.
 
 ### ★ 3.3 Sequencer-proof by construction
-On Elysium the sequencer is the most privileged observer. In Cloak, during commit it sees only a hash and an IBE ciphertext. Ordering, priority fees and (future) Timeboost lanes give **zero** price advantage, because everyone pays the same price. This is the line for the pitch: *"a launch that is indifferent to who orders it."*
+On Elysium the sequencer is the most privileged observer. In Cloak, during commit it sees only a hash and an IBE ciphertext. Ordering, priority fees and (future) Timeboost lanes give **zero** price advantage, because everyone pays the same price: *a launch that is indifferent to who orders it.*
 
 ### 3.4 Censorship backstop for reveals
 A reveal grace window, plus documented forced inclusion through the HyperEVM delayed inbox. Because anyone can reveal anyone's bid, censoring one keeper isn't enough.
 
-### 3.5 Proof-of-Fair-Launch attestation (for Ascend's HyperCore graduation)
-At settlement the contract emits a `FairLaunch` record: the clearing price, the full revealed demand curve, the LP amount and lock, the team allocation, the bidder count, and the share filled by the top 10 bidders. Ascend's "specific criteria" for HyperCore listing can be read straight from chain. The launch page shows it as a badge plus the demand-curve chart.
+### 3.5 Proof-of-Fair-Launch attestation (for HyperCore graduation)
+At settlement the contract emits a `FairLaunch` record: the clearing price, the full revealed demand curve, the LP amount and lock, the team allocation, the bidder count, and the share filled by the top 10 bidders. A launchpad's "specific criteria" for HyperCore listing can be checked straight from chain. The launch page shows it as a badge plus the demand-curve chart.
 
 ### 3.6 `@cloak/sdk`: a sealed-bid launch module for *any* launchpad
 ```ts
@@ -80,50 +80,47 @@ await cloak.bid(auction, { maxPrice: "0.002", quantity: 10_000n, budget: "25" })
 // keeper side: decrypts every ciphertext after the drand round and reveals in batches
 await cloak.keeper.revealAll(auction);
 ```
-Launchpads integrate in three ways: by calling `CloakFactory.createLaunch(...)` from their own factory, through the SDK, or with an embeddable `<CloakBidWidget auction=… />`. Ascend gets a fair-launch mode without writing auction code.
+Launchpads integrate in three ways: by calling `CloakFactory.createLaunch(...)` from their own factory, through the SDK, or with an embeddable `<CloakBidWidget auction=… />`. A launchpad gets a fair-launch mode without writing auction code.
 
-### 3.7 Stretch goals (only if there's time)
+### 3.7 Extensions
 - **kHYPE bids**: bid with liquid-staked HYPE so locked capital keeps earning yield.
-- **Unlinkable bidders (reuses Veil)**: fund the commit from Veil's shielded pool through the relayer, so a bidder's main wallet never touches the auction and wallet-graph sybil analysis breaks.
-- **Passkey bidding (reuses Veil's Mera PRF key tree)**: a Face ID bid with a derived burner address and relayer-dripped gas.
-- **Agent bidders**: port `@veil/mm-plugin` so `mm cloak bid …` lets an AI agent bid within policy caps.
+- **Unlinkable bidders**: fund the commit from the shielded pool through the relayer, so a bidder's main wallet never touches the auction and wallet-graph sybil analysis breaks.
+- **Passkey bidding**: a Face ID bid from a passkey-derived key tree, with a derived burner address and relayer-dripped gas.
+- **Agent bidders**: a command-line plugin so `mm cloak bid …` lets an AI agent bid within policy caps.
 
 ---
 
-## 4. What we reuse from Veil
+## 4. Components
 
-| Veil piece | Use in Cloak |
+| Component | Role |
 |---|---|
-| `services/relayer` (Hono, gas drip, log cache) | Becomes the **keeper**: tails commits, tlock-decrypts after the deadline, batch-reveals, calls `settle`. Also handles gas drip for first-time bidders. |
-| `apps/web` design system (dark editorial UI, transparency page) | The single **launch page** plus a post-settle transparency view (demand curve, clearing price). |
-| `packages/sdk` structure, build, CI | Skeleton for `@cloak/sdk`. |
-| Passkey key tree, shielded pool, mm-plugin | Stretch goals only (§3.7). |
-| Foundry setup and e2e scripts | Contracts and the testnet e2e script that produces explorer links for the README. |
+| **Keeper** (`services/keeper`) | Tails commits, tlock-decrypts after the deadline, batch-reveals and calls `settle`. Also runs the relayer for private trades (`POST /relay`) and settles batch rounds. |
+| **Launch page** (`apps/web`) | Countdown, sealed bid form and, after settlement, a transparency view (demand curve, clearing price, LP lock). |
+| **`@cloak/sdk`** (`packages/sdk`) | Launch client (create, bid, reveal, settle, claim) and `CloakPrivate` for shielded balances, with the on-device prover. |
+| **The shielded pool** (`contracts/src/shielded`) | One pool per asset, Poseidon note commitments in a depth-20 Merkle tree, spent with the 2-in/2-out Groth16 circuit. Used for private trading (§8) and, later, unlinkable bid funding. |
+| **Foundry tests and e2e scripts** | Contract tests plus testnet e2e runs that produce the explorer links in the README. |
 
-The Groth16 circuits are **not** needed for the MVP.
+The launch auction itself does not need the Groth16 circuit; only private trading does.
 
 ---
 
-## 5. Build plan (today → Monday)
+## 5. Implementation
 
-**Day 1 (contracts):**
+**Contracts:**
 - `CloakAuction.sol`: commit, reveal, settle, claim, tick math, pro-rata at the margin.
 - `CloakFactory.sol`, `CloakToken.sol` (fixed supply, no owner).
-- `CloakPair.sol`: a minimal constant-product AMM, so we don't depend on an unknown testnet DEX. Seeded at the clearing price; LP locked or burned.
+- `CloakPair.sol`: a minimal constant-product AMM, so launches don't depend on a third-party DEX. Seeded at the clearing price; LP locked or burned.
 - Foundry tests: clearing-price edge cases (under-subscribed, exact fill, marginal pro rata), a hash mismatch, a reveal over budget, the refund math, the LP price equalling the clearing price.
-- Deploy to Elysium testnet (chain `99801`, RPC `https://testnet-rpc.elysium.kinetiq.xyz`).
+- Deployed to Elysium testnet (chain `99801`, RPC `https://testnet-rpc.elysium.kinetiq.xyz`).
 
-**Day 2 (product):**
+**Product:**
 - SDK `bid` (tlock-js encrypt) and `keeper.revealAll`.
 - Launch page with countdown, bid form (max price, quantity, budget bucket), a "your bid is sealed" state, and after settlement the demand curve, clearing price, LP-locked badge and claim.
-- Testnet e2e: 5–10 bidders, real transaction links in the README.
-- Demo video (≈2 min): bot vs. human on a bonding curve, then the same race on Cloak where ordering doesn't matter. Close the laptop, the bid auto-reveals, settle, everyone pays one price, and trading opens at that price.
-
-**Cut line if time runs out:** tlock auto-reveal stays in (it's the main hook). kHYPE, shielded funding and passkeys go.
+- Testnet e2e: multiple bidders, real transaction links in the README.
 
 ---
 
-## 6. Honest limits (put these in the README)
+## 6. Honest limits
 - Sybils: sealed bids stop *ordering* games, not *many-wallet* games. Uniform pricing removes most of the reason to split, though, because the price doesn't depend on order.
 - tlock depends on the drand League of Entropy threshold network; a ≥ threshold collusion could decrypt early.
 - The sequencer can still delay or censor transactions; we mitigate with the grace window, anyone-can-reveal, and forced inclusion.
@@ -142,7 +139,7 @@ The launch auction is the shipped core. These items extend the same privacy stor
 
 | Track | What it hides | How | Status |
 |---|---|---|---|
-| **Private buys and sells (shielded balances)** | *Who* is trading | Veil's shielded pool (Groth16 2-in/2-out, Poseidon, relayer) ported to Elysium, plus a PrivateRouter that swaps between the WHYPE pool and each launch's token pool. Trade size and direction remain visible on the AMM. | **Shipped**: live on testnet |
+| **Private buys and sells (shielded balances)** | *Who* is trading | The shielded pool (Groth16 2-in/2-out circuit, Poseidon Merkle tree, relayer), plus a PrivateRouter that swaps between the WHYPE pool and each launch's token pool. Trade size and direction remain visible on the AMM. | **Shipped**: live on testnet |
 | **Batch trading** | *How much* each trader moved | PrivateBatcher: standard-size orders (1/2/5 × 10ⁿ) from shielded balances collect into rounds; buys and sells cross at the mid-price and only the net hits the pool; uniform price per side; outputs to one-time keys. | **Shipped**: live on testnet. Next: timelock-seal the orders too, so side and size stay hidden until the round clears |
 | **Private sends** | Amount, sender, recipient | Transfers inside a vault to a `cloak:` address. | **Shipped** |
 | **Private perps vault** | *Whose* position | A shared HyperCore account funded from the shielded pool. Orders are batched through `ElysiumCoreWriter` intents placed by a keeper acting as a trade-only HyperCore agent. You trust the vault operator, and the aggregate position is public. | Roadmap: the market-data precompile lands ~4 weeks after mainnet |
@@ -158,4 +155,4 @@ The launch auction is the shipped core. These items extend the same privacy stor
 - [x] Elysium testnet deploy and real run (13/13 checks; links in README)
 - [x] Private trading: ShieldedPool + PrivateRouter + CloakPrivate SDK + relay, live on testnet (10/10 with real proofs)
 - [x] Private sends + PrivateBatcher (batch trading that hides size), live on testnet (18/18 with real proofs)
-- [ ] Demo video
+- [x] Demo video

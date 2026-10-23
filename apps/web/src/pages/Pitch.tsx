@@ -67,7 +67,7 @@ export function Pitch() {
           <div className="cover-copy">
             <div className="brand" style={{ fontSize: 22 }}><Logo inverse size={34} />Cloak</div>
             <h1 className="p-title">Private launches and trades for Elysium.</h1>
-            <p className="p-lede">Sealed-bid launches nobody can snipe, and private trading nobody can trace. Built by Bob Labs for Ascend.</p>
+            <p className="p-lede">Sealed-bid launches nobody can snipe, and private trading nobody can trace. Built by Bob Labs.</p>
             <div className="hero-actions"><Link to="/app" className="btn btn-primary btn-lg">Try it on testnet</Link><span className="xs" style={{ color: "var(--deep-soft)" }}>Press ↓ or scroll</span></div>
           </div>
         </Slide>
@@ -147,7 +147,7 @@ export function Pitch() {
           <h2 className="p-h" style={{ maxWidth: 860 }}>Distribution: plug into launchpads, don't compete with them</h2>
           <div className="p-three">
             <div className="p-card"><Icon.code /><h3>One SDK</h3><p><code>createLaunch()</code> gives any Elysium launchpad a sealed, fair-launch mode. <code>CloakPrivate</code> gives its users private balances.</p></div>
-            <div className="p-card"><Icon.users /><h3>Ascend first</h3><p>Designed as Ascend's fair-launch mode: projects keep their launchpad, buyers get one price and no snipers.</p></div>
+            <div className="p-card"><Icon.users /><h3>Launchpads first</h3><p>A fair-launch mode any Elysium launchpad can add: projects keep their launchpad, buyers get one price and no snipers.</p></div>
             <div className="p-card"><Icon.shield /><h3>Permissionless keepers</h3><p>Anyone can run a keeper to reveal, settle and relay. Several can run at once, so there's no single point of failure.</p></div>
           </div>
         </Slide>
@@ -176,7 +176,7 @@ export function Pitch() {
           <div className="p-team">
             <div className="p-card">
               <div className="brand" style={{ fontSize: 22 }}>Bob Labs</div>
-              <p style={{ marginTop: 14 }}>We build privacy tools for public chains. Cloak grew out of Veil, our sealed-bid launch from Metropolis, rebuilt for Elysium with a private vault and batch trading on top.</p>
+              <p style={{ marginTop: 14 }}>We build privacy tools for public chains. Cloak is our launch and trading product on Elysium: sealed-bid auctions, a private vault and batch trading, all open source.</p>
               <div className="row-flex" style={{ gap: 14, marginTop: 18, flexWrap: "wrap" }}>
                 <a className="arrow" href="https://cloak.boblabs.tech" target="_blank" rel="noreferrer">cloak.boblabs.tech</a>
                 <a className="arrow" href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>

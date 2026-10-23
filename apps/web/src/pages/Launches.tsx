@@ -19,6 +19,7 @@ export function Launches() {
   const [list, setList] = useState<AuctionState[] | null>(null);
   const [err, setErr] = useState("");
   const [now, setNow] = useState(Date.now() / 1000);
+  const [showFailed, setShowFailed] = useState(false);
   useEffect(() => {
     if (!FACTORY) return;
     (async () => {
@@ -43,7 +44,7 @@ export function Launches() {
       {list === null && FACTORY && !err && <div className="empty">Loading launches from Elysium…</div>}
       {list?.length === 0 && <div className="empty"><h3>No launches yet</h3>Be the first: create a sealed-bid launch.</div>}
       <div className="launches">
-        {list?.map((s) => {
+        {list?.filter((s) => showFailed || !s.failed).map((s) => {
           const [label, tone] = s.failed ? ["Didn't fill", "warn"] : PHASE[s.phase];
           const t = s.phase === "commit" ? s.commitEnd - now : s.phase === "reveal" ? s.revealEnd - now : 0;
           return (
@@ -61,6 +62,11 @@ export function Launches() {
           );
         })}
       </div>
+      {!!list?.some((s) => s.failed) && (
+        <button className="btn btn-text btn-sm" style={{ marginTop: 12 }} onClick={() => setShowFailed(!showFailed)}>
+          {showFailed ? "Hide launches that didn't fill" : `Show ${list.filter((s) => s.failed).length} that didn't fill`}
+        </button>
+      )}
     </>
   );
 }

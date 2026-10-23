@@ -82,7 +82,7 @@ export function walletSubmitter(publicClient: PublicClient, wallet: Wallet, rout
 export type Status = (msg: string) => void;
 
 /**
- * Gloam-style private trading for Cloak launch tokens on Elysium.
+ * Private trading for Cloak launch tokens on Elysium.
  *
  *   shieldHype   public HYPE → private balance (one-time key, so deposits are unlinkable)
  *   buy / sell   private balance → launch token / back, via the PrivateRouter and the launch's CloakPair,
@@ -390,7 +390,7 @@ export class CloakPrivate {
   }
 
   /**
-   * Private transfer inside a pool: sender, recipient and amount all stay hidden (Gloam/Veil-style payment).
+   * Private transfer inside a pool: sender, recipient and amount all stay hidden.
    * `token` = a launch token, or the WHYPE address / hypeMarket.token for HYPE.
    */
   async send(token: Address, to: string, amount: bigint, onStatus: Status = () => {}): Promise<Hex> {

@@ -6,7 +6,7 @@ include "../node_modules/circomlib/circuits/comparators.circom";
 include "./merkleproof.circom";
 
 /*
- * Veil transaction: spend nIns notes, create nOuts notes, in ONE asset (one pool per asset).
+ * Shielded transaction: spend nIns notes, create nOuts notes, in ONE asset (one pool per asset).
  *
  *   pubKey     = Poseidon(privKey)
  *   commitment = Poseidon(amount, pubKey, blinding)
@@ -81,7 +81,7 @@ template Transaction(levels, nIns, nOuts) {
         inRootCheck[tx].in[1] <== inTree[tx].root;
         inRootCheck[tx].enabled <== inAmount[tx];
 
-        // Range check (field-wrap protection, cf. Gloam Kensho C2).
+        // Range check (field-wrap protection: amounts must fit in 128 bits).
         inAmountCheck[tx] = Num2Bits(128);
         inAmountCheck[tx].in <== inAmount[tx];
 

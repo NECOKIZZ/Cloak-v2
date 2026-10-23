@@ -52,7 +52,7 @@ On a normal exchange, every trade is stamped with your wallet address forever. A
 |---|---|
 | `CloakAuction` + `CloakFactory` | the sealed-bid launch, the clearing price and the locked liquidity |
 | `CloakPair` | the trading pool every launch opens with |
-| `ShieldedPool` | the private vault, one per token (ported from our Veil project) |
+| `ShieldedPool` | the private vault, one per token |
 | `PrivateRouter` | does private buys and sells between vaults, through the launch's pool |
 | `PrivateBatcher` | batch rounds: standard-size orders, buys and sells crossed at the mid-price, only the net hits the pool |
 | `@cloak/sdk` | what the page (or any launchpad) uses for all of the above |

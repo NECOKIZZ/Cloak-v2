@@ -5,7 +5,7 @@ include "../node_modules/circomlib/circuits/bitify.circom";
 
 // Computes the Merkle root for `leaf` at position `pathIndices` (the leaf index
 // as one number; bit i = 1 means the node at level i is a RIGHT child).
-// Hash: Poseidon(left, right). Must match VeilPool's MerkleTree library and the SDK tree.
+// Hash: Poseidon(left, right). Must match the ShieldedPool's MerkleTreeWithHistory contract and the SDK tree.
 template MerkleProof(levels) {
     signal input leaf;
     signal input pathIndices;

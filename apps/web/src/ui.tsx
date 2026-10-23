@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useRoute } from "./router";
 import { useApp, type Theme } from "./state";
-import { IS_LOCAL, chain } from "./config";
 import { short } from "./format";
 import { addElysium } from "./wallet";
 import { useTokenMeta } from "./tokenMeta";
@@ -69,14 +69,14 @@ export function ThemeToggle() {
   );
 }
 
-export function WalletButton(_: { compact?: boolean }) {
+export function WalletButton({ up }: { up?: boolean }) {
   const { wallet, walletInfo, connect, disconnect, provider, wrongChain, switchNetwork, toast } = useApp();
   const [open, setOpen] = useState(false);
   if (!wallet) return <button className="btn btn-ink btn-sm" onClick={() => connect()}>Connect wallet</button>;
   if (wrongChain) return <button className="btn btn-sm wrong-net" onClick={switchNetwork}>Switch to Elysium</button>;
   const addr = wallet.account.address;
   return (
-    <div className="wallet-menu">
+    <div className={`wallet-menu ${up ? "up" : ""}`}>
       <button className="btn btn-ghost btn-sm wallet-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
         {walletInfo?.icon ? <img src={walletInfo.icon} alt="" width={18} height={18} /> : <span className="dot" />}
         <span className="mono">{short(addr)}</span>
@@ -119,40 +119,109 @@ export function Announce() {
 }
 
 const LINKS = [
-  { to: "/app", label: "Launches", match: (p: string) => p === "/app" || p.startsWith("/app/launch") || p === "/app/create" },
-  { to: "/app/trade", label: "Trade", match: (p: string) => p.startsWith("/app/trade") },
-  { to: "/app/portfolio", label: "Portfolio", match: (p: string) => p.startsWith("/app/portfolio") },
+  { to: "/app", label: "Launches", match: (p: string) => p === "/app" || p.startsWith("/app/launch") },
+  { to: "/app/trade", label: "Private trading", match: (p: string) => p.startsWith("/app/trade") },
   { to: "/app/volume", label: "Volume", match: (p: string) => p.startsWith("/app/volume") },
+  { to: "/sdk", label: "Developers", match: (p: string) => p.startsWith("/sdk") },
   { to: "/docs", label: "Docs", match: (p: string) => p.startsWith("/docs") },
-  { to: "/sdk", label: "SDK", match: (p: string) => p.startsWith("/sdk") },
 ];
 
-export function Nav({ app }: { app?: boolean }) {
-  const { path } = useRoute();
+/** Open/close state for a full-screen mobile sheet: Escape closes it and the page behind stops scrolling. */
+export function useSheet() {
   const [open, setOpen] = useState(false);
+  const { path } = useRoute();
+  useEffect(() => setOpen(false), [path]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return [open, setOpen] as const;
+}
+
+/**
+ * The full-screen menu itself. It renders into <body> so a blurred header can't trap it, and starts
+ * right under the header it belongs to (which sits lower when the announcement bar is showing).
+ */
+export function Sheet({ anchor, className = "", children }: { anchor: React.RefObject<HTMLElement>; className?: string; children: ReactNode }) {
+  const [top, setTop] = useState(64);
+  useLayoutEffect(() => {
+    const at = () => anchor.current && setTop(Math.max(0, anchor.current.getBoundingClientRect().bottom));
+    at();
+    window.addEventListener("resize", at);
+    return () => window.removeEventListener("resize", at);
+  }, [anchor]);
+  return createPortal(<div className={`sheet ${className}`} style={{ top }}>{children}</div>, document.body);
+}
+
+export function MenuButton({ open, onClick }: { open: boolean; onClick: () => void }) {
   return (
-    <header className="nav">
-      <div className={`${app ? "" : "wrap"} nav-in`} style={app ? { padding: "0 20px" } : undefined}>
+    <button className="icon-btn burger" onClick={onClick} aria-expanded={open} aria-label={open ? "Close menu" : "Open menu"}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d={open ? "M6 6l12 12M18 6L6 18" : "M4 8h16M4 16h16"} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+/** Light / dark / auto, as a segmented control. */
+export function ThemeSeg() {
+  const { theme, setTheme } = useApp();
+  return (
+    <div className="seg" role="group" aria-label="Appearance">
+      {(["light", "dark", "auto"] as Theme[]).map((t) => (
+        <button key={t} className={theme === t ? "on" : ""} onClick={() => setTheme(t)}>{t[0].toUpperCase() + t.slice(1)}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Site nav for the landing, docs, SDK and pitch pages. The app has its own sidebar. */
+export function Nav() {
+  const { path } = useRoute();
+  const [open, setOpen] = useSheet();
+  const [scrolled, setScrolled] = useState(false);
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const on = () => setScrolled(window.scrollY > 8);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
+  return (
+    <header ref={bar} className={`nav ${scrolled || open ? "solid" : ""}`}>
+      <div className="wrap nav-in">
         <Link to="/" className="brand"><Logo />Cloak</Link>
-        <nav className={`nav-links ${open ? "open" : ""}`} onClick={() => setOpen(false)}>
+        <nav className="nav-links" aria-label="Primary">
           {LINKS.map((l) => (
             <Link key={l.to} to={l.to} className={l.match(path) ? "on" : ""}>{l.label}</Link>
           ))}
         </nav>
         <div className="nav-right">
-          <span className="pill hide-m"><span className="dot" />{chain.name}</span>
-          <ThemeToggle />
-          {app ? (
-            <WalletButton />
-          ) : (
-            <>
-              <Link to="/docs" className="btn btn-ink btn-sm hide-m">Read the docs</Link>
-              <Link to="/app" className="btn btn-signal btn-sm">Open app ↗</Link>
-            </>
-          )}
-          <button className="icon-btn burger" onClick={() => setOpen(!open)} aria-label="Menu"><Icon.menu /></button>
+          <span className="hide-m"><ThemeToggle /></span>
+          <Link to="/docs" className="btn btn-ink btn-sm hide-m">Read the docs</Link>
+          <Link to="/app" className="btn btn-signal btn-sm">Open app ↗</Link>
+          <MenuButton open={open} onClick={() => setOpen(!open)} />
         </div>
       </div>
+      {open && (
+        <Sheet anchor={bar}>
+          <nav aria-label="Mobile">
+            {LINKS.map((l) => <Link key={l.to} to={l.to} className="sheet-link">{l.label}</Link>)}
+            <Link to="/pitch" className="sheet-link">Pitch</Link>
+          </nav>
+          <div className="sheet-row"><span className="small mute">Appearance</span><ThemeSeg /></div>
+          <div className="sheet-cta">
+            <Link to="/app" className="btn btn-ink btn-lg">Open app</Link>
+            <Link to="/docs" className="btn btn-ghost btn-lg">Read the docs</Link>
+          </div>
+        </Sheet>
+      )}
     </header>
   );
 }
@@ -203,7 +272,7 @@ export function Footer() {
           </div>
         </div>
         <div className="footer-bottom">
-          <span>© 2026 Cloak. Testnet software with play money. Not investment advice. Built for Ascend on Elysium.</span>
+          <span>© 2026 Cloak. Testnet software with play money. Not investment advice. Built by Bob Labs on Elysium.</span>
           <div className="theme-seg">
             {T.map((t) => (
               <button key={t} className={theme === t ? "on" : ""} onClick={() => setTheme(t)}>{t[0].toUpperCase() + t.slice(1)}</button>

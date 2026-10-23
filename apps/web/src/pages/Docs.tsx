@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "../router";
-import { EXPLORER, Footer, GITHUB, Nav } from "../ui";
+import { EXPLORER, Footer, GITHUB, Icon, Nav } from "../ui";
 
 const ADDR = {
   factory: "0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c",
@@ -20,6 +20,7 @@ const A = (a: string) => `${EXPLORER}/address/${a}`;
 
 export function Docs() {
   const [on, setOn] = useState("overview");
+  const [jump, setJump] = useState(false);
   useEffect(() => {
     const ids = NAV.flatMap(([, xs]) => xs.map(([id]) => id));
     const obs = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && setOn(e.target.id)), { rootMargin: "-80px 0px -70% 0px" });
@@ -47,6 +48,17 @@ export function Docs() {
             </div>
           ))}
         </nav>
+        <details className="docs-jump" open={jump} onToggle={(e) => setJump((e.target as HTMLDetailsElement).open)}>
+          <summary><span><span className="mute">On this page · </span>{NAV.flatMap(([, xs]) => xs).find(([id]) => id === on)?.[1] ?? "Overview"}</span><Icon.chev size={15} /></summary>
+          <div className="jump-list">
+            {NAV.map(([g, xs]) => (
+              <div key={g} style={{ display: "contents" }}>
+                <div className="eyebrow">{g}</div>
+                {xs.map(([id, label]) => <a key={id} href={`#${id}`} className={on === id ? "on" : ""} onClick={(e) => { setJump(false); go(id)(e); }}>{label}</a>)}
+              </div>
+            ))}
+          </div>
+        </details>
         <article className="doc">
           <div className="crumb">Start here</div>
           <h1 id="overview">Docs</h1>
