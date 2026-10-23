@@ -218,3 +218,7 @@ The hood monogram lives in [`apps/web/public/brand/`](apps/web/public/brand). Th
 ## Roadmap
 
 The product roadmap (token pages, SDK on npm, an MCP server for agents, holder proofs) and the revenue model are in [docs/ROADMAP.md](docs/ROADMAP.md). Protocol work is in [docs/DESIGN.md](docs/DESIGN.md#8-beyond-launch-private-trading-on-elysium): private launch bids funded straight from a shielded balance, timelock-sealed batch orders (hide side and size until the round clears), orders spread across the round, claim links, a private perps vault on HyperCore, and kHYPE bids.
+
+## License
+
+[MIT](LICENSE) © 2026 Bob Labs. Third-party code keeps its own license: the generated Groth16 verifier (`contracts/src/shielded/Verifier.sol`, from snarkjs) is GPL-3.0, and the circuits build on circomlib (GPL-3.0).

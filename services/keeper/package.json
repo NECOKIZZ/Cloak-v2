@@ -2,9 +2,12 @@
   "name": "@cloak/keeper",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node index.mjs" },
+  "scripts": {
+    "start": "node index.mjs"
+  },
   "dependencies": {
     "@cloak/sdk": "workspace:*",
     "viem": "2.21.54"
-  }
+  },
+  "license": "MIT"
 }
