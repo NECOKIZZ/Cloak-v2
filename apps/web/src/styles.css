@@ -512,6 +512,7 @@ select.input { font-family: var(--font-body); font-size: 14px; }
 }
 @media (max-width: 900px) {
   .nav-links { display: none; }
+  .nav-right { margin-left: auto; }
   .burger { display: inline-grid; }
   .docs-nav { display: none; }
   .docs-jump { display: block; }
