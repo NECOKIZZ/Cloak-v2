@@ -15,7 +15,7 @@ Plain-English walkthrough: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
 
 A **[Bob Labs](https://github.com/NECOKIZZ)** product, live on Kinetiq's **Elysium** testnet (chain `99801`) at [cloak.boblabs.tech](https://cloak.boblabs.tech).
 
-**Try it in about two minutes:** open [the app](https://cloak.boblabs.tech/app), connect a wallet (it adds Elysium testnet for you), get testnet HYPE from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), then place a sealed bid, or shield HYPE and make a private swap, send or batch order. Testnet only, play money.
+**Try it in about two minutes:** open [the app](https://cloak.boblabs.tech/app), connect a wallet (it adds Elysium testnet for you), get testnet HYPE from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), then place a sealed bid, or shield HYPE and make a private swap, send or batch order. Testnet only, play money. Mainnet is planned for **Nov 9**.
 
 ---
 
@@ -193,7 +193,7 @@ cd apps/web && VITE_FACTORY=0x… pnpm build  # static site
 - **Batch anonymity needs company.** If you're the only one in a round, your orders add up to your trade. More users per round means more privacy. Orders placed back-to-back by one client could be linked by timing (spreading orders across a round is a client-side upgrade).
 - **Timing can still link you.** Shielding 1 HYPE and immediately buying with exactly 1 HYPE is easy to connect, especially while few people use the pools. Wait, and trade different amounts.
 - **Relayer trust:** the relayer can refuse or delay your trade, and it sees your IP. It cannot steal, alter or redirect anything, because the proof binds every field. Anyone can run one.
-- **Trusted setup:** the Groth16 keys come from a development setup. Production needs a public multi-party ceremony.
+- **Trusted setup:** the Groth16 keys come from a development setup. Production needs a public multi-party ceremony, which is planned alongside mainnet (Nov 9). Caps stay on until it is done.
 - **Not hidden from front-running:** trades hit the public AMM with a 1% slippage limit. Sealed batch trading (roadmap) would also hide trades until they clear.
 
 **Launch auction**
@@ -202,7 +202,7 @@ cd apps/web && VITE_FACTORY=0x… pnpm build  # static site
 - tlock relies on the drand League of Entropy threshold network. A threshold collusion could decrypt early.
 - The sequencer can delay transactions. The reveal window, anyone-can-reveal and Elysium's delayed-inbox forced inclusion mitigate this.
 - Deposits are visible; buckets only blur them. Unlinkable funding from a shielded balance is on the roadmap.
-- Not audited. Testnet only.
+- Not audited yet. Testnet today. Mainnet is planned for Nov 9, with deposit caps until the audit and the trusted-setup ceremony are done.
 
 ## Brand
 

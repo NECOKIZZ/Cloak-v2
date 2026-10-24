@@ -95,12 +95,20 @@ Selective disclosure, applied to tokens.
 
 ---
 
-## Later · protocol (before and around mainnet)
+## Mainnet · Nov 9
+
+- **Cloak launches on Elysium mainnet on Nov 9.**
+- **Deposit caps at launch:** caps on vault deposits and launch raises stay in place until the external audit and the public trusted-setup ceremony are done.
+- **Fees on** from day one (see the revenue model below).
+
+---
+
+## Later · protocol (around and after mainnet)
 
 Already planned:
 - **Bid funding from a private balance,** so a deposit can't be linked to the bidder.
 - **Timelock-sealed batch orders** that hide side and size until the round clears.
-- **A security audit,** a public trusted-setup ceremony and protocol fees.
+- **A security audit and a public trusted-setup ceremony.** Mainnet caps lift once both are done.
 
 New:
 - **Private limit orders:** a resting order that fills inside batch rounds when the price crosses.

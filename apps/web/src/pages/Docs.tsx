@@ -185,7 +185,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <li>drand is a threshold network. A threshold collusion could decrypt bids early.</li>
             <li>The relayer sees your IP and can delay you. Anyone can run their own.</li>
             <li>The Groth16 keys come from a development ceremony. Production needs a public one.</li>
-            <li>Unaudited testnet software.</li>
+            <li>Unaudited testnet software. Mainnet is planned for Nov 9, with deposit caps until the audit and trusted-setup ceremony are done.</li>
           </ul>
         </article>
         <aside className="toc">

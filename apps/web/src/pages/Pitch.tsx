@@ -167,7 +167,7 @@ export function Pitch() {
           <div className="p-road">
             <div className="on"><span className="eyebrow">Now · testnet</span><h3>Sealed launches, private vault</h3><p>Sealed bids, one price, locked LP. Private balances, swaps, sends and batch auctions. Hosted keeper and relayer.</p></div>
             <div><span className="eyebrow">Next</span><h3>Harden and package</h3><p>Bid from a private balance, a security audit, the SDK on npm, and more keepers.</p></div>
-            <div><span className="eyebrow">Later</span><h3>Mainnet with Elysium</h3><p>Fees switched on, launchpad integrations, and private order types beyond swaps.</p></div>
+            <div><span className="eyebrow">Nov 9 · mainnet</span><h3>Mainnet on Elysium</h3><p>Launch with deposit caps and fees switched on. Caps lift after the audit and trusted-setup ceremony, then launchpad integrations and new private order types.</p></div>
           </div>
         </Slide>
 
