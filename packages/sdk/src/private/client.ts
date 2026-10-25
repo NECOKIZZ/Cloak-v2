@@ -235,6 +235,12 @@ export class CloakPrivate {
     return (await this.sync(pool)).reduce((a, x) => a + x.amount, 0n);
   }
 
+  /** The most a single relayed call of this kind can move from `pool`: the balance minus the relayer's fee. */
+  async maxSpendable(pool: Address, kind: RelayKind = "transact"): Promise<bigint> {
+    const [bal, q] = await Promise.all([this.balance(pool), this.relayFee(kind, pool)]);
+    return bal > q.fee ? bal - q.fee : 0n;
+  }
+
   /** The Merkle tree of one epoch (default: the epoch the given notes live in, else the newest). */
   private async tree(pool: Address, epoch?: number): Promise<MerkleTree> {
     const s = this.state(pool);
@@ -346,7 +352,20 @@ export class CloakPrivate {
     const onStatus = opts.onStatus ?? (() => {});
     const m = this.market(token);
     const poolIn = side === "buy" ? this.hypeMarket.pool : m.pool;
-    const { sizes, rest } = splitStandard(amount, opts.maxOrders ?? 6);
+    const maxOrders = opts.maxOrders ?? 6;
+    let { sizes, rest } = splitStandard(amount, maxOrders);
+    // each order also pays the relayer's fee from the same balance: if the orders plus their fees don't fit (say, when
+    // selling everything), shrink the orders so they do
+    const fee = (await this.relayFee("placeOrder", poolIn)).fee;
+    if (fee > 0n) {
+      const have = await this.balance(poolIn);
+      if (sizes.reduce((a, x) => a + x, 0n) + fee * BigInt(sizes.length) > have) {
+        const budget = have - fee * BigInt(maxOrders);
+        if (budget <= 0n) throw new Error("insufficient private balance");
+        ({ sizes } = splitStandard(budget < amount ? budget : amount, maxOrders));
+        rest = amount - sizes.reduce((a, x) => a + x, 0n);
+      }
+    }
     if (sizes.length === 0) throw new Error("amount too small for a standard-size order");
     const placed: { id: bigint; size: bigint; round: bigint; txHash: Hex }[] = [];
     for (let i = 0; i < sizes.length; i++) {

@@ -59,6 +59,8 @@ const RULES: [RegExp, string][] = [
   // funds and gas
   [/insufficient funds|exceeds (the )?balance|not enough balance/, `Not enough testnet HYPE in your wallet to cover this and the gas. Get some from ${FAUCET}.`],
   [/insufficient private balance/, "Not enough private balance for this, counting the small relayer fee. Try a slightly smaller amount, or shield more HYPE on the Portfolio page."],
+  [/network didn't answer\. nothing was sent/, "The network didn't answer. Nothing was sent, so try again in a moment."],
+  [/network didn't answer while sending/, "The network didn't answer while sending. Check your balance in a minute before trying again."],
   [/relayer fee too low|GET \/quote/, "The relayer's fee changed while this was being prepared. Try again."],
   [/already being relayed|already spent/, "This private balance is already being used in another transaction. Give it a few seconds and refresh."],
   [/different signature each time/, "This wallet signs differently each time, so it can't hold a Cloak private account. Use a standard wallet such as MetaMask or Rabby."],

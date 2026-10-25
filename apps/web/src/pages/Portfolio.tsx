@@ -119,6 +119,13 @@ export function Portfolio() {
 
   const assets: { key: "HYPE" | Address; label: string }[] = [{ key: "HYPE", label: "HYPE" }, ...(markets ?? []).map((m) => ({ key: m.token, label: m.symbol }))];
   const max = tab === "shield" ? undefined : bals[asset];
+  /** Fill in the whole balance, minus the relayer's fee for this call. */
+  async function useMax() {
+    if (!priv || max === undefined) return;
+    const pool = asset === "HYPE" ? priv.hypeMarket.pool : priv.market(asset).pool;
+    const kind = tab === "withdraw" && asset === "HYPE" ? "unshieldHype" : "transact";
+    setAmt(formatEther(await priv.maxSpendable(pool, kind).catch(() => max)));
+  }
 
   return (
     <>
@@ -154,7 +161,7 @@ export function Portfolio() {
           <div className="field">
             <label>
               <span>{tab === "shield" ? "Deposit HYPE from your wallet" : tab === "send" ? `Send private ${sym}` : `Withdraw private ${sym}`}</span>
-              {max !== undefined && <span className="link" onClick={() => setAmt(formatEther(max))}>max {fmt(max, asset)}</span>}
+              {max !== undefined && <span className="link" onClick={useMax}>max {fmt(max, asset)}</span>}
             </label>
             <input className="input" value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" />
           </div>

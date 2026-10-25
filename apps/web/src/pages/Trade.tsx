@@ -155,7 +155,12 @@ export function Trade() {
           <div>
             <div className="swap">
               <div className="swap-box">
-                <div className="k"><span>You pay (private)</span>{fromBal !== undefined && <span className="link" onClick={() => setAmt(formatEther(fromBal))}>Balance {fmtIn(fromBal)}</span>}</div>
+                <div className="k"><span>You pay (private)</span>{fromBal !== undefined && <span className="link" onClick={async () => {
+                  // instant trades pay the relayer from the same balance; batch mode makes room for its own fees
+                  const pool = side === "buy" ? priv?.hypeMarket.pool : market.pool;
+                  const most = mode === "instant" && priv && pool ? await priv.maxSpendable(pool, "privateSwap").catch(() => fromBal) : fromBal;
+                  setAmt(formatEther(most));
+                }}>Balance {fmtIn(fromBal)}</span>}</div>
                 <div className="amt">
                   <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" aria-label="Amount" />
                   {side === "buy" ? <TokenSel label="HYPE" hypeSide /> : <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} />}

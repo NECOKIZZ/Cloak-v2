@@ -162,7 +162,8 @@ ok(!sendTx.input.toLowerCase().includes(sendAmtHex.padStart(32, "0")) && !sendRc
 const tokBefore = await priv.balance(tokenPool);
 const hypeOtherBefore = await other.balance(hypePool);
 // other buys a few tokens instantly so it has something to sell in the batch
-await other.buy(token, parseEther("0.1") / scale);
+const otherBuy = relayed ? parseEther("0.003") : parseEther("0.1") / scale; // relayed: worth more than the order fees
+await other.buy(token, otherBuy);
 const otherTok = await other.balance(tokenPool);
 const buyAmt = parseEther("0.37") / scale; // → 0.2 + 0.1 + 0.05 + 0.02
 const placedBuy = await priv.batch(token, "buy", buyAmt, { onStatus: (m) => console.log(`    · ${m}`) });
@@ -207,7 +208,7 @@ txs.batchClaim = ch;
 const gained = (await priv.balance(tokenPool)) - tokBefore;
 ok(gained > 0n, `batched buy filled: +${fmt(gained, 0)} ${SYM} privately`);
 const otherHype = await other.balance(hypePool);
-ok(otherHype + slack > hypeOtherBefore - parseEther("0.1") / scale, `batched sell filled: other account has ${fmt(otherHype, 5)} private HYPE`);
+ok(otherHype + slack > hypeOtherBefore - otherBuy, `batched sell filled: other account has ${fmt(otherHype, 5)} private HYPE`);
 // uniform price inside a round: every buy order in the same round got the same rate
 const fills = await d.publicClient.getContractEvents({ ...bc, eventName: "OrderFilled", fromBlock: batcherBlock, strict: true });
 const byId = new Map(fills.map((f) => [f.args.id, f.args.amountOut]));

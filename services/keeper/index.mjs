@@ -56,7 +56,8 @@ for (const m of ["writeContract", "sendTransaction"]) {
   walletClient[m] = (args) =>
     serial(async () => {
       const hash = await send(args);
-      await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
+      // once it's sent, the hash is the answer: a node that stops answering while we wait doesn't unsend it
+      await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 }).catch((e) => console.error(`[tx] ${hash} not confirmed yet: ${e.shortMessage ?? e.message}`));
       return hash;
     });
 }
@@ -220,6 +221,8 @@ async function quote(kind, pool) {
   return (hype * rT) / rH + 1n;
 }
 
+const isNetworkError = (e) => /HTTP request failed|fetch failed|timed? ?out|ECONNRESET|socket hang up|429|502|503|504/i.test(`${e?.shortMessage ?? ""} ${e?.message ?? ""} ${e?.name ?? ""}`);
+
 // one relayed spend per nullifier at a time: a second copy is refused before it costs gas
 const inflight = new Map();
 setInterval(() => {
@@ -252,7 +255,6 @@ async function relay(body) {
   }
   keys.forEach((k) => inflight.set(k, Date.now() + 180_000));
   try {
-    // dry-run first so a bad proof costs the relayer nothing
     const sim = kind === "transact"
       ? { address: pool, abi: shieldedPoolAbi, functionName: "transact", args: [proof, extData] }
       : kind === "placeOrder"
@@ -260,10 +262,22 @@ async function relay(body) {
         : kind === "migrate"
           ? { address: MIGRATOR, abi: cloakMigratorAbi, functionName: "migrate", args: [pool, proof, extData] }
           : { address: ROUTER, abi: privateRouterAbi, functionName: kind, args: kind === "privateSwap" ? [pool, proof, extData] : [proof, extData] };
-    await publicClient.simulateContract({ ...sim, account });
-    return await submit({ kind, pool, proof, extData });
+    // dry-run first so a bad proof costs the relayer nothing; a node that drops the call gets one more try
+    await publicClient.simulateContract({ ...sim, account }).catch(async (e) => {
+      if (!isNetworkError(e)) throw e;
+      await new Promise((r) => setTimeout(r, 1500));
+      return publicClient.simulateContract({ ...sim, account });
+    });
   } catch (e) {
     keys.forEach((k) => inflight.delete(k)); // nothing went out: the spend may be retried
+    throw isNetworkError(e) ? err("The network didn't answer. Nothing was sent, so try again in a moment.", 503) : e;
+  }
+  // From here the transaction may be out, so the spend stays locked until it lands (or the lock expires).
+  try {
+    return await submit({ kind, pool, proof, extData });
+  } catch (e) {
+    if (isNetworkError(e)) throw err("The network didn't answer while sending. Check your balance in a minute before trying again.", 503);
+    keys.forEach((k) => inflight.delete(k)); // the node refused it outright: nothing went out
     throw e;
   }
 }
@@ -321,6 +335,7 @@ createServer((req, res) => {
         send(req, res, 200, { txHash });
       } catch (e) {
         // contract reverts carry a short message the app translates; anything else is a bad payload
+        if (!e.status && isNetworkError(e)) return send(req, res, 503, { error: "The network didn't answer. Nothing was sent, so try again in a moment." });
         send(req, res, e.status ?? 400, { error: e.status || e.shortMessage ? e.shortMessage ?? e.message : "malformed request" });
       }
     });
