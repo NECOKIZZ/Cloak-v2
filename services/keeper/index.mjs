@@ -39,9 +39,27 @@ if (!FACTORY || !PK) {
 }
 
 const account = privateKeyToAccount(PK);
-const transport = http(RPC);
+const transport = http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
 const publicClient = createPublicClient({ chain, transport, pollingInterval: 250 });
 const walletClient = createWalletClient({ chain, transport, account });
+
+// One wallet sends everything (reveals, settles, payouts and relays, which arrive at any time), so its transactions go
+// out one at a time, each mined before the next: two sends can never pick the same nonce.
+let queue = Promise.resolve();
+const serial = (fn) => {
+  const run = queue.then(fn, fn);
+  queue = run.catch(() => {});
+  return run;
+};
+for (const m of ["writeContract", "sendTransaction"]) {
+  const send = walletClient[m].bind(walletClient);
+  walletClient[m] = (args) =>
+    serial(async () => {
+      const hash = await send(args);
+      await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
+      return hash;
+    });
+}
 const cloak = new Cloak(publicClient, walletClient, FACTORY);
 
 const status = { keeper: account.address, chain: chain.id, factory: FACTORY, launches: {}, lastTick: 0 };

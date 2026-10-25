@@ -13,6 +13,11 @@ const chain = local ? anvilLocal : elysiumTestnet;
 const PK = process.env.DEPLOYER_PK ?? "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const RELAYER_PK = process.env.RELAYER_PK ?? (local ? "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" : PK);
 const scale = local ? 1n : 1000n; // testnet: amounts ÷ 1000
+// Through a hosted relayer (RELAYER_URL) every private call also pays the relayer's fee from the private balance, so
+// balances are checked to within the fees paid, and the account starts with enough to cover them.
+const relayed = !!process.env.RELAYER_URL;
+const slack = relayed ? parseEther("0.004") : 0n;
+const near = (a, b) => a <= b && a + slack >= b;
 const explorer = (h) => (local ? h : `${elysiumTestnet.blockExplorers.default.url}/tx/${h}`);
 let checks = 0;
 const ok = (c, m) => {
@@ -94,7 +99,7 @@ ok(true, "private market enabled for the launch token");
 
 // 3. trader: a public wallet that funds once, then trades privately via a relayer
 const trader = clients(chain, RPC, generatePrivateKey());
-await d.publicClient.waitForTransactionReceipt({ hash: await d.walletClient.sendTransaction({ to: trader.account.address, value: parseEther("2") / scale + parseEther("0.003") }) });
+await d.publicClient.waitForTransactionReceipt({ hash: await d.walletClient.sendTransaction({ to: trader.account.address, value: (relayed ? parseEther("0.03") : parseEther("2") / scale) + parseEther("0.003") }) });
 const relayer = clients(chain, RPC, RELAYER_PK);
 const root = new URL("..", import.meta.url).pathname;
 const prover = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
@@ -105,7 +110,7 @@ const markets = await priv.loadMarkets();
 const hypePool = markets[0].pool;
 const tokenPool = priv.market(token).pool;
 
-const shieldAmt = parseEther("2") / scale;
+const shieldAmt = relayed ? parseEther("0.03") : parseEther("2") / scale;
 txs.shield = await priv.shieldHype(trader.walletClient, shieldAmt);
 ok((await priv.balance(hypePool)) === shieldAmt, `shielded ${fmt(shieldAmt, 4)} HYPE into a private balance`);
 
@@ -115,7 +120,7 @@ txs.privateBuy = buy.txHash;
 console.log(`    proof + relay in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 const tokBal = await priv.balance(tokenPool);
 ok(tokBal >= buy.minOut && tokBal > 0n, `private buy: ${fmt(tokBal, 0)} ${SYM} now in private balance`);
-ok((await priv.balance(hypePool)) === shieldAmt - parseEther("1") / scale, "private HYPE change returned as a hidden note");
+ok(near(await priv.balance(hypePool), shieldAmt - parseEther("1") / scale - buy.relayerFee), `private HYPE change returned as a hidden note${relayed ? ` (relayer fee ${fmt(buy.relayerFee, 6)} HYPE)` : ""}`);
 
 const buyTx = await d.publicClient.getTransaction({ hash: buy.txHash });
 const buyRcpt = await d.publicClient.getTransactionReceipt({ hash: buy.txHash });
@@ -126,8 +131,9 @@ ok(!buyTx.input.toLowerCase().includes(traderHex) && !buyRcpt.logs.some((l) => (
 const sell = await priv.sell(token, tokBal / 2n, { onStatus: (m) => console.log(`    · ${m}`) });
 txs.privateSell = sell.txHash;
 const hypeAfter = await priv.balance(hypePool);
-ok(hypeAfter > shieldAmt - parseEther("1") / scale, `private sell: private HYPE back up to ${fmt(hypeAfter, 4)}`);
-ok((await priv.balance(tokenPool)) === tokBal - tokBal / 2n, `remaining ${SYM} still private`);
+ok(hypeAfter > shieldAmt - parseEther("1") / scale - buy.relayerFee, `private sell: private HYPE back up to ${fmt(hypeAfter, 4)}`);
+const tokLeft = await priv.balance(tokenPool);
+ok(relayed ? tokLeft > 0n && tokLeft <= tokBal - tokBal / 2n : tokLeft === tokBal - tokBal / 2n, `remaining ${SYM} still private${relayed ? " (the sell paid its relayer fee in tokens)" : ""}`);
 
 const fresh = clients(chain, RPC, generatePrivateKey()).account.address;
 const out = parseEther("0.5") / scale;
@@ -142,11 +148,11 @@ await other.loadMarkets();
 ok((await other.balance(hypePool)) === 0n && (await other.balance(tokenPool)) === 0n, "another account sees none of these notes");
 
 // ── private send: amount, sender and recipient hidden ──
-const sendAmt = parseEther("0.3") / scale;
+const sendAmt = relayed ? parseEther("0.006") : parseEther("0.3") / scale; // relayed: enough for the other account's fees too
 const hypeBeforeSend = await priv.balance(hypePool);
 txs.privateSend = await priv.send(markets[0].token, await other.address(), sendAmt, (m) => console.log(`    · ${m}`));
 ok((await other.balance(hypePool)) === sendAmt, `private send: the other account received ${fmt(sendAmt, 4)} HYPE`);
-ok((await priv.balance(hypePool)) === hypeBeforeSend - sendAmt, "sender's private balance went down by the same hidden amount");
+ok(near(await priv.balance(hypePool), hypeBeforeSend - sendAmt), "sender's private balance went down by the same hidden amount");
 const sendTx = await d.publicClient.getTransaction({ hash: txs.privateSend });
 const sendRc = await d.publicClient.getTransactionReceipt({ hash: txs.privateSend });
 const sendAmtHex = sendAmt.toString(16);
@@ -201,7 +207,7 @@ txs.batchClaim = ch;
 const gained = (await priv.balance(tokenPool)) - tokBefore;
 ok(gained > 0n, `batched buy filled: +${fmt(gained, 0)} ${SYM} privately`);
 const otherHype = await other.balance(hypePool);
-ok(otherHype > hypeOtherBefore - parseEther("0.1") / scale, `batched sell filled: other account has ${fmt(otherHype, 5)} private HYPE`);
+ok(otherHype + slack > hypeOtherBefore - parseEther("0.1") / scale, `batched sell filled: other account has ${fmt(otherHype, 5)} private HYPE`);
 // uniform price inside a round: every buy order in the same round got the same rate
 const fills = await d.publicClient.getContractEvents({ ...bc, eventName: "OrderFilled", fromBlock: batcherBlock, strict: true });
 const byId = new Map(fills.map((f) => [f.args.id, f.args.amountOut]));
