@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { CloakPrivate, loadProver, relayerSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloak/sdk";
-import { BATCHER, RELAYER_URL, ROUTER, ROUTER_BLOCK } from "./config";
+import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, ROUTER_BLOCK } from "./config";
 import { chain, IS_LOCAL } from "./config";
-import { friendly } from "./errors";
+import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";
 import { connectBurner, connectProvider, ensureElysium, installedWallets, publicClient, silentReconnect, walletConnectProvider, walletFor, type Eip1193, type WalletOption } from "./wallet";
 
@@ -210,9 +210,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!w) return null;
     setUnlocking(true);
     try {
-      const keys = await CloakPrivate.keysFromWallet(w);
-      const submit = RELAYER_URL ? relayerSubmitter(RELAYER_URL) : walletSubmitter(publicClient, w, ROUTER, BATCHER);
-      const p = new CloakPrivate(publicClient, ROUTER, keys, getProver, submit, ROUTER_BLOCK, BATCHER);
+      // The first unlock on this device signs twice to check the wallet signs the same way every time; later unlocks
+      // compare against the account fingerprint saved then.
+      const fpKey = `cloak.account.v2.${chain.id}.${w.account.address.toLowerCase()}`;
+      let known: string | null = null;
+      try {
+        known = localStorage.getItem(fpKey);
+      } catch {}
+      const keys = await CloakPrivate.keysFromWallet(w, { chainId: chain.id, router: ROUTER, verify: !known });
+      const fp = (await keys.main()).pubKey.toString(16).slice(0, 16);
+      if (known && known !== fp) throw new Hint("This wallet produced a different private account than last time. Use the same wallet you unlocked with before.");
+      try {
+        localStorage.setItem(fpKey, fp);
+      } catch {}
+      const submit = RELAYER_URL ? relayerSubmitter(RELAYER_URL) : walletSubmitter(publicClient, w, ROUTER, BATCHER, MIGRATOR);
+      const p = new CloakPrivate(publicClient, ROUTER, keys, getProver, submit, ROUTER_BLOCK, BATCHER, MIGRATOR);
       await p.loadMarkets();
       setPrivAddress(await p.address());
       setPriv(p);

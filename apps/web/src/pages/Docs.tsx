@@ -3,17 +3,19 @@ import { Link } from "../router";
 import { EXPLORER, Footer, GITHUB, Icon, Nav } from "../ui";
 
 const ADDR = {
-  factory: "0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c",
-  router: "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41",
-  batcher: "0xf6582cc5a84fccf74e571e652fb7b603a2c25812",
-  hypePool: "0xCDD04c1c2aEc00728995C151127D619990885715",
+  config: "0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373",
+  factory: "0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc",
+  router: "0xd51e731467c49991496329c2b7979cb1aa220ee2",
+  batcher: "0xa13ffd763a8cccfea1b868c616291723579ddb77",
+  hypePool: "0x4deFEC0814d11c581e5947020ac4ec41e88B55Df",
+  migrator: "0xe54c02fa685f2c95e5ae98e1155547194d04d9ad",
 };
 
 const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
   ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"]]],
   ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["what-stays-private", "What stays private"]]],
-  ["Build", [["sdk", "SDK"], ["contracts", "Contracts"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
+  ["Build", [["sdk", "SDK"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
 
 const A = (a: string) => `${EXPLORER}/address/${a}`;
@@ -125,7 +127,7 @@ export function Docs() {
           <ul>
             <li>Your amount is split into <b>standard sizes</b> (1, 2, 5 × 10ⁿ), the same sizes everyone uses.</li>
             <li>Orders collect into a <b>round</b> (30 s on testnet).</li>
-            <li>When it ends, buys and sells <b>cross at the pool's mid-price</b> (no fee, no impact), and only the net trades on the pool.</li>
+            <li>When it ends, buys and sells <b>cross at the pool's average price over the round</b> (no pool fee, no impact), and only the net trades on the pool.</li>
             <li>Everyone on one side of a round gets the <b>same price</b>, and outputs return as private notes.</li>
           </ul>
           <p>A price guard stops a settler from moving the pool before settling. If a round can't settle, every order is refunded after 10 minutes.</p>
@@ -158,7 +160,7 @@ const cloak = new Cloak(publicClient, walletClient, FACTORY);
 const { auction } = await cloak.createLaunch({ name, symbol, saleSupply, minPrice, tickSize, commitEnd, revealEnd });
 await cloak.bid(auction, { maxPrice, quantity });
 
-const keys = await CloakPrivate.keysFromWallet(walletClient);
+const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801, router: ROUTER });
 const priv = new CloakPrivate(publicClient, ROUTER, keys, loadProver, relayerSubmitter(KEEPER), 0n, BATCHER);
 await priv.loadMarkets();
 await priv.shieldHype(walletClient, parseEther("1"));
@@ -168,16 +170,31 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           <h2 id="contracts">Contracts (Elysium testnet, chain 99801)</h2>
           <table>
             <tbody>
+              <tr><td>CloakConfig</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
               <tr><td>CloakFactory</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
               <tr><td>PrivateRouter</td><td><a href={A(ADDR.router)} target="_blank" rel="noreferrer"><code>{ADDR.router}</code></a></td></tr>
               <tr><td>PrivateBatcher</td><td><a href={A(ADDR.batcher)} target="_blank" rel="noreferrer"><code>{ADDR.batcher}</code></a></td></tr>
               <tr><td>Shielded HYPE pool</td><td><a href={A(ADDR.hypePool)} target="_blank" rel="noreferrer"><code>{ADDR.hypePool}</code></a></td></tr>
+              <tr><td>CloakMigrator</td><td><a href={A(ADDR.migrator)} target="_blank" rel="noreferrer"><code>{ADDR.migrator}</code></a></td></tr>
             </tbody>
           </table>
-          <p>None of these contracts has an owner or an admin withdraw. Source, tests and real testnet runs are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
+          <p>No function in any of these contracts lets anyone, including us, move funds out of an auction or a vault. Money leaves a vault only with its owner's proof. <code>CloakConfig</code> holds the rules every contract reads: the fees, the deposit caps and the proof verifier. Tightening a rule (a lower fee, a lower cap, closing deposits) takes effect at once. Loosening one, or changing the verifier, is queued on-chain and waits a public 3-day delay, so anyone who disagrees can leave first. Fees have hard ceilings in the contract. Source, tests and real testnet runs are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
+          <p>Cloak's first contracts are still on-chain. Their launches still show here, and a private balance held in them moves across in one step from the Portfolio page, through <code>CloakMigrator</code>. It stays private, and the relayer can't redirect it.</p>
+
+          <h2 id="fees">Fees & caps</h2>
+          <table>
+            <tbody>
+              <tr><td>Deposits and private sends</td><td>Free</td></tr>
+              <tr><td>Withdrawals, private swaps and batch orders</td><td>0.25% of the amount, kept in the vault and collected to the treasury (hard cap 1%)</td></tr>
+              <tr><td>Launch fee</td><td>1.5% of a successful raise, taken at settlement. Nothing if the launch doesn't fill (hard cap 3%)</td></tr>
+              <tr><td>Relayer fee</td><td>The gas the relayer pays, plus a small margin, taken inside your proof from the same balance</td></tr>
+            </tbody>
+          </table>
+          <p>While Cloak is in beta, deposits are capped: 100 HYPE per deposit and 10,000 HYPE in the HYPE vault, 1% of a token's supply per deposit and 10% in total for launch-token vaults, and 100 HYPE per bid and 10,000 HYPE in total for each new launch. Withdrawals are never capped. Caps lift after the audit and the public trusted-setup ceremony.</p>
+          <p>A creator's own share is capped at 20% of the supply and vests over at least 30 days from the end of the auction.</p>
 
           <h2 id="keeper">Keeper & relayer</h2>
-          <p>The keeper is a small Node service. It reveals bids once the drand round passes, settles launches and batch rounds, pays out orders, and relays private transactions (<code>POST /relay</code>). It pays gas, so it's the on-chain sender of every private trade. It can delay or refuse a transaction, but it can't change or steal one, because the proof binds every field. Anyone can run one: <code>node services/keeper/index.mjs</code>.</p>
+          <p>The keeper is a small Node service. It reveals bids once the drand round passes, settles launches and batch rounds, pays out orders, and relays private transactions (<code>POST /relay</code>). It pays gas, so it's the on-chain sender of every private trade, and takes a fee for that inside the proof (<code>GET /quote</code>). A call that doesn't pay it is refused before it costs anything. It can delay or refuse a transaction, but it can't change or steal one, because the proof binds every field. Anyone can run one: <code>node services/keeper/index.mjs</code>.</p>
 
           <h2 id="limits">Limits & threat model</h2>
           <ul>

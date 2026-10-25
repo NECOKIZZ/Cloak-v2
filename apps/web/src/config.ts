@@ -19,3 +19,9 @@ export const ROUTER_BLOCK = BigInt(env.VITE_ROUTER_BLOCK || 0);
 /** Cloak keeper with `/relay` (submits private trades so the trader's wallet never appears). */
 export const RELAYER_URL: string | undefined = env.VITE_RELAYER_URL || env.VITE_KEEPER_URL || undefined;
 export const BATCHER = (env.VITE_BATCHER || undefined) as Address | undefined;
+/** CloakMigrator, and the earlier router whose private balances it moves here. */
+export const MIGRATOR = (env.VITE_MIGRATOR || undefined) as Address | undefined;
+export const LEGACY_ROUTER = (env.VITE_LEGACY_ROUTER || undefined) as Address | undefined;
+export const LEGACY_ROUTER_BLOCK = BigInt(env.VITE_LEGACY_ROUTER_BLOCK || 0);
+export const LEGACY_BATCHER = (env.VITE_LEGACY_BATCHER || undefined) as Address | undefined;
+export const LEGACY_FACTORY = (env.VITE_LEGACY_FACTORY || undefined) as Address | undefined;

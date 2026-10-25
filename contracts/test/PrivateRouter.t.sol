@@ -6,6 +6,8 @@ import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
 import {CloakToken} from "../src/CloakToken.sol";
 import {CloakPair} from "../src/CloakPair.sol";
+import {CloakConfig} from "../src/CloakConfig.sol";
+import {CloakVestingDeployer} from "../src/CloakVesting.sol";
 import {ShieldedPool} from "../src/shielded/ShieldedPool.sol";
 import {PrivateRouter, ICloakFactory} from "../src/shielded/PrivateRouter.sol";
 import {WHYPE} from "../src/shielded/WHYPE.sol";
@@ -15,6 +17,7 @@ import {MockVerifier} from "./mocks/MockVerifier.sol";
 
 /// Router logic with a mock verifier (proof validity itself is covered by the JS e2e with real Groth16 proofs).
 contract PrivateRouterTest is Test {
+    CloakConfig config;
     CloakFactory factory;
     CloakAuction auction;
     CloakToken token;
@@ -37,7 +40,8 @@ contract PrivateRouterTest is Test {
     }
 
     function setUp() public {
-        factory = new CloakFactory();
+        config = new CloakConfig(address(new MockVerifier()), address(0));
+        factory = new CloakFactory(config, new CloakVestingDeployer());
         CloakAuction.Params memory p = CloakAuction.Params({
             creator: address(this),
             saleSupply: 1_000_000e18,
@@ -48,18 +52,18 @@ contract PrivateRouterTest is Test {
             commitEnd: uint64(block.timestamp + 1 hours),
             revealEnd: uint64(block.timestamp + 2 hours),
             lpBps: 5000,
-            noRevealPenaltyBps: 0,
+            noRevealPenaltyBps: 1000,
             lpLockUntil: 0,
-            tlockRound: 1
+            tlockRound: 0
         });
-        (address a, address t) = factory.createLaunch("Shade", "SHADE", 0, p, "");
+        (address a, address t) = factory.createLaunch("Shade", "SHADE", 0, 0, p, "");
         auction = CloakAuction(payable(a));
         token = CloakToken(t);
 
-        verifier = new MockVerifier();
+        verifier = MockVerifier(config.verifier());
         IPoseidon2 p2 = IPoseidon2(_deployCode("test/fixtures/poseidon2.hex"));
         IPoseidon3 p3 = IPoseidon3(_deployCode("test/fixtures/poseidon3.hex"));
-        router = new PrivateRouter(IVerifier(address(verifier)), p2, p3, ICloakFactory(address(factory)));
+        router = new PrivateRouter(config, p2, p3, ICloakFactory(address(factory)), ICloakFactory(address(0)), WHYPE(payable(address(0))));
         hypePool = router.hypePool();
         whype = router.whype();
     }

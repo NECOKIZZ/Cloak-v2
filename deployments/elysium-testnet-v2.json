@@ -1,0 +1,32 @@
+{
+  "chainId": 99801,
+  "version": 2,
+  "config": "0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373",
+  "verifier": "0xA554AC0150E853DEAC5214cFf9F5001Ad2f441ED",
+  "poseidon2": "0x80d9d0b2bdd42a77d083235662925f2907392723",
+  "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
+  "factory": "0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc",
+  "factoryBlock": "15855986",
+  "router": "0xd51e731467c49991496329c2b7979cb1aa220ee2",
+  "routerBlock": "15856031",
+  "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
+  "hypePool": "0x4deFEC0814d11c581e5947020ac4ec41e88B55Df",
+  "batcher": "0xa13ffd763a8cccfea1b868c616291723579ddb77",
+  "batcherBlock": "15860063",
+  "migrator": "0xe54c02fa685f2c95e5ae98e1155547194d04d9ad",
+  "treasury": "0x6616C2566baD950FcDD420159a51fDdfFa220E8e",
+  "rules": {
+    "withdrawFeeBps": 25,
+    "launchFeeBps": 150,
+    "caps": "WHYPE 100/10,000 HYPE; tokens 1%/10% of supply; auctions 100/10,000 HYPE"
+  },
+  "legacy": {
+    "factory": "0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c",
+    "router": "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41",
+    "routerBlock": "10973723",
+    "batcher": "0xf6582cc5a84fccf74e571e652fb7b603a2c25812",
+    "poseidon2": "0x80d9d0b2bdd42a77d083235662925f2907392723",
+    "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
+    "verifier": "0xA554AC0150E853DEAC5214cFf9F5001Ad2f441ED"
+  }
+}

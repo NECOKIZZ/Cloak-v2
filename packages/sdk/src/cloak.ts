@@ -1,4 +1,5 @@
 import {
+  zeroAddress,
   type Account,
   type Address,
   type Chain,
@@ -25,8 +26,10 @@ export interface LaunchParams {
   saleSupply: bigint;
   /** Tokens paired with HYPE at the clearing price. Defaults to `saleSupply`. */
   lpReserve?: bigint;
-  /** Tokens minted straight to the creator; published in the FairLaunch record. */
+  /** Creator share, at most 20% of the supply. It vests linearly from the end of the auction. */
   creatorAlloc?: bigint;
+  /** Vesting length for the creator share, in seconds (at least 30 days; default 90 days). */
+  creatorVestSecs?: number;
   /** Wei of HYPE per whole token at the lowest tick. */
   minPrice: bigint;
   tickSize: bigint;
@@ -72,6 +75,14 @@ export interface AuctionState {
   pair: Address;
   tokenName: string;
   tokenSymbol: string;
+  /** Launch fee on a successful raise, fixed when the auction was created. */
+  launchFeeBps: number;
+  /** HYPE caps fixed at creation (0 = none): per bid deposit, and in total. */
+  bidCap: bigint;
+  depositCap: bigint;
+  /** Settled money waiting to be pulled: the creator's proceeds and the protocol's launch fee. */
+  creatorOwed: bigint;
+  feesOwed: bigint;
 }
 
 /** Everything a bidder must keep to reveal manually; auto-reveal makes losing it harmless. */
@@ -135,11 +146,30 @@ export function bucketDeposit(cost: bigint): bigint {
   return 10n * pow;
 }
 
+/** `launches(i)` of the first CloakFactory (five fields, no vesting). */
+const LEGACY_LAUNCHES_ABI = [
+  {
+    type: "function",
+    name: "launches",
+    stateMutability: "view",
+    inputs: [{ type: "uint256" }],
+    outputs: [
+      { name: "auction", type: "address" },
+      { name: "token", type: "address" },
+      { name: "creator", type: "address" },
+      { name: "launchpad", type: "address" },
+      { name: "creatorAlloc", type: "uint256" },
+    ],
+  },
+] as const;
+
 export class Cloak {
   constructor(
     readonly publicClient: PublicClient,
     readonly walletClient?: Wallet,
     readonly factory?: Address,
+    /** The first deployment's factory, so its launches still list and settle. */
+    readonly legacyFactory?: Address,
   ) {}
 
   private wallet(): Wallet {
@@ -177,14 +207,39 @@ export class Cloak {
       address: this.factory,
       abi: cloakFactoryAbi,
       functionName: "createLaunch",
-      args: [p.name, p.symbol, p.creatorAlloc ?? 0n, params, p.metadataURI ?? ""],
+      args: [p.name, p.symbol, p.creatorAlloc ?? 0n, BigInt(p.creatorAlloc ? (p.creatorVestSecs ?? 90 * 86400) : 0), params, p.metadataURI ?? ""],
     });
     const r = await this.send(txHash);
     const [ev] = parseEventLogs({ abi: cloakFactoryAbi, logs: r.logs, eventName: "LaunchCreated" });
     return { auction: ev.args.auction, token: ev.args.token, txHash, block: r.blockNumber };
   }
 
-  async listLaunches(): Promise<{ auction: Address; token: Address; creator: Address }[]> {
+  /**
+   * Every launch, newest factory first. Launches from `legacyFactory` (the first deployment) are included with
+   * `legacy: true`; they have no vesting contract.
+   */
+  async listLaunches(): Promise<{ auction: Address; token: Address; creator: Address; launchpad: Address; creatorAlloc: bigint; vesting: Address; legacy?: boolean }[]> {
+    if (!this.factory) throw new Error("Cloak: factory address required");
+    const legacy = this.legacyFactory ? await this.listLegacy(this.legacyFactory) : [];
+    return [...(await this.listCurrent()), ...legacy];
+  }
+
+  private async listLegacy(factory: Address) {
+    const n = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launchesCount" });
+    const out = [];
+    for (let i = 0n; i < n; i++) {
+      const [auction, token, creator, launchpad, creatorAlloc] = await this.publicClient.readContract({
+        address: factory,
+        abi: LEGACY_LAUNCHES_ABI,
+        functionName: "launches",
+        args: [i],
+      });
+      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting: zeroAddress as Address, legacy: true });
+    }
+    return out;
+  }
+
+  private async listCurrent() {
     if (!this.factory) throw new Error("Cloak: factory address required");
     const n = await this.publicClient.readContract({
       address: this.factory,
@@ -193,13 +248,13 @@ export class Cloak {
     });
     const out = [];
     for (let i = 0n; i < n; i++) {
-      const [auction, token, creator] = await this.publicClient.readContract({
+      const [auction, token, creator, launchpad, creatorAlloc, vesting] = await this.publicClient.readContract({
         address: this.factory,
         abi: cloakFactoryAbi,
         functionName: "launches",
         args: [i],
       });
-      out.push({ auction, token, creator });
+      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting });
     }
     return out;
   }
@@ -209,7 +264,7 @@ export class Cloak {
   async getAuction(auction: Address): Promise<AuctionState> {
     const c = { address: auction, abi: cloakAuctionAbi } as const;
     const r = this.publicClient;
-    const [params, token, phase, commits, reveals, totalDeposits, totalDemand, settled, failed, clearingTick, clearingPrice, sold, raised, pair] =
+    const [params, token, phase, commits, reveals, totalDeposits, totalDemand, settled, failed, clearingTick, clearingPrice, sold, raised, pair, launchFeeBps, bidCap, depositCap, creatorOwed, feesOwed] =
       await Promise.all([
         r.readContract({ ...c, functionName: "params" }),
         r.readContract({ ...c, functionName: "token" }),
@@ -225,6 +280,12 @@ export class Cloak {
         r.readContract({ ...c, functionName: "sold" }),
         r.readContract({ ...c, functionName: "raised" }),
         r.readContract({ ...c, functionName: "pair" }),
+        // not on first-deployment auctions
+        r.readContract({ ...c, functionName: "launchFeeBps" }).catch(() => 0),
+        r.readContract({ ...c, functionName: "bidCap" }).catch(() => 0n),
+        r.readContract({ ...c, functionName: "depositCap" }).catch(() => 0n),
+        r.readContract({ ...c, functionName: "creatorOwed" }).catch(() => 0n),
+        r.readContract({ ...c, functionName: "feesOwed" }).catch(() => 0n),
       ]);
     const [creator, saleSupply, lpReserve, minPrice, tickSize, numTicks, commitEnd, revealEnd, lpBps, noRevealPenaltyBps, lpLockUntil, tlockRound] =
       params;
@@ -261,6 +322,11 @@ export class Cloak {
       pair,
       tokenName,
       tokenSymbol,
+      launchFeeBps,
+      bidCap,
+      depositCap,
+      creatorOwed,
+      feesOwed,
     };
   }
 
@@ -336,6 +402,19 @@ export class Cloak {
     const txHash = await this.wallet().writeContract({ address: auction, abi: cloakAuctionAbi, functionName: "settle" });
     await this.send(txHash);
     return txHash;
+  }
+
+  /** Pay out a settled launch's creator proceeds, and send its launch fee to the treasury (anyone can call either). */
+  async payOut(auction: Address): Promise<Hex[]> {
+    const s = await this.getAuction(auction);
+    const out: Hex[] = [];
+    for (const fn of [s.creatorOwed > 0n && "withdrawProceeds", s.feesOwed > 0n && "collectFees"] as const) {
+      if (!fn) continue;
+      const h = await this.wallet().writeContract({ address: auction, abi: cloakAuctionAbi, functionName: fn });
+      await this.send(h);
+      out.push(h);
+    }
+    return out;
   }
 
   async claim(auction: Address, ids: bigint[]): Promise<Hex> {

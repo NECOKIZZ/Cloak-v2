@@ -449,7 +449,7 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
     if (!num(f.tick)) return "Price step must be a number above zero, like 0.000001.";
     if (!/^\d+(\.\d+)?$/.test(f.lpPct.trim()) || Number(f.lpPct) > 100) return "LP share must be between 0 and 100.";
     if (!num(f.commitMin) || Number(f.commitMin) < 0.5) return "The bidding window must be at least 0.5 minutes.";
-    if (!num(f.revealMin) || Number(f.revealMin) < 0.5) return "The reveal window must be at least 0.5 minutes.";
+    if (!num(f.revealMin) || Number(f.revealMin) < 1) return "The reveal window must be at least 1 minute.";
     return "";
   }
 
@@ -533,7 +533,7 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
         {!FACTORY ? "Set VITE_FACTORY to enable" : !wallet ? "Connect a wallet" : busy ? "Deploying…" : "Create sealed-bid launch"}
       </button>
       {err && <div className="err">{err}</div>}
-      <p className="note">Same as <span className="mono">cloak.createLaunch(&#123;…&#125;)</span> in <span className="mono">@cloak/sdk</span>. A launchpad can call <span className="mono">CloakFactory.createLaunch</span> from its own contracts.</p>
+      <p className="note">Cloak takes a launch fee from a successful raise only (none if the launch doesn't fill). Same as <span className="mono">cloak.createLaunch(&#123;…&#125;)</span> in <span className="mono">@cloak/sdk</span>. A launchpad can call <span className="mono">CloakFactory.createLaunch</span> from its own contracts.</p>
     </div>
   );
 }

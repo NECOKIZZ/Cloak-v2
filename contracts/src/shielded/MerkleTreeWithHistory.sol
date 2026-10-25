@@ -3,7 +3,9 @@ pragma solidity ^0.8.24;
 
 import {IPoseidon2} from "./interfaces/IHasher.sol";
 
-/// @notice Append-only Poseidon Merkle tree, depth 20 (1,048,576 leaves).
+/// @notice Append-only Poseidon Merkle trees, depth 20 (1,048,576 leaves each). When one fills, the next leaf starts a
+///         fresh tree (a new epoch) and every old root stays valid, so a full tree can never block a withdrawal.
+///         A leaf's global index is `epoch << 20 | position`; proofs use the position (the low 20 bits).
 /// @dev Node hash = Poseidon(left, right). Empty leaf = 0, zeros[i+1] = Poseidon(zeros[i], zeros[i]).
 ///      Must match `src/merkleproof.circom` and the SDK tree exactly.
 ///      Every root ever produced stays valid forever (`knownRoots`), so a proof built
@@ -15,12 +17,13 @@ abstract contract MerkleTreeWithHistory {
 
     IPoseidon2 public immutable hasher;
 
-    uint32 public nextIndex;
+    uint32 public nextIndex; // position in the current epoch's tree
+    uint32 public epoch;
     uint256 public currentRoot;
     uint256[LEVELS] public filledSubtrees;
     mapping(uint256 => bool) public knownRoots;
 
-    error TreeFull();
+    event NewEpoch(uint32 epoch);
     error ValueOutOfField();
 
     constructor(IPoseidon2 hasher_) {
@@ -37,9 +40,16 @@ abstract contract MerkleTreeWithHistory {
         return hasher.poseidon([left, right]);
     }
 
-    function _insert(uint256 leaf) internal returns (uint32 index) {
+    /// @return index the leaf's global index (epoch << 20 | position)
+    function _insert(uint256 leaf) internal returns (uint256 index) {
         uint32 _nextIndex = nextIndex;
-        if (_nextIndex == uint32(1) << LEVELS) revert TreeFull();
+        if (_nextIndex == uint32(1) << LEVELS) {
+            for (uint32 i = 0; i < LEVELS; i++) {
+                filledSubtrees[i] = zeros(i);
+            }
+            _nextIndex = 0;
+            emit NewEpoch(++epoch);
+        }
         uint32 currentIndex = _nextIndex;
         uint256 currentLevelHash = leaf;
         uint256 left;
@@ -59,7 +69,7 @@ abstract contract MerkleTreeWithHistory {
         currentRoot = currentLevelHash;
         knownRoots[currentLevelHash] = true;
         nextIndex = _nextIndex + 1;
-        return _nextIndex;
+        return (uint256(epoch) << LEVELS) | _nextIndex;
     }
 
     function isKnownRoot(uint256 root) public view returns (bool) {

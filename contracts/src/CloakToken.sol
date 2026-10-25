@@ -48,6 +48,7 @@ contract CloakToken {
     }
 
     function _transfer(address from, address to, uint256 value) internal {
+        require(to != address(0), "to zero"); // burns go to 0x…dEaD, so totalSupply stays honest
         require(balanceOf[from] >= value, "balance");
         unchecked {
             balanceOf[from] -= value;

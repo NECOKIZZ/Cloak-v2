@@ -7,16 +7,21 @@ services:
     envVars:
       - key: KEEPER_PK
         sync: false
+      # Cloak v2 on Elysium testnet (public addresses; see deployments/elysium-testnet-v2.json)
       - key: FACTORY
-        sync: false
+        value: "0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc"
       - key: START_BLOCK
-        sync: false
+        value: "15855986"
       - key: ROUTER
-        value: "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41"
+        value: "0xd51e731467c49991496329c2b7979cb1aa220ee2"
       - key: BATCHER
-        value: "0xf6582cc5a84fccf74e571e652fb7b603a2c25812"
+        value: "0xa13ffd763a8cccfea1b868c616291723579ddb77"
       - key: BATCHER_BLOCK
-        value: "10980614"
+        value: "15860063"
+      - key: MIGRATOR
+        value: "0xe54c02fa685f2c95e5ae98e1155547194d04d9ad"
+      - key: LEGACY_ROUTER
+        value: "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41"
   - type: web
     name: cloak-web
     runtime: static

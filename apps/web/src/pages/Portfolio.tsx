@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { formatEther, isAddress, parseEther, type Address, type Hex } from "viem";
-import { txLink } from "../config";
+import { CloakPrivate } from "@cloak/sdk";
+import { LEGACY_ROUTER, LEGACY_ROUTER_BLOCK, MIGRATOR, txLink } from "../config";
+import { publicClient } from "../wallet";
 import { hype, tokens } from "../format";
 import { getProver, useApp } from "../state";
 import { friendly, Hint } from "../errors";
 import { Icon, TokenIcon } from "../ui";
-import { useMarkets } from "./markets";
+import { useFeePct, useMarkets } from "./markets";
 
 type Tab = "shield" | "send" | "withdraw";
 
@@ -20,6 +22,23 @@ export function Portfolio() {
   const [busy, setBusy] = useState("");
   const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
   const syncing = useRef(false);
+  const feePct = useFeePct();
+  const [moveMsg, setMoveMsg] = useState<{ busy?: string; ok?: string; err?: string }>({});
+
+  /** Move private balances from the first Cloak deployment (one extra signature for the old keys). */
+  async function moveOld() {
+    if (!priv || !wallet || !LEGACY_ROUTER) return;
+    setMoveMsg({ busy: "Sign once more to open your old private account…" });
+    try {
+      const legacy = new CloakPrivate(publicClient, LEGACY_ROUTER, await CloakPrivate.legacyKeysFromWallet(wallet), getProver, priv.submit, LEGACY_ROUTER_BLOCK);
+      await getProver();
+      const moved = await priv.migrateFrom(legacy, (m) => setMoveMsg({ busy: m }));
+      setMoveMsg({ ok: moved.length ? `Moved ${moved.length} private balance${moved.length > 1 ? "s" : ""} into the new vaults.` : "Nothing to move: your old private account is empty." });
+      refresh();
+    } catch (e) {
+      setMoveMsg({ err: friendly(e) });
+    }
+  }
 
   async function refresh() {
     if (!priv || !markets || syncing.current) return;
@@ -155,7 +174,7 @@ export function Portfolio() {
               ? "Shielding is the one public step: your wallet deposits HYPE. It lands on a one-time key, so it can't be linked to anything you do next."
               : tab === "send"
                 ? "A transfer inside the vault. The chain only sees that a private transaction happened."
-                : "Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy."}
+                : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and the relayer takes a small fee for gas.`}
           </p>
         </div>
         <div className="col">
@@ -165,6 +184,15 @@ export function Portfolio() {
             <div className="summary mono xs" style={{ wordBreak: "break-all", marginTop: 12 }}>{privAddress}</div>
             <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(privAddress).catch(() => {}); toast("Cloak address copied"); }}><Icon.copy size={14} />Copy</button>
           </div>
+          {LEGACY_ROUTER && MIGRATOR && (
+            <div className="card">
+              <div className="card-head"><h3>Balance in the old vaults?</h3><Icon.lock size={16} /></div>
+              <p className="small mute">Cloak moved to new contracts with fees, caps and security fixes. If you held a private balance before, move it here in one step. It stays private, and nobody can redirect it.</p>
+              <button className="btn btn-ghost btn-sm" disabled={!!moveMsg.busy} onClick={moveOld}>{moveMsg.busy ?? "Move my old balance"}</button>
+              {moveMsg.ok && <div className="okmsg">{moveMsg.ok}</div>}
+              {moveMsg.err && <div className="err">{moveMsg.err}</div>}
+            </div>
+          )}
           <div className="card flat">
             <h3>Tips for staying private</h3>
             <ul className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>

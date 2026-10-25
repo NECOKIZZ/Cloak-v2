@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { cloakPairAbi, cloakTokenAbi, privateRouterAbi } from "@cloak/sdk";
+import { cloakConfigAbi, cloakPairAbi, cloakTokenAbi, privateRouterAbi } from "@cloak/sdk";
 import { ROUTER } from "../config";
 import { publicClient } from "../wallet";
 import { friendly } from "../errors";
@@ -15,6 +15,8 @@ export interface Market {
   price: bigint;
   reserveHype: bigint;
   reserveToken: bigint;
+  /** Batch rounds need the pair's time-weighted price, which first-deployment pairs don't have. */
+  batchable: boolean;
 }
 
 let cache: { at: number; data: Market[] } | null = null;
@@ -34,12 +36,13 @@ export async function loadMarkets(force = false): Promise<Market[]> {
       publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "symbol" }),
       publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "name" }),
     ]);
-    const [reserveHype, reserveToken, price] = await Promise.all([
+    const [reserveHype, reserveToken, price, batchable] = await Promise.all([
       publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveHype" }),
       publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
       publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "price" }),
+      publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "lastUpdate" }).then(() => true, () => false),
     ]);
-    out.push({ token, pool, pair, symbol, name, price, reserveHype, reserveToken });
+    out.push({ token, pool, pair, symbol, name, price, reserveHype, reserveToken, batchable });
   }
   cache = { at: Date.now(), data: out };
   return out;
@@ -61,8 +64,30 @@ export function useMarkets() {
   return { markets, err };
 }
 
+let feeBps: Promise<number> | null = null;
+/** The protocol's withdrawal fee (a private swap is a withdrawal into the router), in bps. */
+export function withdrawFeeBps(): Promise<number> {
+  if (!ROUTER) return Promise.resolve(0);
+  feeBps ??= publicClient
+    .readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "config" })
+    .then((config) => publicClient.readContract({ address: config, abi: cloakConfigAbi, functionName: "withdrawFeeBps" }))
+    .then(Number)
+    .catch(() => ((feeBps = null), 0));
+  return feeBps;
+}
+
+/** "0.25%" (or "no") for display. */
+export function useFeePct(): string {
+  const [bps, setBps] = useState<number | null>(null);
+  useEffect(() => {
+    withdrawFeeBps().then(setBps);
+  }, []);
+  return bps === null ? "a" : bps === 0 ? "no" : `${bps / 100}%`;
+}
+
 export async function quote(m: Market, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
   if (amountIn <= 0n) return 0n;
+  amountIn -= (amountIn * BigInt(await withdrawFeeBps())) / 10_000n; // what the router actually trades
   // live reserves, so the quote reflects trades made since the markets were loaded
   const [rH, rT] = await Promise.all([
     publicClient.readContract({ address: m.pair, abi: cloakPairAbi, functionName: "reserveHype" }),

@@ -123,7 +123,7 @@ export function Pitch() {
             <div className="cmp us">
               <span className="eyebrow">Cloak</span>
               <h3>A public clock opens the bids. Your device makes the proofs.</h3>
-              <p>drand timelock for bids, zero-knowledge proofs made in the browser for the vault. Plain EVM contracts with no admin keys.</p>
+              <p>drand timelock for bids, zero-knowledge proofs made in the browser for the vault. Plain EVM contracts that nobody can withdraw from, with rule changes behind a public 3-day delay.</p>
             </div>
           </div>
         </Slide>

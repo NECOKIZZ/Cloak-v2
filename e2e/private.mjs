@@ -4,8 +4,8 @@
 //   Elysium: RPC_URL=… DEPLOYER_PK=… FACTORY=0x… LAUNCH_INDEX=n [ROUTER=0x…] node e2e/private.mjs
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { generatePrivateKey } from "viem/accounts";
-import { anvilLocal, elysiumTestnet, CloakPrivate, createProver, walletSubmitter, relayerSubmitter, privateRouterAbi, privateBatcherAbi, cloakFactoryAbi, cloakTokenAbi } from "@cloak/sdk";
-import { Cloak, clients, deployBatcher, deployFactory, deployPrivacy, fmt, parseEther, sleep, waitChainTime, waitDrand } from "./lib.mjs";
+import { anvilLocal, elysiumTestnet, CloakPrivate, createProver, walletSubmitter, relayerSubmitter, privateRouterAbi, privateBatcherAbi, cloakFactoryAbi, cloakTokenAbi, shieldedPoolAbi } from "@cloak/sdk";
+import { Cloak, clients, deployBatcher, deployFactory, deployPrivacy, exempt, fmt, parseEther, sleep, waitChainTime, waitDrand } from "./lib.mjs";
 
 const RPC = process.env.RPC_URL ?? "http://127.0.0.1:8545";
 const local = RPC.includes("127.0.0.1") || RPC.includes("localhost");
@@ -28,13 +28,19 @@ console.log(`chain ${chain.name} (${chain.id})`);
 
 // 1. a settled launch (reuse one on testnet via FACTORY + LAUNCH_INDEX)
 let factory = process.env.FACTORY;
+let config;
 let launchIndex = process.env.LAUNCH_INDEX !== undefined ? BigInt(process.env.LAUNCH_INDEX) : undefined;
 if (!factory || launchIndex === undefined) {
-  factory = factory ?? (await deployFactory(d.publicClient, d.walletClient)).factory;
+  if (!factory) {
+    // fees on, as on mainnet: 0.25% on withdrawals (cash outs and private swaps), 1.5% of a successful raise
+    const f = await deployFactory(d.publicClient, d.walletClient, { rules: { withdrawFeeBps: 25, launchFeeBps: 150 } });
+    factory = f.factory;
+    config = f.config;
+  }
   const creator = new Cloak(d.publicClient, d.walletClient, factory);
   const now = Number((await d.publicClient.getBlock()).timestamp);
-  const unit = 10n ** 14n / scale;
-  const l = await creator.createLaunch({ name: "Shade", symbol: "SHADE", saleSupply: 1_000_000n * 10n ** 18n, minPrice: unit, tickSize: unit, numTicks: 50, commitEnd: now + 12, revealEnd: now + 24, lpBps: 8000 });
+  const unit = 10n ** 14n / (local ? 1n : 100_000n); // testnet: the whole sale costs about 0.02 HYPE
+  const l = await creator.createLaunch({ name: "Shade", symbol: "SHADE", saleSupply: 1_000_000n * 10n ** 18n, minPrice: unit, tickSize: unit, numTicks: 50, commitEnd: now + 12, revealEnd: now + 50, lpBps: 8000 });
   const b = clients(chain, RPC, generatePrivateKey());
   const q = creator.quoteBid(await creator.getAuction(l.auction), unit * 20n, 1_000_000n * 10n ** 18n);
   await d.publicClient.waitForTransactionReceipt({ hash: await d.walletClient.sendTransaction({ to: b.account.address, value: q.cost + parseEther("0.01") }) });
@@ -47,6 +53,10 @@ if (!factory || launchIndex === undefined) {
   if (mine) await mine();
   await creator.settle(l.auction);
   await creator.claimAll(l.auction, { fromBlock: l.block });
+  const st = await creator.getAuction(l.auction);
+  ok(st.feesOwed === (st.raised * 150n) / 10_000n, `launch fee: 1.5% of the ${fmt(st.raised, 4)} HYPE raise owed to the treasury`);
+  await creator.payOut(l.auction);
+  ok((await creator.getAuction(l.auction)).creatorOwed === 0n, "creator proceeds and launch fee pulled out");
   launchIndex = (await d.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launchesCount" })) - 1n;
   console.log(`launch ${l.auction} settled`);
 }
@@ -54,18 +64,20 @@ if (!factory || launchIndex === undefined) {
 // 2. privacy contracts + private market for the launch
 let router = process.env.ROUTER;
 let routerBlock = BigInt(process.env.ROUTER_BLOCK ?? 0);
+config ??= await d.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "config" });
 if (!router) {
-  const p = await deployPrivacy(d.publicClient, d.walletClient, factory);
+  const p = await deployPrivacy(d.publicClient, d.walletClient, factory, { config });
   router = p.router;
   routerBlock = p.block;
   txs.deployRouter = p.txHash;
-  console.log(`router ${router} · verifier ${p.verifier}`);
+  console.log(`router ${router}`);
 }
 let batcher = process.env.BATCHER;
 let batcherBlock = BigInt(process.env.BATCHER_BLOCK ?? 0);
 if (!batcher) {
-  const b = await deployBatcher(d.publicClient, d.walletClient, router, { roundSecs: local ? 8 : 30, maxSlippageBps: local ? 500 : 2500, refundAfter: 600 });
+  const b = await deployBatcher(d.publicClient, d.walletClient, router, { roundSecs: local ? 8 : 30, maxSlippageBps: 200, refundAfter: 600 });
   batcher = b.batcher;
+  await exempt(d.publicClient, d.walletClient, config, [router, batcher]);
   batcherBlock = b.block;
   txs.deployBatcher = b.txHash;
   console.log(`batcher ${batcher}`);
@@ -87,7 +99,7 @@ const relayer = clients(chain, RPC, RELAYER_PK);
 const root = new URL("..", import.meta.url).pathname;
 const prover = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
 const submit = process.env.RELAYER_URL ? relayerSubmitter(process.env.RELAYER_URL) : walletSubmitter(relayer.publicClient, relayer.walletClient, router, batcher);
-const keys = await CloakPrivate.keysFromWallet(trader.walletClient);
+const keys = await CloakPrivate.keysFromWallet(trader.walletClient, { chainId: chain.id, router, verify: true });
 const priv = new CloakPrivate(d.publicClient, router, keys, async () => prover, submit, routerBlock, batcher);
 const markets = await priv.loadMarkets();
 const hypePool = markets[0].pool;
@@ -120,10 +132,12 @@ ok((await priv.balance(tokenPool)) === tokBal - tokBal / 2n, `remaining ${SYM} s
 const fresh = clients(chain, RPC, generatePrivateKey()).account.address;
 const out = parseEther("0.5") / scale;
 txs.unshield = await priv.unshieldHype(fresh, out, (m) => console.log(`    · ${m}`));
-ok((await d.publicClient.getBalance({ address: fresh })) === out, `unshielded ${fmt(out, 4)} HYPE to a brand-new address`);
+const net = await d.publicClient.readContract({ address: hypePool, abi: shieldedPoolAbi, functionName: "afterFee", args: [out] });
+ok(net === out - (out * 25n) / 10_000n && (await d.publicClient.getBalance({ address: fresh })) === net, `unshielded ${fmt(out, 4)} HYPE to a brand-new address, ${fmt(out - net, 6)} kept as the 0.25% fee`);
+ok((await d.publicClient.readContract({ address: hypePool, abi: shieldedPoolAbi, functionName: "feesOwed" })) > 0n, "withdrawal fees are waiting in the vault for collectFees()");
 
 // a second trader can't see the first one's notes
-const other = new CloakPrivate(d.publicClient, router, await CloakPrivate.keysFromWallet(clients(chain, RPC, generatePrivateKey()).walletClient), async () => prover, submit, routerBlock, batcher);
+const other = new CloakPrivate(d.publicClient, router, await CloakPrivate.keysFromWallet(clients(chain, RPC, generatePrivateKey()).walletClient, { chainId: chain.id, router }), async () => prover, submit, routerBlock, batcher);
 await other.loadMarkets();
 ok((await other.balance(hypePool)) === 0n && (await other.balance(tokenPool)) === 0n, "another account sees none of these notes");
 
@@ -164,7 +178,19 @@ for (const r of rounds) {
   if (mine) await mine();
   await sleep(local ? 0 : 8000); // a hosted keeper may settle first
   const st = await d.publicClient.readContract({ ...bc, functionName: "batches", args: [token, r] });
-  if (st[6]) continue; // already settled by a keeper
+  if (st[7]) continue; // already settled by a keeper
+  // like the keeper: if an earlier round's net swap just moved the pool, wait for this round's TWAP to catch up
+  for (let tries = 0; ; tries++) {
+    try {
+      await d.publicClient.simulateContract({ ...bc, functionName: "settle", args: [token, r], account: relayer.account });
+      break;
+    } catch (e) {
+      if (tries > 30 || !String(e.message).includes("PriceMoved")) throw e;
+      console.log(`    · round ${r}: price still settling, retrying`);
+      await sleep(local ? 0 : 10_000);
+      if (mine) await mine();
+    }
+  }
   const h = await relayer.walletClient.writeContract({ ...bc, functionName: "settle", args: [token, r] });
   await d.publicClient.waitForTransactionReceipt({ hash: h });
   txs.batchSettle = h;
@@ -180,14 +206,14 @@ ok(otherHype > hypeOtherBefore - parseEther("0.1") / scale, `batched sell filled
 const fills = await d.publicClient.getContractEvents({ ...bc, eventName: "OrderFilled", fromBlock: batcherBlock, strict: true });
 const byId = new Map(fills.map((f) => [f.args.id, f.args.amountOut]));
 const sameRoundBuys = placedBuy.orders.filter((o) => o.round === placedBuy.orders[0].round);
-const rates = sameRoundBuys.map((o) => (byId.get(o.id) * 10n ** 18n) / o.size);
+const rates = sameRoundBuys.map((o) => (byId.get(o.id) * 10n ** 18n) / o.size); // every order pays the same fee rate
 ok(rates.every((x) => (x > rates[0] ? x - rates[0] : rates[0] - x) * 10n ** 9n <= rates[0]), `uniform price: ${sameRoundBuys.length} buy orders in one round all filled at the same rate`);
 
 console.log(`\n${checks} checks passed`);
 if (!local) {
   mkdirSync(new URL("../deployments", import.meta.url), { recursive: true });
   const outj = { chainId: chain.id, factory, router, routerBlock: routerBlock.toString(), batcher, batcherBlock: batcherBlock.toString(), token, hypePool, tokenPool, txs: Object.fromEntries(Object.entries(txs).map(([k, v]) => [k, explorer(v)])) };
-  writeFileSync(new URL("../deployments/elysium-testnet-private.json", import.meta.url), JSON.stringify(outj, null, 2));
+  writeFileSync(new URL("../deployments/elysium-testnet-private-v2.json", import.meta.url), JSON.stringify(outj, null, 2));
   console.log(JSON.stringify(outj, null, 2));
 }
 process.exit(0); // snarkjs leaves worker threads alive

@@ -2,9 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {CloakPair, IERC20Min} from "./CloakPair.sol";
+import {CloakConfig} from "./CloakConfig.sol";
 
 interface IERC20Approve is IERC20Min {
     function approve(address spender, uint256 value) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
 }
 
 /// @title CloakAuction
@@ -16,9 +18,18 @@ interface IERC20Approve is IERC20Min {
 ///  SETTLE  — walks price ticks high→low to find the single clearing price; seeds a CloakPair at exactly that price
 ///            and locks (or burns) the LP shares.
 ///  CLAIM   — every winner pays the same price; the rest of the deposit is refunded.
+///
+///  Money out is pull-based: the creator's proceeds and the launch fee are credited at settlement and withdrawn
+///  separately, so a recipient that can't take HYPE can never block settlement or anyone's claim.
+///  The launch fee and the deposit caps are read from CloakConfig when the auction is created and never change for it.
 contract CloakAuction {
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
     uint256 public constant MAX_TICKS = 256;
+    uint16 public constant MIN_NO_REVEAL_PENALTY_BPS = 1_000; // withholding a sealed bid always costs 10%
+    // drand quicknet (the network sealed bids are encrypted to)
+    uint256 public constant DRAND_GENESIS = 1692803367;
+    uint256 public constant DRAND_PERIOD = 3;
+    uint256 public constant REVEAL_MARGIN = 30; // seconds the keeper needs between the round and the end of reveals
 
     struct Params {
         address creator; // receives the raise (minus LP) and, after the lock, the LP shares
@@ -53,6 +64,10 @@ contract CloakAuction {
     }
 
     address public immutable factory;
+    CloakConfig public immutable config;
+    uint16 public immutable launchFeeBps;
+    uint256 public immutable bidCap; // 0 = no cap
+    uint256 public immutable depositCap; // 0 = no cap
     IERC20Approve public token;
     Params public params;
 
@@ -73,6 +88,9 @@ contract CloakAuction {
     CloakPair public pair;
     uint256 public lpShares;
     bool public lpReleased;
+    uint256 public creatorOwed; // proceeds waiting for withdrawProceeds()
+    uint256 public feesOwed; // launch fee waiting for collectFees()
+    uint256 public claimedCount;
 
     event Committed(uint256 indexed id, address indexed bidder, uint256 deposit, bytes32 commitment, bytes sealedBid);
     event Revealed(uint256 indexed id, address indexed bidder, uint16 tick, uint256 quantity);
@@ -92,22 +110,38 @@ contract CloakAuction {
     event Failed();
     event Claimed(uint256 indexed id, address indexed bidder, uint256 tokens, uint256 refund, uint256 penalty);
     event LPReleased(address to, uint256 shares);
+    event ProceedsWithdrawn(address to, uint256 amount);
+    event FeesCollected(address to, uint256 amount);
+    event DustSwept(uint256 hype, uint256 tokens);
 
     modifier onlyFactory() {
         require(msg.sender == factory, "factory");
         _;
     }
 
-    constructor(Params memory p) {
+    constructor(Params memory p, CloakConfig config_) {
         require(p.creator != address(0), "creator");
         require(p.saleSupply > 0 && p.minPrice > 0, "supply/price");
         require(p.numTicks > 0 && p.numTicks <= MAX_TICKS, "ticks");
         require(p.numTicks == 1 || p.tickSize > 0, "tickSize");
         require(p.commitEnd > block.timestamp && p.revealEnd > p.commitEnd, "times");
         require(p.lpBps <= 10_000 && p.noRevealPenaltyBps <= 5_000, "bps");
+        require(p.noRevealPenaltyBps >= MIN_NO_REVEAL_PENALTY_BPS, "penalty");
         require(p.lpLockUntil == 0 || p.lpLockUntil >= p.revealEnd, "lock");
+        if (p.tlockRound != 0) {
+            // the round must open after bidding closes and early enough for the keeper to reveal before the end
+            uint256 at = DRAND_GENESIS + (uint256(p.tlockRound) - 1) * DRAND_PERIOD;
+            require(at >= p.commitEnd && at + REVEAL_MARGIN <= p.revealEnd, "tlock round");
+        }
         factory = msg.sender;
         params = p;
+        config = config_;
+        launchFeeBps = config_.launchFeeBps();
+        (uint128 perBid, uint128 total) = config_.auctionLimit();
+        bool capped = config_.depositLimitsOn();
+        bidCap = capped ? perBid : 0;
+        depositCap = capped ? total : 0;
+        if (capped) require(perBid > 0 && total > 0, "auctions closed");
     }
 
     function init(address token_) external onlyFactory {
@@ -174,6 +208,7 @@ contract CloakAuction {
         require(address(token) != address(0), "init");
         require(block.timestamp < params.commitEnd, "commit closed");
         require(msg.value > 0 && msg.value <= type(uint128).max, "deposit");
+        if (bidCap != 0) require(msg.value <= bidCap && totalDeposits + msg.value <= depositCap, "over cap");
         id = _bids.length;
         _bids.push(
             Bid({
@@ -277,7 +312,10 @@ contract CloakAuction {
         uint256 buffer = revealCount * (price / 1e18 + 1);
         raised = gross > buffer ? gross - buffer : 0;
 
-        uint256 lpHype = (raised * p.lpBps) / 10_000;
+        uint256 fee = (raised * launchFeeBps) / 10_000;
+        feesOwed = fee;
+        uint256 net = raised - fee;
+        uint256 lpHype = (net * p.lpBps) / 10_000;
         uint256 lpTokens = lpHype == 0 ? 0 : (lpHype * 1e18) / price;
         if (lpTokens > p.lpReserve) {
             lpTokens = p.lpReserve;
@@ -294,7 +332,7 @@ contract CloakAuction {
 
         uint256 unused = (p.saleSupply - sold) + (p.lpReserve - lpTokens);
         if (unused > 0) require(token.transfer(DEAD, unused), "burn");
-        _sendHype(p.creator, raised - lpHype);
+        creatorOwed = net - lpHype;
 
         emit Settled(clearingTick, price, sold, raised);
         emit FairLaunch(
@@ -320,6 +358,7 @@ contract CloakAuction {
         require(!b.claimed, "claimed");
         (uint256 tokens, uint256 refund, uint256 penalty) = allocationOf(id);
         b.claimed = true;
+        ++claimedCount;
         if (tokens > 0) require(token.transfer(b.bidder, tokens), "t");
         if (penalty > 0) _sendHype(DEAD, penalty);
         if (refund > 0) _sendHype(b.bidder, refund);
@@ -330,6 +369,35 @@ contract CloakAuction {
         for (uint256 i; i < ids.length; ++i) {
             if (!_bids[ids[i]].claimed) claim(ids[i]);
         }
+    }
+
+    /// @notice Pay the creator's proceeds (anyone can call; the destination is fixed).
+    function withdrawProceeds() external {
+        uint256 amount = creatorOwed;
+        require(amount > 0, "nothing");
+        creatorOwed = 0;
+        _sendHype(params.creator, amount);
+        emit ProceedsWithdrawn(params.creator, amount);
+    }
+
+    /// @notice Send the launch fee to the treasury set in CloakConfig (anyone can call).
+    function collectFees() external {
+        uint256 amount = feesOwed;
+        address to = config.feeRecipient();
+        require(amount > 0 && to != address(0), "nothing");
+        feesOwed = 0;
+        _sendHype(to, amount);
+        emit FeesCollected(to, amount);
+    }
+
+    /// @notice Once every bid is claimed, rounding dust goes to the treasury (HYPE) and the burn address (tokens).
+    function sweepDust() external {
+        require(settled && claimedCount == _bids.length, "claims open");
+        uint256 hype = address(this).balance - creatorOwed - feesOwed;
+        uint256 tokens = token.balanceOf(address(this));
+        if (hype > 0) feesOwed += hype;
+        if (tokens > 0) require(token.transfer(DEAD, tokens), "burn");
+        emit DustSwept(hype, tokens);
     }
 
     function releaseLP() external {

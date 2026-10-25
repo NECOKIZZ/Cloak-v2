@@ -97,9 +97,21 @@ Selective disclosure, applied to tokens.
 
 ## Mainnet · Nov 9
 
-- **Cloak launches on Elysium mainnet on Nov 9.**
-- **Deposit caps at launch:** caps on vault deposits and launch raises stay in place until the external audit and the public trusted-setup ceremony are done.
-- **Fees on** from day one (see the revenue model below).
+**Done on testnet (v2, Oct 25):**
+- fees, deposit caps and a public 3-day timelock on rule changes (`CloakConfig`)
+- every fix from the internal review, each with a regression test
+- private balance moves from the first deployment (`CloakMigrator`)
+
+**Still to do before Nov 9:**
+- **Public trusted-setup ceremony**, with outside contributors and a drand beacon. The new verifier goes in through the config.
+- **Hand ownership to a multisig, then `endSetup()`.** After that, every loosening change waits 3 days.
+- **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
+- **Source verification** on the explorer for every contract.
+- **Rehearse the mainnet deploy** on a fork, then deploy, verify and publish the addresses.
+
+At launch:
+- **Deposit caps stay on** until the external audit and the public ceremony are done.
+- **Fees are on** from day one (see the revenue model below).
 
 ---
 
@@ -123,20 +135,16 @@ New:
 
 ## Revenue model
 
-**Today Cloak earns nothing.** On testnet:
-- The 0.3% pool fee stays in the pool, and since the LP is burned or locked, nobody collects it.
-- `ShieldedPool`'s `relayer` + `fee` field only covers the relayer's gas.
-- Batch fills cross at mid-price with no fee.
-
-Fees switch on before mainnet:
+**Fees are live on testnet in v2** and switch on at mainnet the same way:
 
 | Stream | Rate | Where it's collected |
 |---|---|---|
-| **Launch fee** (main revenue) | 1 to 2% of a successful raise | `feeBps` and `feeTo` on the factory, taken in `CloakAuction` at settlement |
-| **Private trading fee** | about 0.1 to 0.2% of private swaps and batch fills | In the same transaction as the relayer fee |
-| **Relayer margin** | gas plus a small markup | Our relayer, until open relayers compete it down (item 10) |
-| **Pool fee switch** (optional) | 0.05 of the pool's 0.3% | `CloakPair`, the Uniswap v2 fee-switch model |
+| **Launch fee** (main revenue) | 1.5% of a successful raise (hard cap 3%) | `CloakAuction` at settlement, then `collectFees()` to the treasury |
+| **Withdrawal fee** | 0.25% of every cash out, private swap and batch order (hard cap 1%) | kept in each shielded vault, then `collectFees()` to the treasury |
+| **Relayer margin** | gas × 1.25 | paid inside each proof to our relayer, until open relayers compete it down (item 10) |
 | **B2B** (later) | revenue share and paid tiers | A share of the launch fee for launchpads that embed the widget, hosted indexer and API tiers, premium launch options |
+
+Deposits and private sends stay free. Rates live in `CloakConfig`: lowering one is instant, and raising one waits a public 3-day delay.
 
 **Rough sizing (illustrative):**
 - **Launch fees:** 100 mainnet launches a month at a $50k average raise and a 1.5% fee is about $75k a month.
@@ -146,8 +154,8 @@ Fees switch on before mainnet:
 **Rules we commit to:**
 - No fee on a failed launch or a refund.
 - Locked liquidity is never touched.
-- Fee rates are capped in the contracts.
-- Fee changes are announced on-chain ahead of time, behind a delay.
+- Fee rates are capped in the contracts (1% on withdrawals, 3% on launches).
+- Fee increases are queued on-chain and wait a public 3-day delay.
 - No admin can withdraw users' funds.
 
 ---
@@ -157,7 +165,7 @@ Fees switch on before mainnet:
 If we only do three things next:
 
 1. **Living launch pages with public buy and sell (item 1).** This fixes "after launching, what next?" for every user, every day.
-2. **SDK on npm plus the widget (item 3).** This is how launchpads on Elysium, such as Ascend, actually adopt Cloak.
+2. **SDK on npm plus the widget (item 3).** This is how launchpads on Elysium actually adopt Cloak.
 3. **The MCP server (item 6).** It's the most distinctive story: private launches and trades for AI agents. It also reuses the SDK, so it's mostly packaging.
 
 The indexer (item 4) quietly supports all three, so it should be built alongside them.

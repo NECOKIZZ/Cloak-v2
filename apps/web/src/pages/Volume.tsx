@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
 import { cloakTokenAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, whypeAbi } from "@cloak/sdk";
-import { BATCHER, ROUTER, ROUTER_BLOCK, txLink } from "../config";
+import { BATCHER, LEGACY_BATCHER, LEGACY_ROUTER, LEGACY_ROUTER_BLOCK, ROUTER, ROUTER_BLOCK, txLink } from "../config";
 import { friendly } from "../errors";
 import { hype } from "../format";
 import { readCloak, publicClient } from "../wallet";
@@ -32,38 +32,56 @@ interface Stats {
 
 let cache: { at: number; data: Stats } | null = null;
 
+type Ev = { args: Record<string, unknown>; blockNumber: bigint; transactionHash: Hex };
+
+/** Public totals of one deployment (router + batcher): events, plus what its vaults hold, valued in HYPE. */
+async function loadSource(router: Address, batcher: Address | undefined, fromBlock: bigint, prices: Map<string, bigint>) {
+  const ev = <N extends string>(address: Address, abi: readonly unknown[], eventName: N) =>
+    publicClient.getContractEvents({ address, abi: abi as never, eventName: eventName as never, fromBlock, toBlock: "latest", strict: true }) as Promise<Ev[]>;
+  const c = { address: router, abi: privateRouterAbi } as const;
+  const [hypePool, whype, n] = await Promise.all([
+    publicClient.readContract({ ...c, functionName: "hypePool" }),
+    publicClient.readContract({ ...c, functionName: "whype" }),
+    publicClient.readContract({ ...c, functionName: "tokensCount" }),
+  ]);
+  const tokens = await Promise.all(Array.from({ length: Number(n) - 1 }, (_, i) => publicClient.readContract({ ...c, functionName: "tokens", args: [BigInt(i + 1)] })));
+  const pools = await Promise.all(tokens.map((t) => publicClient.readContract({ ...c, functionName: "poolOf", args: [t] })));
+  const [shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVaults] = await Promise.all([
+    ev(router, privateRouterAbi, "Shielded"),
+    ev(router, privateRouterAbi, "Unshielded"),
+    ev(router, privateRouterAbi, "PrivateSwap"),
+    batcher ? ev(batcher, privateBatcherAbi, "BatchSettled") : Promise.resolve([] as Ev[]),
+    batcher ? ev(batcher, privateBatcherAbi, "OrderPlaced") : Promise.resolve([] as Ev[]),
+    publicClient.getContractEvents({ address: [hypePool, ...pools], abi: shieldedPoolAbi, eventName: "NewNullifier", fromBlock, toBlock: "latest" }),
+    publicClient.readContract({ address: whype, abi: whypeAbi, functionName: "balanceOf", args: [hypePool] }),
+    Promise.all(tokens.map((t, i) => publicClient.readContract({ address: t, abi: cloakTokenAbi, functionName: "balanceOf", args: [pools[i]] }).then((b) => (b * (prices.get(t.toLowerCase()) ?? 0n)) / WAD))),
+  ]);
+  return { hypePool, shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVault: tokenVaults.reduce((a, b) => a + b, 0n) };
+}
+
 /** Everything here is read from public events and balances; no amounts of private notes are knowable. */
 async function loadStats(): Promise<Stats> {
   if (cache && Date.now() - cache.at < 20_000) return cache.data;
   if (!ROUTER) throw new Error("no router");
-  const fromBlock = ROUTER_BLOCK;
-  const ev = <N extends string>(address: Address, abi: readonly unknown[], eventName: N) =>
-    publicClient.getContractEvents({ address, abi: abi as never, eventName: eventName as never, fromBlock, toBlock: "latest", strict: true }) as Promise<{ args: Record<string, unknown>; blockNumber: bigint; transactionHash: Hex }[]>;
-
-  const [hypePool, whype, markets, launches] = await Promise.all([
-    publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "hypePool" }),
-    publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "whype" }),
-    loadMarkets(true),
-    readCloak.listLaunches(),
+  const [markets, launches] = await Promise.all([loadMarkets(true), readCloak.listLaunches()]);
+  const prices = new Map(markets.map((m) => [m.token.toLowerCase(), m.price]));
+  // the current deployment plus the first one, so history carries over
+  const sources = await Promise.all([
+    loadSource(ROUTER, BATCHER, ROUTER_BLOCK, prices),
+    ...(LEGACY_ROUTER ? [loadSource(LEGACY_ROUTER, LEGACY_BATCHER, LEGACY_ROUTER_BLOCK, prices)] : []),
   ]);
-  const [shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVaults, auctions] = await Promise.all([
-    ev(ROUTER, privateRouterAbi, "Shielded"),
-    ev(ROUTER, privateRouterAbi, "Unshielded"),
-    ev(ROUTER, privateRouterAbi, "PrivateSwap"),
-    BATCHER ? ev(BATCHER, privateBatcherAbi, "BatchSettled") : Promise.resolve([]),
-    BATCHER ? ev(BATCHER, privateBatcherAbi, "OrderPlaced") : Promise.resolve([]),
-    publicClient.getContractEvents({ address: [hypePool, ...markets.map((m) => m.pool)], abi: shieldedPoolAbi, eventName: "NewNullifier", fromBlock, toBlock: "latest" }),
-    publicClient.readContract({ address: whype, abi: whypeAbi, functionName: "balanceOf", args: [hypePool] }),
-    Promise.all(markets.map((m) => publicClient.readContract({ address: m.token, abi: cloakTokenAbi, functionName: "balanceOf", args: [m.pool] }).then((b) => (b * m.price) / WAD))),
-    Promise.all(launches.map((l) => readCloak.getAuction(l.auction))),
-  ]);
+  const all = <K extends "shields" | "unshields" | "swaps" | "settles" | "orders" | "nullifiers">(k: K) => sources.flatMap((x) => x[k] as Ev[]);
+  const [shields, unshields, swaps, settles, orders, nullifiers] = [all("shields"), all("unshields"), all("swaps"), all("settles"), all("orders"), all("nullifiers")];
+  const vaultHype = sources.reduce((a, x) => a + x.vaultHype, 0n);
+  const auctions = await Promise.all(launches.map((l) => readCloak.getAuction(l.auction)));
+  const hypePools = new Set(sources.map((x) => x.hypePool.toLowerCase()));
+  const tokenVaults = sources.map((x) => x.tokenVault);
 
-  const hp = hypePool.toLowerCase();
   const sum = (xs: bigint[]) => xs.reduce((a, b) => a + b, 0n);
   const shielded = sum(shields.map((e) => e.args.amount as bigint));
   const withdrawn = sum(unshields.map((e) => e.args.amount as bigint));
   // the HYPE side of each private swap: amount in for buys, amount out for sells
-  const swapHype = swaps.map((e) => ((e.args.poolIn as string).toLowerCase() === hp ? (e.args.amountIn as bigint) : (e.args.amountOut as bigint)));
+  const swapHype = swaps.map((e) => (hypePools.has((e.args.poolIn as string).toLowerCase()) ? (e.args.amountIn as bigint) : (e.args.amountOut as bigint)));
   const batchHype = settles.map((e) => (e.args.buyHype as bigint) + (e.args.hypeForSellers as bigint));
   const swapVolume = sum(swapHype);
   const batchVolume = sum(batchHype);
@@ -72,7 +90,7 @@ async function loadStats(): Promise<Stats> {
 
   const recent: Activity[] = [
     ...shields.map((e) => ({ kind: "Shielded", amount: e.args.amount as bigint, block: e.blockNumber, tx: e.transactionHash })),
-    ...swaps.map((e, i) => ({ kind: (e.args.poolIn as string).toLowerCase() === hp ? "Private buy" : "Private sell", amount: swapHype[i], block: e.blockNumber, tx: e.transactionHash })),
+    ...swaps.map((e, i) => ({ kind: hypePools.has((e.args.poolIn as string).toLowerCase()) ? "Private buy" : "Private sell", amount: swapHype[i], block: e.blockNumber, tx: e.transactionHash })),
     ...settles.map((e, i) => ({ kind: "Batch round", amount: batchHype[i], block: e.blockNumber, tx: e.transactionHash })),
     ...unshields.map((e) => ({ kind: "Withdrawn", amount: e.args.amount as bigint, block: e.blockNumber, tx: e.transactionHash })),
   ].sort((a, b) => Number(b.block - a.block)).slice(0, 12);

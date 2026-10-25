@@ -6,10 +6,13 @@ import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
 import {CloakToken} from "../src/CloakToken.sol";
 import {CloakPair} from "../src/CloakPair.sol";
+import {CloakConfig} from "../src/CloakConfig.sol";
+import {CloakVestingDeployer} from "../src/CloakVesting.sol";
 
 contract CloakAuctionTest is Test {
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
+    CloakConfig config;
     CloakFactory factory;
     CloakAuction auction;
     CloakToken token;
@@ -26,7 +29,8 @@ contract CloakAuctionTest is Test {
     uint256 constant TICK = 0.0001 ether;
 
     function setUp() public {
-        factory = new CloakFactory();
+        config = new CloakConfig(address(1), address(0));
+        factory = new CloakFactory(config, new CloakVestingDeployer());
         for (uint256 i; i < 3; ++i) {
             vm.deal([alice, bob, carol][i], 10_000 ether);
         }
@@ -46,9 +50,9 @@ contract CloakAuctionTest is Test {
             lpBps: lpBps,
             noRevealPenaltyBps: penaltyBps,
             lpLockUntil: lpLockUntil,
-            tlockRound: 123
+            tlockRound: 0
         });
-        (address a, address t) = factory.createLaunch("Cloak Test", "CLK", 100_000e18, p, "ipfs://meta");
+        (address a, address t) = factory.createLaunch("Cloak Test", "CLK", 100_000e18, 30 days, p, "ipfs://meta");
         auction = CloakAuction(payable(a));
         token = CloakToken(t);
     }
@@ -70,7 +74,9 @@ contract CloakAuctionTest is Test {
 
     function test_factoryMintsSupply() public view {
         assertEq(token.balanceOf(address(auction)), SUPPLY + LP_RESERVE);
-        assertEq(token.balanceOf(creator), 100_000e18);
+        assertEq(token.balanceOf(creator), 0); // the creator share vests
+        (,,,,, address vesting) = factory.launches(0);
+        assertEq(token.balanceOf(vesting), 100_000e18);
         assertEq(token.totalSupply(), SUPPLY + LP_RESERVE + 100_000e18);
         assertEq(factory.launchesCount(), 1);
     }
@@ -136,6 +142,7 @@ contract CloakAuctionTest is Test {
         assertEq(pair.sharesOf(DEAD), pair.totalShares());
         // creator got the raise minus the LP half
         uint256 raised = auction.raised();
+        auction.withdrawProceeds(); // pull payment
         assertApproxEqAbs(creator.balance - creatorBefore, raised - pair.reserveHype(), 1);
         assertApproxEqRel(pair.reserveHype(), raised / 2, 1e12);
     }
@@ -228,7 +235,7 @@ contract CloakAuctionTest is Test {
         _toSettle();
         auction.settle();
         assertTrue(auction.failed());
-        assertEq(token.balanceOf(creator), 100_000e18 + SUPPLY + LP_RESERVE);
+        assertEq(token.balanceOf(creator), SUPPLY + LP_RESERVE);
         uint256 before = alice.balance;
         auction.claim(0);
         assertEq(alice.balance - before, 100 ether); // no penalty when the launch fails

@@ -6,6 +6,8 @@ import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
 import {CloakToken} from "../src/CloakToken.sol";
 import {CloakPair} from "../src/CloakPair.sol";
+import {CloakConfig} from "../src/CloakConfig.sol";
+import {CloakVestingDeployer} from "../src/CloakVesting.sol";
 import {ShieldedPool} from "../src/shielded/ShieldedPool.sol";
 import {PrivateRouter, ICloakFactory} from "../src/shielded/PrivateRouter.sol";
 import {PrivateBatcher} from "../src/shielded/PrivateBatcher.sol";
@@ -15,6 +17,7 @@ import {IVerifier} from "../src/shielded/interfaces/IVerifier.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
 
 contract PrivateBatcherTest is Test {
+    CloakConfig config;
     CloakAuction auction;
     CloakToken token;
     CloakPair pair;
@@ -35,12 +38,13 @@ contract PrivateBatcherTest is Test {
 
     function setUp() public {
         vm.warp(1_000_000);
-        CloakFactory factory = new CloakFactory();
+        config = new CloakConfig(address(new MockVerifier()), address(0));
+        CloakFactory factory = new CloakFactory(config, new CloakVestingDeployer());
         CloakAuction.Params memory p = CloakAuction.Params(
             address(this), 1_000_000e18, 1_000_000e18, 0.001 ether, 0.001 ether, 10,
-            uint64(block.timestamp + 1 hours), uint64(block.timestamp + 2 hours), 5000, 0, 0, 1
+            uint64(block.timestamp + 1 hours), uint64(block.timestamp + 2 hours), 5000, 1000, 0, 0
         );
-        (address a, address t) = factory.createLaunch("Shade", "SHADE", 0, p, "");
+        (address a, address t) = factory.createLaunch("Shade", "SHADE", 0, 0, p, "");
         auction = CloakAuction(payable(a));
         token = CloakToken(t);
         // settle: one bidder takes the whole sale at tick 4 (0.005 HYPE/token)
@@ -56,17 +60,18 @@ contract PrivateBatcherTest is Test {
         auction.claim(0);
         pair = auction.pair();
 
-        MockVerifier verifier = new MockVerifier();
         router = new PrivateRouter(
-            IVerifier(address(verifier)),
+            config,
             IPoseidon2(_deployCode("test/fixtures/poseidon2.hex")),
             IPoseidon3(_deployCode("test/fixtures/poseidon3.hex")),
-            ICloakFactory(address(factory))
+            ICloakFactory(address(factory)),
+            ICloakFactory(address(0)),
+            WHYPE(payable(address(0)))
         );
         tokenPool = router.createPool(0);
         hypePool = router.hypePool();
         whype = router.whype();
-        batcher = new PrivateBatcher(router, ROUND, 500, 10 minutes);
+        batcher = new PrivateBatcher(router, ROUND, 200, 10 minutes, 1);
 
         // fund the shielded pools: 100 HYPE, and 10k tokens bought publicly then shielded
         vm.deal(address(this), 1_000 ether);
@@ -130,7 +135,7 @@ contract PrivateBatcherTest is Test {
         uint64 r = _endRound();
 
         batcher.settle(address(token), r);
-        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,, bool settled,) = batcher.batches(address(token), r);
+        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,,, bool settled,) = batcher.batches(address(token), r);
         assertTrue(settled);
         // the seller was crossed at exactly the mid-price, with no pool fee
         assertEq(hypeForSellers, (100e18 * mid) / 1e18);
@@ -156,7 +161,7 @@ contract PrivateBatcherTest is Test {
         uint256 rT = pair.reserveToken();
         uint64 r = _endRound();
         batcher.settle(address(token), r);
-        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,,,) = batcher.batches(address(token), r);
+        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,,,,) = batcher.batches(address(token), r);
         assertEq(tokensForBuyers, (1e17 * 1e18) / mid); // buyer filled by sellers at mid
         assertEq(pair.reserveToken() - rT, 700e18 - tokensForBuyers); // only the net sold into the pool
         assertGt(hypeForSellers, 1e17);

@@ -28,7 +28,7 @@ await cloak.settle(auction);
 await cloak.claimAll(auction);`,
   "Private trading": `import { CloakPrivate, loadProver, relayerSubmitter } from "@cloak/sdk";
 
-const keys = await CloakPrivate.keysFromWallet(walletClient); // one signature
+const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801, router: ROUTER }); // one signature
 const priv = new CloakPrivate(publicClient, ROUTER, keys,
   () => loadProver("/circuits"), relayerSubmitter(KEEPER_URL), ROUTER_BLOCK, BATCHER);
 await priv.loadMarkets();
@@ -45,7 +45,8 @@ CloakAuction.Params memory p = CloakAuction.Params({
   commitEnd: uint64(block.timestamp + 1 days), revealEnd: uint64(block.timestamp + 1 days + 1 hours),
   lpBps: 5000, noRevealPenaltyBps: 1000, lpLockUntil: 0, tlockRound: round
 });
-(address auction, address token) = CloakFactory(FACTORY).createLaunch("Shade", "SHADE", 0, p, uri);`,
+// creator share: up to 20% of the supply, vesting over at least 30 days (here: none)
+(address auction, address token) = CloakFactory(FACTORY).createLaunch("Shade", "SHADE", 0, 0, p, uri);`,
 };
 
 const API: [string, [string, string][]][] = [
@@ -54,10 +55,12 @@ const API: [string, [string, string][]][] = [
     ["bid(auction, { maxPrice, quantity, deposit? })", "Seal and commit a bid (tlock-encrypted, bucketed deposit). Returns the bid secret."],
     ["revealAll(auction)", "Decrypt every sealed bid whose drand round has passed and reveal them in batches."],
     ["settle(auction) · claimAll(auction)", "Compute the clearing price and seed the pool, then push tokens and refunds to bidders."],
+    ["payOut(auction)", "Pull a settled launch's money out: the creator's proceeds, and the launch fee to the treasury."],
     ["getAuction · demandCurve · bidsOf · listLaunches", "Read state: phase, clearing price, the revealed demand per price level, a bidder's bids."],
   ]],
   ["CloakPrivate · private balances", [
-    ["keysFromWallet(wallet)", "Derive the private account from one wallet signature. The same wallet always restores it."],
+    ["keysFromWallet(wallet, { chainId, router, verify? })", "Derive the private account from one EIP-712 signature bound to this chain and router. The same wallet always restores it; verify signs twice to refuse wallets that sign differently each time."],
+    ["migrateFrom(legacy)", "Move every private balance from the first Cloak deployment into this one, privately, one relayed transaction per note pair."],
     ["shieldHype(wallet, amount)", "Public HYPE → a private note on a one-time key."],
     ["buy · sell(token, amount, { slippageBps })", "Instant private swap through the launch's pool, submitted by the relayer."],
     ["batch(token, side, amount)", "Split into standard sizes and place sealed orders in the current round."],

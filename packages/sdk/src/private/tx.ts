@@ -18,7 +18,8 @@ export interface OwnedNote {
   amount: bigint;
   pubKey: bigint;
   blinding: bigint;
-  leafIndex: number;
+  leafIndex: number; // position inside its tree epoch
+  epoch?: number;
   keyIndex: number;
   privKey: bigint;
   commitment: bigint;
@@ -68,6 +69,18 @@ export const ORDER_DATA_ABI = [
     type: "tuple",
     components: [
       { name: "token", type: "address" },
+      { name: "outPubKey", type: "uint256" },
+      { name: "outBlinding", type: "uint256" },
+      { name: "outMemo", type: "bytes" },
+    ],
+  },
+] as const;
+
+/** `CloakMigrator.MoveData`: where a moved balance lands in the new deployment. */
+export const MOVE_DATA_ABI = [
+  {
+    type: "tuple",
+    components: [
       { name: "outPubKey", type: "uint256" },
       { name: "outBlinding", type: "uint256" },
       { name: "outMemo", type: "bytes" },

@@ -7,7 +7,7 @@ import { Link, useRoute } from "../router";
 import { getProver, useApp } from "../state";
 import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
-import { quote, useMarkets, type Market } from "./markets";
+import { quote, useFeePct, useMarkets, type Market } from "./markets";
 
 function TokenSel({ label, token, onPick, markets }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -37,9 +37,11 @@ export function Trade() {
   const { wallet, connect, priv, unlock, unlocking } = useApp();
   const { markets, err } = useMarkets();
   const [market, setMarket] = useState<Market | null>(null);
+  const feePct = useFeePct();
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [amt, setAmt] = useState("0.001");
-  const [mode, setMode] = useState<"instant" | "batch">(BATCHER ? "batch" : "instant");
+  const [modePick, setMode] = useState<"instant" | "batch">(BATCHER ? "batch" : "instant");
+  const mode = market && !market.batchable ? "instant" : modePick;
   const [q, setQ] = useState(0n);
   const [bal, setBal] = useState<{ hype: bigint; tok: bigint } | null>(null);
   const [round, setRound] = useState<{ endsAt: number } | null>(null);
@@ -167,7 +169,7 @@ export function Trade() {
                   {side === "buy" ? <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} /> : <TokenSel label="HYPE" hypeSide />}
                 </div>
               </div>
-              {BATCHER && (
+              {BATCHER && market.batchable && (
                 <div className="mode">
                   <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}><b>Batch · hides size</b><span>{round ? `Next round in ${Math.max(0, Math.ceil(round.endsAt - now))}s` : "Settles every 30 s"}</span></button>
                   <button className={mode === "instant" ? "on" : ""} onClick={() => setMode("instant")}><b>Instant</b><span>Fills now · size visible</span></button>
@@ -187,7 +189,7 @@ export function Trade() {
               {res.err && <div className="err">{res.err}</div>}
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
             </div>
-            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades.</p>
+            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees: {feePct} Cloak fee on the amount traded, plus a small relayer fee that covers gas, both taken from your private balance.</p>
           </div>
           <div className="col">
             <div className="card">
@@ -211,7 +213,7 @@ export function Trade() {
               <ol className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>
                 <li>Your amount is split into the standard sizes everyone uses.</li>
                 <li>Orders wait in a ~30 s round alongside everyone else's.</li>
-                <li>Buys and sells cross at the pool's fair mid-price. Only the net trades on the pool.</li>
+                <li>Buys and sells cross at the pool's average price over the round, which no single trade can move. Only the net trades on the pool.</li>
                 <li>Everyone in the round gets the same price, paid back into private balances.</li>
               </ol>
             </div>

@@ -1,0 +1,21 @@
+{
+  "chainId": 99801,
+  "factory": "0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc",
+  "router": "0xd51e731467c49991496329c2b7979cb1aa220ee2",
+  "routerBlock": "15856031",
+  "batcher": "0xa13ffd763a8cccfea1b868c616291723579ddb77",
+  "batcherBlock": "15860063",
+  "token": "0x4319AE71F27A2a7932c238B56f5F96A2B6b902cd",
+  "hypePool": "0x4deFEC0814d11c581e5947020ac4ec41e88B55Df",
+  "tokenPool": "0x2c2792e116110e24FC83eFB9d0dE2e55DF48b015",
+  "txs": {
+    "shield": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0x5e25ac70f319ccb85c9987a049f0c24ed0d7251283a0bd535dfb853946ea2753",
+    "privateBuy": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0xb7b5e6e5d653cc45b68a717b5b2955983a7383dd78ceb7acf56d73d34fb3a74e",
+    "privateSell": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0xc8c7a7c2f9b70cc236601b680081b77a209c2adf888cf6c982252ca85ea144ec",
+    "unshield": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0xda4e61177a6a792e32bca1de857e9de33af8137b5d1e2b30ee657453ffbec963",
+    "privateSend": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0x25539f1752de1e51700f7e205f38f3eae1ad092b330b58da6fe716f976224396",
+    "batchOrder": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0xd6893e0d148c666fd082e832986b03b5774c99c0eedefda44902bbb873db078c",
+    "batchSettle": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0x07086520c06678487d67c7a2a37827de9f9144be9e7f4a47ee137dc2d22c5468",
+    "batchClaim": "https://elysium.kinetiq.xyz/testnet-explorer/tx/0xab2ca59da864bd7d00ac8046c4d8f60cace058f6a3264c8f943aa5e8fbbb2aa5"
+  }
+}

@@ -307,10 +307,10 @@ export function Landing() {
           <div className="split">
             <div>
               <h2 className="display-2">No middlemen</h2>
-              <a href={`${EXPLORER}/address/0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c`} target="_blank" rel="noreferrer" className="arrow" style={{ display: "inline-block", marginTop: 18, fontSize: 14 }}>Verify the contracts</a>
+              <a href={`${EXPLORER}/address/0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc`} target="_blank" rel="noreferrer" className="arrow" style={{ display: "inline-block", marginTop: 18, fontSize: 14 }}>Verify the contracts</a>
             </div>
             <div className="three">
-              <div><h3>No admin keys</h3><p>No function lets anyone, including us, move funds out of an auction or a vault.</p></div>
+              <div><h3>Nobody can take funds</h3><p>No function lets anyone, including us, move funds out of an auction or a vault. Rule changes wait a public 3-day delay.</p></div>
               <div><h3>Nothing to trust early</h3><p>Bids open on a public schedule. A relayer can submit your trade but can't change it.</p></div>
               <div><h3>Open source, end to end</h3><p>Contracts, circuits, SDK, keeper and app are public, with tests and real testnet runs.</p></div>
             </div>

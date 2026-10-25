@@ -26,6 +26,20 @@ export async function poseidon(inputs: bigint[]): Promise<bigint> {
 export const ACCOUNT_MESSAGE =
   "Cloak private account v1\n\nSigning this derives your private trading keys on Elysium. It costs nothing and does not move funds.";
 
+/**
+ * EIP-712 request whose signature derives the private keys of a Cloak v2 account. It is bound to the chain and the
+ * router, so a signature collected by another site or for another contract can't reproduce the keys.
+ */
+export const ACCOUNT_TYPED_DATA = (chainId: number, router: `0x${string}`) =>
+  ({
+    domain: { name: "Cloak", version: "2", chainId, verifyingContract: router },
+    types: { PrivateAccount: [{ name: "purpose", type: "string" }] },
+    primaryType: "PrivateAccount",
+    message: {
+      purpose: "Derive my Cloak private trading keys. This costs nothing and moves no funds. Only sign this on cloak.boblabs.tech.",
+    },
+  }) as const;
+
 export interface SpendKey {
   index: number;
   privKey: bigint;
