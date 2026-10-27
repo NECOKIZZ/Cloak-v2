@@ -3,14 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @cloakonelysium/sdk build",
+    "build": "pnpm --filter @cloakely/sdk build",
     "abis": "cd contracts && forge build && cd .. && node scripts/gen-abis.mjs",
-    "test": "cd contracts && forge test && cd .. && pnpm --filter @cloakonelysium/sdk test",
+    "test": "cd contracts && forge test && cd .. && pnpm --filter @cloakely/sdk test",
     "e2e": "node e2e/run.mjs",
     "deploy:factory": "node e2e/deploy.mjs",
     "seed": "node e2e/seed.mjs",
     "keeper": "node services/keeper/index.mjs",
-    "web": "pnpm --filter @cloakonelysium/web dev"
+    "web": "pnpm --filter @cloakely/web dev"
   },
   "packageManager": "pnpm@10.28.0",
   "pnpm": {

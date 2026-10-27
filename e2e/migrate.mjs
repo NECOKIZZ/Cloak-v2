@@ -6,7 +6,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { generatePrivateKey } from "viem/accounts";
-import { anvilLocal, CloakPrivate, commitmentOf, createProver, randomSalt, relayerSubmitter, walletSubmitter, privateRouterAbi, shieldedPoolAbi } from "@cloakonelysium/sdk";
+import { anvilLocal, CloakPrivate, commitmentOf, createProver, randomSalt, relayerSubmitter, walletSubmitter, privateRouterAbi, shieldedPoolAbi } from "@cloakely/sdk";
 import { clients, deployBatcher, deployFactory, deployMigrator, deployPrivacy, exempt, fmt, parseEther, sleep, waitChainTime } from "./lib.mjs";
 import * as v1 from "./v1/abis.mjs";
 import { bytecodeV1 } from "./v1/bytecode.mjs";

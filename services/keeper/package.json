@@ -1,12 +1,12 @@
 {
-  "name": "@cloakonelysium/keeper",
+  "name": "@cloakely/keeper",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node index.mjs"
   },
   "dependencies": {
-    "@cloakonelysium/sdk": "workspace:*",
+    "@cloakely/sdk": "workspace:*",
     "viem": "2.21.54"
   },
   "license": "MIT"

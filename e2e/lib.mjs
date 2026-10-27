@@ -1,7 +1,7 @@
 import { createPublicClient, createWalletClient, http, parseEther, formatEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Cloak, cloakFactoryAbi, drandRoundTime } from "@cloakonelysium/sdk";
-import { bytecode } from "@cloakonelysium/sdk/bytecode";
+import { Cloak, cloakFactoryAbi, drandRoundTime } from "@cloakely/sdk";
+import { bytecode } from "@cloakely/sdk/bytecode";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const fmt = (wei, d = 6) => Number(formatEther(wei)).toFixed(d);
@@ -73,7 +73,7 @@ export async function waitDrand(round) {
 
 export { Cloak, parseEther };
 
-import { cloakConfigAbi, cloakMigratorAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi } from "@cloakonelysium/sdk";
+import { cloakConfigAbi, cloakMigratorAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi } from "@cloakely/sdk";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 

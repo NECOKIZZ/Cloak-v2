@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { cloakConfigAbi, cloakPairAbi, cloakTokenAbi, privateRouterAbi } from "@cloakonelysium/sdk";
+import { cloakConfigAbi, cloakPairAbi, cloakTokenAbi, privateRouterAbi } from "@cloakely/sdk";
 import { ROUTER } from "../config";
 import { publicClient } from "../wallet";
 import { friendly } from "../errors";

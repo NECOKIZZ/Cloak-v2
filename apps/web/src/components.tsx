@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
-import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, type AuctionState, type Wallet, Cloak } from "@cloakonelysium/sdk";
+import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, type AuctionState, type Wallet, Cloak } from "@cloakely/sdk";
 import { FACTORY, txLink } from "./config";
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
@@ -533,7 +533,7 @@ export function CreateLaunch({ wallet, onCreated }: { wallet: Wallet | null; onC
         {!FACTORY ? "Set VITE_FACTORY to enable" : !wallet ? "Connect a wallet" : busy ? "Deploying…" : "Create sealed-bid launch"}
       </button>
       {err && <div className="err">{err}</div>}
-      <p className="note">Cloak takes a launch fee from a successful raise only (none if the launch doesn't fill). Same as <span className="mono">cloak.createLaunch(&#123;…&#125;)</span> in <span className="mono">@cloakonelysium/sdk</span>. A launchpad can call <span className="mono">CloakFactory.createLaunch</span> from its own contracts.</p>
+      <p className="note">Cloak takes a launch fee from a successful raise only (none if the launch doesn't fill). Same as <span className="mono">cloak.createLaunch(&#123;…&#125;)</span> in <span className="mono">@cloakely/sdk</span>. A launchpad can call <span className="mono">CloakFactory.createLaunch</span> from its own contracts.</p>
     </div>
   );
 }

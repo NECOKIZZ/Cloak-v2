@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { cloakFactoryAbi } from "@cloakonelysium/sdk";
+import { cloakFactoryAbi } from "@cloakely/sdk";
 import { FACTORY } from "./config";
 import { Hint } from "./errors";
 import { publicClient } from "./wallet";

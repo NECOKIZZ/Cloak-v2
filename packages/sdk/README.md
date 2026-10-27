@@ -1,4 +1,4 @@
-# @cloakonelysium/sdk
+# @cloakely/sdk
 
 TypeScript SDK for [Cloak](https://cloak.boblabs.tech), fair launches and private trading on Kinetiq's **Elysium**.
 
@@ -15,14 +15,14 @@ TypeScript SDK for [Cloak](https://cloak.boblabs.tech), fair launches and privat
 Live on Elysium testnet (chain `99801`). Built on [viem](https://viem.sh).
 
 ```bash
-npm install @cloakonelysium/sdk viem
+npm install @cloakely/sdk viem
 ```
 
 ## Launches
 
 ```ts
 import { createPublicClient, createWalletClient, custom, http, parseEther } from "viem";
-import { Cloak, deploymentFor, elysiumTestnet } from "@cloakonelysium/sdk";
+import { Cloak, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
 
 const d = deploymentFor(elysiumTestnet.id);
 const publicClient = createPublicClient({ chain: elysiumTestnet, transport: http() });
@@ -52,7 +52,7 @@ await cloak.payOut(auction); // the creator's proceeds, and the launch fee to th
 ## Private trading
 
 ```ts
-import { CloakPrivate, deploymentFor, elysiumTestnet, loadProver, relayerSubmitter } from "@cloakonelysium/sdk";
+import { CloakPrivate, deploymentFor, elysiumTestnet, loadProver, relayerSubmitter } from "@cloakely/sdk";
 
 const d = deploymentFor(elysiumTestnet.id);
 const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: d.chainId, router: d.router, verify: true });
@@ -95,6 +95,6 @@ Rules live in the on-chain `CloakConfig`. Raising a fee or a cap waits a public 
 | `loadProver`, `createProver` | The Groth16 prover, running on the device |
 | `deployments`, `deploymentFor` | Addresses, start blocks, relayer and circuit URLs per chain |
 | `elysiumTestnet` | The viem chain |
-| `*Abi`, `@cloakonelysium/sdk/bytecode` | Contract ABIs and bytecode |
+| `*Abi`, `@cloakely/sdk/bytecode` | Contract ABIs and bytecode |
 
 Docs: [cloak.boblabs.tech/docs](https://cloak.boblabs.tech/docs). Source and contracts: [github.com/NECOKIZZ/cloak](https://github.com/NECOKIZZ/cloak). Unaudited testnet software. MIT licensed.

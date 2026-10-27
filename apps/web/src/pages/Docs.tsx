@@ -154,7 +154,7 @@ export function Docs() {
           <p>Everything above is one package. See the <Link to="/sdk">SDK page</Link> for the full API.</p>
           <div className="code">
             <div className="code-head"><span>launch + private trading</span><span>TypeScript</span></div>
-            <pre>{`import { Cloak, CloakPrivate, createProver, relayerSubmitter } from "@cloakonelysium/sdk";
+            <pre>{`import { Cloak, CloakPrivate, createProver, relayerSubmitter } from "@cloakely/sdk";
 
 const cloak = new Cloak(publicClient, walletClient, FACTORY);
 const { auction } = await cloak.createLaunch({ name, symbol, saleSupply, minPrice, tickSize, commitEnd, revealEnd });

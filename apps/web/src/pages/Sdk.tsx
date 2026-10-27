@@ -3,7 +3,7 @@ import { Link } from "../router";
 import { Footer, GITHUB, Nav } from "../ui";
 
 const EX: Record<string, string> = {
-  Launchpad: `import { Cloak, elysiumTestnet } from "@cloakonelysium/sdk";
+  Launchpad: `import { Cloak, elysiumTestnet } from "@cloakely/sdk";
 
 const cloak = new Cloak(publicClient, walletClient, FACTORY);
 
@@ -26,7 +26,7 @@ const bid = await cloak.bid(auction, {
 await cloak.revealAll(auction);
 await cloak.settle(auction);
 await cloak.claimAll(auction);`,
-  "Private trading": `import { CloakPrivate, loadProver, relayerSubmitter } from "@cloakonelysium/sdk";
+  "Private trading": `import { CloakPrivate, loadProver, relayerSubmitter } from "@cloakely/sdk";
 
 const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801, router: ROUTER }); // one signature
 const priv = new CloakPrivate(publicClient, ROUTER, keys,
@@ -86,7 +86,7 @@ export function Sdk() {
         <section className="wrap" style={{ paddingTop: 12 }}>
           <div className="deep dev" style={{ alignItems: "start" }}>
             <div>
-              <div className="eyebrow" style={{ color: "var(--deep-soft)" }}>@cloakonelysium/sdk</div>
+              <div className="eyebrow" style={{ color: "var(--deep-soft)" }}>@cloakely/sdk</div>
               <h1 className="display-2" style={{ marginTop: 14 }}>Sealed launches and private trading, in one package</h1>
               <p className="lede" style={{ marginTop: 18 }}>
                 Give any Elysium launchpad fair launches with locked liquidity, and give its users private balances, swaps, batches and sends. It's TypeScript on viem, with proofs made in the browser.
@@ -99,7 +99,7 @@ export function Sdk() {
             <div>
               <div className="code">
                 <div className="code-head">
-                  <span>@cloakonelysium/sdk · packages/sdk · TypeScript</span>
+                  <span>@cloakely/sdk · packages/sdk · TypeScript</span>
                   <button className="copy" onClick={() => { navigator.clipboard?.writeText(EX[tab]).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>{copied ? "Copied" : "Copy"}</button>
                 </div>
                 <div style={{ display: "flex", gap: 4, padding: "10px 12px 0", flexWrap: "wrap" }}>

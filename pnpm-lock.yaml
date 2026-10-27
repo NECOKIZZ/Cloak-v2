@@ -14,7 +14,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@cloakonelysium/sdk':
+      '@cloakely/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       '@fontsource-variable/inter':
@@ -63,7 +63,7 @@ importers:
 
   e2e:
     dependencies:
-      '@cloakonelysium/sdk':
+      '@cloakely/sdk':
         specifier: workspace:*
         version: link:../packages/sdk
       viem:
@@ -100,7 +100,7 @@ importers:
 
   services/keeper:
     dependencies:
-      '@cloakonelysium/sdk':
+      '@cloakely/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       viem:

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
-import { cloakAuctionAbi, cloakFactoryAbi, cloakPairAbi, privateRouterAbi, type AuctionState } from "@cloakonelysium/sdk";
+import { cloakAuctionAbi, cloakFactoryAbi, cloakPairAbi, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
 import { addrLink, FACTORY, ROUTER, txLink } from "../config";
 import { friendly } from "../errors";
 import { hype, short, tokens } from "../format";

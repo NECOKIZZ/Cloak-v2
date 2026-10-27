@@ -126,7 +126,7 @@ contracts/         Foundry: CloakConfig (fees, caps, timelock), CloakAuction, Cl
 contracts/src/shielded/  ShieldedPool, PrivateRouter, PrivateBatcher, CloakMigrator, WHYPE, Groth16 verifier,
                    Merkle trees (a new tree starts when one fills, so exits never stop)
 circuits/          transaction2x2.circom (2-in/2-out notes); built artifacts in apps/web/public/circuits
-packages/sdk/      @cloakonelysium/sdk: launches (createLaunch, bid, revealAll, settle, claimAll) + CloakPrivate
+packages/sdk/      @cloakely/sdk: launches (createLaunch, bid, revealAll, settle, claimAll) + CloakPrivate
                    (shieldHype, buy, sell, batch, send, unshield, balances, on-device prover, relayer client)
 services/keeper/   Auto-reveals after the drand round, settles launches, relays private trades (POST /relay),
                    and settles + pays out private batch rounds.
@@ -138,10 +138,10 @@ e2e/               run.mjs (launch flow), private.mjs (private trading, real pro
 docs/DESIGN.md     Research, design, roadmap
 ```
 
-## For launchpads: `@cloakonelysium/sdk`
+## For launchpads: `@cloakely/sdk`
 
 ```ts
-import { Cloak, elysiumTestnet } from "@cloakonelysium/sdk";
+import { Cloak, elysiumTestnet } from "@cloakely/sdk";
 const cloak = new Cloak(publicClient, walletClient, FACTORY);
 
 // launchpad / project
