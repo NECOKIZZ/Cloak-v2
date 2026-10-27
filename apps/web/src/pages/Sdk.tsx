@@ -109,7 +109,7 @@ export function Sdk() {
                 </div>
                 <pre>{EX[tab]}</pre>
               </div>
-              <p className="xs" style={{ color: "var(--deep-soft)", marginTop: 12 }}>The package isn't on npm yet. Use it from the repo (it's a pnpm workspace) or copy <code>packages/sdk</code>.</p>
+              <p className="xs" style={{ color: "var(--deep-soft)", marginTop: 12 }}>Install it with <code>npm install @cloakely/sdk viem</code>. It's on <a href="https://www.npmjs.com/package/@cloakely/sdk" target="_blank" rel="noreferrer">npm</a>, published with provenance from this repo. Addresses come built in: <code>deploymentFor(99801)</code>.</p>
             </div>
           </div>
         </section>

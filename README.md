@@ -140,6 +140,14 @@ docs/DESIGN.md     Research, design, roadmap
 
 ## For launchpads: `@cloakely/sdk`
 
+[![npm](https://img.shields.io/npm/v/@cloakely/sdk)](https://www.npmjs.com/package/@cloakely/sdk)
+
+```bash
+npm install @cloakely/sdk viem
+```
+
+Contract addresses, start blocks, the hosted relayer and the circuit files come built in: `deploymentFor(99801)`.
+
 ```ts
 import { Cloak, elysiumTestnet } from "@cloakely/sdk";
 const cloak = new Cloak(publicClient, walletClient, FACTORY);

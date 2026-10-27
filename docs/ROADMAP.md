@@ -27,7 +27,7 @@ Everything a team needs after their launch, in one place.
 - **Claim links** for people who don't have a cloak address yet: send a private amount to a link, and the person who opens it claims it.
 
 ### 3. `@cloakely/sdk` on npm
-The SDK already exists in `packages/sdk`. Publish it, along with:
+**Published** (Oct 27): `npm install @cloakely/sdk viem`, with addresses per chain built in. Next to it:
 - **`@cloakely/react`:** hooks (`useLaunch`, `useBid`, `usePrivateBalance`, `usePrivateSwap`) so launchpads don't have to rebuild our state layer.
 - **`@cloakely/widget`:** a drop-in `<cloak-launch auction="0x…">` web component (with an iframe fallback). It lets any launchpad or site embed a sealed-bid box in one line.
 - Versioned ABIs and deployment addresses per chain, so integrators never copy addresses by hand.
