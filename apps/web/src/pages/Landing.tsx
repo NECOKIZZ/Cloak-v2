@@ -286,9 +286,9 @@ export function Landing() {
             </div>
             <div>
               <div className="code">
-                <div className="code-head"><span>@cloak/sdk</span><span>TypeScript</span></div>
+                <div className="code-head"><span>@cloakonelysium/sdk</span><span>TypeScript</span></div>
                 <pre>
-                  <span className="k">import</span> {"{ Cloak, CloakPrivate }"} <span className="k">from</span> <span className="s">"@cloak/sdk"</span>;{"\n\n"}
+                  <span className="k">import</span> {"{ Cloak, CloakPrivate }"} <span className="k">from</span> <span className="s">"@cloakonelysium/sdk"</span>;{"\n\n"}
                   <span className="c">// launchpad: a sealed-bid launch with locked LP</span>{"\n"}
                   <span className="k">const</span> {"{ auction }"} = <span className="k">await</span> cloak.createLaunch({"{ name, symbol, saleSupply, … }"});{"\n\n"}
                   <span className="c">// bidder: sealed, auto-revealing</span>{"\n"}

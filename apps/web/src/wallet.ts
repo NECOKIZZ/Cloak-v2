@@ -1,6 +1,6 @@
 import { createPublicClient, createWalletClient, custom, http, numberToHex, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { Cloak, type BidSecret, type Wallet } from "@cloak/sdk";
+import { Cloak, type BidSecret, type Wallet } from "@cloakonelysium/sdk";
 import { chain, FACTORY, IS_LOCAL, LEGACY_FACTORY, RPC_URL } from "./config";
 import { Hint } from "./errors";
 

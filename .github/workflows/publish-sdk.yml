@@ -1,0 +1,33 @@
+name: Publish SDK
+# Publishes packages/sdk to npm when a tag like sdk-v0.2.0 is pushed (or by hand from the Actions tab).
+# Needs the repository secret NPM_TOKEN (an npm "Automation" or granular token with publish rights on @cloakonelysium).
+# The package is published with provenance, so npm shows it was built from this repo by this workflow.
+on:
+  push:
+    tags: ["sdk-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, registry-url: "https://registry.npmjs.org" }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cloakonelysium/sdk build && pnpm --filter @cloakonelysium/sdk test
+      - name: Tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/sdk-v')
+        run: |
+          v=$(node -p "require('./packages/sdk/package.json').version")
+          test "sdk-v$v" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != package version $v"; exit 1; }
+      - name: Publish
+        working-directory: packages/sdk
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

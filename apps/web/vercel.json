@@ -1,6 +1,6 @@
 {
   "installCommand": "cd ../.. && corepack enable && pnpm install --frozen-lockfile",
-  "buildCommand": "cd ../.. && pnpm --filter @cloak/sdk build && pnpm --filter @cloak/web build",
+  "buildCommand": "cd ../.. && pnpm --filter @cloakonelysium/sdk build && pnpm --filter @cloakonelysium/web build",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [

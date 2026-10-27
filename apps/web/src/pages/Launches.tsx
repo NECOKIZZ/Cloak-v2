@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import type { AuctionState } from "@cloak/sdk";
+import type { AuctionState } from "@cloakonelysium/sdk";
 import { FACTORY } from "../config";
 import { duration, hype, tokens } from "../format";
 import { Link } from "../router";

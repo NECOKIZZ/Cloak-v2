@@ -1,5 +1,5 @@
 {
-  "name": "@cloak/web",
+  "name": "@cloakonelysium/web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@cloak/sdk": "workspace:*",
+    "@cloakonelysium/sdk": "workspace:*",
     "@fontsource-variable/inter": "5.1.0",
     "@fontsource-variable/inter-tight": "5.1.0",
     "@fontsource-variable/jetbrains-mono": "5.1.0",

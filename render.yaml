@@ -2,7 +2,7 @@ services:
   - type: web
     name: cloak-keeper
     runtime: node
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cloak/sdk build
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cloakonelysium/sdk build
     startCommand: node services/keeper/index.mjs
     envVars:
       - key: KEEPER_PK
@@ -25,7 +25,7 @@ services:
   - type: web
     name: cloak-web
     runtime: static
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cloak/sdk build && pnpm --filter @cloak/web build
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cloakonelysium/sdk build && pnpm --filter @cloakonelysium/web build
     staticPublishPath: apps/web/dist
     envVars:
       - key: VITE_FACTORY

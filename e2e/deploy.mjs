@@ -1,7 +1,7 @@
 // Deploy CloakFactory. Defaults to Elysium testnet.
 //   DEPLOYER_PK=0x… node e2e/deploy.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
-import { anvilLocal, elysiumTestnet } from "@cloak/sdk";
+import { anvilLocal, elysiumTestnet } from "@cloakonelysium/sdk";
 import { clients, deployFactory } from "./lib.mjs";
 
 const RPC = process.env.RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];

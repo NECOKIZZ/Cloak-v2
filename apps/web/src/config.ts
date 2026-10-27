@@ -1,4 +1,4 @@
-import { anvilLocal, elysiumTestnet } from "@cloak/sdk";
+import { anvilLocal, elysiumTestnet } from "@cloakonelysium/sdk";
 import type { Address } from "viem";
 
 const env = import.meta.env;

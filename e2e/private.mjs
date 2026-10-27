@@ -4,7 +4,7 @@
 //   Elysium: RPC_URL=… DEPLOYER_PK=… FACTORY=0x… LAUNCH_INDEX=n [ROUTER=0x…] node e2e/private.mjs
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { generatePrivateKey } from "viem/accounts";
-import { anvilLocal, elysiumTestnet, CloakPrivate, createProver, walletSubmitter, relayerSubmitter, privateRouterAbi, privateBatcherAbi, cloakFactoryAbi, cloakTokenAbi, shieldedPoolAbi } from "@cloak/sdk";
+import { anvilLocal, elysiumTestnet, CloakPrivate, createProver, walletSubmitter, relayerSubmitter, privateRouterAbi, privateBatcherAbi, cloakFactoryAbi, cloakTokenAbi, shieldedPoolAbi } from "@cloakonelysium/sdk";
 import { Cloak, clients, deployBatcher, deployFactory, deployPrivacy, exempt, fmt, parseEther, sleep, waitChainTime, waitDrand } from "./lib.mjs";
 
 const RPC = process.env.RPC_URL ?? "http://127.0.0.1:8545";

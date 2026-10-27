@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
-import { splitStandard } from "@cloak/sdk";
+import { splitStandard } from "@cloakonelysium/sdk";
 import { BATCHER, txLink } from "../config";
 import { hype, tokens } from "../format";
 import { Link, useRoute } from "../router";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Address } from "viem";
-import { Cloak, cloakAuctionAbi, drandRoundTime, privateRouterAbi, type AuctionState } from "@cloak/sdk";
+import { Cloak, cloakAuctionAbi, drandRoundTime, privateRouterAbi, type AuctionState } from "@cloakonelysium/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
 import { addrLink, KEEPER_URL, ROUTER } from "../config";
 import { duration, hype, short, tokens } from "../format";

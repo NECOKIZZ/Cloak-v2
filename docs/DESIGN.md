@@ -65,9 +65,9 @@ A reveal grace window, plus documented forced inclusion through the HyperEVM del
 ### 3.5 Proof-of-Fair-Launch attestation (for HyperCore graduation)
 At settlement the contract emits a `FairLaunch` record: the clearing price, the full revealed demand curve, the LP amount and lock, the team allocation, the bidder count, and the share filled by the top 10 bidders. A launchpad's "specific criteria" for HyperCore listing can be checked straight from chain. The launch page shows it as a badge plus the demand-curve chart.
 
-### 3.6 `@cloak/sdk`: a sealed-bid launch module for *any* launchpad
+### 3.6 `@cloakonelysium/sdk`: a sealed-bid launch module for *any* launchpad
 ```ts
-import { Cloak } from "@cloak/sdk";
+import { Cloak } from "@cloakonelysium/sdk";
 const cloak = new Cloak({ chain: elysiumTestnet, walletClient });
 
 // launchpad side
@@ -96,7 +96,7 @@ Launchpads integrate in three ways: by calling `CloakFactory.createLaunch(...)` 
 |---|---|
 | **Keeper** (`services/keeper`) | Tails commits, tlock-decrypts after the deadline, batch-reveals and calls `settle`. Also runs the relayer for private trades (`POST /relay`) and settles batch rounds. |
 | **Launch page** (`apps/web`) | Countdown, sealed bid form and, after settlement, a transparency view (demand curve, clearing price, LP lock). |
-| **`@cloak/sdk`** (`packages/sdk`) | Launch client (create, bid, reveal, settle, claim) and `CloakPrivate` for shielded balances, with the on-device prover. |
+| **`@cloakonelysium/sdk`** (`packages/sdk`) | Launch client (create, bid, reveal, settle, claim) and `CloakPrivate` for shielded balances, with the on-device prover. |
 | **The shielded pool** (`contracts/src/shielded`) | One pool per asset, Poseidon note commitments in a depth-20 Merkle tree, spent with the 2-in/2-out Groth16 circuit. Used for private trading (§8) and, later, unlinkable bid funding. |
 | **Foundry tests and e2e scripts** | Contract tests plus testnet e2e runs that produce the explorer links in the README. |
 
@@ -148,7 +148,7 @@ The launch auction is the shipped core. These items extend the same privacy stor
 ## 9. What's built (status)
 
 - [x] `CloakAuction`, `CloakFactory`, `CloakToken`, `CloakPair`, with 12 Foundry tests including a solvency fuzz
-- [x] `@cloak/sdk`, with tlock sealing tested against the live drand quicknet
+- [x] `@cloakonelysium/sdk`, with tlock sealing tested against the live drand quicknet
 - [x] Keeper service: auto-reveal, settle, push claims
 - [x] Launch page: sealed bid form, sealed→revealed demand curve, fair-launch record, trade, create launch
 - [x] e2e on anvil: 13 checks, real drand beacon

@@ -3,7 +3,7 @@
 // Elysium: RPC_URL=https://testnet-rpc.elysium.kinetiq.xyz DEPLOYER_PK=0x… node e2e/run.mjs
 import { writeFileSync, mkdirSync } from "node:fs";
 import { generatePrivateKey } from "viem/accounts";
-import { anvilLocal, elysiumTestnet, cloakPairAbi, cloakTokenAbi } from "@cloak/sdk";
+import { anvilLocal, elysiumTestnet, cloakPairAbi, cloakTokenAbi } from "@cloakonelysium/sdk";
 import { Cloak, clients, deployFactory, fmt, parseEther, sleep, waitChainTime, waitDrand } from "./lib.mjs";
 
 const RPC = process.env.RPC_URL ?? "http://127.0.0.1:8545";

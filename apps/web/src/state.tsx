@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { CloakPrivate, loadProver, relayerSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloak/sdk";
+import { CloakPrivate, loadProver, relayerSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakonelysium/sdk";
 import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, ROUTER_BLOCK } from "./config";
 import { chain, IS_LOCAL } from "./config";
 import { friendly, Hint } from "./errors";

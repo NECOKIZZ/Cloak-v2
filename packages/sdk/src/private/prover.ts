@@ -38,8 +38,37 @@ export function createProver(wasm: Uint8Array, zkey: Uint8Array): Prover {
   };
 }
 
-/** Fetch the circuit artifacts (browser: from /circuits; node: pass file bytes to createProver instead). */
-export async function loadProver(baseUrl: string): Promise<Prover> {
-  const [w, z] = await Promise.all([fetch(`${baseUrl}/transaction2x2.wasm`), fetch(`${baseUrl}/transaction2x2_final.zkey`)]);
-  return createProver(new Uint8Array(await w.arrayBuffer()), new Uint8Array(await z.arrayBuffer()));
+/** Hosted circuit artifacts. */
+export const CIRCUITS_URL = "https://cloak.boblabs.tech/circuits";
+
+/** SHA-256 of the artifacts this SDK version was built and tested against. */
+export const CIRCUIT_HASHES = {
+  wasm: "e44f07497b34f3498352da5bfd9fd7a100c2e8cb7ebddc643f1e6e29d4dfcf6a",
+  zkey: "5d64f2162ef439ae53f0e3c61f276245f7fa1b934907ef66ce3cf149056acad0",
+} as const;
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const d = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(d, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Fetch the circuit artifacts (12 MB, once) and build a prover. Works in browsers and Node 18+. The files are checked
+ * against `CIRCUIT_HASHES`, so a tampered or mismatched download is refused; pass `hashes: null` to skip that when
+ * serving your own build. In Node you can also read the files yourself and call `createProver`.
+ */
+export async function loadProver(baseUrl: string = CIRCUITS_URL, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<Prover> {
+  const base = baseUrl.replace(/\/$/, "");
+  const get = async (name: string) => {
+    const res = await fetch(`${base}/${name}`);
+    if (!res.ok) throw new Error(`could not download ${name} from ${base} (${res.status})`);
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const [wasm, zkey] = await Promise.all([get("transaction2x2.wasm"), get("transaction2x2_final.zkey")]);
+  const want = opts.hashes === undefined ? CIRCUIT_HASHES : opts.hashes;
+  if (want) {
+    const [hw, hz] = await Promise.all([sha256(wasm), sha256(zkey)]);
+    if (hw !== want.wasm || hz !== want.zkey) throw new Error("circuit files don't match this SDK version's hashes; refusing to prove with them");
+  }
+  return createProver(wasm, zkey);
 }

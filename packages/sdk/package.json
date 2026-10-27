@@ -1,7 +1,33 @@
 {
-  "name": "@cloak/sdk",
-  "version": "0.1.0",
-  "description": "Sealed-bid, uniform-price token launches for Elysium: create launches, place timelock-sealed bids, run a reveal keeper.",
+  "name": "@cloakonelysium/sdk",
+  "version": "0.2.0",
+  "description": "Cloak on Elysium: sealed-bid token launches and private trading (shielded balances, private swaps, batch auctions, private sends) with on-device zero-knowledge proofs.",
+  "keywords": [
+    "cloak",
+    "elysium",
+    "kinetiq",
+    "hyperliquid",
+    "hype",
+    "sealed-bid",
+    "auction",
+    "token-launch",
+    "privacy",
+    "zero-knowledge",
+    "groth16",
+    "shielded",
+    "viem"
+  ],
+  "homepage": "https://cloak.boblabs.tech/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NECOKIZZ/cloak.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/NECOKIZZ/cloak/issues"
+  },
+  "author": "Bob Labs",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,14 +39,25 @@
     "./bytecode": {
       "types": "./dist/bytecode.d.ts",
       "default": "./dist/bytecode.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@noble/ciphers": "1.0.0",
@@ -33,6 +70,5 @@
   },
   "devDependencies": {
     "typescript": "5.6.3"
-  },
-  "license": "MIT"
+  }
 }

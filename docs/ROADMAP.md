@@ -26,10 +26,10 @@ Everything a team needs after their launch, in one place.
 - **Private airdrops:** paste or upload a CSV of `cloak:` addresses and amounts, and Cloak pays each one from the creator's private balance. Recipients get tokens without the list showing up on a block explorer as a set of wallets to farm.
 - **Claim links** for people who don't have a cloak address yet: send a private amount to a link, and the person who opens it claims it.
 
-### 3. `@cloak/sdk` on npm
+### 3. `@cloakonelysium/sdk` on npm
 The SDK already exists in `packages/sdk`. Publish it, along with:
-- **`@cloak/react`:** hooks (`useLaunch`, `useBid`, `usePrivateBalance`, `usePrivateSwap`) so launchpads don't have to rebuild our state layer.
-- **`@cloak/widget`:** a drop-in `<cloak-launch auction="0x…">` web component (with an iframe fallback). It lets any launchpad or site embed a sealed-bid box in one line.
+- **`@cloakonelysium/react`:** hooks (`useLaunch`, `useBid`, `usePrivateBalance`, `usePrivateSwap`) so launchpads don't have to rebuild our state layer.
+- **`@cloakonelysium/widget`:** a drop-in `<cloak-launch auction="0x…">` web component (with an iframe fallback). It lets any launchpad or site embed a sealed-bid box in one line.
 - Versioned ABIs and deployment addresses per chain, so integrators never copy addresses by hand.
 
 ### 4. Indexer API
@@ -45,7 +45,7 @@ The Volume tab and the on-chain record read logs from block 0 in the browser. Th
 
 ## Next · the agent and developer layer (1 to 2 months)
 
-### 6. Cloak MCP server (`@cloak/mcp`)
+### 6. Cloak MCP server (`@cloakonelysium/mcp`)
 This lets an AI agent launch a token and trade it privately from Claude, Cursor or any MCP client.
 
 Why it matters: an agent that trades on-chain leaks its strategy with every transaction, and anyone can copy or front-run it. Cloak hides who traded and how much, which is exactly what an agent needs.
@@ -62,7 +62,7 @@ Safety built in from day one:
 - **The signer stays local** (a key file or a hardware wallet). Keys are never sent to a server.
 - **A dry-run mode** that returns what would happen before anything is signed.
 
-Runs with `npx @cloak/mcp`.
+Runs with `npx @cloakonelysium/mcp`.
 
 ### 7. CLI (`npx cloak`)
 The same actions as the MCP server, for scripts and power users:

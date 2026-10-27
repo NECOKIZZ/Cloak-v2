@@ -1,7 +1,7 @@
 // Replace the batcher of the v2 deployment (it holds no funds between rounds) and exempt it from caps.
 //   DEPLOYER_PK=0x… node e2e/deploy-batcher.mjs
 import { readFileSync, writeFileSync } from "node:fs";
-import { elysiumTestnet } from "@cloak/sdk";
+import { elysiumTestnet } from "@cloakonelysium/sdk";
 import { clients, deployBatcher, exempt } from "./lib.mjs";
 
 const file = new URL("../deployments/elysium-testnet-v2.json", import.meta.url);

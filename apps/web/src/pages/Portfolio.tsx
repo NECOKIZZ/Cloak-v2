@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatEther, isAddress, parseEther, type Address, type Hex } from "viem";
-import { CloakPrivate } from "@cloak/sdk";
+import { CloakPrivate } from "@cloakonelysium/sdk";
 import { LEGACY_ROUTER, LEGACY_ROUTER_BLOCK, MIGRATOR, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens } from "../format";

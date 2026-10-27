@@ -3,7 +3,7 @@
 // Setup stays open (owner can still set rules directly) until END_SETUP=1; after that every loosening change waits 3 days.
 //   DEPLOYER_PK=0x… [TREASURY=0x…] [END_SETUP=1] node e2e/deploy-v2.mjs
 import { writeFileSync } from "node:fs";
-import { elysiumTestnet, cloakConfigAbi, privateRouterAbi } from "@cloak/sdk";
+import { elysiumTestnet, cloakConfigAbi, privateRouterAbi } from "@cloakonelysium/sdk";
 import * as v1 from "./v1/abis.mjs";
 import { clients, deployBatcher, deployFactory, deployMigrator, deployPrivacy, exempt, parseEther } from "./lib.mjs";
 

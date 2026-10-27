@@ -20,7 +20,7 @@
 import { createServer } from "node:http";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, walletSubmitter } from "@cloak/sdk";
+import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, walletSubmitter } from "@cloakonelysium/sdk";
 
 const RPC = process.env.RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];
 const chain = RPC.includes("127.0.0.1") || RPC.includes("localhost") ? anvilLocal : elysiumTestnet;

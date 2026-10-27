@@ -2,7 +2,7 @@
 //   node e2e/seed.mjs                       # local anvil, deploys a factory
 //   RPC_URL=… DEPLOYER_PK=… FACTORY=0x… node e2e/seed.mjs
 import { generatePrivateKey } from "viem/accounts";
-import { anvilLocal, elysiumTestnet } from "@cloak/sdk";
+import { anvilLocal, elysiumTestnet } from "@cloakonelysium/sdk";
 import { Cloak, clients, deployFactory, parseEther } from "./lib.mjs";
 
 const RPC = process.env.RPC_URL ?? "http://127.0.0.1:8545";

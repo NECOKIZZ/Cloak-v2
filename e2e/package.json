@@ -1,9 +1,9 @@
 {
-  "name": "@cloak/e2e",
+  "name": "@cloakonelysium/e2e",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@cloak/sdk": "workspace:*",
+    "@cloakonelysium/sdk": "workspace:*",
     "viem": "2.21.54"
   },
   "license": "MIT"

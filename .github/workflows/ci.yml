@@ -11,8 +11,8 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: cd contracts && forge test -vv
-      - run: pnpm --filter @cloak/sdk build && pnpm --filter @cloak/sdk test
-      - run: pnpm --filter @cloak/web build
+      - run: pnpm --filter @cloakonelysium/sdk build && pnpm --filter @cloakonelysium/sdk test
+      - run: pnpm --filter @cloakonelysium/web build
       - name: e2e on anvil (real drand beacon)
         run: |
           anvil --silent --balance 1000000 &
