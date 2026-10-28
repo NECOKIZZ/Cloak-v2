@@ -20,7 +20,7 @@
   "homepage": "https://cloak.boblabs.tech/sdk",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NECOKIZZ/cloak.git",
+    "url": "git+https://github.com/NECOKIZZ/Cloak.git",
     "directory": "packages/sdk"
   },
   "bugs": {

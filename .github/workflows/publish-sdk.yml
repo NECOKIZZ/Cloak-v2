@@ -2,7 +2,7 @@ name: Publish SDK
 # Publishes packages/sdk to npm when a tag like sdk-v0.2.0 is pushed (or by hand from the Actions tab).
 # Auth is npm Trusted Publishing (OIDC): npmjs.com trusts this repo + this workflow file, so no token is stored
 # and nothing expires. Set it up once on npmjs.com, @cloakely/sdk, Settings, Trusted Publisher (GitHub Actions,
-# owner NECOKIZZ, repo cloak, workflow publish-sdk.yml). Until then npm falls back to the NPM_TOKEN secret.
+# owner NECOKIZZ, repo Cloak (capital C), workflow publish-sdk.yml). No NPM_TOKEN secret is used.
 # Provenance is attached, so npm shows it was built from this repo by this workflow.
 on:
   push:
@@ -32,5 +32,3 @@ jobs:
       - name: Publish
         working-directory: packages/sdk
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # fallback only; delete the secret once trusted publishing works
