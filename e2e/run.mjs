@@ -11,7 +11,7 @@ const local = RPC.includes("127.0.0.1") || RPC.includes("localhost");
 const chain = local ? anvilLocal : elysiumTestnet;
 const PK = process.env.DEPLOYER_PK ?? "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"; // anvil #0
 const COMMIT_SECS = Number(process.env.COMMIT_SECS ?? (local ? 25 : 60));
-const REVEAL_SECS = Number(process.env.REVEAL_SECS ?? (local ? 20 : 45));
+const REVEAL_SECS = Number(process.env.REVEAL_SECS ?? (local ? 40 : 45)); // the auction needs 30 s between the drand round and the end of reveals
 const BIDDER_FUNDS = parseEther(process.env.BIDDER_FUNDS ?? "3000");
 const GAS_BUFFER = parseEther(process.env.GAS_BUFFER ?? "0.002");
 
