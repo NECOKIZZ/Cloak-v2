@@ -359,8 +359,10 @@ export class CloakPrivate {
     const fee = (await this.relayFee("placeOrder", poolIn)).fee;
     if (fee > 0n) {
       const have = await this.balance(poolIn);
-      if (sizes.reduce((a, x) => a + x, 0n) + fee * BigInt(sizes.length) > have) {
-        const budget = have - fee * BigInt(maxOrders);
+      // headroom: the fee is re-quoted before every order (gas moves), and combining notes first costs one more fee
+      const reserve = (n: number) => (fee * BigInt(n) * 5n) / 4n + fee;
+      if (sizes.reduce((a, x) => a + x, 0n) + reserve(sizes.length) > have) {
+        const budget = have - reserve(maxOrders);
         if (budget <= 0n) throw new Error("insufficient private balance");
         ({ sizes } = splitStandard(budget < amount ? budget : amount, maxOrders));
         rest = amount - sizes.reduce((a, x) => a + x, 0n);
@@ -372,7 +374,15 @@ export class CloakPrivate {
       const size = sizes[i];
       onStatus(`Order ${i + 1}/${sizes.length}: syncing…`);
       const q = await this.relayFee("placeOrder", poolIn);
-      const inputs = await this.inputsFor(poolIn, size + q.fee, onStatus);
+      let inputs: OwnedNote[];
+      try {
+        inputs = await this.inputsFor(poolIn, size + q.fee, onStatus);
+      } catch (e) {
+        // if fees rose mid-way, keep the orders already placed and leave the rest in the balance
+        if (!placed.length || !/insufficient private balance/.test(String((e as Error).message))) throw e;
+        rest += sizes.slice(i).reduce((a, x) => a + x, 0n);
+        break;
+      }
       const keyIndex = randomKeyIndex();
       const outKey = await this.keys.key(keyIndex);
       const outBlinding = randomField();
