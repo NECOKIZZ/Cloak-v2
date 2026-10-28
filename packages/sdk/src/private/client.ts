@@ -237,8 +237,18 @@ export class CloakPrivate {
 
   /** The most a single relayed call of this kind can move from `pool`: the balance minus the relayer's fee. */
   async maxSpendable(pool: Address, kind: RelayKind = "transact"): Promise<bigint> {
-    const [bal, q] = await Promise.all([this.balance(pool), this.relayFee(kind, pool)]);
-    return bal > q.fee ? bal - q.fee : 0n;
+    const [notes, q, m] = await Promise.all([this.sync(pool), this.relayFee(kind, pool), this.relayFee("transact", pool)]);
+    // a transaction takes at most two notes, so using the k largest notes costs k-2 combining steps first (dust notes
+    // aren't worth one); the fee is re-quoted when sending, so keep a 25% cushion on every fee
+    const sorted = notes.map((n) => n.amount).sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+    let best = 0n;
+    let sum = 0n;
+    for (let k = 1; k <= sorted.length; k++) {
+      sum += sorted[k - 1];
+      const spendable = sum - (q.fee * 5n) / 4n - (BigInt(Math.max(0, k - 2)) * m.fee * 5n) / 4n;
+      if (spendable > best) best = spendable;
+    }
+    return best;
   }
 
   /** The Merkle tree of one epoch (default: the epoch the given notes live in, else the newest). */
