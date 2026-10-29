@@ -65,6 +65,7 @@ export interface PrivateAsset {
 const ERC20_ABI = [
   { type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
 ] as const;
 
 interface PoolState {
@@ -377,6 +378,9 @@ export class CloakPrivate {
     if (amount <= 0n) throw new Error("amount must be positive");
     const pool = this.market(token).pool;
     const owner = wallet.account!.address;
+    // check first, so a wallet without the tokens doesn't pay gas for an approval that leads nowhere
+    const held = await this.publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [owner] });
+    if (held < amount) throw new Error(`insufficient token balance in wallet: has ${held}, needs ${amount}`);
     const allowance = await this.publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "allowance", args: [owner, pool] });
     if (allowance < amount) {
       onStatus("Approve the deposit in your wallet…");

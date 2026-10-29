@@ -57,7 +57,8 @@ const RULES: [RegExp, string][] = [
   [/invaliddecimalnumber|not a valid decimal number|cannot convert .* to a bigint|invalid number/, "Enter numbers only, like 0.01."],
   [/integeroutofrange|not in safe .* integer range|out of range/, "That number is out of range. Use a positive amount."],
   // funds and gas
-  [/insufficient funds|exceeds (the )?balance|not enough balance/, `Not enough testnet HYPE in your wallet to cover this and the gas. Get some from ${FAUCET}.`],
+  [/insufficient funds|exceeds (the )?balance|not enough balance|gas required exceeds allowance/, `Not enough testnet HYPE in your wallet to cover this and the gas. Get some from ${FAUCET}.`],
+  [/insufficient token balance in wallet/, "Your wallet doesn't hold that much USDC. Shield a smaller amount, or bridge more USDC to Elysium first."],
   [/insufficient private balance/, "Not enough private balance for this, counting the small relayer fee. Try a slightly smaller amount, or shield more HYPE on the Portfolio page."],
   [/network didn't answer\. nothing was sent/, "The network didn't answer. Nothing was sent, so try again in a moment."],
   [/network didn't answer while sending/, "The network didn't answer while sending. Check your balance in a minute before trying again."],

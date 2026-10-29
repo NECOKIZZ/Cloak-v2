@@ -80,6 +80,10 @@ try {
   let refused = "";
   await a.p.shieldToken(a.walletClient, usdc, 1_000_000_001n).catch((e) => (refused = e.shortMessage ?? e.message));
   ok(/OverDepositLimit|reverted/.test(refused), "a deposit over the 1,000 USDC cap is refused");
+  const nonce = await d.publicClient.getTransactionCount({ address: b.account.address });
+  let empty = "";
+  await b.p.shieldToken(b.walletClient, usdc, 1_000_000n).catch((e) => (empty = e.message));
+  ok(/insufficient token balance in wallet/.test(empty) && (await d.publicClient.getTransactionCount({ address: b.account.address })) === nonce, "a wallet without USDC is told before any approval is sent (no gas spent)");
 
   // ── private send ──
   const sent = await a.p.send(usdc, await b.p.address(), 300_000_000n);
