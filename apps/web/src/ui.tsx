@@ -19,7 +19,9 @@ export function Logo({ size = 28, inverse }: { size?: number; inverse?: boolean 
 /** Coin icon: the official HYPE mark, the Cloak hood for $CLOAK, letters for other launch tokens. */
 export function TokenIcon({ symbol, size = 28, token }: { symbol: string; size?: number; token?: string }) {
   const meta = useTokenMeta(token);
-  const builtin = { HYPE: "/tokens/hype.svg", WHYPE: "/tokens/hype.svg", CLOAK: "/tokens/cloak.svg" }[symbol.toUpperCase()];
+  const builtin = ({ HYPE: "/tokens/hype.svg", WHYPE: "/tokens/hype.svg", CLOAK: "/tokens/cloak.svg" } as Record<string, string>)[symbol.toUpperCase()]
+    // the USDC mark only for Cloak's USDC vault (passed without a launch token), never for a launch that calls itself USDC
+    ?? (!token && symbol.toUpperCase() === "USDC" ? "/tokens/usdc.svg" : undefined);
   // HYPE always uses its official mark; launch tokens use the image uploaded at launch, if any
   const src = builtin === "/tokens/hype.svg" ? builtin : meta?.image ?? builtin;
   if (src) return <img className="token-icon" src={src} alt={symbol} width={size} height={size} style={{ objectFit: "cover" }} />;
