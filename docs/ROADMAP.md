@@ -1,6 +1,50 @@
 # Cloak roadmap
 
-Cloak today covers the moment of launch: a sealed-bid auction, one fair price, locked liquidity, and a private vault to trade from. This roadmap is about the two things that come next:
+## What Cloak can do today
+
+Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.tech](https://cloak.boblabs.tech), with tests and real on-chain runs behind it.
+
+**Launches**
+- **Sealed-bid launches.** A bid is only a hash plus a drand-timelock ciphertext until bidding closes. Bots, other bidders and the sequencer can't see price or size.
+- **Bids open themselves.** After bidding closes, anyone (the keeper, another bidder, the launch page) can decrypt and reveal every bid. Bidders never have to come back.
+- **Hidden bid size.** Deposits round up to 1, 2 or 5 × 10ⁿ, so a deposit only shows the order of magnitude.
+- **One clearing price for everyone**, found across up to 256 price ticks. Bids at the clearing tick fill pro rata, and lower bids get a full refund.
+- **Liquidity seeded at that price and locked.** The pool starts at exactly the clearing price, the LP is burned or time-locked, and unsold tokens are burned.
+- **Creator share** of at most 20% of supply, vesting over at least 30 days.
+- **A fair-launch record on chain** that any launchpad can read.
+- **Penalties for hiding bids.** A bid that is never revealed loses at least 10% of its deposit, and that money is burned.
+
+**Private balances and trading**
+- **Shield HYPE** into a private balance, in one public step to a one-time key.
+- **Private buy and sell of any Cloak launch token**, proven on your device and sent by a relayer, so your wallet never appears on the trade.
+- **Batch mode** hides trade size: standard-size orders cross each other at the round's average price, and only the net hits the pool.
+- **Private sends** to a `cloak:` address, with sender, receiver and amount all hidden.
+- **Withdraw** to any address, ideally a fresh one.
+- **Private USDC:** shield, send privately and withdraw, with the relayer paid in USDC.
+- **Migration:** private balances move from v1 to v2 privately, in one step.
+- **Your account comes from one wallet signature.** Nothing is stored on a server.
+
+**Rules and safety**
+- **No contract can move user funds.** Notes leave a vault only with their owner's proof.
+- **Fees:** 1.5% on a successful launch, 0.25% on withdrawals, private swaps and batch orders, with hard caps in the contract. Deposits and private sends are free.
+- **Beta deposit caps** on every vault. Withdrawals are never capped.
+- **A public 3-day timelock** on any loosening rule change, once setup ends.
+
+**For builders**
+- **`@cloakely/sdk` on npm** (0.2.6), published from GitHub with npm trusted publishing. It covers launches, bids, private balances, swaps, batch orders, sends, USDC, and the on-device prover.
+- **A hosted keeper** that reveals bids, settles launches and batch rounds, and relays private transactions for a quoted fee.
+
+**Not yet**
+- **No private swaps for USDC yet:** see 3b.
+- **A token's private vault isn't created automatically.** Anyone can create it in one click after the launch settles: see 1.
+- **No minimum raise:** a launch settles as long as at least one bid was revealed.
+- **The trusted setup is single-party for now.** Caps stay on until the public ceremony and an external audit.
+
+---
+
+## What comes next
+
+The work ahead is about two things:
 
 1. **What happens to a token after it launches.** Today the story stops at "Trading", and there's very little to do on a launch page once it settles.
 2. **How Cloak reaches people who never open our site:** launchpads, developers and AI agents.
@@ -18,6 +62,8 @@ A settled launch should become the token's home page, not a finished receipt.
 - **Holder stats** that respect privacy: how many holders are public, and how much of the supply sits in the private vault (the total is public, who owns it isn't).
 - **LP status:** a "burned" or "locked until" badge with a countdown, and proof links.
 - **Share card:** an OG image for each launch (logo, name, clearing price, "sealed launch") so posts on X look right.
+- **Private trading switched on automatically.** Today a token's private vault appears only after someone presses "Enable private trading" on its launch page (`createPool`, open to anyone). The keeper should do this at settlement, optionally only above a liquidity bar so empty launches don't get vaults nobody uses. The launch page should also say plainly whether private trading is on.
+- **Clearer launch page:** one obvious next step for each phase (bid, wait for reveal, claim, trade), instead of several cards.
 
 ### 2. Creator dashboard (`/app/created`)
 Everything a team needs after their launch, in one place.
@@ -33,7 +79,20 @@ Everything a team needs after their launch, in one place.
 - Versioned ABIs and deployment addresses per chain, so integrators never copy addresses by hand.
 
 ### 3b. Private USDC
-**Live on testnet** (Oct 29): a USDC vault next to the router. Shield, send privately and withdraw, with the relayer paid in USDC. Next: private swaps between USDC and HYPE or launch tokens, once Elysium has a USDC market to route through (a new router, so balances move with the migrator).
+**Phase 1, live on testnet (Oct 29):** a USDC vault next to the router ([`0x61de…fa08`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x61de30970e3c53665ce5a89323284e7ab379fa08)). Shield, send privately and withdraw, with the relayer paid in USDC at the live HYPE/USD price. Caps: 1,000 USDC per deposit and 50,000 in the vault. Shielding checks the wallet balance before asking for an approval, so an empty wallet never pays gas.
+
+**Phase 2, private swaps with USDC.** USDC can't be swapped privately yet, for three reasons:
+1. **There's no USDC market on Cloak.** Every Cloak pool is a launch token against HYPE. Nothing trades USDC.
+2. **The router can't be upgraded**, by design. It only swaps HYPE to and from launch tokens, and only accepts vaults made for launches.
+3. **The price needs real liquidity.** A thin USDC/HYPE pool would give bad fills, which is worse than no swap.
+
+The plan:
+- **Find the liquidity.** Check which Elysium DEX has real USDC/HYPE depth. If none does, seed a pool ourselves, and be clear that its price is only as good as what we put in.
+- **A USDC swap adapter**, a small new contract. It takes a private USDC note out of the USDC vault (proof-checked, so the relayer can't change the trade), swaps on that market, and deposits the HYPE as a private note to a one-time key. The reverse works the same way. Launch tokens go through two hops: USDC to HYPE, then HYPE to the token.
+- **No redeploy:** the existing vaults, router and circuit stay as they are.
+- **Cap exemption for the adapter**, like the router has. It's instant while `CloakConfig` is in setup but waits the 3-day timelock after `endSetup()`, so it should land before mainnet.
+- **Keeper, SDK and site:** quote and relay `usdcSwap`, add USDC to the swap box, and test it end to end with real proofs.
+- Later, **batch mode for USDC**, so USDC trades hide their size too.
 
 ### 4. Indexer API
 The Volume tab and the on-chain record read logs from block 0 in the browser. That's fine on testnet, but it gets slow on mainnet.
@@ -111,6 +170,8 @@ Selective disclosure, applied to tokens.
 - **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
 - **Source verification** on the explorer for every contract.
 - **Rehearse the mainnet deploy** on a fork, then deploy, verify and publish the addresses.
+- **Settle the vault model before the ceremony.** Today each asset gets its own vault. A single vault for every asset (the asset goes inside each note, like Gloam) pools everyone's privacy into one crowd, but it needs a new circuit, and a ceremony is run per circuit. So it has to be decided before the ceremony, or not at all until a second one.
+- **Private USDC on mainnet:** a vault for mainnet USDC, with the same caps until the audit.
 
 At launch:
 - **Deposit caps stay on** until the external audit and the public ceremony are done.
@@ -124,6 +185,7 @@ Already planned:
 - **Bid funding from a private balance,** so a deposit can't be linked to the bidder.
 - **Timelock-sealed batch orders** that hide side and size until the round clears.
 - **A security audit and a public trusted-setup ceremony.** Mainnet caps lift once both are done.
+- **A minimum raise for launches.** The creator sets a floor, and if revealed demand doesn't reach it, every bidder gets a full refund. Today a launch settles with any demand above zero.
 
 New:
 - **Private limit orders:** a resting order that fills inside batch rounds when the price crosses.
