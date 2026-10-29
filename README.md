@@ -130,12 +130,15 @@ contracts/src/shielded/  ShieldedPool, PrivateRouter, PrivateBatcher, CloakMigra
 circuits/          transaction2x2.circom (2-in/2-out notes); built artifacts in apps/web/public/circuits
 packages/sdk/      @cloakely/sdk: launches (createLaunch, bid, revealAll, settle, claimAll) + CloakPrivate
                    (shieldHype, buy, sell, batch, send, unshield, balances, on-device prover, relayer client)
+packages/mcp/      @cloakely/mcp: an MCP server so AI agents can launch, bid and trade privately (spending limits,
+                   dry runs, testnet by default, local signer)
 services/keeper/   Auto-reveals after the drand round, settles launches, relays private trades (POST /relay),
                    and settles + pays out private batch rounds.
 apps/web/          The site (Vite + React): landing (hover-to-uncloak hero), app (launches, launch page, private swap,
                    portfolio, create, volume), docs, SDK and pitch (/pitch). Wallet modal lists every installed wallet
                    (EIP-6963) plus WalletConnect; src/errors.ts turns every error into a plain sentence. Deployed on Vercel.
-e2e/               run.mjs (launch flow), private.mjs (private trading, real proofs), migrate.mjs (v1 → v2 moves
+e2e/               run.mjs (launch flow), private.mjs (private trading, real proofs), mcp.mjs (an agent through the
+                   MCP server, real proofs), usdc.mjs (private USDC), migrate.mjs (v1 → v2 moves
                    through the relayer, real proofs), deploy-v2.mjs (the testnet deployment), seed.mjs
 docs/DESIGN.md     Research, design, roadmap
 ```

@@ -1,0 +1,60 @@
+{
+  "name": "@cloakely/mcp",
+  "version": "0.1.0",
+  "description": "Cloak's MCP server: let an AI agent launch tokens with sealed bids and trade them privately on Elysium, with spending limits, testnet by default and a local signer.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agent",
+    "cloak",
+    "elysium",
+    "kinetiq",
+    "hype",
+    "sealed-bid",
+    "privacy",
+    "zero-knowledge"
+  ],
+  "homepage": "https://cloak.boblabs.tech/sdk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NECOKIZZ/Cloak.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/NECOKIZZ/cloak/issues"
+  },
+  "author": "Bob Labs",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "cloak-mcp": "dist/index.js"
+  },
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@cloakely/sdk": "workspace:^",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "viem": "2.21.54",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.6.3"
+  }
+}

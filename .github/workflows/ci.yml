@@ -12,6 +12,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cd contracts && forge test -vv
       - run: pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/sdk test
+      - run: pnpm --filter @cloakely/mcp build && pnpm --filter @cloakely/mcp test
       - run: pnpm --filter @cloakely/web build
       - name: e2e on anvil (real drand beacon)
         run: |
@@ -20,3 +21,9 @@ jobs:
           node e2e/run.mjs
           node e2e/private.mjs
           node e2e/usdc.mjs
+      - name: MCP server e2e on anvil (a fresh chain whose clock runs, so the keeper reveals and settles on its own)
+        run: |
+          pkill anvil || true
+          anvil --silent --balance 1000000 --block-time 1 &
+          sleep 2
+          node e2e/mcp.mjs

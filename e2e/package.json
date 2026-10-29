@@ -4,7 +4,9 @@
   "type": "module",
   "dependencies": {
     "@cloakely/sdk": "workspace:*",
-    "viem": "2.21.54"
+    "viem": "2.21.54",
+    "@cloakely/mcp": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1"
   },
   "license": "MIT"
 }

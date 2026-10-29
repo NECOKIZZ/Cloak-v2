@@ -33,6 +33,7 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 **For builders**
 - **`@cloakely/sdk` on npm** (0.2.6), published from GitHub with npm trusted publishing. It covers launches, bids, private balances, swaps, batch orders, sends, USDC, and the on-device prover.
 - **A hosted keeper** that reveals bids, settles launches and batch rounds, and relays private transactions for a quoted fee.
+- **An MCP server for AI agents** (`@cloakely/mcp`, built, npm release next): 17 tools covering launches, bids and private trading, with spending limits and dry runs.
 
 **Not yet**
 - **No private swaps for USDC yet:** see 3b.
@@ -108,23 +109,26 @@ The Volume tab and the on-chain record read logs from block 0 in the browser. Th
 ## Next · the agent and developer layer (1 to 2 months)
 
 ### 6. Cloak MCP server (`@cloakely/mcp`)
-This lets an AI agent launch a token and trade it privately from Claude, Cursor or any MCP client.
+**Built** (Oct 29), in `packages/mcp`. It lets an AI agent launch a token and trade it privately from Claude, Cursor or any MCP client. It ships to npm once its first release is published (see `.github/workflows/publish-mcp.yml`).
 
 Why it matters: an agent that trades on-chain leaks its strategy with every transaction, and anyone can copy or front-run it. Cloak hides who traded and how much, which is exactly what an agent needs.
 
 | Group   | Tools |
 |---------|-------|
-| Launch  | `create_launch`, `get_launch`, `list_launches`, `place_sealed_bid`, `my_bids`, `claim` |
-| Private | `unlock` (derives the private keys from one signature), `private_balance`, `shield`, `private_swap`, `batch_order`, `private_send`, `withdraw` |
-| Read    | `quote`, `launch_record`, `volume` |
+| Read    | `cloak_info`, `list_launches`, `get_launch`, `quote_bid`, `quote_swap` |
+| Launch  | `create_launch`, `place_sealed_bid`, `my_bids`, `claim`, `enable_private_trading` |
+| Private | `unlock` (derives the private keys from one local signature), `private_balance`, `shield`, `private_swap`, `batch_order`, `private_send`, `withdraw` |
 
-Safety built in from day one:
-- **Spending limits** for each session and each day.
-- **Testnet by default.** Mainnet is opt-in through a flag.
-- **The signer stays local** (a key file or a hardware wallet). Keys are never sent to a server.
-- **A dry-run mode** that returns what would happen before anything is signed.
+Safety built in:
+- **Spending limits** per transaction and per UTC day, for HYPE value and for USDC, plus launches per day. The day's totals survive a restart.
+- **Testnet by default.** Mainnet needs two explicit flags.
+- **The signer stays local** (a key file). Keys are never sent to a server, and proofs are made on the agent's machine.
+- **Dry run** on every write tool, or for all of them with `CLOAK_DRY_RUN=1`.
+- **Read only** without a key.
 
-Runs with `npx @cloakely/mcp`.
+Tested end to end on a local chain with real proofs (`e2e/mcp.mjs`, 32 checks): an agent launches a token, bids, gets its tokens, opens private trading, shields HYPE and USDC, trades, places a batch order, pays a second agent privately and withdraws, while the keeper reveals, settles and relays.
+
+Runs with `npx @cloakely/mcp`. Next: a hardware-wallet signer, and `volume` and `launch_record` tools once the indexer (item 4) exists.
 
 ### 7. CLI (`npx cloak`)
 The same actions as the MCP server, for scripts and power users:
