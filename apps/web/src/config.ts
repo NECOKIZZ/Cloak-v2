@@ -25,3 +25,9 @@ export const LEGACY_ROUTER = (env.VITE_LEGACY_ROUTER || undefined) as Address | 
 export const LEGACY_ROUTER_BLOCK = BigInt(env.VITE_LEGACY_ROUTER_BLOCK || 0);
 export const LEGACY_BATCHER = (env.VITE_LEGACY_BATCHER || undefined) as Address | undefined;
 export const LEGACY_FACTORY = (env.VITE_LEGACY_FACTORY || undefined) as Address | undefined;
+
+/** Shielded pools for existing tokens (USDC): private sends and withdrawals, registered on the private client. */
+export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[] =
+  env.VITE_USDC && env.VITE_USDC_POOL
+    ? [{ symbol: "USDC", token: env.VITE_USDC as Address, pool: env.VITE_USDC_POOL as Address, decimals: 6, fromBlock: BigInt(env.VITE_USDC_BLOCK || 0) }]
+    : [];

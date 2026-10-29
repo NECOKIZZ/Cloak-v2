@@ -22,6 +22,9 @@ services:
         value: "0xe54c02fa685f2c95e5ae98e1155547194d04d9ad"
       - key: LEGACY_ROUTER
         value: "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41"
+      # private USDC: sends and withdrawals, relayer fee priced from the live HYPE/USD price (HYPE_USD is the fallback)
+      - key: ASSET_POOLS
+        value: "0x61de30970e3c53665ce5a89323284e7ab379fa08"
   - type: web
     name: cloak-web
     runtime: static

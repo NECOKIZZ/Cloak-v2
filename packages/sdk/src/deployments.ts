@@ -16,6 +16,8 @@ export interface CloakDeployment {
   relayerUrl: string;
   /** Hosted circuit artifacts (transaction2x2.wasm and transaction2x2_final.zkey). */
   circuitsUrl: string;
+  /** Shielded pools for existing tokens (USDC): register them with `CloakPrivate.addAsset`. */
+  assets?: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[];
   /** The first deployment: its launches still list, and its private balances move here through `migrator`. */
   legacy?: { factory: Address; router: Address; routerBlock: bigint };
 }
@@ -33,6 +35,10 @@ export const deployments: Record<number, CloakDeployment> = {
     whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
     relayerUrl: "https://cloak-keeper.onrender.com",
     circuitsUrl: "https://cloak.boblabs.tech/circuits",
+    assets: [
+      // Elysium testnet USDC (bridged from Circle's USDC on HyperEVM): private sends and withdrawals
+      { symbol: "USDC", token: "0x7D29d8047B905000459c0E80c34a26CeedcB47b2", pool: "0x61de30970e3c53665ce5a89323284e7ab379fa08", decimals: 6, fromBlock: 18329466n },
+    ],
     legacy: {
       factory: "0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c",
       router: "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41",

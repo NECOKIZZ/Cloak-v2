@@ -19,3 +19,4 @@ jobs:
           sleep 2
           node e2e/run.mjs
           node e2e/private.mjs
+          node e2e/usdc.mjs

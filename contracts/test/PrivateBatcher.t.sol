@@ -36,7 +36,7 @@ contract PrivateBatcherTest is Test {
         }
     }
 
-    function setUp() public {
+    function setUp() public virtual {
         vm.warp(1_000_000);
         config = new CloakConfig(address(new MockVerifier()), address(0));
         CloakFactory factory = new CloakFactory(config, new CloakVestingDeployer());

@@ -12,10 +12,13 @@
 //
 //   6. (with MIGRATOR + LEGACY_ROUTER set) relays moves of private balances from the earlier deployment.
 //
+//   7. (with ASSET_POOLS set) relays private sends and withdrawals for stablecoin pools such as USDC, with the fee
+//      priced from the live HYPE/USD price (HYPE_USD is the fallback when the price feed is down).
+//
 //   Relayed calls pay the relayer a fee inside the proof (GET /quote?kind=…&pool=… says how much), so relaying can't
 //   be used to drain the relayer's gas.
 //
-//   KEEPER_PK=0x… FACTORY=0x… [ROUTER=0x…] [BATCHER=0x… BATCHER_BLOCK=…] [MIGRATOR=0x… LEGACY_ROUTER=0x…]
+//   KEEPER_PK=0x… FACTORY=0x… [ROUTER=0x…] [BATCHER=0x… BATCHER_BLOCK=…] [MIGRATOR=0x… LEGACY_ROUTER=0x…] [ASSET_POOLS=0x…]
 //   [RPC_URL=…] [START_BLOCK=…] [PORT=3001] node services/keeper/index.mjs
 import { createServer } from "node:http";
 import { createPublicClient, createWalletClient, http } from "viem";
@@ -198,6 +201,30 @@ const err = (msg, status) => Object.assign(new Error(msg), { status });
 const KINDS = ["privateSwap", "unshieldHype", "transact", "placeOrder", "migrate"];
 const isPool = (pool, router = ROUTER) => publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "isPool", args: [pool] });
 
+// Shielded pools for existing dollar stablecoins (USDC) that live next to the router: private sends and withdrawals only.
+// ASSET_POOLS=0xpool,0xpool… ; their relayer fee is the HYPE gas cost at the HYPE/USD price.
+const ASSET_POOLS = new Set((process.env.ASSET_POOLS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+const isAssetPool = (pool) => ASSET_POOLS.has(String(pool).toLowerCase());
+const decimalsAbi = [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }];
+let hypeUsdCache = { at: 0, price: 0 };
+async function hypeUsd() {
+  if (Date.now() - hypeUsdCache.at < 60_000 && hypeUsdCache.price > 0) return hypeUsdCache.price;
+  try {
+    const r = await fetch(process.env.HYPE_PRICE_URL ?? "https://api.hyperliquid.xyz/info", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }), signal: AbortSignal.timeout(5000),
+    });
+    const price = Number((await r.json()).HYPE);
+    if (!(price > 0)) throw new Error("no HYPE price");
+    hypeUsdCache = { at: Date.now(), price };
+    return price;
+  } catch (e) {
+    const fallback = Number(process.env.HYPE_USD ?? 0);
+    if (fallback > 0) return fallback;
+    if (hypeUsdCache.price > 0) return hypeUsdCache.price; // stale beats none
+    throw err("No HYPE price right now, so the relayer can't quote a fee in this token. Try again in a minute.", 503);
+  }
+}
+
 // ── fee quotes: gas for the call × gas price × margin, in the pool's own token ──
 const GAS = { transact: 1_900_000n, unshieldHype: 2_000_000n, privateSwap: 2_500_000n, placeOrder: 2_200_000n, migrate: 2_700_000n };
 const MARGIN_BPS = BigInt(process.env.RELAY_FEE_MARGIN_BPS ?? 12_500); // 1.25× the gas cost
@@ -205,9 +232,18 @@ const MIN_GAS_PRICE = BigInt(process.env.RELAY_MIN_GAS_PRICE ?? 100_000_000); //
 async function quote(kind, pool) {
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
   const router = kind === "migrate" ? LEGACY_ROUTER : ROUTER;
-  if (!router || !(await isPool(pool, router))) throw err("unknown pool", 400);
+  const asset = isAssetPool(pool);
+  if (asset && kind !== "transact") throw err("this pool supports private sends and withdrawals only", 400);
+  if (!asset && (!router || !(await isPool(pool, router)))) throw err("unknown pool", 400);
   const gasPrice = await publicClient.getGasPrice();
   const hype = (GAS[kind] * (gasPrice > MIN_GAS_PRICE ? gasPrice : MIN_GAS_PRICE) * MARGIN_BPS) / 10_000n;
+  if (asset) {
+    // a dollar stablecoin pays the HYPE cost at the HYPE/USD price, rounded up to the token's smallest unit
+    const token = await publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "token" });
+    const dec = await publicClient.readContract({ address: token, abi: decimalsAbi, functionName: "decimals" });
+    const micro = BigInt(Math.round((await hypeUsd()) * 1e6)); // USD per HYPE, ×1e6
+    return (hype * micro * 10n ** BigInt(dec)) / (10n ** 18n * 1_000_000n) + 1n;
+  }
   const token = await publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "token" });
   const whype = await publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "whype" });
   if (token.toLowerCase() === whype.toLowerCase()) return hype;
@@ -236,7 +272,7 @@ async function relay(body) {
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
   if (kind === "placeOrder" && !BATCHER) throw err("batching disabled (set BATCHER)", 503);
   if (kind === "migrate" && !(MIGRATOR && LEGACY_ROUTER)) throw err("migration disabled", 503);
-  if (!(await isPool(pool, kind === "migrate" ? LEGACY_ROUTER : ROUTER))) throw err("unknown pool", 400);
+  if (isAssetPool(pool) ? kind !== "transact" : !(await isPool(pool, kind === "migrate" ? LEGACY_ROUTER : ROUTER))) throw err("unknown pool", 400);
   const proof = {
     a: big(p.a), b: big(p.b), c: big(p.c), root: big(p.root), publicAmount: big(p.publicAmount),
     extDataHash: big(p.extDataHash), inputNullifiers: big(p.inputNullifiers), outputCommitments: big(p.outputCommitments),
@@ -352,7 +388,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null });
+    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, assetPools: [...ASSET_POOLS] });
   }
   send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));

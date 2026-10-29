@@ -14,7 +14,7 @@ const ADDR = {
 const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
   ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"]]],
-  ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["what-stays-private", "What stays private"]]],
+  ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
   ["Build", [["sdk", "SDK"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
 
@@ -134,6 +134,10 @@ export function Docs() {
 
           <h2 id="private-send">Private send</h2>
           <p>Every account has a <code>cloak:</code> address (shown in Portfolio). Sending to it is a transfer inside the vault. The chain sees that a private transaction happened, but not who paid whom or how much.</p>
+
+          <h2 id="private-usdc">Private USDC</h2>
+          <p>USDC has its own vault. On Portfolio, pick USDC on the Shield tab and deposit from your wallet (the first time asks for an approval, then the deposit). After that you can send it privately to any <code>cloak:</code> address or withdraw it to a fresh address, like HYPE. The relayer's fee is paid in USDC. During the beta a deposit can be at most 1,000 USDC and the vault holds at most 50,000. Swapping USDC privately for HYPE or launch tokens comes later.</p>
+          <p>Elysium's USDC is bridged from Circle's USDC on HyperEVM. Circle can freeze the USDC held by the bridge, and the bridge operator can upgrade the Elysium USDC contract. That applies to everyone holding USDC on Elysium, inside Cloak or not.</p>
 
           <h2 id="what-stays-private">What stays private</h2>
           <table>

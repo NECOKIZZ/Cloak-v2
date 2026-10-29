@@ -46,9 +46,26 @@ const positionOf = (globalIndex: number) => globalIndex % 2 ** EPOCH_BITS;
 export interface PrivateMarket {
   token: Address;
   pool: Address;
-  pair: Address | null; // null for the WHYPE pool
+  pair: Address | null; // null for the WHYPE pool and for assets without a launch market (USDC)
   symbol?: string;
+  /** Token decimals (18 for HYPE and launch tokens; 6 for USDC). */
+  decimals?: number;
 }
+
+/** A shielded pool for an existing token (such as USDC) that lives next to the router, not in its launch registry. */
+export interface PrivateAsset {
+  symbol: string;
+  token: Address;
+  pool: Address;
+  decimals: number;
+  /** Block the pool was deployed in: its events are scanned from here. */
+  fromBlock: bigint;
+}
+
+const ERC20_ABI = [
+  { type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
+] as const;
 
 interface PoolState {
   leaves: { index: number; commitment: bigint; memo: Hex }[];
@@ -118,6 +135,8 @@ export type Status = (msg: string) => void;
 export class CloakPrivate {
   private pools = new Map<string, PoolState>();
   markets: PrivateMarket[] = [];
+  /** Shielded pools outside the launch registry (USDC). Send, unshieldToken and shieldToken work on these too. */
+  assets: (PrivateMarket & { fromBlock: bigint })[] = [];
 
   constructor(
     readonly publicClient: PublicClient,
@@ -176,15 +195,26 @@ export class CloakPrivate {
   }
 
   market(token: Address): PrivateMarket {
-    const m = this.markets.find((x) => x.token.toLowerCase() === token.toLowerCase());
+    const t = token.toLowerCase();
+    const m = this.markets.find((x) => x.token.toLowerCase() === t) ?? this.assets.find((x) => x.token.toLowerCase() === t);
     if (!m) throw new Error("no private market for this token (createPool after settlement)");
+    return m;
+  }
+
+  /** Register a shielded pool that isn't a launch market, such as USDC (`deploymentFor(chainId).assets`). */
+  addAsset(a: PrivateAsset): PrivateMarket {
+    const existing = this.assets.find((x) => x.pool.toLowerCase() === a.pool.toLowerCase());
+    if (existing) return existing;
+    const m = { token: a.token, pool: a.pool, pair: null, symbol: a.symbol, decimals: a.decimals, fromBlock: a.fromBlock };
+    this.assets.push(m);
     return m;
   }
 
   private state(pool: Address): PoolState {
     let s = this.pools.get(pool.toLowerCase());
     if (!s) {
-      s = { leaves: [], scannedUpTo: 0, fromBlock: this.fromBlock, notes: [] };
+      const asset = this.assets.find((x) => x.pool.toLowerCase() === pool.toLowerCase());
+      s = { leaves: [], scannedUpTo: 0, fromBlock: asset?.fromBlock ?? this.fromBlock, notes: [] };
       this.pools.set(pool.toLowerCase(), s);
     }
     return s;
@@ -333,6 +363,36 @@ export class CloakPrivate {
       functionName: "shieldHype",
       args: [k.pubKey, blinding, encryptRouterMemo(this.keys.encPub, blinding, keyIndex)],
       value: amount,
+    });
+    const r = await this.publicClient.waitForTransactionReceipt({ hash });
+    if (r.status !== "success") throw new Error("shield reverted");
+    return hash;
+  }
+
+  /**
+   * Public tokens → private balance, for any pool this client knows (USDC, or a launch token). Like shieldHype, this
+   * one step is public and lands on a one-time key. Asks the wallet to approve the pool first if needed.
+   */
+  async shieldToken(wallet: Wallet, token: Address, amount: bigint, onStatus: Status = () => {}): Promise<Hex> {
+    if (amount <= 0n) throw new Error("amount must be positive");
+    const pool = this.market(token).pool;
+    const owner = wallet.account!.address;
+    const allowance = await this.publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "allowance", args: [owner, pool] });
+    if (allowance < amount) {
+      onStatus("Approve the deposit in your wallet…");
+      const a = await wallet.writeContract({ address: token, abi: ERC20_ABI, functionName: "approve", args: [pool, amount] });
+      const ar = await this.publicClient.waitForTransactionReceipt({ hash: a });
+      if (ar.status !== "success") throw new Error("approve reverted");
+    }
+    const keyIndex = randomKeyIndex();
+    const k = await this.keys.key(keyIndex);
+    const blinding = randomField();
+    onStatus("Confirm the deposit in your wallet…");
+    const hash = await wallet.writeContract({
+      address: pool,
+      abi: shieldedPoolAbi,
+      functionName: "depositTo",
+      args: [k.pubKey, amount, blinding, encryptFullMemo(this.keys.encPub, amount, blinding, keyIndex)],
     });
     const r = await this.publicClient.waitForTransactionReceipt({ hash });
     if (r.status !== "success") throw new Error("shield reverted");
@@ -517,7 +577,7 @@ export class CloakPrivate {
 
   /**
    * Private transfer inside a pool: sender, recipient and amount all stay hidden.
-   * `token` = a launch token, or the WHYPE address / hypeMarket.token for HYPE.
+   * `token` = a launch token, an asset such as USDC, or the WHYPE address / hypeMarket.token for HYPE.
    */
   async send(token: Address, to: string, amount: bigint, onStatus: Status = () => {}): Promise<Hex> {
     const rcpt = parseCloakAddress(to);
@@ -541,7 +601,7 @@ export class CloakPrivate {
     return this.submit({ kind: "transact", pool, proof, extData });
   }
 
-  /** Private launch tokens → any address. */
+  /** Private tokens (a launch token, or an asset such as USDC) → any address. */
   async unshieldToken(token: Address, to: Address, amount: bigint, onStatus: Status = () => {}): Promise<Hex> {
     const pool = this.market(token).pool;
     const q = await this.relayFee("transact", pool);

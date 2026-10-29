@@ -1,4 +1,4 @@
-import { formatEther } from "viem";
+import { formatEther, formatUnits } from "viem";
 
 /** Adaptive HYPE formatting: tiny launch prices stay readable. */
 export function hype(wei: bigint, max = 6): string {
@@ -14,6 +14,14 @@ export function tokens(wei: bigint): string {
   if (n >= 1e6) return `${(n / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })}M`;
   if (n >= 1e3) return `${(n / 1e3).toLocaleString(undefined, { maximumFractionDigits: 1 })}K`;
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+/** Dollar stablecoins (6 decimals): cents, or more digits for amounts under a cent. */
+export function usd(units: bigint, decimals = 6): string {
+  const n = Number(formatUnits(units, decimals));
+  if (n === 0) return "0";
+  if (n < 0.01) return n.toPrecision(2);
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;

@@ -72,6 +72,15 @@ await priv.unshieldHype(freshAddress, parseEther("0.5")); // back to any wallet
 console.log(await priv.balance(priv.hypeMarket.pool));    // only this account can see it
 ```
 
+Private USDC lives in its own vault. Register it from the deployment, then shield, send and withdraw like any token:
+
+```ts
+const usdc = priv.addAsset(d.assets![0]);                                // { symbol: "USDC", decimals: 6, … }
+await priv.shieldToken(walletClient, usdc.token, parseUnits("50", 6));   // approve + deposit (public, once)
+await priv.send(usdc.token, "cloak:…", parseUnits("20", 6));             // amount hidden
+await priv.unshieldToken(usdc.token, freshAddress, parseUnits("10", 6)); // 0.25% fee kept
+```
+
 The private account comes from one EIP-712 signature bound to the chain and the router. The same wallet always restores it, and nothing is stored on a server. In Node, read the circuit files yourself and pass them to `createProver(wasm, zkey)`.
 
 ## Fees (testnet beta)
@@ -90,7 +99,7 @@ Rules live in the on-chain `CloakConfig`. Raising a fee or a cap waits a public 
 | Export | What it is |
 |---|---|
 | `Cloak` | Launches: `createLaunch`, `bid`, `revealAll`, `settle`, `claimAll`, `payOut`, `getAuction`, `listLaunches` |
-| `CloakPrivate` | Private balances: `shieldHype`, `buy`, `sell`, `batch`, `send`, `unshieldHype`, `unshieldToken`, `balance`, `maxSpendable`, `migrateFrom` |
+| `CloakPrivate` | Private balances: `shieldHype`, `shieldToken`, `buy`, `sell`, `batch`, `send`, `unshieldHype`, `unshieldToken`, `addAsset`, `balance`, `maxSpendable`, `migrateFrom` |
 | `relayerSubmitter`, `walletSubmitter` | How private calls are submitted: through a relayer (private), or from a wallet (for tests) |
 | `loadProver`, `createProver` | The Groth16 prover, running on the device |
 | `deployments`, `deploymentFor` | Addresses, start blocks, relayer and circuit URLs per chain |

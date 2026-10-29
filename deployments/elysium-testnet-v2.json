@@ -28,5 +28,15 @@
     "poseidon2": "0x80d9d0b2bdd42a77d083235662925f2907392723",
     "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
     "verifier": "0xA554AC0150E853DEAC5214cFf9F5001Ad2f441ED"
-  }
+  },
+  "assets": [
+    {
+      "symbol": "USDC",
+      "token": "0x7D29d8047B905000459c0E80c34a26CeedcB47b2",
+      "pool": "0x61de30970e3c53665ce5a89323284e7ab379fa08",
+      "decimals": 6,
+      "fromBlock": "18329466",
+      "caps": "1000/50000 USDC"
+    }
+  ]
 }

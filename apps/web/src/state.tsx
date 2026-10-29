@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { CloakPrivate, loadProver, relayerSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
-import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, ROUTER_BLOCK } from "./config";
+import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, ROUTER_BLOCK, ASSETS } from "./config";
 import { chain, IS_LOCAL } from "./config";
 import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";
@@ -226,6 +226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const submit = RELAYER_URL ? relayerSubmitter(RELAYER_URL) : walletSubmitter(publicClient, w, ROUTER, BATCHER, MIGRATOR);
       const p = new CloakPrivate(publicClient, ROUTER, keys, getProver, submit, ROUTER_BLOCK, BATCHER, MIGRATOR);
       await p.loadMarkets();
+      ASSETS.forEach((a) => p.addAsset(a));
       setPrivAddress(await p.address());
       setPriv(p);
       getProver(); // warm the 12 MB circuit download

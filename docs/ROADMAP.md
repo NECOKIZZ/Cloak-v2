@@ -32,6 +32,9 @@ Everything a team needs after their launch, in one place.
 - **`@cloakely/widget`:** a drop-in `<cloak-launch auction="0x…">` web component (with an iframe fallback). It lets any launchpad or site embed a sealed-bid box in one line.
 - Versioned ABIs and deployment addresses per chain, so integrators never copy addresses by hand.
 
+### 3b. Private USDC
+**Live on testnet** (Oct 29): a USDC vault next to the router. Shield, send privately and withdraw, with the relayer paid in USDC. Next: private swaps between USDC and HYPE or launch tokens, once Elysium has a USDC market to route through (a new router, so balances move with the migrator).
+
 ### 4. Indexer API
 The Volume tab and the on-chain record read logs from block 0 in the browser. That's fine on testnet, but it gets slow on mainnet.
 - A small indexer, on the keeper or a subgraph, that serves launches, records, volume and charts as JSON.
