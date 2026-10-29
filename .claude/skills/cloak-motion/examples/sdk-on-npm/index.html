@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Inter Tight"; src: url("assets/intertight.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Mono"; src: url("assets/mono.woff2") format("woff2"); font-weight: 100 900; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0b1013; }
+      :root { --ink: #eef1f0; --mute: rgba(238, 241, 240, 0.62); --faint: rgba(238, 241, 240, 0.56); --line: rgba(238, 241, 240, 0.14); --sig: #6cb6cb; --seal: #e3a95a; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: "Inter Tight", sans-serif; color: var(--ink); }
+
+      #bg { position: absolute; inset: 0; }
+      #glass { position: absolute; top: 0; left: -660px; width: 3240px; height: 1080px; background: url("assets/glass.jpg") center/cover no-repeat; }
+      #shade { position: absolute; inset: 0; background: radial-gradient(1300px 820px at 50% 48%, rgba(11, 16, 19, 0.86), rgba(11, 16, 19, 0.5) 64%, rgba(11, 16, 19, 0.3)); }
+      #glow { position: absolute; left: 50%; top: 50%; width: 1500px; height: 1000px; margin: -500px 0 0 -750px; border-radius: 50%; background: radial-gradient(closest-side, rgba(108, 182, 203, 0.16), rgba(108, 182, 203, 0)); }
+
+      .glassy { background: rgba(238, 241, 240, 0.06); border: 1px solid var(--line); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+      .soft { will-change: transform, opacity, filter; }
+      .mono { font-family: "Mono"; }
+
+      #kicker { position: absolute; left: 0; right: 0; top: 92px; text-align: center; font-size: 46px; letter-spacing: -0.025em; }
+      #kicker span { color: var(--sig); }
+
+      #stage { position: absolute; left: 50%; top: 52%; width: 0; height: 0; }
+
+      /* the window: a terminal that becomes the editor */
+      #win { position: absolute; left: -560px; top: -270px; width: 1120px; height: 540px; border-radius: 32px; overflow: hidden; }
+      #win .chrome { height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 28px; border-bottom: 1px solid rgba(238, 241, 240, 0.08); }
+      #win .chrome i { width: 14px; height: 14px; border-radius: 50%; background: rgba(238, 241, 240, 0.18); }
+      #win .title { position: absolute; left: 0; right: 0; top: 22px; text-align: center; font-family: "Mono"; font-size: 21px; color: var(--faint); letter-spacing: 0.04em; }
+      #win .title span { position: absolute; left: 0; right: 0; }
+      .pane { position: absolute; left: 0; right: 0; top: 72px; bottom: 0; padding: 44px 52px; font-family: "Mono"; font-size: 30px; line-height: 1.75; }
+      #term .prompt { color: var(--sig); margin-right: 18px; }
+      #caret { display: inline-block; width: 14px; height: 32px; background: var(--sig); vertical-align: -6px; margin-left: 4px; }
+      #term .out { color: var(--mute); font-size: 26px; }
+      #term .out b { color: var(--sig); font-weight: 400; }
+      #term .ok { color: var(--ink); }
+      #term .ok svg { width: 26px; height: 26px; color: var(--sig); vertical-align: -5px; margin-right: 12px; }
+      #code .ln { white-space: pre; font-size: 28px; }
+      #code .k { color: var(--sig); }
+      #code .s { color: var(--seal); }
+      #code .c { color: var(--faint); }
+      #code .hl { margin: 6px -22px 0; padding: 4px 22px; border-radius: 14px; background: rgba(108, 182, 203, 0.1); box-shadow: inset 0 0 0 1px rgba(108, 182, 203, 0.28); }
+
+      /* what the chain sees */
+      #tx { position: absolute; left: 150px; top: -250px; width: 600px; height: 500px; border-radius: 32px; padding: 38px 40px; }
+      #tx .head { display: flex; align-items: center; justify-content: space-between; }
+      #tx h3 { font-size: 32px; font-weight: 500; letter-spacing: -0.02em; }
+      .pill { position: relative; height: 42px; min-width: 150px; border-radius: 999px; border: 1px solid var(--line); font-family: "Mono"; font-size: 19px; letter-spacing: 0.12em; }
+      .pill span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; }
+      .pill i { width: 10px; height: 10px; border-radius: 50%; }
+      #pubtag i { background: var(--seal); }
+      #privtag { color: var(--sig); }
+      #privtag i { background: var(--sig); }
+      .rows { margin-top: 34px; }
+      .row { display: flex; align-items: center; justify-content: space-between; height: 76px; border-top: 1px solid rgba(238, 241, 240, 0.08); font-size: 25px; }
+      .row .k { color: var(--mute); }
+      .row .v { position: relative; width: 300px; height: 40px; }
+      .row .v > * { position: absolute; right: 0; top: 0; height: 40px; display: flex; align-items: center; }
+      .row .pub { font-family: "Mono"; font-size: 25px; }
+      .row .seal { width: 220px; border-radius: 10px; background: repeating-linear-gradient(90deg, rgba(238, 241, 240, 0.32) 0 14px, rgba(238, 241, 240, 0.14) 14px 28px); }
+      .row .relay { font-family: "Mono"; font-size: 25px; color: var(--sig); }
+      #btn { position: absolute; left: 40px; right: 40px; bottom: 38px; height: 84px; border-radius: 22px; background: var(--ink); color: #0b1013; font-size: 28px; font-weight: 600; overflow: hidden; }
+      #btn span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 14px; }
+      #btn svg { width: 28px; height: 28px; }
+      #btnDone { background: #10161a; color: var(--sig); box-shadow: inset 0 0 0 1px rgba(108, 182, 203, 0.4); border-radius: 22px; font-family: "Mono"; font-size: 23px; font-weight: 400; letter-spacing: 0.02em; }
+      #ripple { position: absolute; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%; background: rgba(108, 182, 203, 0.55); left: 288px; top: 57px; }
+      #cursor { position: absolute; left: 0; top: 0; width: 46px; height: 46px; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55)); }
+
+      /* end card */
+      #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+      #endmark { height: 150px; }
+      #endtitle { margin-top: 46px; font-size: 80px; font-weight: 500; letter-spacing: -0.04em; }
+      #endtitle span { color: var(--sig); }
+      #endcmd { margin-top: 34px; padding: 20px 36px; border-radius: 999px; font-family: "Mono"; font-size: 34px; display: flex; align-items: center; gap: 18px; }
+      #endcmd b { color: var(--sig); font-weight: 400; }
+      #endsub { margin-top: 32px; font-family: "Mono"; font-size: 22px; letter-spacing: 0.12em; color: var(--mute); display: flex; align-items: center; gap: 12px; }
+      #endsub i { width: 10px; height: 10px; border-radius: 50%; background: var(--sig); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="13" data-width="1920" data-height="1080">
+      <audio id="score" src="assets/score.wav" data-start="0" data-duration="13" data-volume="1" data-track-index="3"></audio>
+      <div id="bg" class="clip" data-start="0" data-duration="13" data-track-index="0">
+        <div id="glass"></div>
+        <div id="shade"></div>
+        <div id="glow"></div>
+      </div>
+
+      <div id="scene1" class="clip" data-start="0" data-duration="10.7" data-track-index="1">
+        <div id="kicker" class="soft"></div>
+        <div id="stage">
+          <div id="win" class="glassy soft">
+            <div class="chrome"><i></i><i></i><i></i></div>
+            <div class="title"><span id="tTerm">terminal</span><span id="tCode">app.ts</span></div>
+            <div id="term" class="pane">
+              <div><span class="prompt">$</span><span id="typed"></span><span id="caret"></span></div>
+              <div class="out soft" id="o1"><b>+</b> @cloakely/sdk 0.2.4</div>
+              <div class="out soft" id="o2"><b>+</b> viem 2.x</div>
+              <div class="ok soft" id="o3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>added 2 packages</div>
+            </div>
+            <div id="code" class="pane">
+              <div class="ln soft"><span class="k">import</span> { CloakPrivate } <span class="k">from</span> <span class="s">"@cloakely/sdk"</span>;</div>
+              <div class="ln soft"> </div>
+              <div class="ln soft"><span class="k">const</span> cloak = <span class="k">new</span> CloakPrivate(client, router, keys);</div>
+              <div class="ln soft"><span class="k">await</span> cloak.shieldHype(wallet, parseEther(<span class="s">"1"</span>));</div>
+              <div class="ln soft hl" id="hl"><span class="k">await</span> cloak.buy(token, parseEther(<span class="s">"0.5"</span>)); <span class="c">// private</span></div>
+            </div>
+          </div>
+
+          <div id="tx" class="glassy soft">
+            <div class="head">
+              <h3>What the chain sees</h3>
+              <div class="pill"><span id="pubtag"><i></i>PUBLIC</span><span id="privtag"><i></i>PRIVATE</span></div>
+            </div>
+            <div class="rows">
+              <div class="row"><span class="k">Sent by</span><span class="v"><span class="pub">0x7f3a…c21e</span><span class="relay">relayer</span></span></div>
+              <div class="row"><span class="k">Pays</span><span class="v"><span class="pub">0.50 HYPE</span><span class="seal"></span></span></div>
+              <div class="row"><span class="k">Gets</span><span class="v"><span class="pub">6,240 CLOAK</span><span class="seal"></span></span></div>
+            </div>
+            <div id="btn" data-layout-allow-overlap>
+              <span id="btnGo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3" /></svg>Swap privately</span>
+              <span id="btnDone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>proof made on this device</span>
+              <div id="ripple"></div>
+            </div>
+          </div>
+          <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2.5l15 8.2-6.6 1.6-3.1 6.2z" fill="#eef1f0" stroke="#0b1013" stroke-width="1.2" stroke-linejoin="round" /></svg>
+        </div>
+      </div>
+
+      <div id="scene2" class="clip" data-start="10.25" data-duration="2.75" data-track-index="2">
+        <div id="end">
+          <svg id="endmark" class="soft" viewBox="0 0 279 322"><path d="M149.671 0C119.989 12.7135 73.3456 40.2595 58.5046 74.1622C41.5434 118.659 37.3031 192.822 3.38073 266.984C-2.97971 279.697 -0.859564 288.173 13.9815 294.53C62.7449 317.838 117.869 326.314 160.272 319.957C209.035 315.719 247.198 298.768 279 275.459L232.357 209.773C213.275 230.962 187.834 243.676 160.272 245.795C117.869 250.032 86.0665 226.724 86.0665 186.465C86.0665 137.73 115.749 93.2324 149.671 69.9243C172.993 84.7568 194.194 108.065 206.915 133.492L257.799 103.827C234.477 57.2108 189.954 19.0703 149.671 0Z" fill="#EEF1F0" /></svg>
+          <div id="endtitle" class="soft">Cloak SDK is <span>live on npm</span></div>
+          <div id="endcmd" class="glassy soft"><b>$</b>npm install @cloakely/sdk</div>
+          <div id="endsub" class="soft"><i></i>PRIVATE TRADING FOR ANY APP ON ELYSIUM</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ── static content (deterministic) ──
+      const CMD = "npm install @cloakely/sdk viem";
+      document.getElementById("typed").innerHTML = [...CMD].map((c) => `<span class="ch" style="display:none">${c === " " ? "&nbsp;" : c}</span>`).join("");
+      const KICK = {
+        k1: 'One install. <span>Private trading</span> in your app.',
+        k2: 'A few lines. <span>Fully private.</span>',
+        k3: 'One click. <span>Nothing to see.</span>',
+      };
+      document.getElementById("kicker").innerHTML = Object.entries(KICK).map(([id, h]) => `<div id="${id}" style="position:absolute;left:0;right:0">${h}</div>`).join("");
+
+      // ── timeline ──
+      const tl = gsap.timeline({ paused: true });
+      const T_TYPE0 = 0.7, T_TYPE1 = 2.2, T_ENTER = 2.4, T_CODE = 3.9, T_SPLIT = 5.9, T_CLICK = 7.55, T_OUT = 10.0, T_END = 10.35;
+
+      // backdrop drift
+      tl.fromTo("#glass", { x: 0, scale: 1.05 }, { x: 240, scale: 1, duration: 13, ease: "none" }, 0);
+      tl.fromTo("#glow", { opacity: 0.5, scale: 0.9 }, { opacity: 1, scale: 1.08, duration: 13, ease: "sine.inOut" }, 0);
+
+      tl.set(["#o1", "#o2", "#o3", "#code", "#tCode", "#k1", "#k2", "#k3", "#tx", "#cursor", "#privtag", "#btnDone", "#ripple"], { opacity: 0 }, 0);
+      tl.set("#tx .relay, #tx .seal", { opacity: 0 }, 0);
+
+      // beat 1: the terminal, and the install types itself
+      tl.fromTo("#win", { opacity: 0, scale: 0.94, filter: "blur(14px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.6, ease: "power3.out" }, 0.05);
+      const chars = gsap.utils.toArray("#typed .ch");
+      chars.forEach((c, i) => tl.set(c, { display: "inline" }, T_TYPE0 + (i * (T_TYPE1 - T_TYPE0)) / chars.length));
+      tl.fromTo("#caret", { opacity: 1 }, { opacity: 0.15, duration: 0.3, repeat: 1, yoyo: true, ease: "steps(1)" }, 0.1);
+      tl.to("#caret", { opacity: 0, duration: 0.05 }, T_ENTER);
+      ["#o1", "#o2", "#o3"].forEach((s, i) => tl.fromTo(s, { opacity: 0, y: 12, filter: "blur(8px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "power3.out" }, T_ENTER + 0.15 + i * 0.22));
+      tl.fromTo("#k1", { opacity: 0, y: 18, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out" }, T_ENTER + 0.5);
+
+      // beat 2: the terminal becomes the editor; three lines do it
+      tl.to(["#term", "#tTerm"], { opacity: 0, y: -16, filter: "blur(10px)", duration: 0.4, ease: "power2.in" }, T_CODE - 0.1);
+      tl.to("#k1", { opacity: 0, y: -12, filter: "blur(10px)", duration: 0.35, ease: "power2.in" }, T_CODE - 0.1);
+      tl.set("#code", { opacity: 1 }, T_CODE + 0.2);
+      tl.fromTo("#tCode", { opacity: 0 }, { opacity: 1, duration: 0.4 }, T_CODE + 0.2);
+      tl.fromTo("#code .ln", { opacity: 0, x: -24, filter: "blur(10px)" }, { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.55, ease: "power3.out", stagger: 0.17 }, T_CODE + 0.25);
+      tl.fromTo("#hl", { backgroundColor: "rgba(108,182,203,0)", boxShadow: "inset 0 0 0 1px rgba(108,182,203,0)" }, { backgroundColor: "rgba(108,182,203,0.1)", boxShadow: "inset 0 0 0 1px rgba(108,182,203,0.28)", duration: 0.5, ease: "power2.out" }, T_CODE + 1.15);
+      tl.fromTo("#k2", { opacity: 0, y: 18, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out" }, T_CODE + 0.35);
+
+      // beat 3: the editor slides aside, the chain's view arrives, one click seals it
+      tl.to("#win", { x: -330, scale: 0.8, duration: 0.85, ease: "power3.inOut" }, T_SPLIT);
+      tl.to("#k2", { opacity: 0, y: -12, filter: "blur(10px)", duration: 0.35, ease: "power2.in" }, T_SPLIT);
+      tl.fromTo("#tx", { opacity: 0, x: 140, filter: "blur(14px)" }, { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.85, ease: "power3.out" }, T_SPLIT + 0.2);
+      tl.fromTo("#tx .row", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out", stagger: 0.1 }, T_SPLIT + 0.55);
+      tl.fromTo("#k3", { opacity: 0, y: 18, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out" }, T_SPLIT + 0.45);
+      // the cursor glides in and presses the button
+      tl.fromTo("#cursor", { opacity: 0, x: 720, y: 420 }, { opacity: 1, x: 470, y: 180, duration: 0.95, ease: "power2.inOut" }, T_CLICK - 1.0);
+      tl.to("#cursor", { scale: 0.82, duration: 0.08, ease: "power2.out" }, T_CLICK);
+      tl.to("#cursor", { scale: 1, duration: 0.25, ease: "back.out(3)" }, T_CLICK + 0.08);
+      tl.to("#btn", { scale: 0.97, duration: 0.08 }, T_CLICK);
+      tl.to("#btn", { scale: 1, duration: 0.4, ease: "elastic.out(1, 0.5)" }, T_CLICK + 0.08);
+      tl.fromTo("#ripple", { opacity: 0.7, scale: 0.2 }, { opacity: 0, scale: 9, duration: 0.7, ease: "power2.out" }, T_CLICK);
+      tl.to("#btnGo", { opacity: 0, y: -14, filter: "blur(6px)", duration: 0.3, ease: "power2.in" }, T_CLICK + 0.55);
+      tl.fromTo("#btnDone", { opacity: 0, y: 14, filter: "blur(6px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.4, ease: "power3.out" }, T_CLICK + 0.75);
+      tl.to("#cursor", { opacity: 0, x: 560, y: 300, duration: 0.6, ease: "power2.in" }, T_CLICK + 0.5);
+      // every public value blurs away and a seal takes its place
+      tl.to("#tx .pub", { opacity: 0, filter: "blur(12px)", scale: 0.96, duration: 0.45, ease: "power2.in", stagger: 0.12 }, T_CLICK + 0.25);
+      tl.fromTo("#tx .seal, #tx .relay", { opacity: 0, filter: "blur(12px)", scaleX: 0.6 }, { opacity: 1, filter: "blur(0px)", scaleX: 1, transformOrigin: "100% 50%", duration: 0.55, ease: "power3.out", stagger: 0.12 }, T_CLICK + 0.55);
+      tl.fromTo("#tx .seal", { backgroundPositionX: 0 }, { backgroundPositionX: 140, duration: 2.6, ease: "none" }, T_CLICK + 0.6);
+      tl.to("#pubtag", { opacity: 0, filter: "blur(6px)", duration: 0.3 }, T_CLICK + 0.35);
+      tl.fromTo("#privtag", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.35 }, T_CLICK + 0.6);
+      tl.to("#tx .pill", { borderColor: "rgba(108,182,203,0.5)", duration: 0.35 }, T_CLICK + 0.6);
+      tl.fromTo("#stage", { scale: 1 }, { scale: 1.03, duration: T_OUT - T_SPLIT, ease: "sine.inOut" }, T_SPLIT);
+
+      // beat 4: collapse into the end card
+      tl.to(["#k3", "#win", "#tx"], { opacity: 0, scale: 0.94, filter: "blur(16px)", duration: 0.42, ease: "power2.in", stagger: 0.03 }, T_OUT);
+      tl.fromTo("#endmark", { opacity: 0, scale: 0.7, filter: "blur(14px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.7, ease: "power3.out" }, T_END);
+      tl.fromTo("#endtitle", { opacity: 0, y: 16, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out" }, T_END + 0.35);
+      tl.fromTo("#endcmd", { opacity: 0, y: 14, scale: 0.96, filter: "blur(10px)" }, { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.65, ease: "power3.out" }, T_END + 0.65);
+      tl.fromTo("#endsub", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.out" }, T_END + 0.95);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "duration": 10,
+  "pad": [[0, 8.4, "Dmaj9"], [8.0, 2.0, "Gmaj7/B"]],
+  "type": [[0.55, 1.95, "elysiumeco.xyz/projects/cloak"]],
+  "enter": [2.12],
+  "whoosh": [[2.15, 0.95], [5.3, 0.7]],
+  "pop": [2.75, 3.05, 3.19, 3.33, 3.47],
+  "riser": [[4.8, 1.1]],
+  "impact": [4.8],
+  "lockup": [8.15],
+  "chime": [8.87]
+}

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Inter Tight"; src: url("assets/intertight.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Mono"; src: url("assets/mono.woff2") format("woff2"); font-weight: 100 900; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0b1013; }
+      :root { --ink: #eef1f0; --mute: rgba(238, 241, 240, 0.62); --line: rgba(238, 241, 240, 0.14); --sig: #6cb6cb; --seal: #e3a95a; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: "Inter Tight", sans-serif; color: var(--ink); }
+
+      #bg { position: absolute; inset: 0; }
+      #glass { position: absolute; top: 0; left: -660px; width: 3240px; height: 1080px; background: url("assets/glass.jpg") center/cover no-repeat; }
+      #shade { position: absolute; inset: 0; background: radial-gradient(1300px 820px at 50% 48%, rgba(11, 16, 19, 0.86), rgba(11, 16, 19, 0.5) 64%, rgba(11, 16, 19, 0.3)); }
+      #glow { position: absolute; left: 50%; top: 50%; width: 1500px; height: 1000px; margin: -500px 0 0 -750px; border-radius: 50%; background: radial-gradient(closest-side, rgba(108, 182, 203, 0.16), rgba(108, 182, 203, 0)); }
+
+      .glassy { background: rgba(238, 241, 240, 0.06); border: 1px solid var(--line); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+      .soft { will-change: transform, opacity, filter; }
+
+      /* the listing card, which grows out of the address bar */
+      #stage { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+      #card { position: absolute; left: -620px; top: -300px; width: 1240px; height: 600px; border-radius: 36px; overflow: hidden; border: 0; box-shadow: inset 0 0 0 1px rgba(238, 241, 240, 0.14); }
+      #bar { position: absolute; left: 50%; top: 28px; width: 760px; height: 72px; margin-left: -380px; border-radius: 999px; display: flex; align-items: center; gap: 16px; padding: 0 28px; background: rgba(238, 241, 240, 0.06); border: 1px solid rgba(238, 241, 240, 0.12); transform-origin: 50% 50%; }
+      #bar svg { width: 22px; height: 22px; color: var(--sig); flex: none; }
+      #typed { font-family: "Mono"; font-size: 27px; letter-spacing: 0.01em; white-space: nowrap; }
+      #typed b { font-weight: 400; color: var(--mute); }
+      #caret { width: 2px; height: 30px; background: var(--sig); margin-left: -14px; }
+
+      #content { position: absolute; inset: 0; padding: 140px 60px 56px; }
+      #head { display: flex; align-items: center; gap: 26px; }
+      #head .mark { width: 92px; height: 92px; border-radius: 26px; display: grid; place-items: center; background: #10161a; border: 1px solid var(--line); }
+      #head .mark svg { height: 54px; }
+      #head h2 { font-size: 64px; font-weight: 500; letter-spacing: -0.04em; line-height: 1; }
+      #head p { font-size: 28px; color: var(--mute); margin-top: 8px; }
+      .chips { margin-left: auto; display: flex; gap: 12px; }
+      .chip { padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line); font-size: 22px; color: var(--mute); display: flex; align-items: center; gap: 10px; }
+      .chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--sig); }
+      #tiles { margin-top: 48px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+      .tile { height: 200px; border-radius: 24px; padding: 26px; display: flex; flex-direction: column; background: rgba(238, 241, 240, 0.045); border: 1px solid rgba(238, 241, 240, 0.1); }
+      .tile .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; color: var(--mute); font-size: 21px; line-height: 1.25; }
+      .tile .top svg { width: 26px; height: 26px; color: var(--sig); }
+      .tile .val { margin-top: auto; height: 34px; border-radius: 10px; width: 78%; background: repeating-linear-gradient(90deg, rgba(238, 241, 240, 0.32) 0 14px, rgba(238, 241, 240, 0.14) 14px 28px); }
+      .tile .live { margin-top: 14px; font-family: "Mono"; font-size: 17px; letter-spacing: 0.1em; color: var(--sig); display: flex; align-items: center; gap: 10px; }
+      .tile .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--sig); }
+
+      /* the Elysium Eco seal that stamps onto the card */
+      #stamp { position: absolute; left: 480px; top: -420px; width: 230px; height: 230px; }
+      #stamp img { width: 100%; height: 100%; filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.6)); }
+      #stamptag { position: absolute; left: 50%; bottom: -24px; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px; background: var(--seal); color: #10161a; font-family: "Mono"; font-size: 20px; font-weight: 600; letter-spacing: 0.14em; }
+      #ring { position: absolute; left: 595px; top: -305px; width: 230px; height: 230px; margin: -115px 0 0 -115px; border-radius: 50%; border: 3px solid var(--seal); }
+
+      #kicker { position: absolute; left: 0; right: 0; top: 96px; text-align: center; font-size: 46px; letter-spacing: -0.025em; }
+      #kicker span { color: var(--sig); }
+
+      /* end card */
+      #end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+      #pair { display: flex; align-items: center; gap: 44px; }
+      #pair .cm { height: 150px; }
+      #pair .x { font-size: 64px; color: var(--mute); font-weight: 300; }
+      #pair img { width: 170px; height: 170px; }
+      #endtitle { margin-top: 48px; font-size: 76px; font-weight: 500; letter-spacing: -0.04em; }
+      #endurl { margin-top: 30px; padding: 18px 34px; border-radius: 999px; font-family: "Mono"; font-size: 32px; display: flex; align-items: center; gap: 16px; }
+      #endurl svg { width: 28px; height: 28px; color: var(--sig); }
+      #endmain { margin-top: 30px; font-family: "Mono"; font-size: 22px; letter-spacing: 0.12em; color: var(--mute); display: flex; align-items: center; gap: 12px; }
+      #endmain i { width: 10px; height: 10px; border-radius: 50%; background: var(--seal); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080">
+      <audio id="score" src="assets/score.wav" data-start="0" data-duration="10" data-volume="1" data-track-index="3"></audio>
+      <div id="bg" class="clip" data-start="0" data-duration="10" data-track-index="0">
+        <div id="glass"></div>
+        <div id="shade"></div>
+        <div id="glow"></div>
+      </div>
+
+      <div id="scene1" class="clip" data-start="0" data-duration="8.5" data-track-index="1">
+        <div id="kicker" class="soft">Follow our testnet numbers <span>in real time</span></div>
+        <div id="stage">
+          <div id="card" class="glassy soft">
+            <div id="content">
+              <div id="head" class="soft">
+                <div class="mark"><svg viewBox="0 0 279 322"><path d="M149.671 0C119.989 12.7135 73.3456 40.2595 58.5046 74.1622C41.5434 118.659 37.3031 192.822 3.38073 266.984C-2.97971 279.697 -0.859564 288.173 13.9815 294.53C62.7449 317.838 117.869 326.314 160.272 319.957C209.035 315.719 247.198 298.768 279 275.459L232.357 209.773C213.275 230.962 187.834 243.676 160.272 245.795C117.869 250.032 86.0665 226.724 86.0665 186.465C86.0665 137.73 115.749 93.2324 149.671 69.9243C172.993 84.7568 194.194 108.065 206.915 133.492L257.799 103.827C234.477 57.2108 189.954 19.0703 149.671 0Z" fill="#EEF1F0" /></svg></div>
+                <div><h2>Cloak</h2><p>Private launches and trading</p></div>
+                <div class="chips"><span class="chip">DeFi</span><span class="chip"><i></i>On testnet</span></div>
+              </div>
+              <div id="tiles"></div>
+            </div>
+            <div id="bar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3" /></svg>
+              <span id="typed"></span><span id="caret"></span>
+            </div>
+          </div>
+          <div id="ring"></div>
+          <div id="stamp" class="soft"><img src="assets/eco.png" alt="Elysium Ecosystem" /><span id="stamptag">LIVE</span></div>
+        </div>
+      </div>
+
+      <div id="scene2" class="clip" data-start="7.9" data-duration="2.1" data-track-index="2">
+        <div id="end">
+          <div id="pair">
+            <svg class="cm soft" id="endmark" viewBox="0 0 279 322"><path d="M149.671 0C119.989 12.7135 73.3456 40.2595 58.5046 74.1622C41.5434 118.659 37.3031 192.822 3.38073 266.984C-2.97971 279.697 -0.859564 288.173 13.9815 294.53C62.7449 317.838 117.869 326.314 160.272 319.957C209.035 315.719 247.198 298.768 279 275.459L232.357 209.773C213.275 230.962 187.834 243.676 160.272 245.795C117.869 250.032 86.0665 226.724 86.0665 186.465C86.0665 137.73 115.749 93.2324 149.671 69.9243C172.993 84.7568 194.194 108.065 206.915 133.492L257.799 103.827C234.477 57.2108 189.954 19.0703 149.671 0Z" fill="#EEF1F0" /></svg>
+            <span class="x soft" id="endx">×</span>
+            <img src="assets/eco.png" alt="Elysium Ecosystem" class="soft" id="endeco" />
+          </div>
+          <div id="endtitle" class="soft">Now live on Elysium Ecosystem</div>
+          <div id="endurl" class="glassy soft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>elysiumeco.xyz/projects/cloak</div>
+          <div id="endmain" class="soft"><i></i>MAINNET · NOV 9</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ── static content (deterministic) ──
+      const URL_TEXT = "elysiumeco.xyz/projects/cloak";
+      const typed = document.getElementById("typed");
+      typed.innerHTML = [...URL_TEXT].map((c, i) => `<span class="ch" style="display:none">${c}</span>`).join("");
+      const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+      const TILES = [
+        ["Private swaps", P("M7 7h12l-3-3M17 17H5l3 3")],
+        ["Batch settlements", P("M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5")],
+        ["Shielded vault · HYPE", P("M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z")],
+        ["Shielded vault · CLOAK", P("M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z")],
+      ];
+      document.getElementById("tiles").innerHTML = TILES.map(([t, i]) =>
+        `<div class="tile soft"><div class="top"><span>${t}</span>${i}</div><div class="val"></div><div class="live"><i></i>LIVE</div></div>`).join("");
+
+      // ── timeline ──
+      const tl = gsap.timeline({ paused: true });
+      const T_TYPE0 = 0.55, T_TYPE1 = 1.95, T_OPEN = 2.2, T_STAMP = 4.8, T_OUT = 7.85, T_END = 8.15;
+
+      // backdrop drift
+      tl.fromTo("#glass", { x: 0, scale: 1.05 }, { x: 240, scale: 1, duration: 10, ease: "none" }, 0);
+      tl.fromTo("#glow", { opacity: 0.5, scale: 0.9 }, { opacity: 1, scale: 1.08, duration: 10, ease: "sine.inOut" }, 0);
+
+      // beat 1: the card starts as a slim address bar and the link types itself
+      // the card is drawn at full size but masked down to the address bar; the bar is scaled up and centered
+      const BS = 1.5, BY = 300 - 64; // bar scale at the start, and its drop to the card's center
+      const BW = 760 * BS, BH = 72 * BS, IX = (1240 - BW) / 2, IY = (600 - BH) / 2;
+      tl.set("#card", { clipPath: `inset(${IY}px ${IX}px ${IY}px ${IX}px round ${BH / 2}px)` }, 0);
+      tl.set("#bar", { y: BY, scale: BS, backgroundColor: "rgba(238,241,240,0)", borderColor: "rgba(238,241,240,0)" }, 0);
+      tl.set(["#content", "#kicker", "#stamp", "#ring"], { opacity: 0 }, 0);
+      tl.fromTo("#card", { opacity: 0, scale: 0.94, filter: "blur(14px)" }, { opacity: 1, scale: 1, filter: "blur(0px)", duration: 0.6, ease: "power3.out" }, 0.05);
+      const chars = gsap.utils.toArray("#typed .ch");
+      chars.forEach((c, i) => tl.set(c, { display: "inline" }, T_TYPE0 + (i * (T_TYPE1 - T_TYPE0)) / chars.length));
+      tl.to("#caret", { opacity: 0, duration: 0.12 }, T_OPEN);
+
+      // the bar opens into the listing card, and rides up to become its address line
+      tl.to("#card", { clipPath: "inset(0px 0px 0px 0px round 36px)", duration: 0.85, ease: "power3.inOut" }, T_OPEN);
+      tl.to("#bar", { y: 0, scale: 1, backgroundColor: "rgba(238,241,240,0.06)", borderColor: "rgba(238,241,240,0.12)", duration: 0.85, ease: "power3.inOut" }, T_OPEN);
+      tl.set("#content", { opacity: 1 }, T_OPEN + 0.4);
+      tl.fromTo("#head", { opacity: 0, y: 22, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out" }, T_OPEN + 0.55);
+      tl.fromTo("#tiles .tile", { opacity: 0, y: 30, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out", stagger: 0.14 }, T_OPEN + 0.85);
+      // sealed values shimmer, live dots pulse
+      tl.fromTo("#tiles .val", { backgroundPositionX: 0 }, { backgroundPositionX: 168, duration: 5, ease: "none" }, T_OPEN + 0.9);
+      tl.fromTo("#tiles .live i", { opacity: 1, scale: 1 }, { opacity: 0.35, scale: 0.7, duration: 0.5, ease: "sine.inOut", repeat: 8, yoyo: true, stagger: 0.12 }, T_OPEN + 1.2);
+
+      // beat 2: the Elysium Eco seal stamps onto the card
+      tl.fromTo("#stamp", { opacity: 0, scale: 1.9, rotation: -28, filter: "blur(10px)" }, { opacity: 1, scale: 1, rotation: -8, filter: "blur(0px)", duration: 0.42, ease: "power4.in" }, T_STAMP - 0.42);
+      tl.to("#card", { scale: 0.985, duration: 0.08, ease: "power2.out" }, T_STAMP);
+      tl.to("#card", { scale: 1, duration: 0.5, ease: "elastic.out(1, 0.5)" }, T_STAMP + 0.08);
+      tl.fromTo("#ring", { opacity: 0.9, scale: 1 }, { opacity: 0, scale: 1.9, duration: 0.8, ease: "power2.out" }, T_STAMP);
+      tl.fromTo("#stamptag", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.35, ease: "back.out(2)" }, T_STAMP + 0.12);
+
+      // hold: the headline lands above, the camera drifts in
+      tl.fromTo("#kicker", { opacity: 0, y: 18, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.8, ease: "power3.out" }, 5.35);
+      tl.fromTo("#stage", { scale: 1 }, { scale: 1.035, duration: T_OUT - T_STAMP, ease: "sine.inOut" }, T_STAMP);
+
+      // beat 3: collapse into the end card
+      tl.to(["#kicker", "#card", "#stamp"], { opacity: 0, scale: 0.94, filter: "blur(16px)", duration: 0.42, ease: "power2.in", stagger: 0.03 }, T_OUT);
+      tl.fromTo("#endmark", { opacity: 0, x: 120, filter: "blur(12px)" }, { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.6, ease: "power3.out" }, T_END);
+      tl.fromTo("#endeco", { opacity: 0, x: -120, rotation: 20, filter: "blur(12px)" }, { opacity: 1, x: 0, rotation: 0, filter: "blur(0px)", duration: 0.6, ease: "power3.out" }, T_END);
+      tl.fromTo("#endx", { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.45, ease: "back.out(2)" }, T_END + 0.25);
+      tl.fromTo("#endtitle", { opacity: 0, y: 16, filter: "blur(12px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, ease: "power3.out" }, T_END + 0.45);
+      tl.fromTo("#endurl", { opacity: 0, y: 14, scale: 0.96, filter: "blur(10px)" }, { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.65, ease: "power3.out" }, T_END + 0.72);
+      tl.fromTo("#endmain", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.out" }, T_END + 1.0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
