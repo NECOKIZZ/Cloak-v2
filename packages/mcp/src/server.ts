@@ -99,7 +99,13 @@ export function looksSecret(args: unknown): boolean {
 export function createCloakServer(settings: Settings, opts: { prover?: () => Promise<Prover>; hosted?: boolean } = {}) {
   if (opts.hosted) settings = { ...settings, privateKey: undefined };
   const d = settings.deployment;
-  const pub = createPublicClient({ chain: settings.chain, transport: http(settings.rpcUrl) }) as PublicClient;
+  // reads in the same tick go out as one multicall where the chain has Multicall3 (a launch list is ~20 reads per
+  // launch, more than a public RPC takes at once), and failed requests are retried
+  const pub = createPublicClient({
+    chain: settings.chain,
+    transport: http(settings.rpcUrl, { retryCount: 4, retryDelay: 400, timeout: 20_000 }),
+    batch: settings.chain.contracts?.multicall3 ? { multicall: true } : undefined,
+  }) as PublicClient;
   const account = settings.privateKey ? privateKeyToAccount(settings.privateKey) : undefined;
   const wallet = account ? (createWalletClient({ chain: settings.chain, transport: http(settings.rpcUrl), account }) as Wallet) : undefined;
   const cloak = new Cloak(pub, wallet, d.factory);
