@@ -10,6 +10,10 @@ import { join } from "node:path";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { createServer } from "node:http";
+import { loadSettings } from "@cloakely/mcp";
+import { handleMcpRequest } from "@cloakely/mcp/http";
 import { anvilLocal, cloakConfigAbi, privateRouterAbi, shieldedPoolAbi } from "@cloakely/sdk";
 import { bytecode } from "@cloakely/sdk/bytecode";
 import { clients, deployBatcher, deployFactory, deployPrivacy, exempt, parseEther, sleep } from "./lib.mjs";
@@ -84,9 +88,25 @@ await send(d.walletClient.writeContract({ address: usdc, abi: mock.abi, function
 const A = await agent("alice", aliceKey);
 const B = await agent("bob", await funded("1"));
 const R = await agent("reader");
+
+// the hosted link, served over HTTP the way the site serves https://cloak.boblabs.tech/mcp
+const hostedSettings = loadSettings({ CLOAK_DEPLOYMENT_FILE: deploymentFile, CLOAK_PRIVATE_KEY: aliceKey });
+const web = createServer(async (req, res) => {
+  const body = [];
+  for await (const c of req) body.push(c);
+  const r = await handleMcpRequest(new Request(`http://127.0.0.1:3995${req.url}`, { method: req.method, headers: req.headers, body: ["GET", "OPTIONS"].includes(req.method) ? undefined : Buffer.concat(body) }), { settings: hostedSettings });
+  res.writeHead(r.status, Object.fromEntries(r.headers));
+  res.end(Buffer.from(await r.arrayBuffer()));
+}).listen(3995);
+const H = { client: new Client({ name: "e2e-hosted", version: "0" }) };
+await H.client.connect(new StreamableHTTPClientTransport(new URL("http://127.0.0.1:3995/mcp")));
+H.call = async (tool, args = {}) => {
+  const res = await H.client.callTool({ name: tool, arguments: args });
+  return res.isError ? { error: res.content[0].text } : JSON.parse(res.content[0].text);
+};
 try {
   const { tools } = await A.client.listTools();
-  ok(tools.length === 17, `the server offers ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
+  ok(tools.length === 18, `the server offers ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
   const info = await A.call("cloak_info");
   ok(info.mode === "read and write" && info.wallet.address === alice && info.limits.hype.perTransaction === "30 HYPE", "cloak_info: wallet, public balances and limits (30 HYPE per transaction, 60 a day)");
   const ro = await R.call("shield", { asset: "HYPE", amount: "1" });
@@ -97,6 +117,12 @@ try {
   ok(plan.dryRun && plan.wouldCreate.topPrice === "0.00005 HYPE per token", "dry run of create_launch describes the launch without sending anything");
   const launch = await A.call("create_launch", { name: "Ember", symbol: "EMBR", sale_supply: "1000000", min_price: "0.000001", price_ticks: 50, bidding_minutes: 0.25, reveal_minutes: 1, lp_percent: 80 });
   ok(launch.created && launch.auction, `create_launch: ${launch.auction ?? launch.error}`);
+  const hostedTools = (await H.client.listTools()).tools.map((t) => t.name);
+  ok(hostedTools.length === 8 && !hostedTools.some((t) => ["create_launch", "place_sealed_bid", "my_bids", "claim", "enable_private_trading", "unlock", "private_balance", "shield", "private_swap", "batch_order", "private_send", "withdraw"].includes(t)), `the hosted link offers read and plan tools only: ${hostedTools.join(", ")}`);
+  const hi = await H.call("cloak_info");
+  ok(/never signs/.test(hi.mode) && !hi.wallet, "the hosted link has no wallet, even when the environment it runs in holds a key");
+  ok(/never takes private keys/.test((await H.call("get_launch", { auction: aliceKey })).error), "the hosted link refuses a call that carries a private key");
+  ok((await H.call("get_launch", { auction: launch.auction })).symbol === "EMBR", "the hosted link reads the launch the agent just created");
   const listed = await R.call("list_launches", { limit: 5 });
   ok(listed.launches[0].symbol === "EMBR" && listed.launches[0].phase === "commit", "list_launches shows it, in the commit phase");
   const q = await A.call("quote_bid", { auction: launch.auction, max_price: "0.00002", quantity: "1000000" });
@@ -177,8 +203,12 @@ try {
   const restarted = await agent("alice", aliceKey);
   ok(/daily limit/.test((await restarted.call("shield", { asset: "HYPE", amount: "29" })).error), "the daily total survives a server restart");
   await restarted.client.close();
+  const hv = await H.call("vault_stats");
+  ok(hv.vaults.some((v) => v.asset === "EMBR") && hv.vaults.find((v) => v.asset === "USDC").held !== "0 USDC", "vault_stats over the hosted link shows the EMBR and USDC vaults' totals, not who holds them");
+  ok((await fetch("http://127.0.0.1:3995/mcp", { headers: { accept: "text/html" }, redirect: "manual" })).headers.get("location") === "https://cloak.boblabs.tech/docs#agents", "opening the link in a browser leads to the setup docs");
 } finally {
-  for (const x of [A, B, R]) await x.client.close().catch(() => {});
+  for (const x of [A, B, R, H]) await x.client.close().catch(() => {});
+  web.close();
   keeper.kill();
 }
 console.log(`\n${checks} checks passed`);

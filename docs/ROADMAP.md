@@ -33,7 +33,7 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 **For builders**
 - **`@cloakely/sdk` on npm** (0.2.6), published from GitHub with npm trusted publishing. It covers launches, bids, private balances, swaps, batch orders, sends, USDC, and the on-device prover.
 - **A hosted keeper** that reveals bids, settles launches and batch rounds, and relays private transactions for a quoted fee.
-- **An MCP server for AI agents** (`@cloakely/mcp`, built, npm release next): 17 tools covering launches, bids and private trading, with spending limits and dry runs.
+- **An MCP server for AI agents:** a hosted link (`https://cloak.boblabs.tech/mcp`, read and plan, no install) and a local server (`@cloakely/mcp`, npm release next) with 18 tools covering launches, bids and private trading, under spending limits with dry runs.
 
 **Not yet**
 - **No private swaps for USDC yet:** see 3b.
@@ -109,13 +109,15 @@ The Volume tab and the on-chain record read logs from block 0 in the browser. Th
 ## Next · the agent and developer layer (1 to 2 months)
 
 ### 6. Cloak MCP server (`@cloakely/mcp`)
-**Built** (Oct 29), in `packages/mcp`. It lets an AI agent launch a token and trade it privately from Claude, Cursor or any MCP client. It ships to npm once its first release is published (see `.github/workflows/publish-mcp.yml`).
+**Built** (Oct 29), in `packages/mcp`. It lets an AI agent launch a token and trade it privately from Claude, ChatGPT, Cursor or any MCP client, in two parts:
+- **A hosted link, `https://cloak.boblabs.tech/mcp`:** paste it into the app, nothing to install. Read and plan only (launches, quotes, vault totals, launch plans). It never signs and refuses calls that look like they carry a key.
+- **The local server, `npx @cloakely/mcp`:** launches, bids and private trading, signed on the agent's own machine. It ships to npm once its first release is published (see `.github/workflows/publish-mcp.yml`).
 
 Why it matters: an agent that trades on-chain leaks its strategy with every transaction, and anyone can copy or front-run it. Cloak hides who traded and how much, which is exactly what an agent needs.
 
 | Group   | Tools |
 |---------|-------|
-| Read    | `cloak_info`, `list_launches`, `get_launch`, `quote_bid`, `quote_swap` |
+| Read    | `cloak_info`, `list_launches`, `get_launch`, `quote_bid`, `quote_swap`, `vault_stats` (hosted adds `plan_launch` and `connect_full_agent`) |
 | Launch  | `create_launch`, `place_sealed_bid`, `my_bids`, `claim`, `enable_private_trading` |
 | Private | `unlock` (derives the private keys from one local signature), `private_balance`, `shield`, `private_swap`, `batch_order`, `private_send`, `withdraw` |
 
@@ -126,7 +128,7 @@ Safety built in:
 - **Dry run** on every write tool, or for all of them with `CLOAK_DRY_RUN=1`.
 - **Read only** without a key.
 
-Tested end to end on a local chain with real proofs (`e2e/mcp.mjs`, 32 checks): an agent launches a token, bids, gets its tokens, opens private trading, shields HYPE and USDC, trades, places a batch order, pays a second agent privately and withdraws, while the keeper reveals, settles and relays.
+Tested end to end on a local chain with real proofs (`e2e/mcp.mjs`, 38 checks, including the hosted link over HTTP): an agent launches a token, bids, gets its tokens, opens private trading, shields HYPE and USDC, trades, places a batch order, pays a second agent privately and withdraws, while the keeper reveals, settles and relays.
 
 Runs with `npx @cloakely/mcp`. Next: a hardware-wallet signer, and `volume` and `launch_record` tools once the indexer (item 4) exists.
 

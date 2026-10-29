@@ -56,5 +56,16 @@
   "devDependencies": {
     "@types/node": "22.10.2",
     "typescript": "5.6.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "default": "./dist/http.js"
+    },
+    "./package.json": "./package.json"
   }
 }

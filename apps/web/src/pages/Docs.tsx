@@ -15,7 +15,7 @@ const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
   ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"]]],
   ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
-  ["Build", [["sdk", "SDK"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
+  ["Build", [["sdk", "SDK"], ["agents", "AI agents (MCP)"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
 
 const A = (a: string) => `${EXPLORER}/address/${a}`;
@@ -170,6 +170,17 @@ await priv.loadMarkets();
 await priv.shieldHype(walletClient, parseEther("1"));
 await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           </div>
+
+          <h2 id="agents">AI agents (MCP)</h2>
+          <p>Cloak has an MCP server, so Claude, ChatGPT, Cursor and other AI apps can work with it directly. It comes in two parts, so an agent's keys never leave the machine it runs on.</p>
+          <p><b>Connect by link (read and plan).</b> Paste <code>https://cloak.boblabs.tech/mcp</code> into your AI app. Nothing to install and no key. The agent can list launches, read a launch (bids stay hidden until bidding closes), price a sealed bid or a private swap, see vault totals and plan a launch. It never signs, and it refuses any message that looks like it carries a private key.</p>
+          <ul>
+            <li><b>Claude</b> (claude.ai or Desktop): Settings, Connectors, Add custom connector, then paste the link.</li>
+            <li><b>ChatGPT</b>: turn on developer mode under Apps and connectors, then add a connector with the link and no authentication.</li>
+            <li><b>Claude Code</b>: <code>claude mcp add --transport http cloak https://cloak.boblabs.tech/mcp</code></li>
+            <li><b>Cursor, VS Code and others</b>: add a remote server with <code>{`{ "mcpServers": { "cloak": { "url": "https://cloak.boblabs.tech/mcp" } } }`}</code></li>
+          </ul>
+          <p><b>The full agent (launch, bid, trade privately).</b> This part runs on your own machine with a wallet made just for the agent, signs there, and makes its proofs there, under spending limits per transaction and per day (1 and 10 HYPE by default) with a dry run on every action. It's <code>@cloakely/mcp</code>; setup is in its <a href="https://github.com/NECOKIZZ/Cloak/tree/main/packages/mcp" target="_blank" rel="noreferrer">README</a>.</p>
 
           <h2 id="contracts">Contracts (Elysium testnet, chain 99801)</h2>
           <table>

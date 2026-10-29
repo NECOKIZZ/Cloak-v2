@@ -6,7 +6,24 @@ An agent that trades on chain leaks its strategy with every transaction, and any
 
 **Testnet only for now** (Elysium testnet, chain `99801`). Play money only.
 
-## Set up
+There are two ways in:
+
+| | Hosted link | Local server (this package) |
+|---|---|---|
+| Install | Nothing: paste `https://cloak.boblabs.tech/mcp` | `npx -y @cloakely/mcp` |
+| Can do | Read and plan: launches, quotes, vault totals, launch plans | Everything: launch, bid, claim, shield, private swaps, batch orders, private sends, withdrawals |
+| Keys | None. It never signs and refuses calls that look like they carry a key | Your agent's wallet, on your machine only |
+
+## Connect by link
+
+- **Claude** (claude.ai or Desktop): Settings, Connectors, Add custom connector, then paste `https://cloak.boblabs.tech/mcp`.
+- **ChatGPT**: turn on developer mode under Apps and connectors, then add a connector with the link and no authentication.
+- **Claude Code**: `claude mcp add --transport http cloak https://cloak.boblabs.tech/mcp`
+- **Cursor, VS Code and others**: `{ "mcpServers": { "cloak": { "url": "https://cloak.boblabs.tech/mcp" } } }`
+
+Its tools: `cloak_info`, `list_launches`, `get_launch`, `quote_bid`, `quote_swap`, `vault_stats`, `plan_launch` and `connect_full_agent`. It's stateless (each request gets a fresh server and nothing is kept) and rate limited. You can serve it yourself from any runtime that speaks web `Request`/`Response`: `import { handleMcpRequest } from "@cloakely/mcp/http"`.
+
+## Set up the local server
 
 Create a fresh wallet for the agent, fund it from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), and put its private key in a file only you can read:
 
@@ -52,6 +69,7 @@ Then ask, for example:
 | | `get_launch` | One launch in full: timing, prices, caps, results, revealed demand once bids open |
 | | `quote_bid` | The price tick, cost and rounded deposit for a bid |
 | | `quote_swap` | Expected output of a private buy or sell, with the fees |
+| | `vault_stats` | How much sits in each private vault (totals only) |
 | Launch | `create_launch` | Start a sealed-bid launch |
 | | `place_sealed_bid` | Commit a sealed bid. It opens by itself after bidding closes |
 | | `my_bids` | The wallet's bids: opened, claimed, tokens won, refund |

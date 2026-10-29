@@ -69,3 +69,12 @@ test("errors become one plain sentence", () => {
   assert.match(explain({ shortMessage: "The contract function \"x\" reverted with the following reason:\nauctions closed" }), /reason: auctions closed$/);
   assert.match(explain(new Error("Execution reverted: gas required exceeds allowance (0)")), /faucet/);
 });
+
+test("the hosted server's secret check: keys and recovery phrases, not addresses or amounts", async () => {
+  const { looksSecret } = await import("../dist/server.js");
+  assert.equal(looksSecret({ auction: "0x856e4424f806D16E8CBC702B3c0F2ede5468eae5", amount: "0.5" }), false);
+  assert.equal(looksSecret({ auction: KEY }), true);
+  assert.equal(looksSecret({ note: KEY.slice(2) }), true);
+  assert.equal(looksSecret({ x: "legal winner thank year wave sausage worth useful legal winner thank yellow" }), true);
+  assert.equal(looksSecret({ name: "Ember", symbol: "EMBR" }), false);
+});

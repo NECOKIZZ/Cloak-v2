@@ -38,6 +38,7 @@ export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
 export const VERSION = "0.1.0";
+export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
 
@@ -46,6 +47,10 @@ Launches: create_launch starts a sealed-bid auction. place_sealed_bid commits a 
 Private balances: shield moves HYPE or USDC from the wallet into a private balance (the one public step). private_swap, batch_order, private_send and withdraw then run from that balance: each is proven on this machine and sent by a relayer, so the wallet never appears on chain. batch_order also hides trade size. withdraw lands funds at a normal address, ideally a fresh one. Amounts are in whole units ("0.5" HYPE), and send, sell and withdraw accept "max".
 
 Safety: every action that moves value is checked against per-transaction and daily spending limits (see cloak_info), and any write tool takes dry_run: true to see exactly what would happen without signing anything. Use dry_run first when unsure.`;
+
+const HOSTED_INSTRUCTIONS = `Cloak's hosted MCP server: read and plan for Cloak, sealed-bid token launches and private trading on Kinetiq's Elysium testnet (HYPE is the gas and base currency).
+
+It never signs and never holds keys. Use it to find launches (list_launches, get_launch), price a sealed bid (quote_bid) or a private swap (quote_swap), see vault totals (vault_stats) and plan a launch (plan_launch). Bids stay sealed until bidding closes, so demand only shows after that. To actually launch, bid or trade, the agent needs the local server: connect_full_agent explains it. Never send a private key, note secret or recovery phrase here; calls that look like they carry one are refused.`;
 
 type Asset =
   | { kind: "hype"; symbol: "HYPE"; token: Address; pool: Address; decimals: 18 }
@@ -80,7 +85,19 @@ function amountOf(s: string, decimals: number): bigint | null {
   return a;
 }
 
-export function createCloakServer(settings: Settings, opts: { prover?: () => Promise<Prover> } = {}) {
+/** A tool argument that looks like a private key, a note secret or a recovery phrase. */
+export function looksSecret(args: unknown): boolean {
+  const text = JSON.stringify(args ?? {});
+  return /(0x)?[0-9a-fA-F]{64}(?![0-9a-fA-F])/.test(text) || /\b([a-z]{3,8}\s+){11,23}[a-z]{3,8}\b/.test(text);
+}
+
+/**
+ * The Cloak MCP server. `hosted` is the public read-and-plan server (https://cloak.boblabs.tech/mcp): it never has a
+ * key, never signs, and refuses any call that looks like it carries a secret. Without `hosted`, it's the local server
+ * that signs for one agent wallet under spending limits.
+ */
+export function createCloakServer(settings: Settings, opts: { prover?: () => Promise<Prover>; hosted?: boolean } = {}) {
+  if (opts.hosted) settings = { ...settings, privateKey: undefined };
   const d = settings.deployment;
   const pub = createPublicClient({ chain: settings.chain, transport: http(settings.rpcUrl) }) as PublicClient;
   const account = settings.privateKey ? privateKeyToAccount(settings.privateKey) : undefined;
@@ -245,7 +262,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     writeFileSync(bidsFile(a), j(all));
   }
 
-  const server = new McpServer({ name: "cloak", version: VERSION }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: opts.hosted ? "cloak-hosted" : "cloak", version: VERSION }, { instructions: opts.hosted ? HOSTED_INSTRUCTIONS : INSTRUCTIONS });
   const dry = z.boolean().optional().describe("Return what would happen without signing or sending anything.");
   const addr = z.string().describe("0x address");
   const amt = (what: string) => z.string().describe(`${what}, in whole units (e.g. "0.5")`);
@@ -257,6 +274,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   const safe =
     <A>(fn: (a: A) => Promise<unknown>) =>
     async (a: A) => {
+      if (opts.hosted && looksSecret(a)) return fail("This hosted server never takes private keys, note secrets or recovery phrases, and refused the call. Nothing was stored. If that was a real key, treat it as exposed and move its funds to a new wallet.");
       try {
         return reply(await fn(a));
       } catch (e) {
@@ -281,13 +299,13 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
           }
         : null;
       return {
-        server: `@cloakely/mcp ${VERSION}`,
+        server: opts.hosted ? `Cloak hosted MCP ${VERSION} (${HOSTED_URL})` : `@cloakely/mcp ${VERSION}`,
         network: settings.network,
         chainId: settings.chain.id,
-        mode: account ? "read and write" : "read only (no wallet configured)",
-        dryRun: settings.dryRun ? "on for every write (CLOAK_DRY_RUN=1)" : "off (pass dry_run: true on any write to preview it)",
-        wallet,
-        limits: spending?.summary() ?? null,
+        mode: opts.hosted ? "hosted: read and plan only, never signs (connect_full_agent explains how to launch, bid and trade)" : account ? "read and write" : "read only (no wallet configured)",
+        ...(opts.hosted
+          ? {}
+          : { dryRun: settings.dryRun ? "on for every write (CLOAK_DRY_RUN=1)" : "off (pass dry_run: true on any write to preview it)", wallet, limits: spending?.summary() ?? null }),
         contracts: { factory: d.factory, router: d.router, batcher: d.batcher, hypeVault: d.hypePool, ...(usdc ? { [`${usdc.symbol.toLowerCase()}Vault`]: usdc.pool } : {}) },
         relayer: d.relayerUrl,
         ...(settings.network === "testnet" ? { faucet: "https://elysium.kinetiq.xyz/testnet-faucet", note: "Testnet: play money only." } : {}),
@@ -366,6 +384,79 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       return { side, in: side === "buy" ? hype(a) : `${amount} ${t.symbol}`, expectedOut: `${formatEther(q.out)} ${outSym}`, relayerFee: `${formatEther(q.fee)} ${side === "buy" ? "HYPE" : t.symbol}`, withdrawalFee: `${formatEther(a - q.net)} ${side === "buy" ? "HYPE" : t.symbol}` };
     }),
   );
+
+
+  server.registerTool(
+    "vault_stats",
+    { title: "Private vault totals", description: "How much sits in each private vault (HYPE, USDC and every launch token). Totals are public; who owns what isn't.", inputSchema: {}, annotations: READ },
+    safe(async () => {
+      const out = [];
+      for (const a of await vaults()) {
+        const held = await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "deposited" });
+        if (held === 0n && a.kind === "token") continue;
+        out.push({ asset: a.symbol, token: a.token, vault: a.pool, held: fmtAmt(a, held) });
+      }
+      return { vaults: out, note: "Each vault is one shared pool of encrypted notes. The chain shows the total, not the owners or their balances." };
+    }),
+  );
+
+  if (opts.hosted) {
+    server.registerTool(
+      "plan_launch",
+      {
+        title: "Plan a launch",
+        description: "Check a launch's settings and see its schedule, price range and what it raises at the lowest and highest price, before creating it on the site or with the local server.",
+        inputSchema: {
+          sale_supply: amt("Tokens sold in the auction"),
+          min_price: amt("Lowest price, in HYPE per token"),
+          tick_size: amt("Price step between ticks, in HYPE").optional(),
+          price_ticks: z.number().int().min(1).max(256).optional().describe("Number of price ticks (default 100)"),
+          bidding_minutes: z.number().positive().max(60 * 24 * 14).optional().describe("How long bidding stays open (default 60)"),
+          reveal_minutes: z.number().min(1).max(60 * 24).optional().describe("Time for bids to open after bidding closes (default 10)"),
+          lp_percent: z.number().min(0).max(100).optional().describe("Share of the raise that seeds the pool (default 50)"),
+        },
+        annotations: READ,
+      },
+      safe(async (p: { sale_supply: string; min_price: string; tick_size?: string; price_ticks?: number; bidding_minutes?: number; reveal_minutes?: number; lp_percent?: number }) => {
+        const supply = parseEther(p.sale_supply);
+        const min = parseEther(p.min_price);
+        const tick = parseEther(p.tick_size ?? p.min_price);
+        const ticks = p.price_ticks ?? 100;
+        const top = min + BigInt(ticks - 1) * tick;
+        const now = Number((await pub.getBlock()).timestamp);
+        const commitEnd = now + Math.round((p.bidding_minutes ?? 60) * 60);
+        const revealEnd = commitEnd + Math.round((p.reveal_minutes ?? 10) * 60);
+        const raise = (price: bigint) => (price * supply) / 10n ** 18n;
+        const lp = p.lp_percent ?? 50;
+        return {
+          ifCreatedNow: { biddingEnds: iso(commitEnd), revealsEnd: iso(revealEnd) },
+          priceRange: `${formatEther(min)} to ${formatEther(top)} HYPE per token, ${ticks} ticks`,
+          raiseIfFullySold: { atLowestPrice: hype(raise(min)), atHighestPrice: hype(raise(top)) },
+          toPool: `${lp}% of the raise, paired with tokens at the clearing price; the LP is burned unless you lock it`,
+          launchFee: "1.5% of a successful raise; nothing if the launch doesn't fill",
+          caps: "During the beta a bid can be at most 100 HYPE and an auction can take at most 10,000 HYPE.",
+          create: { onTheSite: "https://cloak.boblabs.tech/app/create", withAnAgent: "the local server's create_launch tool (see connect_full_agent)" },
+        };
+      }),
+    );
+
+    server.registerTool(
+      "connect_full_agent",
+      { title: "Connect a full agent", description: "How to let an agent launch, bid and trade privately: the local Cloak MCP server, which signs on your own machine under spending limits.", inputSchema: {}, annotations: READ },
+      safe(async () => ({
+        why: "This hosted server never holds keys, so it can read and plan but not sign. Launching, bidding and private trading run in the local server, on the machine that holds the agent's wallet. Its proofs are made there too, so nobody else, Cloak included, can see or move the funds.",
+        steps: [
+          "Make a fresh wallet just for the agent and fund it with testnet HYPE from https://elysium.kinetiq.xyz/testnet-faucet",
+          "Save its private key to a file only you can read, for example ~/.cloak-agent-key",
+          "Claude Code: claude mcp add cloak --env CLOAK_KEY_FILE=$HOME/.cloak-agent-key -- npx -y @cloakely/mcp",
+          'Other clients: { "mcpServers": { "cloak": { "command": "npx", "args": ["-y", "@cloakely/mcp"], "env": { "CLOAK_KEY_FILE": "/path/to/key" } } } }',
+        ],
+        safety: "Spending limits per transaction and per day (1 HYPE and 10 HYPE by default, set with CLOAK_MAX_HYPE_PER_TX and CLOAK_MAX_HYPE_PER_DAY), dry_run on every action, testnet by default. Never paste a key into a chat or into this hosted server.",
+        docs: "https://github.com/NECOKIZZ/Cloak/tree/main/packages/mcp",
+      })),
+    );
+    return server;
+  }
 
   // ───────────── launches ─────────────
 
