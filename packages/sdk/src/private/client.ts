@@ -115,9 +115,11 @@ export function walletSubmitter(publicClient: PublicClient, wallet: Wallet, rout
             : { address: call.pool, abi: shieldedPoolAbi, functionName: "transact", args: [call.proof, call.extData] };
     if (call.kind === "placeOrder" && !batcher) throw new Error("no batcher configured");
     // Pad the estimate: state can change between estimation and inclusion (e.g. an order landing in a new batch round
-    // writes fresh storage, ~60k more gas). Unused gas is refunded.
+    // writes fresh storage, ~60k more gas). Unused gas is refunded. Estimate from the address, not the local account:
+    // with a local account viem estimates twice, the second time capped at the first result, so a round turning over
+    // in between made that second estimate run out of gas.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const est = await publicClient.estimateContractGas({ ...req, account: wallet.account } as any);
+    const est = await publicClient.estimateContractGas({ ...req, account: wallet.account!.address } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hash = await wallet.writeContract({ ...req, gas: (est * 13n) / 10n + 100_000n } as any);
     const r = await publicClient.waitForTransactionReceipt({ hash });

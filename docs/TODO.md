@@ -6,7 +6,8 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 - [ ] **Top up the keeper wallet** `0x6616C2566baD950FcDD420159a51fDdfFa220E8e` from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), a few times over. It pays gas for every reveal, settlement and relayed private trade, it's down to about 0.0156 HYPE, and the v3 deploy comes out of it too.
 - [x] ~~Say go on v3~~: v3 deployed (Oct 30).
-- [ ] **Point the Render keeper at v3** (cloak-keeper, Environment): the values are in `render.yaml` and in Claude's message.
+- [x] ~~Point the Render keeper and Vercel at v3~~ (Oct 30).
+- [ ] **Fix `MIGRATIONS` on Render**: it arrived as only the v2 router, with no `:migrator` and no v1 pair, so moving old balances fails. The full value is in `render.yaml`.
 - [x] ~~First npm release of the MCP server~~: `@cloakely/mcp` 0.1.0 is on npm (Oct 30).
 - [x] ~~Switch the MCP package to trusted publishing~~: 0.1.2 published by GitHub Actions with no token (Oct 30).
 - [ ] **Remove the publish token, now that nothing needs it:**
@@ -18,7 +19,7 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 ## Next up (Claude)
 
-- [ ] **Intermittent batch-order gas failure**: about one local `e2e/private.mjs` run in two, a batch order's transaction needs more gas than its estimate plus padding ("gas required exceeds allowance"). It predates v3. The keeper submits the same way, so a relayed batch order could fail the same way. Find what makes the gas jump and fix the padding or the cause.
+- [x] ~~**Intermittent batch-order gas failure**~~ (Oct 30): with a local account, viem estimated gas twice, the second time capped at the first result. When a batch round turned over in between, the order opened a fresh round (about 60k more gas) and the capped estimate ran out of gas. The SDK now estimates once, from the address, and pads that. The keeper had the same bug.
 
 - [x] ~~**Cloak v3 on testnet**, which is also the mainnet deploy rehearsal~~ (Oct 30, rehearsed on a fork first):
   - deploy config, factory, router, batcher, HYPE and USDC vaults, with v2's fees and caps
@@ -29,6 +30,13 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 - [x] ~~Add the `npx -y @cloakely/mcp` setup to the site's AI agents docs~~ (Oct 30).
 
 ## Before mainnet (Nov 9)
+
+- [ ] **Deploy the vaults once and never move funds again.** Today every redeploy opens new vaults and asks users to move their balances, and every deployment's stats have to be stitched together by hand. Mainnet should work like this:
+  1. Vaults (the contracts holding funds) are deployed once and kept for good. The only thing that forces new vaults is a circuit change, and the circuit is final after the ceremony.
+  2. A new factory (like v3's `claim()` fix) is **added** to the existing router through `CloakConfig`, with the 3-day wait, instead of redeploying the router. v3 only needed a new router because the router's factory list is fixed at deploy.
+  3. A new router or batcher **adopts** the existing vaults (checked against the old router's list) instead of creating new ones, so balances stay where they are.
+  4. A small on-chain **deployment registry** lists every factory, router and batcher ever used, so the site, SDK and MCP find all of them on their own and stats carry over without `VITE_PREVIOUS` edits.
+  These are contract changes, so they go in before the audit.
 
 - [ ] **Outside review of the circuit** (`circuits/`) by someone who knows circom. A soundness bug there could forge proofs, which nothing in the contracts can catch. Top priority.
 - [ ] **Public trusted-setup ceremony** with outside contributors and a drand beacon. The new verifier goes in through `CloakConfig`.

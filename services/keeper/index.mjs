@@ -41,8 +41,13 @@ const MIGRATIONS = (process.env.MIGRATIONS ?? (process.env.MIGRATOR && process.e
   .map((s) => s.trim())
   .filter(Boolean)
   .map((s) => {
-    const [router, migrator] = s.split(":");
+    const [router, migrator] = s.split(":").map((x) => x.trim());
     return { router, migrator };
+  })
+  .filter(({ router, migrator }) => {
+    const ok = /^0x[0-9a-fA-F]{40}$/.test(router ?? "") && /^0x[0-9a-fA-F]{40}$/.test(migrator ?? "");
+    if (!ok) console.error(`MIGRATIONS: skipped "${router}:${migrator ?? ""}", expected 0xrouter:0xmigrator`);
+    return ok;
   });
 const MIGRATOR = MIGRATIONS[0]?.migrator;
 if (!FACTORY || !PK) {
