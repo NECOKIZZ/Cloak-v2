@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { cloakFactoryAbi } from "@cloakely/sdk";
-import { FACTORY } from "./config";
+import { FACTORY, PREVIOUS } from "./config";
 import { Hint } from "./errors";
 import { publicClient } from "./wallet";
 
@@ -58,6 +58,39 @@ async function parseMeta(uri: string): Promise<TokenMeta> {
   }
 }
 
+// v1's LaunchCreated has no vesting fields, so it has its own topic and is read separately
+const LAUNCH_CREATED_V1 = [
+  {
+    type: "event",
+    name: "LaunchCreated",
+    inputs: [
+      { name: "index", type: "uint256", indexed: true },
+      { name: "auction", type: "address", indexed: true },
+      { name: "token", type: "address", indexed: true },
+      { name: "creator", type: "address", indexed: false },
+      { name: "launchpad", type: "address", indexed: false },
+      { name: "name", type: "string", indexed: false },
+      { name: "symbol", type: "string", indexed: false },
+      { name: "creatorAlloc", type: "uint256", indexed: false },
+      { name: "metadataURI", type: "string", indexed: false },
+    ],
+  },
+] as const;
+
+export type LaunchCreatedLog = { args: { auction: Address; token: Address; creator: Address; metadataURI: string }; blockNumber: bigint; transactionHash: `0x${string}`; logIndex: number };
+
+/** LaunchCreated from the current factory and every earlier one, optionally for one auction. */
+export async function launchCreatedLogs(auction?: Address): Promise<LaunchCreatedLog[]> {
+  const factories = [FACTORY, ...PREVIOUS.map((p) => p.factory)].filter(Boolean) as Address[];
+  if (!factories.length) return [];
+  const q = { address: factories, eventName: "LaunchCreated", args: auction ? { auction } : undefined, fromBlock: 0n, toBlock: "latest", strict: true } as const;
+  const [now, v1] = await Promise.all([
+    publicClient.getContractEvents({ ...q, abi: cloakFactoryAbi }),
+    publicClient.getContractEvents({ ...q, abi: LAUNCH_CREATED_V1 }),
+  ]);
+  return [...now, ...v1] as unknown as LaunchCreatedLog[];
+}
+
 let all: Promise<Map<string, TokenMeta>> | null = null;
 const subs = new Set<() => void>();
 
@@ -66,8 +99,7 @@ export function loadAllMeta(force = false): Promise<Map<string, TokenMeta>> {
   if (all && !force) return all;
   all = (async () => {
     const m = new Map<string, TokenMeta>();
-    if (!FACTORY) return m;
-    const logs = await publicClient.getContractEvents({ address: FACTORY, abi: cloakFactoryAbi, eventName: "LaunchCreated", fromBlock: 0n, toBlock: "latest", strict: true });
+    const logs = await launchCreatedLogs();
     await Promise.all(
       logs.map(async (l) => {
         const meta = l.args.metadataURI ? await parseMeta(l.args.metadataURI) : {};

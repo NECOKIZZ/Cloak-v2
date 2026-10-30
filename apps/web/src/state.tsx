@@ -214,8 +214,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUnlocking(true);
     try {
       // The first unlock on this device signs twice to check the wallet signs the same way every time; later unlocks
-      // compare against the account fingerprint saved then.
-      const fpKey = `cloak.account.v2.${chain.id}.${w.account.address.toLowerCase()}`;
+      // compare against the account fingerprint saved then. Keys are bound to the router, so each deployment has its
+      // own private account and its own fingerprint.
+      const fpKey = `cloak.account.${chain.id}.${ROUTER.toLowerCase()}.${w.account.address.toLowerCase()}`;
       let known: string | null = null;
       try {
         known = localStorage.getItem(fpKey);

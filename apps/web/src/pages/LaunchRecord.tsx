@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
-import { cloakAuctionAbi, cloakFactoryAbi, cloakPairAbi, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
-import { addrLink, FACTORY, ROUTER, txLink } from "../config";
+import { cloakAuctionAbi, cloakPairAbi, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
+import { addrLink, ROUTER, txLink } from "../config";
+import { launchCreatedLogs } from "../tokenMeta";
 import { friendly } from "../errors";
 import { hype, short, tokens } from "../format";
 import { publicClient } from "../wallet";
@@ -24,7 +25,7 @@ const ev = (address: Address, abi: readonly unknown[], eventName: string, args?:
 async function loadRecord(s: AuctionState): Promise<Step[]> {
   const a = s.address;
   const [created, commits, reveals, settles, fails, claims, lp, pool, trades] = await Promise.all([
-    FACTORY ? ev(FACTORY, cloakFactoryAbi, "LaunchCreated", { auction: a }) : Promise.resolve([]),
+    launchCreatedLogs(a) as unknown as Promise<Log[]>,
     ev(a, cloakAuctionAbi, "Committed"),
     ev(a, cloakAuctionAbi, "Revealed"),
     ev(a, cloakAuctionAbi, "Settled"),
