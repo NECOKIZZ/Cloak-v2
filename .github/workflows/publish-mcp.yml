@@ -2,12 +2,18 @@ name: Publish MCP server
 # Publishes packages/mcp (@cloakely/mcp) to npm when a tag like mcp-v0.1.0 is pushed (or by hand from the Actions tab).
 # Auth is npm Trusted Publishing (OIDC), like publish-sdk.yml: on npmjs.com, @cloakely/mcp, Settings, Trusted
 # Publisher (GitHub Actions, owner NECOKIZZ, repo Cloak, workflow publish-mcp.yml).
-# npm only offers that setting once a package exists, so the very first version can go out with a short-lived token
-# instead: add it as the NPM_TOKEN secret, run this once, set up the trusted publisher, then delete the secret.
+# npm only offers that setting once a package exists, so the very first version went out with a short-lived token
+# (run by hand with first_release ticked and an NPM_TOKEN secret). Every other run uses trusted publishing only, even
+# if a token secret is still around.
 on:
   push:
     tags: ["mcp-v*"]
   workflow_dispatch:
+    inputs:
+      first_release:
+        description: "First release of a new package: publish with the NPM_TOKEN secret instead of trusted publishing"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,8 +22,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      HAS_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -36,10 +40,10 @@ jobs:
         working-directory: packages/mcp
         run: pnpm pack && mv cloakely-mcp-*.tgz /tmp/mcp.tgz
       - name: Publish (trusted publishing)
-        if: env.HAS_TOKEN != 'true'
+        if: ${{ !inputs.first_release }}
         run: npm publish /tmp/mcp.tgz --provenance --access public
       - name: Publish (first release, with a token)
-        if: env.HAS_TOKEN == 'true'
+        if: ${{ inputs.first_release }}
         run: npm publish /tmp/mcp.tgz --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

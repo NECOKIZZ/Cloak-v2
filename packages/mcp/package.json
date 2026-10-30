@@ -1,6 +1,7 @@
 {
   "name": "@cloakely/mcp",
-  "version": "0.1.0",
+  "mcpName": "io.github.NECOKIZZ/cloak",
+  "version": "0.1.1",
   "description": "Cloak's MCP server: let an AI agent launch tokens with sealed bids and trade them privately on Elysium, with spending limits, testnet by default and a local signer.",
   "keywords": [
     "mcp",
