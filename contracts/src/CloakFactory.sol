@@ -73,7 +73,7 @@ contract CloakFactory {
             to[1] = address(this); // minted here, then locked in the vesting contract below
             amounts[1] = creatorAlloc;
         }
-        CloakToken t = new CloakToken(name, symbol, to, amounts);
+        CloakToken t = vestingDeployer.deployToken(name, symbol, to, amounts);
         if (creatorAlloc > 0) {
             v = vestingDeployer.deploy(IERC20Min(address(t)), params.creator, params.revealEnd, vestEnd, creatorAlloc);
             require(t.transfer(address(v), creatorAlloc), "vest");
@@ -97,7 +97,6 @@ contract CloakFactory {
             vestEnd
         );
     }
-
 
     function launchesCount() external view returns (uint256) {
         return launches.length;

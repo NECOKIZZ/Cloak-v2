@@ -91,6 +91,9 @@ contract CloakAuction {
     uint256 public creatorOwed; // proceeds waiting for withdrawProceeds()
     uint256 public feesOwed; // launch fee waiting for collectFees()
     uint256 public claimedCount;
+    /// @notice Refunds a bidder's address couldn't take when claimed, waiting for withdrawRefund().
+    mapping(address => uint256) public refundOwed;
+    uint256 internal refundsHeld;
 
     event Committed(uint256 indexed id, address indexed bidder, uint256 deposit, bytes32 commitment, bytes sealedBid);
     event Revealed(uint256 indexed id, address indexed bidder, uint16 tick, uint256 quantity);
@@ -113,6 +116,8 @@ contract CloakAuction {
     event ProceedsWithdrawn(address to, uint256 amount);
     event FeesCollected(address to, uint256 amount);
     event DustSwept(uint256 hype, uint256 tokens);
+    event RefundHeld(address indexed bidder, uint256 amount);
+    event RefundWithdrawn(address indexed bidder, address to, uint256 amount);
 
     modifier onlyFactory() {
         require(msg.sender == factory, "factory");
@@ -361,8 +366,24 @@ contract CloakAuction {
         ++claimedCount;
         if (tokens > 0) require(token.transfer(b.bidder, tokens), "t");
         if (penalty > 0) _sendHype(DEAD, penalty);
-        if (refund > 0) _sendHype(b.bidder, refund);
+        // A bidder whose address can't take HYPE (or burns the gas it's given) must not block its own tokens, a
+        // keeper's batch or the dust sweep: the refund is held for it instead, to pull to any address.
+        if (refund > 0 && !_trySendHype(b.bidder, refund)) {
+            refundOwed[b.bidder] += refund;
+            refundsHeld += refund;
+            emit RefundHeld(b.bidder, refund);
+        }
         emit Claimed(id, b.bidder, tokens, refund, penalty);
+    }
+
+    /// @notice Pull a refund that couldn't be sent at claim time, to any address (only the bidder can).
+    function withdrawRefund(address to) external {
+        uint256 amount = refundOwed[msg.sender];
+        require(amount > 0, "nothing");
+        refundOwed[msg.sender] = 0;
+        refundsHeld -= amount;
+        _sendHype(to, amount);
+        emit RefundWithdrawn(msg.sender, to, amount);
     }
 
     function claimBatch(uint256[] calldata ids) external {
@@ -393,7 +414,7 @@ contract CloakAuction {
     /// @notice Once every bid is claimed, rounding dust goes to the treasury (HYPE) and the burn address (tokens).
     function sweepDust() external {
         require(settled && claimedCount == _bids.length, "claims open");
-        uint256 hype = address(this).balance - creatorOwed - feesOwed;
+        uint256 hype = address(this).balance - creatorOwed - feesOwed - refundsHeld;
         uint256 tokens = token.balanceOf(address(this));
         if (hype > 0) feesOwed += hype;
         if (tokens > 0) require(token.transfer(DEAD, tokens), "burn");
@@ -407,6 +428,17 @@ contract CloakAuction {
         lpReleased = true;
         pair.transferShares(params.creator, lpShares);
         emit LPReleased(params.creator, lpShares);
+    }
+
+    /// Gas for a refund send in claim(): plenty for a smart wallet's receive, too little to grief a batch.
+    uint256 internal constant REFUND_SEND_GAS = 100_000;
+
+    /// A bounded-gas native send that copies no return data, so a recipient can't burn the caller's gas.
+    function _trySendHype(address to, uint256 amount) internal returns (bool ok) {
+        uint256 g = REFUND_SEND_GAS;
+        assembly {
+            ok := call(g, to, amount, 0, 0, 0, 0)
+        }
     }
 
     function _sendHype(address to, uint256 amount) internal {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {CloakToken} from "./CloakToken.sol";
 import {IERC20Min} from "./CloakPair.sol";
 
 /// @notice Holds a creator's allocation and releases it linearly from `start` to `end`. No owner; anyone can call
@@ -43,8 +44,19 @@ contract CloakVesting {
     }
 }
 
-/// @notice Deploys vesting contracts for CloakFactory (kept separate so the factory stays under the contract size limit).
+/// @notice Deploys launch tokens and vesting contracts for CloakFactory (kept separate so the factory stays under the
+/// contract size limit). A token has no owner and mints its whole supply in its constructor, so which contract deploys
+/// it changes nothing; only launches registered in CloakFactory count as Cloak launches.
 contract CloakVestingDeployer {
+    function deployToken(
+        string calldata name,
+        string calldata symbol,
+        address[] calldata to,
+        uint256[] calldata amounts
+    ) external returns (CloakToken) {
+        return new CloakToken(name, symbol, to, amounts);
+    }
+
     function deploy(IERC20Min token, address beneficiary, uint64 start, uint64 end, uint256 total)
         external
         returns (CloakVesting)
