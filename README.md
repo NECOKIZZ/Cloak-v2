@@ -21,18 +21,20 @@ A **[Bob Labs](https://github.com/NECOKIZZ)** product, live on Kinetiq's **Elysi
 
 ## Live on Elysium testnet (chain `99801`)
 
-Cloak **v2** (Oct 25): fees, deposit caps, a timelocked rule book and every fix from our internal review.
+Cloak **v3** (Oct 30): v2's fees, caps and timelocked rule book, plus a fix found in a review before mainnet (a winning bidder whose address can't receive HYPE still gets its tokens; its refund is held for it to collect). v3 also opens vaults for every earlier launch, so balances from v1 and v2 move across and keep trading.
 
 | Contract | Address |
 |---|---|
 | **CloakConfig** (fees, caps, verifier; changes behind a 3-day timelock) | [`0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373) |
-| **CloakFactory** | [`0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc) |
-| **PrivateRouter** (private swaps and vaults) | [`0xd51e731467c49991496329c2b7979cb1aa220ee2`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xd51e731467c49991496329c2b7979cb1aa220ee2) |
-| **PrivateBatcher** (batch auctions) | [`0xa13ffd763a8cccfea1b868c616291723579ddb77`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa13ffd763a8cccfea1b868c616291723579ddb77) |
-| **CloakMigrator** (moves v1 private balances here) | [`0xe54c02fa685f2c95e5ae98e1155547194d04d9ad`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xe54c02fa685f2c95e5ae98e1155547194d04d9ad) |
+| **CloakFactory** | [`0xd0f4aacf339f07211a9155194925b2f94e250e29`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xd0f4aacf339f07211a9155194925b2f94e250e29) |
+| **PrivateRouter** (private swaps and vaults) | [`0x78319bee7c21ca411166acc67c750aca10280e86`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x78319bee7c21ca411166acc67c750aca10280e86) |
+| **PrivateBatcher** (batch auctions) | [`0x9902d86c5be81f6c6ce059acf4c89193d06069c4`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9902d86c5be81f6c6ce059acf4c89193d06069c4) |
+| **CloakFactoryList** (v2 and v1 factories, so v3 opens vaults for their launches) | [`0x3cf790511b85e0e38fd5f1d781f8014842b7847a`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3cf790511b85e0e38fd5f1d781f8014842b7847a) |
+| **CloakMigrator** (moves v2 private balances here) | [`0x295f816aa6dac1901bd793120248d8f9cbbd5eec`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x295f816aa6dac1901bd793120248d8f9cbbd5eec) |
+| **CloakMigrator** (moves v1 private balances here) | [`0x5f3d82a6aa1b20ba9d0f58a98d1c4933c115a0da`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x5f3d82a6aa1b20ba9d0f58a98d1c4933c115a0da) |
 | **USDC vault** (private USDC: shield, send, withdraw) | [`0x61de30970e3c53665ce5a89323284e7ab379fa08`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x61de30970e3c53665ce5a89323284e7ab379fa08) |
 
-All addresses, including the vaults, are in [`deployments/elysium-testnet-v2.json`](deployments/elysium-testnet-v2.json). The first deployment (factory `0x1dc1…7e1c`, router `0xfa25…fc41`) stays on-chain: its launches still list on the site, its history still counts on the Volume page, and its private balances move to v2 in one step from the Portfolio page. Its sources are verified on the explorer. Verification of the v2 sources is in progress.
+All addresses, including the vaults, are in [`deployments/elysium-testnet-v3.json`](deployments/elysium-testnet-v3.json). v3 reuses v2's `CloakConfig`, the Poseidon hashers, the verifier, WHYPE and the USDC vault, none of which hold deployment state. The earlier deployments stay on-chain: v2 (factory `0xc1fc…57fc`, router `0xd51e…0ee2`, [`elysium-testnet-v2.json`](deployments/elysium-testnet-v2.json)) and v1 (factory `0x1dc1…7e1c`, router `0xfa25…fc41`). Their launches still list on the site, their history still counts on the Volume page, and their private balances move to v3 in one step from the Portfolio page. The v1 sources are verified on the explorer; verification of v2 and v3 is in progress. The deploy was rehearsed first on a fork of testnet (`e2e/fork-v3.mjs`).
 
 ### Fees, caps and governance
 
@@ -81,12 +83,12 @@ Private balances usually stop at stablecoins. Cloak extends them to **trading la
 - **Private USDC**: Elysium's USDC ([`0x7D29…47b2`](https://elysium.kinetiq.xyz/testnet-explorer/token/0x7D29d8047B905000459c0E80c34a26CeedcB47b2), bridged from Circle's USDC on HyperEVM) has its own vault: the same `ShieldedPool`, deployed next to the router. Shield it from a wallet, send it privately, withdraw it to any address. The relayer's fee is paid in USDC, priced from the live HYPE/USD price. Beta caps: 1,000 USDC per deposit and 50,000 in the vault. Private swaps between USDC and HYPE or launch tokens come later, once Elysium has a USDC market to route through.
 - **Batch mode (PrivateBatcher), which hides trade size**: your amount is split into **standard sizes** (1, 2 or 5 × 10ⁿ) that everyone uses, and the orders go into a round (30 s on testnet). When the round ends, buys and sells **cross each other at the pool's time-weighted average price over the round** (no pool fee, no price impact), and only the **net** difference trades through the pool, in one swap. Every buyer in the round gets the same price, and so does every seller. Outputs come back as private notes to one-time keys. Observers see "round N: 7 standard-size orders, net +0.4 HYPE hit the pool", not who placed which or how much any one trader moved. A price guard (spot within 2% of that average, and at most 5% price impact on the net swap) stops a settler from sandwiching the batch. If a round can't settle, every order is refunded after a delay.
 
-| Live on Elysium testnet (v2) | |
+| Live on Elysium testnet (v3) | |
 |---|---|
-| **PrivateRouter** | [`0xd51e731467c49991496329c2b7979cb1aa220ee2`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xd51e731467c49991496329c2b7979cb1aa220ee2) |
-| Shielded HYPE pool | [`0x4deFEC0814d11c581e5947020ac4ec41e88B55Df`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x4deFEC0814d11c581e5947020ac4ec41e88B55Df) |
-| Shielded $CLOAK pool | [`0xDD361593560722c3d965cAA551a6Ed81Cd7dd703`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xDD361593560722c3d965cAA551a6Ed81Cd7dd703) |
-| **PrivateBatcher** (30 s rounds) | [`0xa13ffd763a8cccfea1b868c616291723579ddb77`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa13ffd763a8cccfea1b868c616291723579ddb77) |
+| **PrivateRouter** | [`0x78319bee7c21ca411166acc67c750aca10280e86`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x78319bee7c21ca411166acc67c750aca10280e86) |
+| Shielded HYPE pool | [`0x786886a61Dd77581ef03787c5939fC44B004064d`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x786886a61Dd77581ef03787c5939fC44B004064d) |
+| Shielded $CLOAK pool | [`0xc5e06D5EAd18bDF9346C527D86D351712E4344A0`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc5e06D5EAd18bDF9346C527D86D351712E4344A0) |
+| **PrivateBatcher** (30 s rounds) | [`0x9902d86c5be81f6c6ce059acf4c89193d06069c4`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9902d86c5be81f6c6ce059acf4c89193d06069c4) |
 
 **A real private-trading run on testnet against v2** (`e2e/private.mjs`, 19/19 checks, real proofs, fees on):
 
@@ -139,7 +141,8 @@ apps/web/          The site (Vite + React): landing (hover-to-uncloak hero), app
                    (EIP-6963) plus WalletConnect; src/errors.ts turns every error into a plain sentence. Deployed on Vercel.
 e2e/               run.mjs (launch flow), private.mjs (private trading, real proofs), mcp.mjs (an agent through the
                    MCP server, real proofs), usdc.mjs (private USDC), migrate.mjs (v1 → v2 moves
-                   through the relayer, real proofs), deploy-v2.mjs (the testnet deployment), seed.mjs
+                   through the relayer, real proofs), deploy-v3.mjs (the testnet deployment) and fork-v3.mjs
+                   (its rehearsal on a fork of testnet), seed.mjs
 docs/DESIGN.md     Research, design, roadmap
 ```
 

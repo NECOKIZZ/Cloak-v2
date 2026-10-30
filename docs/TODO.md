@@ -5,7 +5,8 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 ## Waiting on you
 
 - [ ] **Top up the keeper wallet** `0x6616C2566baD950FcDD420159a51fDdfFa220E8e` from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), a few times over. It pays gas for every reveal, settlement and relayed private trade, it's down to about 0.0156 HYPE, and the v3 deploy comes out of it too.
-- [ ] **Say go on v3** (see "Next up"). Then, at the end, paste the new keeper addresses into Render (cloak-keeper, Environment). A copy-paste list comes with the deploy.
+- [x] ~~Say go on v3~~: v3 deployed (Oct 30).
+- [ ] **Point the Render keeper at v3** (cloak-keeper, Environment): the values are in `render.yaml` and in Claude's message.
 - [x] ~~First npm release of the MCP server~~: `@cloakely/mcp` 0.1.0 is on npm (Oct 30).
 - [x] ~~Switch the MCP package to trusted publishing~~: 0.1.2 published by GitHub Actions with no token (Oct 30).
 - [ ] **Remove the publish token, now that nothing needs it:**
@@ -17,7 +18,9 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 ## Next up (Claude)
 
-- [ ] **Cloak v3 on testnet**, which is also the mainnet deploy rehearsal:
+- [ ] **Intermittent batch-order gas failure**: about one local `e2e/private.mjs` run in two, a batch order's transaction needs more gas than its estimate plus padding ("gas required exceeds allowance"). It predates v3. The keeper submits the same way, so a relayed batch order could fail the same way. Find what makes the gas jump and fix the padding or the cause.
+
+- [x] ~~**Cloak v3 on testnet**, which is also the mainnet deploy rehearsal~~ (Oct 30, rehearsed on a fork first):
   - deploy config, factory, router, batcher, HYPE and USDC vaults, with v2's fees and caps
   - a migrator so private balances move from v2 to v3 in one step from Portfolio
   - the site and SDK list launches from v1, v2 and v3 (two older deployments instead of one), and the Volume page keeps their history
@@ -33,7 +36,7 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 - [ ] **Ownership to a multisig, then `endSetup()`.** After that, every loosening change waits 3 days.
 - [ ] **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
 - [ ] **Source verification** on the explorer for every contract (v2 is still in progress).
-- [ ] **Rehearse the mainnet deploy**: v3 on testnet covers this.
+- [x] ~~Rehearse the mainnet deploy~~: v3 was rehearsed on a fork, then deployed (Oct 30).
 - [ ] **Mainnet USDC vault**, with the same caps until the audit.
 
 ## Decisions to make

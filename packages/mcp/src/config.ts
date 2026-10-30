@@ -28,14 +28,15 @@ export interface Limits {
   launchesPerDay: number;
 }
 
-const NETWORKS: Record<string, { chain: Chain; launchesFromBlock: bigint }> = {
-  testnet: { chain: elysiumTestnet, launchesFromBlock: 15855986n },
+const NETWORKS: Record<string, { chain: Chain }> = {
+  testnet: { chain: elysiumTestnet },
 };
 
 /** A deployment file (`CLOAK_DEPLOYMENT_FILE`) for a local chain or a private test deployment. */
-interface DeploymentFile extends Omit<CloakDeployment, "routerBlock" | "assets"> {
+interface DeploymentFile extends Omit<CloakDeployment, "routerBlock" | "factoryBlock" | "version" | "assets" | "previous"> {
   rpcUrl: string;
   routerBlock: string | number;
+  version?: number;
   launchesFromBlock?: string | number;
   assets?: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: string | number }[];
 }
@@ -54,14 +55,14 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     const f = JSON.parse(readFileSync(env.CLOAK_DEPLOYMENT_FILE, "utf8")) as DeploymentFile;
     rpcUrl = f.rpcUrl;
     chain = defineChain({ id: f.chainId, name: `Cloak custom (${f.chainId})`, nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } }, testnet: true });
-    deployment = { ...f, routerBlock: BigInt(f.routerBlock), assets: f.assets?.map((a) => ({ ...a, fromBlock: BigInt(a.fromBlock) })) };
     launchesFromBlock = BigInt(f.launchesFromBlock ?? 0);
+    deployment = { ...f, version: f.version ?? 0, factoryBlock: launchesFromBlock, routerBlock: BigInt(f.routerBlock), assets: f.assets?.map((a) => ({ ...a, fromBlock: BigInt(a.fromBlock) })) };
   } else {
     const n = NETWORKS[network];
     if (!n) throw new Error(`unknown CLOAK_NETWORK "${network}" (use testnet)`);
     chain = n.chain;
     deployment = deploymentFor(chain.id);
-    launchesFromBlock = n.launchesFromBlock;
+    launchesFromBlock = deployment.factoryBlock;
     rpcUrl = chain.rpcUrls.default.http[0];
   }
   if (env.CLOAK_RPC_URL) rpcUrl = env.CLOAK_RPC_URL;

@@ -1,0 +1,60 @@
+{
+  "chainId": 99801,
+  "version": 3,
+  "config": "0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373",
+  "verifier": "0xA554AC0150E853DEAC5214cFf9F5001Ad2f441ED",
+  "poseidon2": "0x80d9d0b2bdd42a77d083235662925f2907392723",
+  "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
+  "factory": "0xd0f4aacf339f07211a9155194925b2f94e250e29",
+  "factoryBlock": "19096456",
+  "factoryList": "0x3cf790511b85e0e38fd5f1d781f8014842b7847a",
+  "router": "0x78319bee7c21ca411166acc67c750aca10280e86",
+  "routerBlock": "19096485",
+  "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
+  "hypePool": "0x786886a61Dd77581ef03787c5939fC44B004064d",
+  "batcher": "0x9902d86c5be81f6c6ce059acf4c89193d06069c4",
+  "batcherBlock": "19096615",
+  "treasury": "0x6616C2566baD950FcDD420159a51fDdfFa220E8e",
+  "rules": {
+    "withdrawFeeBps": 25,
+    "launchFeeBps": 150,
+    "caps": "WHYPE 100/10,000 HYPE; tokens 1%/10% of supply; auctions 100/10,000 HYPE"
+  },
+  "legacyVaults": [
+    "0x4319AE71F27A2a7932c238B56f5F96A2B6b902cd",
+    "0xc1DDAA56312Fde7b643AD4c0320bf74E8554b1f0",
+    "0xB5D3DB6a3C6f5cadBf07A560d58E53CeF265C5b1",
+    "0xAAAd118742C0cF539E5C6A8cc046c3fc5d754B9f",
+    "0x197FE3F22cf0fa17066Bd1ee1A39b46db8c17e1c",
+    "0x7e65c418e4E3CDdB1C3C8a9bD2dcE336AC7fd17D"
+  ],
+  "previous": [
+    {
+      "version": 2,
+      "factory": "0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc",
+      "router": "0xd51e731467c49991496329c2b7979cb1aa220ee2",
+      "routerBlock": "15856031",
+      "batcher": "0xa13ffd763a8cccfea1b868c616291723579ddb77",
+      "migrator": "0x295f816aa6dac1901bd793120248d8f9cbbd5eec"
+    },
+    {
+      "version": 1,
+      "factory": "0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c",
+      "router": "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41",
+      "routerBlock": "10973723",
+      "batcher": "0xf6582cc5a84fccf74e571e652fb7b603a2c25812",
+      "migrator": "0x5f3d82a6aa1b20ba9d0f58a98d1c4933c115a0da"
+    }
+  ],
+  "assets": [
+    {
+      "symbol": "USDC",
+      "token": "0x7D29d8047B905000459c0E80c34a26CeedcB47b2",
+      "pool": "0x61de30970e3c53665ce5a89323284e7ab379fa08",
+      "decimals": 6,
+      "fromBlock": "18329466",
+      "caps": "1000/50000 USDC"
+    }
+  ],
+  "deployCost": "0.00291561690157 HYPE"
+}

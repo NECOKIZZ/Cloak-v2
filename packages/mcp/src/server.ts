@@ -37,7 +37,7 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.1.2";
+export const VERSION = "0.2.0";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
@@ -108,7 +108,13 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   }) as PublicClient;
   const account = settings.privateKey ? privateKeyToAccount(settings.privateKey) : undefined;
   const wallet = account ? (createWalletClient({ chain: settings.chain, transport: http(settings.rpcUrl), account }) as Wallet) : undefined;
-  const cloak = new Cloak(pub, wallet, d.factory);
+  // earlier deployments' launches still list, settle and pay out
+  const cloak = new Cloak(pub, wallet, d.factory, (d.previous ?? []).map((p) => p.factory));
+  /** Where to start scanning a launch's bids: the current factory's deploy block, or the start for an older launch. */
+  const bidsFrom = async (auction: Address) =>
+    (await pub.readContract({ address: auction, abi: [{ type: "function", name: "factory", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }], functionName: "factory" }).catch(() => zeroAddress)).toLowerCase() === d.factory.toLowerCase()
+      ? settings.launchesFromBlock
+      : 0n;
   const spending = account ? new Spending(settings.limits, settings.stateDir, account.address) : undefined;
   const submit = relayerSubmitter(d.relayerUrl);
   const explorer = settings.chain.blockExplorers?.default.url;
@@ -553,7 +559,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     safe(async ({ auction }: { auction: string }) => {
       const { account } = needWallet();
       const s = await cloak.getAuction(auction as Address);
-      const bids = await cloak.bidsOf(s.address, account.address, settings.launchesFromBlock);
+      const bids = await cloak.bidsOf(s.address, account.address, await bidsFrom(s.address));
       return {
         launch: s.tokenSymbol,
         phase: s.phase,
@@ -569,7 +575,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const { account } = needWallet();
       let s = await cloak.getAuction(auction as Address);
       if (s.phase === "commit" || s.phase === "reveal") throw new Error(`${s.tokenSymbol} can't settle yet: bids are ${s.phase === "commit" ? "still being placed" : "still opening"} until ${iso(s.phase === "commit" ? s.commitEnd : s.revealEnd)}.`);
-      const bids = await cloak.bidsOf(s.address, account.address, settings.launchesFromBlock);
+      const bids = await cloak.bidsOf(s.address, account.address, await bidsFrom(s.address));
       const open = bids.filter((b) => !b.claimed);
       if (isDry(dry_run)) return { dryRun: true, wouldSettle: !s.settled, wouldClaim: open.map((b) => b.id) };
       return exclusive(async () => {
@@ -579,7 +585,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
           s = await cloak.getAuction(s.address);
         }
         if (open.length) txs.push(link(await cloak.claim(s.address, open.map((b) => b.id))));
-        const after = await cloak.bidsOf(s.address, account.address, settings.launchesFromBlock);
+        const after = await cloak.bidsOf(s.address, account.address, await bidsFrom(s.address));
         return {
           launch: s.tokenSymbol,
           settled: s.settled,
@@ -601,11 +607,15 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const s = await cloak.getAuction(auction as Address);
       if (!s.settled || s.failed) throw new Error(`${s.tokenSymbol} needs to settle successfully first (phase: ${s.phase}).`);
       if (await privateTradingOn(s.token)) return { alreadyOn: true, token: s.token };
-      const idx = (await cloak.listLaunches()).findIndex((l) => l.auction.toLowerCase() === s.address.toLowerCase());
-      if (idx < 0) throw new Error("This launch isn't from the current Cloak factory, so it can't get a private vault.");
-      if (isDry(dry_run)) return { dryRun: true, wouldEnable: s.tokenSymbol, launchIndex: idx };
+      const all = await cloak.listLaunches();
+      const idx = all.findIndex((l) => l.auction.toLowerCase() === s.address.toLowerCase());
+      if (idx < 0) throw new Error("This launch isn't from a Cloak factory, so it can't get a private vault.");
+      // earlier deployments' launches go through the router's list of earlier factories, in the order they're listed
+      const legacy = !!all[idx].legacy;
+      const index = BigInt(legacy ? idx - all.filter((l) => !l.legacy).length : idx);
+      if (isDry(dry_run)) return { dryRun: true, wouldEnable: s.tokenSymbol, launchIndex: index, earlierDeployment: legacy };
       return exclusive(async () => {
-        const h = await wallet.writeContract({ address: d.router, abi: privateRouterAbi, functionName: "createPool", args: [BigInt(idx)] });
+        const h = await wallet.writeContract({ address: d.router, abi: privateRouterAbi, functionName: legacy ? "createLegacyPool" : "createPool", args: [index] });
         await receipt(h);
         return { enabled: true, token: s.token, vault: await pub.readContract({ address: d.router, abi: privateRouterAbi, functionName: "poolOf", args: [s.token] }), tx: link(h) };
       });
