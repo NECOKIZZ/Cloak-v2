@@ -5750,6 +5750,85 @@ export const cloakMigratorAbi = [
   }
 ] as const;
 
+export const cloakFactoryListAbi = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "factories_",
+        "type": "address[]",
+        "internalType": "contract ICloakFactoryRead[]"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "factories",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address[]",
+        "internalType": "contract ICloakFactoryRead[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launches",
+    "inputs": [
+      {
+        "name": "i",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "auction",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "launchpad",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "creatorAlloc",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launchesCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "n",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  }
+] as const;
+
 export const whypeAbi = [
   {
     "type": "receive",
