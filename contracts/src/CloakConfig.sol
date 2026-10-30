@@ -2,6 +2,9 @@
 pragma solidity ^0.8.24;
 
 /// @title CloakConfig — the protocol's rules: proof verifier, fees and deposit caps. Every Cloak contract reads them here.
+/// @notice It is also the registry (v4): which launch factories' tokens the vault may list, which other assets it may
+///         list, and every vault, router, batcher, migrator and factory Cloak has used, with the block each started,
+///         so apps find all of them from this one address.
 /// @notice Governance is "setup, then timelock":
 ///   - During setup the owner sets rules directly, so one deploy script can wire everything.
 ///   - `endSetup()` is one-way. After it, a rule can only be TIGHTENED at once (lower a fee, lower a cap, close
@@ -43,6 +46,22 @@ contract CloakConfig {
     ///         apply to them.
     mapping(address => bool) public capExempt;
 
+    /// @notice Launch factories whose settled launches the vault may list (every Cloak factory, old ones included).
+    mapping(address => bool) public isLaunchFactory;
+    address[] public launchFactories; // every factory ever added, each once
+    mapping(address => bool) internal _inList;
+    /// @notice Tokens other than launch tokens that the vault may list (WHYPE, USDC, …).
+    mapping(address => bool) public approvedAsset;
+
+    struct Entry {
+        bytes32 kind; // "vault", "router", "batcher", "migrator", "factory"
+        address addr;
+        uint64 block; // when it was registered: apps read its events from here
+    }
+
+    /// @notice Every Cloak contract ever registered, oldest first. The newest entry of a kind is the current one.
+    Entry[] public registry;
+
     event OwnershipTransferStarted(address indexed from, address indexed to);
     event OwnershipTransferred(address indexed from, address indexed to);
     event SetupEnded();
@@ -56,6 +75,10 @@ contract CloakConfig {
     event DefaultLimitSet(uint128 perDepositBps, uint128 totalBps);
     event AuctionLimitSet(uint128 perBid, uint128 total);
     event CapExemptSet(address indexed account, bool exempt);
+    event LaunchFactoryAdded(address indexed factory);
+    event LaunchFactoryRemoved(address indexed factory);
+    event AssetApproved(address indexed token);
+    event Registered(bytes32 indexed kind, address indexed addr, uint256 index);
 
     error NotOwner();
     error NotPendingOwner();
@@ -71,6 +94,8 @@ contract CloakConfig {
     error ZeroAddress();
     error NotLower();
     error BadBps();
+    error AlreadyAdded();
+    error NotAdded();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -110,6 +135,22 @@ contract CloakConfig {
         return ((supply * d.perDeposit) / 10_000, (supply * d.total) / 10_000);
     }
 
+    function launchFactoriesCount() external view returns (uint256) {
+        return launchFactories.length;
+    }
+
+    function registryCount() external view returns (uint256) {
+        return registry.length;
+    }
+
+    /// @notice The newest registered contract of `kind` (address(0) if none).
+    function current(bytes32 kind) external view returns (address) {
+        for (uint256 i = registry.length; i > 0; --i) {
+            if (registry[i - 1].kind == kind) return registry[i - 1].addr;
+        }
+        return address(0);
+    }
+
     /// @notice floor(amount × withdrawFeeBps / 10_000); 0 while fees are off.
     function withdrawFee(uint256 amount) external view returns (uint256) {
         if (withdrawFeeBps == 0 || feeRecipient == address(0)) return 0;
@@ -147,7 +188,30 @@ contract CloakConfig {
         _setCapExempt(account, exempt);
     }
 
+    /// @notice Let the vault list this factory's settled launches.
+    function addLaunchFactory(address factory) external onlyOwner onlySetup {
+        _addLaunchFactory(factory);
+    }
+
+    /// @notice Let the vault list a token that isn't a launch token.
+    function approveAsset(address token) external onlyOwner onlySetup {
+        _approveAsset(token);
+    }
+
+    /// @notice Record a Cloak contract. Apps build users' proofs for the current router, batcher and migrator, so
+    ///         after setup this waits the full timelock like any other loosening change.
+    function register(bytes32 kind, address addr) external onlyOwner onlySetup {
+        _register(kind, addr);
+    }
+
     // ───────────────────────────── tighten at once (always allowed) ─────────────────────────────
+
+    /// @notice Stop new listings from a factory. Assets already listed stay listed, so no balance is ever trapped.
+    function removeLaunchFactory(address factory) external onlyOwner {
+        if (!isLaunchFactory[factory]) revert NotAdded();
+        isLaunchFactory[factory] = false;
+        emit LaunchFactoryRemoved(factory);
+    }
 
     function lowerFees(uint16 withdrawBps, uint16 launchBps) external onlyOwner {
         if (withdrawBps > withdrawFeeBps || launchBps > launchFeeBps) revert NotLower();
@@ -218,6 +282,9 @@ contract CloakConfig {
         if (s == this.setDefaultLimit.selector) return 2;
         if (s == this.setAuctionLimit.selector) return 2;
         if (s == this.setCapExempt.selector) return 2;
+        if (s == this.addLaunchFactory.selector) return 1;
+        if (s == this.approveAsset.selector) return 1;
+        if (s == this.register.selector) return 2;
         return 0;
     }
 
@@ -242,9 +309,16 @@ contract CloakConfig {
         } else if (s == this.setAuctionLimit.selector) {
             (uint128 p, uint128 t) = abi.decode(a, (uint128, uint128));
             _setAuctionLimit(p, t);
-        } else {
+        } else if (s == this.setCapExempt.selector) {
             (address account, bool exempt) = abi.decode(a, (address, bool));
             _setCapExempt(account, exempt);
+        } else if (s == this.addLaunchFactory.selector) {
+            _addLaunchFactory(abi.decode(a, (address)));
+        } else if (s == this.approveAsset.selector) {
+            _approveAsset(abi.decode(a, (address)));
+        } else {
+            (bytes32 kind, address addr) = abi.decode(a, (bytes32, address));
+            _register(kind, addr);
         }
     }
 
@@ -300,5 +374,28 @@ contract CloakConfig {
     function _setCapExempt(address account, bool exempt) internal {
         capExempt[account] = exempt;
         emit CapExemptSet(account, exempt);
+    }
+
+    function _addLaunchFactory(address factory) internal {
+        if (factory == address(0)) revert ZeroAddress();
+        if (isLaunchFactory[factory]) revert AlreadyAdded();
+        isLaunchFactory[factory] = true;
+        if (!_inList[factory]) {
+            _inList[factory] = true;
+            launchFactories.push(factory);
+        }
+        emit LaunchFactoryAdded(factory);
+    }
+
+    function _approveAsset(address token) internal {
+        if (token == address(0)) revert ZeroAddress();
+        approvedAsset[token] = true;
+        emit AssetApproved(token);
+    }
+
+    function _register(bytes32 kind, address addr) internal {
+        if (addr == address(0)) revert ZeroAddress();
+        registry.push(Entry(kind, addr, uint64(block.number)));
+        emit Registered(kind, addr, registry.length - 1);
     }
 }
