@@ -7,10 +7,10 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 - [ ] **Top up the keeper wallet** `0x6616C2566baD950FcDD420159a51fDdfFa220E8e` from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), a few times over. It pays gas for every reveal, settlement and relayed private trade, it's down to about 0.0156 HYPE, and the v3 deploy comes out of it too.
 - [ ] **Say go on v3** (see "Next up"). Then, at the end, paste the new keeper addresses into Render (cloak-keeper, Environment). A copy-paste list comes with the deploy.
 - [x] ~~First npm release of the MCP server~~: `@cloakely/mcp` 0.1.0 is on npm (Oct 30).
-- [ ] **Switch the MCP package to trusted publishing, then remove the token:**
-  1. npmjs.com, `@cloakely/mcp`, Settings, Trusted Publisher: GitHub Actions, owner `NECOKIZZ`, repo `Cloak`, workflow `publish-mcp.yml`.
-  2. GitHub, Cloak, Settings, Secrets and variables, Actions: delete `NPM_TOKEN`.
-  3. npmjs.com, Access Tokens: delete the `cloak-mcp-first-publish` token.
+- [x] ~~Switch the MCP package to trusted publishing~~: 0.1.2 published by GitHub Actions with no token (Oct 30).
+- [ ] **Remove the publish token, now that nothing needs it:**
+  1. GitHub, Cloak, Settings, Secrets and variables, Actions: delete `NPM_TOKEN`.
+  2. npmjs.com, Access Tokens: delete the `cloak-mcp-first-publish` token.
 - [ ] **Send testnet USDC** (5 to 10) and a little HYPE to the test wallet `0xf913812c12e0f21b6500b059488647d63a510A8a`, for the live private USDC test (shield, send, withdraw, max) through the site.
 - [ ] **Fund a fresh agent wallet** with testnet HYPE for a live run of the local MCP server (launch, bid, shield, private trade, send, withdraw on the real testnet).
 - [ ] **Reply to the bug report on `claim()`** (draft written). Once the reporter says how they'd like to be named, add the credit to the review log in `SECURITY.md`.
