@@ -37,7 +37,7 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.1.2";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
