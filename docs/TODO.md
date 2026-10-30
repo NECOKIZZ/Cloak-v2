@@ -6,12 +6,11 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 - [ ] **Top up the keeper wallet** `0x6616C2566baD950FcDD420159a51fDdfFa220E8e` from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), a few times over. It pays gas for every reveal, settlement and relayed private trade, it's down to about 0.0156 HYPE, and the v3 deploy comes out of it too.
 - [ ] **Say go on v3** (see "Next up"). Then, at the end, paste the new keeper addresses into Render (cloak-keeper, Environment). A copy-paste list comes with the deploy.
-- [ ] **First npm release of the MCP server (`@cloakely/mcp`).** npm only offers trusted publishing for a package that already exists, so the first version needs a short-lived token, once:
-  1. npmjs.com, Access Tokens, Generate New Token, **Granular**: publish rights on the `@cloakely` scope, 7-day expiry.
-  2. GitHub, Cloak, Settings, Secrets and variables, Actions: add it as `NPM_TOKEN` (never paste it in a chat).
-  3. Tell Claude to run the "Publish MCP server" workflow.
-  4. npmjs.com, `@cloakely/mcp`, Settings, Trusted Publisher: GitHub Actions, owner `NECOKIZZ`, repo `Cloak`, workflow `publish-mcp.yml`.
-  5. Delete the `NPM_TOKEN` secret. From then on it publishes like the SDK, with no token.
+- [x] ~~First npm release of the MCP server~~: `@cloakely/mcp` 0.1.0 is on npm (Oct 30).
+- [ ] **Switch the MCP package to trusted publishing, then remove the token:**
+  1. npmjs.com, `@cloakely/mcp`, Settings, Trusted Publisher: GitHub Actions, owner `NECOKIZZ`, repo `Cloak`, workflow `publish-mcp.yml`.
+  2. GitHub, Cloak, Settings, Secrets and variables, Actions: delete `NPM_TOKEN`.
+  3. npmjs.com, Access Tokens: delete the `cloak-mcp-first-publish` token.
 - [ ] **Send testnet USDC** (5 to 10) and a little HYPE to the test wallet `0xf913812c12e0f21b6500b059488647d63a510A8a`, for the live private USDC test (shield, send, withdraw, max) through the site.
 - [ ] **Fund a fresh agent wallet** with testnet HYPE for a live run of the local MCP server (launch, bid, shield, private trade, send, withdraw on the real testnet).
 - [ ] **Reply to the bug report on `claim()`** (draft written). Once the reporter says how they'd like to be named, add the credit to the review log in `SECURITY.md`.
@@ -24,7 +23,7 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
   - the site and SDK list launches from v1, v2 and v3 (two older deployments instead of one), and the Volume page keeps their history
   - keeper, site, SDK addresses (`@cloakely/sdk` 0.3.0) and the MCP server point at v3
   - every e2e run against live testnet, then README, roadmap and docs updated
-- [ ] **After the npm release:** add the `npx -y @cloakely/mcp` setup to the site's AI agents docs.
+- [x] ~~Add the `npx -y @cloakely/mcp` setup to the site's AI agents docs~~ (Oct 30).
 
 ## Before mainnet (Nov 9)
 

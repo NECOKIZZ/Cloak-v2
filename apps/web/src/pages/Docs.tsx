@@ -180,7 +180,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <li><b>Claude Code</b>: <code>claude mcp add --transport http cloak https://cloak.boblabs.tech/mcp</code></li>
             <li><b>Cursor, VS Code and others</b>: add a remote server with <code>{`{ "mcpServers": { "cloak": { "url": "https://cloak.boblabs.tech/mcp" } } }`}</code></li>
           </ul>
-          <p><b>The full agent (launch, bid, trade privately).</b> This part runs on your own machine with a wallet made just for the agent, signs there, and makes its proofs there, under spending limits per transaction and per day (1 and 10 HYPE by default) with a dry run on every action. It's <code>@cloakely/mcp</code>; setup is in its <a href="https://github.com/NECOKIZZ/Cloak/tree/main/packages/mcp" target="_blank" rel="noreferrer">README</a>.</p>
+          <p><b>The full agent (launch, bid, trade privately).</b> This part runs on your own machine with a wallet made just for the agent, signs there, and makes its proofs there, under spending limits per transaction and per day (1 and 10 HYPE by default) with a dry run on every action. Make a fresh wallet for the agent, fund it from the faucet, save its key to a file only you can read, then add it with <code>claude mcp add cloak --env CLOAK_KEY_FILE=$HOME/.cloak-agent-key -- npx -y @cloakely/mcp</code> (or the same <code>npx -y @cloakely/mcp</code> command in any other app's MCP settings). Full setup is in the <a href="https://www.npmjs.com/package/@cloakely/mcp" target="_blank" rel="noreferrer">package README</a>.</p>
 
           <h2 id="contracts">Contracts (Elysium testnet, chain 99801)</h2>
           <table>

@@ -33,7 +33,7 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 **For builders**
 - **`@cloakely/sdk` on npm** (0.2.6), published from GitHub with npm trusted publishing. It covers launches, bids, private balances, swaps, batch orders, sends, USDC, and the on-device prover.
 - **A hosted keeper** that reveals bids, settles launches and batch rounds, and relays private transactions for a quoted fee.
-- **An MCP server for AI agents:** a hosted link (`https://cloak.boblabs.tech/mcp`, read and plan, no install) and a local server (`@cloakely/mcp`, npm release next) with 18 tools covering launches, bids and private trading, under spending limits with dry runs.
+- **An MCP server for AI agents:** a hosted link (`https://cloak.boblabs.tech/mcp`, read and plan, no install) and a local server (`npx @cloakely/mcp`, on npm) with 18 tools covering launches, bids and private trading, under spending limits with dry runs.
 
 **Not yet**
 - **No private swaps for USDC yet:** see 3b.
@@ -111,7 +111,7 @@ The Volume tab and the on-chain record read logs from block 0 in the browser. Th
 ### 6. Cloak MCP server (`@cloakely/mcp`)
 **Built** (Oct 29), in `packages/mcp`. It lets an AI agent launch a token and trade it privately from Claude, ChatGPT, Cursor or any MCP client, in two parts:
 - **A hosted link, `https://cloak.boblabs.tech/mcp`:** paste it into the app, nothing to install. Read and plan only (launches, quotes, vault totals, launch plans). It never signs and refuses calls that look like they carry a key.
-- **The local server, `npx @cloakely/mcp`:** launches, bids and private trading, signed on the agent's own machine. It ships to npm once its first release is published (see `.github/workflows/publish-mcp.yml`).
+- **The local server, `npx @cloakely/mcp`:** launches, bids and private trading, signed on the agent's own machine. Published on npm (Oct 30) with provenance.
 
 Why it matters: an agent that trades on-chain leaks its strategy with every transaction, and anyone can copy or front-run it. Cloak hides who traded and how much, which is exactly what an agent needs.
 
