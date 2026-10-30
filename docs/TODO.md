@@ -1,0 +1,52 @@
+# To-do list
+
+What's open, who it's waiting on, and what has to land before mainnet (Nov 9). Tick items off as they ship.
+
+## Waiting on you
+
+- [ ] **Top up the keeper wallet** `0x6616C2566baD950FcDD420159a51fDdfFa220E8e` from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), a few times over. It pays gas for every reveal, settlement and relayed private trade, it's down to about 0.0156 HYPE, and the v3 deploy comes out of it too.
+- [ ] **Say go on v3** (see "Next up"). Then, at the end, paste the new keeper addresses into Render (cloak-keeper, Environment). A copy-paste list comes with the deploy.
+- [ ] **First npm release of the MCP server (`@cloakely/mcp`).** npm only offers trusted publishing for a package that already exists, so the first version needs a short-lived token, once:
+  1. npmjs.com, Access Tokens, Generate New Token, **Granular**: publish rights on the `@cloakely` scope, 7-day expiry.
+  2. GitHub, Cloak, Settings, Secrets and variables, Actions: add it as `NPM_TOKEN` (never paste it in a chat).
+  3. Tell Claude to run the "Publish MCP server" workflow.
+  4. npmjs.com, `@cloakely/mcp`, Settings, Trusted Publisher: GitHub Actions, owner `NECOKIZZ`, repo `Cloak`, workflow `publish-mcp.yml`.
+  5. Delete the `NPM_TOKEN` secret. From then on it publishes like the SDK, with no token.
+- [ ] **Send testnet USDC** (5 to 10) and a little HYPE to the test wallet `0xf913812c12e0f21b6500b059488647d63a510A8a`, for the live private USDC test (shield, send, withdraw, max) through the site.
+- [ ] **Fund a fresh agent wallet** with testnet HYPE for a live run of the local MCP server (launch, bid, shield, private trade, send, withdraw on the real testnet).
+- [ ] **Reply to the bug report on `claim()`** (draft written). Once the reporter says how they'd like to be named, add the credit to the review log in `SECURITY.md`.
+
+## Next up (Claude)
+
+- [ ] **Cloak v3 on testnet**, which is also the mainnet deploy rehearsal:
+  - deploy config, factory, router, batcher, HYPE and USDC vaults, with v2's fees and caps
+  - a migrator so private balances move from v2 to v3 in one step from Portfolio
+  - the site and SDK list launches from v1, v2 and v3 (two older deployments instead of one), and the Volume page keeps their history
+  - keeper, site, SDK addresses (`@cloakely/sdk` 0.3.0) and the MCP server point at v3
+  - every e2e run against live testnet, then README, roadmap and docs updated
+- [ ] **After the npm release:** add the `npx -y @cloakely/mcp` setup to the site's AI agents docs.
+
+## Before mainnet (Nov 9)
+
+- [ ] **Outside review of the circuit** (`circuits/`) by someone who knows circom. A soundness bug there could forge proofs, which nothing in the contracts can catch. Top priority.
+- [ ] **Public trusted-setup ceremony** with outside contributors and a drand beacon. The new verifier goes in through `CloakConfig`.
+- [ ] **External audit** of the contracts. Deposit caps stay on until it and the ceremony are done.
+- [ ] **Ownership to a multisig, then `endSetup()`.** After that, every loosening change waits 3 days.
+- [ ] **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
+- [ ] **Source verification** on the explorer for every contract (v2 is still in progress).
+- [ ] **Rehearse the mainnet deploy**: v3 on testnet covers this.
+- [ ] **Mainnet USDC vault**, with the same caps until the audit.
+
+## Decisions to make
+
+- [ ] **Vault model:** one vault per asset (today) or one shared vault for every asset, like Gloam. A shared vault needs a new circuit, so it has to be decided **before the ceremony**.
+- [ ] **USDC swap adapter cap exemption:** instant while `CloakConfig` is in setup, 3 days after `endSetup()`. Decide before setup ends.
+- [ ] **Keeper creates private vaults automatically** at settlement, optionally only above a liquidity bar.
+- [ ] **Redeploy again if the circuit review changes the circuit** (only if it finds something that changes the public inputs).
+
+## Later
+
+- [ ] **Private USDC phase 2:** private swaps between USDC and HYPE or launch tokens through a swap adapter. First, check which Elysium DEX has real USDC/HYPE liquidity. Details in [ROADMAP.md](ROADMAP.md) item 3b.
+- [ ] **Living launch pages:** price chart and trade feed, public buy and sell, holder stats, LP badge, share card ([ROADMAP.md](ROADMAP.md) item 1).
+- [ ] **A minimum raise** a creator can set, with full refunds if demand falls short.
+- [ ] **MCP server extras:** a hardware-wallet signer, and `volume` and `launch_record` tools once the indexer exists.
