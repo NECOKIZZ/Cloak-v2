@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { CloakPrivate } from "@cloakely/sdk";
-import { ASSETS, LEGACY_ROUTER, LEGACY_ROUTER_BLOCK, MIGRATOR, txLink } from "../config";
+import { ASSETS, CHAIN_ID, PREVIOUS, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
 import { getProver, useApp } from "../state";
@@ -25,15 +25,19 @@ export function Portfolio() {
   const feePct = useFeePct();
   const [moveMsg, setMoveMsg] = useState<{ busy?: string; ok?: string; err?: string }>({});
 
-  /** Move private balances from the first Cloak deployment (one extra signature for the old keys). */
+  /** Move private balances from every earlier Cloak deployment (one extra signature each, for that version's keys). */
   async function moveOld() {
-    if (!priv || !wallet || !LEGACY_ROUTER) return;
-    setMoveMsg({ busy: "Sign once more to open your old private account…" });
+    if (!priv || !wallet) return;
     try {
-      const legacy = new CloakPrivate(publicClient, LEGACY_ROUTER, await CloakPrivate.legacyKeysFromWallet(wallet), getProver, priv.submit, LEGACY_ROUTER_BLOCK);
       await getProver();
-      const moved = await priv.migrateFrom(legacy, (m) => setMoveMsg({ busy: m }));
-      setMoveMsg({ ok: moved.length ? `Moved ${moved.length} private balance${moved.length > 1 ? "s" : ""} into the new vaults.` : "Nothing to move: your old private account is empty." });
+      let n = 0;
+      for (const p of PREVIOUS.filter((x) => x.migrator)) {
+        setMoveMsg({ busy: `Sign once more to open your v${p.version} private account…` });
+        const keys = p.version === 1 ? await CloakPrivate.legacyKeysFromWallet(wallet) : await CloakPrivate.keysFromWallet(wallet, { chainId: CHAIN_ID, router: p.router });
+        const legacy = new CloakPrivate(publicClient, p.router, keys, getProver, priv.submit, p.routerBlock);
+        n += (await priv.migrateFrom(legacy, (m) => setMoveMsg({ busy: `v${p.version}: ${m}` }), { migrator: p.migrator })).length;
+      }
+      setMoveMsg({ ok: n ? `Moved ${n} private balance${n > 1 ? "s" : ""} into the new vaults.` : "Nothing to move: your old private accounts are empty." });
       refresh();
     } catch (e) {
       setMoveMsg({ err: friendly(e) });
@@ -200,7 +204,7 @@ export function Portfolio() {
             <div className="summary mono xs" style={{ wordBreak: "break-all", marginTop: 12 }}>{privAddress}</div>
             <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(privAddress).catch(() => {}); toast("Cloak address copied"); }}><Icon.copy size={14} />Copy</button>
           </div>
-          {LEGACY_ROUTER && MIGRATOR && (
+          {PREVIOUS.some((p) => p.migrator) && (
             <div className="card">
               <div className="card-head"><h3>Balance in the old vaults?</h3><Icon.lock size={16} /></div>
               <p className="small mute">Cloak moved to new contracts with fees, caps and security fixes. If you held a private balance before, move it here in one step. It stays private, and nobody can redirect it.</p>

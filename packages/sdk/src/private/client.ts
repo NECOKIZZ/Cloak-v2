@@ -27,6 +27,8 @@ export interface RelayCall {
   pool: Address;
   proof: ProofArgs;
   extData: ExtData;
+  /** For `migrate`: the migrator from the pool's deployment into this one (the proof pays out to it). */
+  migrator?: Address;
 }
 /** What a relayer charges for one call, paid out of the pool's own token inside the proof. */
 export interface RelayQuote {
@@ -99,10 +101,11 @@ export function relayerSubmitter(url: string): Submitter {
 export function walletSubmitter(publicClient: PublicClient, wallet: Wallet, router: Address, batcher?: Address, migrator?: Address): Submitter {
   return async (call) => {
     // viem cannot infer the nested tuple types through the union; the shapes match the ABI exactly.
-    if (call.kind === "migrate" && !migrator) throw new Error("no migrator configured");
+    const mig = call.migrator ?? migrator;
+    if (call.kind === "migrate" && !mig) throw new Error("no migrator configured");
     const req =
       call.kind === "migrate"
-        ? { address: migrator!, abi: cloakMigratorAbi, functionName: "migrate", args: [call.pool, call.proof, call.extData] }
+        ? { address: mig!, abi: cloakMigratorAbi, functionName: "migrate", args: [call.pool, call.proof, call.extData] }
         : call.kind === "placeOrder"
         ? { address: batcher!, abi: privateBatcherAbi, functionName: "placeOrder", args: [call.pool, call.proof, call.extData] }
         : call.kind === "privateSwap"
@@ -631,9 +634,11 @@ export class CloakPrivate {
   /**
    * Move every private balance `legacy` (a client on the earlier router, with the earlier keys) can see into this
    * deployment, note by note, through `CloakMigrator`. Each move is one relayed transaction: the old proof withdraws to
-   * the migrator, which deposits the same amount here as a new note for one of this account's one-time keys.
+   * the migrator, which deposits the same amount here as a new note for one of this account's one-time keys. Each
+   * earlier deployment has its own migrator into this one: pass it as `opts.migrator` (default: `this.migrator`).
    */
-  async migrateFrom(legacy: CloakPrivate, onStatus: Status = () => {}): Promise<{ token: Address; amount: bigint; txHash: Hex }[]> {
+  async migrateFrom(legacy: CloakPrivate, onStatus: Status = () => {}, opts: { migrator?: Address } = {}): Promise<{ token: Address; amount: bigint; txHash: Hex }[]> {
+    const migrator = opts.migrator ?? this.migratorAddress();
     const moved: { token: Address; amount: bigint; txHash: Hex }[] = [];
     const markets = await legacy.loadMarkets();
     await this.loadMarkets();
@@ -644,7 +649,7 @@ export class CloakPrivate {
         if (!live.length) break;
         const inputs = live.slice(0, 2);
         const total = inputs.reduce((a, x) => a + x.amount, 0n);
-        const q = await legacy.relayFee("migrate", m.pool);
+        const q = await this.relayFee("migrate", m.pool); // quoted by the relayer that will submit it
         if (total <= q.fee) break; // dust that costs more to move than it's worth
         const amount = total - q.fee;
         const keyIndex = randomKeyIndex();
@@ -661,13 +666,13 @@ export class CloakPrivate {
           extAmount: -amount,
           fee: q.fee,
           relayer: q.relayer,
-          recipient: this.migratorAddress(),
+          recipient: migrator,
           data,
           ...(await legacy.dummy()),
           prover: await this.prover(),
         });
         onStatus(`Moving ${m.symbol ?? "balance"}: relaying…`);
-        const txHash = await this.submit({ kind: "migrate", pool: m.pool, proof, extData });
+        const txHash = await this.submit({ kind: "migrate", pool: m.pool, proof, extData, migrator });
         await this.publicClient.waitForTransactionReceipt({ hash: txHash });
         moved.push({ token: m.token, amount, txHash });
       }

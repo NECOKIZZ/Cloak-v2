@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { CloakPrivate, loadProver, relayerSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
-import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, ROUTER_BLOCK, ASSETS } from "./config";
+import { BATCHER, PREVIOUS, RELAYER_URL, ROUTER, ROUTER_BLOCK, ASSETS } from "./config";
+
+/** Default migrator: the one from the newest earlier deployment (moveOld passes each version's own). */
+const MIGRATOR = PREVIOUS[0]?.migrator;
 import { chain, IS_LOCAL } from "./config";
 import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";

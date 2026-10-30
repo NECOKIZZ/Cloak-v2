@@ -10,7 +10,8 @@
 //   5. (with BATCHER set) settles every finished private batch round and pays orders out as private notes
 //      (refunds a round whose price moved too far, once the refund delay passes).
 //
-//   6. (with MIGRATOR + LEGACY_ROUTER set) relays moves of private balances from the earlier deployment.
+//   6. (with MIGRATIONS set, or MIGRATOR + LEGACY_ROUTER) relays moves of private balances from earlier deployments:
+//      MIGRATIONS=0xoldRouter:0xmigrator,0xolderRouter:0xmigrator… (each migrator moves that router's pools here).
 //
 //   7. (with ASSET_POOLS set) relays private sends and withdrawals for stablecoin pools such as USDC, with the fee
 //      priced from the live HYPE/USD price (HYPE_USD is the fallback when the price feed is down).
@@ -18,7 +19,7 @@
 //   Relayed calls pay the relayer a fee inside the proof (GET /quote?kind=…&pool=… says how much), so relaying can't
 //   be used to drain the relayer's gas.
 //
-//   KEEPER_PK=0x… FACTORY=0x… [ROUTER=0x…] [BATCHER=0x… BATCHER_BLOCK=…] [MIGRATOR=0x… LEGACY_ROUTER=0x…] [ASSET_POOLS=0x…]
+//   KEEPER_PK=0x… FACTORY=0x… [ROUTER=0x…] [BATCHER=0x… BATCHER_BLOCK=…] [MIGRATIONS=0xrouter:0xmigrator,…] [ASSET_POOLS=0x…]
 //   [RPC_URL=…] [START_BLOCK=…] [PORT=3001] node services/keeper/index.mjs
 import { createServer } from "node:http";
 import { createPublicClient, createWalletClient, http } from "viem";
@@ -34,8 +35,16 @@ const POLL_MS = Number(process.env.POLL_MS ?? 3000);
 const ROUTER = process.env.ROUTER; // enables POST /relay for private trades
 const BATCHER = process.env.BATCHER; // enables batch-auction orders + settles/claims rounds
 const BATCHER_BLOCK = BigInt(process.env.BATCHER_BLOCK ?? START_BLOCK);
-const MIGRATOR = process.env.MIGRATOR; // enables relayed moves from LEGACY_ROUTER's pools
-const LEGACY_ROUTER = process.env.LEGACY_ROUTER;
+// relayed moves from earlier deployments: [{ router, migrator }], newest first (MIGRATOR + LEGACY_ROUTER is the one-pair form)
+const MIGRATIONS = (process.env.MIGRATIONS ?? (process.env.MIGRATOR && process.env.LEGACY_ROUTER ? `${process.env.LEGACY_ROUTER}:${process.env.MIGRATOR}` : ""))
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => {
+    const [router, migrator] = s.split(":");
+    return { router, migrator };
+  });
+const MIGRATOR = MIGRATIONS[0]?.migrator;
 if (!FACTORY || !PK) {
   console.error("set FACTORY and KEEPER_PK");
   process.exit(1);
@@ -200,6 +209,11 @@ const big = (x) => (Array.isArray(x) ? x.map(big) : BigInt(x));
 const err = (msg, status) => Object.assign(new Error(msg), { status });
 const KINDS = ["privateSwap", "unshieldHype", "transact", "placeOrder", "migrate"];
 const isPool = (pool, router = ROUTER) => publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "isPool", args: [pool] });
+/** The earlier deployment a pool belongs to, and the migrator that moves it here. */
+async function migrationFor(pool) {
+  for (const m of MIGRATIONS) if (await isPool(pool, m.router).catch(() => false)) return m;
+  return undefined;
+}
 
 // Shielded pools for existing dollar stablecoins (USDC) that live next to the router: private sends and withdrawals only.
 // ASSET_POOLS=0xpool,0xpool… ; their relayer fee is the HYPE gas cost at the HYPE/USD price.
@@ -231,7 +245,7 @@ const MARGIN_BPS = BigInt(process.env.RELAY_FEE_MARGIN_BPS ?? 12_500); // 1.25×
 const MIN_GAS_PRICE = BigInt(process.env.RELAY_MIN_GAS_PRICE ?? 100_000_000); // 0.1 gwei floor
 async function quote(kind, pool) {
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
-  const router = kind === "migrate" ? LEGACY_ROUTER : ROUTER;
+  const router = kind === "migrate" ? (await migrationFor(pool))?.router : ROUTER;
   const asset = isAssetPool(pool);
   if (asset && kind !== "transact") throw err("this pool supports private sends and withdrawals only", 400);
   if (!asset && (!router || !(await isPool(pool, router)))) throw err("unknown pool", 400);
@@ -271,8 +285,10 @@ async function relay(body) {
   const { kind, pool, proof: p, extData: e } = body;
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
   if (kind === "placeOrder" && !BATCHER) throw err("batching disabled (set BATCHER)", 503);
-  if (kind === "migrate" && !(MIGRATOR && LEGACY_ROUTER)) throw err("migration disabled", 503);
-  if (isAssetPool(pool) ? kind !== "transact" : !(await isPool(pool, kind === "migrate" ? LEGACY_ROUTER : ROUTER))) throw err("unknown pool", 400);
+  if (kind === "migrate" && !MIGRATIONS.length) throw err("migration disabled", 503);
+  const migration = kind === "migrate" ? await migrationFor(pool) : undefined;
+  if (kind === "migrate" && !migration) throw err("unknown pool", 400);
+  if (kind !== "migrate" && (isAssetPool(pool) ? kind !== "transact" : !(await isPool(pool, ROUTER)))) throw err("unknown pool", 400);
   const proof = {
     a: big(p.a), b: big(p.b), c: big(p.c), root: big(p.root), publicAmount: big(p.publicAmount),
     extDataHash: big(p.extDataHash), inputNullifiers: big(p.inputNullifiers), outputCommitments: big(p.outputCommitments),
@@ -296,7 +312,7 @@ async function relay(body) {
       : kind === "placeOrder"
         ? { address: BATCHER, abi: privateBatcherAbi, functionName: "placeOrder", args: [pool, proof, extData] }
         : kind === "migrate"
-          ? { address: MIGRATOR, abi: cloakMigratorAbi, functionName: "migrate", args: [pool, proof, extData] }
+          ? { address: migration.migrator, abi: cloakMigratorAbi, functionName: "migrate", args: [pool, proof, extData] }
           : { address: ROUTER, abi: privateRouterAbi, functionName: kind, args: kind === "privateSwap" ? [pool, proof, extData] : [proof, extData] };
     // dry-run first so a bad proof costs the relayer nothing; a node that drops the call gets one more try
     await publicClient.simulateContract({ ...sim, account }).catch(async (e) => {
@@ -310,7 +326,7 @@ async function relay(body) {
   }
   // From here the transaction may be out, so the spend stays locked until it lands (or the lock expires).
   try {
-    return await submit({ kind, pool, proof, extData });
+    return await submit({ kind, pool, proof, extData, migrator: migration?.migrator });
   } catch (e) {
     if (isNetworkError(e)) throw err("The network didn't answer while sending. Check your balance in a minute before trying again.", 503);
     keys.forEach((k) => inflight.delete(k)); // the node refused it outright: nothing went out
@@ -388,7 +404,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, assetPools: [...ASSET_POOLS] });
+    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, migrations: MIGRATIONS, assetPools: [...ASSET_POOLS] });
   }
   send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));

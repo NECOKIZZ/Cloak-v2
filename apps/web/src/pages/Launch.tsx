@@ -84,8 +84,12 @@ export function Launch({ auction }: { auction: Address }) {
     const n = await readCloak.listLaunches();
     const idx = n.findIndex((l) => l.auction.toLowerCase() === s.address.toLowerCase());
     if (idx < 0) return setError("This launch wasn't made with the Cloak factory, so it can't get private trading.");
+    // launches from earlier deployments are read through the router's list of earlier factories, newest first, which
+    // is the order listLaunches puts them in after the current factory's
+    const current = n.filter((l) => !l.legacy).length;
+    const legacy = !!n[idx].legacy;
     await run("enable", async () => {
-      const h = await wallet.writeContract({ address: ROUTER!, abi: privateRouterAbi, functionName: "createPool", args: [BigInt(idx)] });
+      const h = await wallet.writeContract({ address: ROUTER!, abi: privateRouterAbi, functionName: legacy ? "createLegacyPool" : "createPool", args: [BigInt(legacy ? idx - current : idx)] });
       await publicClient.waitForTransactionReceipt({ hash: h });
       setPrivMarket(true);
     });

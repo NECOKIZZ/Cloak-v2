@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
 import { cloakTokenAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, whypeAbi } from "@cloakely/sdk";
-import { BATCHER, LEGACY_BATCHER, LEGACY_ROUTER, LEGACY_ROUTER_BLOCK, ROUTER, ROUTER_BLOCK, txLink } from "../config";
+import { BATCHER, PREVIOUS, ROUTER, ROUTER_BLOCK, txLink } from "../config";
 import { friendly } from "../errors";
 import { hype } from "../format";
 import { readCloak, publicClient } from "../wallet";
@@ -65,10 +65,10 @@ async function loadStats(): Promise<Stats> {
   if (!ROUTER) throw new Error("no router");
   const [markets, launches] = await Promise.all([loadMarkets(true), readCloak.listLaunches()]);
   const prices = new Map(markets.map((m) => [m.token.toLowerCase(), m.price]));
-  // the current deployment plus the first one, so history carries over
+  // the current deployment plus every earlier one, so history carries over
   const sources = await Promise.all([
     loadSource(ROUTER, BATCHER, ROUTER_BLOCK, prices),
-    ...(LEGACY_ROUTER ? [loadSource(LEGACY_ROUTER, LEGACY_BATCHER, LEGACY_ROUTER_BLOCK, prices)] : []),
+    ...PREVIOUS.map((p) => loadSource(p.router, p.batcher, p.routerBlock, prices)),
   ]);
   const all = <K extends "shields" | "unshields" | "swaps" | "settles" | "orders" | "nullifiers">(k: K) => sources.flatMap((x) => x[k] as Ev[]);
   const [shields, unshields, swaps, settles, orders, nullifiers] = [all("shields"), all("unshields"), all("swaps"), all("settles"), all("orders"), all("nullifiers")];

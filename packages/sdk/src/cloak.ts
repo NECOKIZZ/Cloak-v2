@@ -168,9 +168,13 @@ export class Cloak {
     readonly publicClient: PublicClient,
     readonly walletClient?: Wallet,
     readonly factory?: Address,
-    /** The first deployment's factory, so its launches still list and settle. */
-    readonly legacyFactory?: Address,
+    /** Earlier deployments' factories (newest first), so their launches still list and settle. */
+    readonly legacyFactory?: Address | readonly Address[],
   ) {}
+
+  private get legacyFactories(): readonly Address[] {
+    return this.legacyFactory === undefined ? [] : typeof this.legacyFactory === "string" ? [this.legacyFactory] : this.legacyFactory;
+  }
 
   private wallet(): Wallet {
     if (!this.walletClient) throw new Error("Cloak: a walletClient is required for this call");
@@ -215,12 +219,13 @@ export class Cloak {
   }
 
   /**
-   * Every launch, newest factory first. Launches from `legacyFactory` (the first deployment) are included with
-   * `legacy: true`; they have no vesting contract.
+   * Every launch, newest factory first. Launches from the `legacyFactory` list (earlier deployments) are included with
+   * `legacy: true`; the first deployment's have no vesting contract.
    */
-  async listLaunches(): Promise<{ auction: Address; token: Address; creator: Address; launchpad: Address; creatorAlloc: bigint; vesting: Address; legacy?: boolean }[]> {
+  async listLaunches(): Promise<{ auction: Address; token: Address; creator: Address; launchpad: Address; creatorAlloc: bigint; vesting: Address; factory: Address; legacy?: boolean }[]> {
     if (!this.factory) throw new Error("Cloak: factory address required");
-    const legacy = this.legacyFactory ? await this.listLegacy(this.legacyFactory) : [];
+    const legacy = [];
+    for (const f of this.legacyFactories) legacy.push(...(await this.listLegacy(f)));
     return [...(await this.listCurrent()), ...legacy];
   }
 
@@ -228,13 +233,11 @@ export class Cloak {
     const n = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launchesCount" });
     const out = [];
     for (let i = 0n; i < n; i++) {
-      const [auction, token, creator, launchpad, creatorAlloc] = await this.publicClient.readContract({
-        address: factory,
-        abi: LEGACY_LAUNCHES_ABI,
-        functionName: "launches",
-        args: [i],
-      });
-      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting: zeroAddress as Address, legacy: true });
+      // a factory from v2 on returns a vesting contract too; the first one returns five fields
+      const six = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launches", args: [i] }).catch(() => null);
+      const [auction, token, creator, launchpad, creatorAlloc] =
+        six ?? (await this.publicClient.readContract({ address: factory, abi: LEGACY_LAUNCHES_ABI, functionName: "launches", args: [i] }));
+      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting: (six?.[5] ?? zeroAddress) as Address, factory, legacy: true });
     }
     return out;
   }
@@ -254,7 +257,7 @@ export class Cloak {
         functionName: "launches",
         args: [i],
       });
-      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting });
+      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting, factory: this.factory });
     }
     return out;
   }
