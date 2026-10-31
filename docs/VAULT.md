@@ -52,7 +52,7 @@ A shared vault stays an option for later. It needs a new circuit, so it has to b
 
 ### Registry in CloakConfig
 
-- `addLaunchFactory(factory)`, `approveAsset(token)`, `register(kind, addr)`. Kinds: `vaults`, `router`, `batcher`,
+- `addLaunchFactory(factory)`, `approveAsset(token)`, `register(kind, addr, version, startBlock)`. Kinds: `vaults`, `router`, `batcher`,
   `migrator`, `factory`. The newest entry of each kind is the current one (`current(kind)`), and every entry keeps its
   start block.
 - All three loosen rules, so after setup they go through `queueChange` and wait 3 days. A registered router receives the

@@ -369,29 +369,33 @@ contract V2Test is PrivateBatcherTest {
 
     function test_registry_setupThenTimelock() public {
         assertEq(config.current("router"), address(0));
-        config.register("router", address(0xA1));
-        config.register("batcher", address(0xB1));
-        config.register("router", address(0xA2));
+        vm.roll(100);
+        config.register("router", address(0xA1), 3, 50);
+        config.register("batcher", address(0xB1), 3, 50);
+        config.register("router", address(0xA2), 4, 100);
         assertEq(config.current("router"), address(0xA2), "newest entry of a kind is current");
         assertEq(config.current("batcher"), address(0xB1));
         assertEq(config.registryCount(), 3);
-        (bytes32 kind, address addr, uint64 at) = config.registry(0);
+        (bytes32 kind, address addr, uint16 version, uint64 at) = config.registry(0);
         assertEq(kind, bytes32("router"));
         assertEq(addr, address(0xA1));
-        assertEq(at, block.number);
+        assertEq(version, 3);
+        assertEq(at, 50);
         vm.expectRevert(CloakConfig.ZeroAddress.selector);
-        config.register("router", address(0));
+        config.register("router", address(0), 4, 1);
+        vm.expectRevert(CloakConfig.BadBlock.selector);
+        config.register("router", address(0xA9), 4, 101);
 
         config.endSetup();
         // every registry change loosens a rule, so after setup it waits the timelock
         vm.expectRevert(CloakConfig.TimelockRequired.selector);
-        config.register("router", address(0xA3));
+        config.register("router", address(0xA3), 4, 100);
         vm.expectRevert(CloakConfig.TimelockRequired.selector);
         config.addLaunchFactory(address(0xF1));
         vm.expectRevert(CloakConfig.TimelockRequired.selector);
         config.approveAsset(address(0xC1));
         bytes[3] memory calls = [
-            abi.encodeCall(CloakConfig.register, (bytes32("router"), address(0xA3))),
+            abi.encodeCall(CloakConfig.register, (bytes32("router"), address(0xA3), uint16(4), uint64(100))),
             abi.encodeCall(CloakConfig.addLaunchFactory, (address(0xF1))),
             abi.encodeCall(CloakConfig.approveAsset, (address(0xC1)))
         ];

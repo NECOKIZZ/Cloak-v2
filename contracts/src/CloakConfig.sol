@@ -54,9 +54,10 @@ contract CloakConfig {
     mapping(address => bool) public approvedAsset;
 
     struct Entry {
-        bytes32 kind; // "vault", "router", "batcher", "migrator", "factory"
+        bytes32 kind; // "vaults", "router", "batcher", "migrator", "factory"
         address addr;
-        uint64 block; // when it was registered: apps read its events from here
+        uint16 version; // Cloak deployment it belongs to (1, 2, 3, 4, …): tells apps which key scheme its notes use
+        uint64 startBlock; // its first block: apps read its events from here
     }
 
     /// @notice Every Cloak contract ever registered, oldest first. The newest entry of a kind is the current one.
@@ -96,6 +97,7 @@ contract CloakConfig {
     error BadBps();
     error AlreadyAdded();
     error NotAdded();
+    error BadBlock();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -143,7 +145,7 @@ contract CloakConfig {
         return registry.length;
     }
 
-    /// @notice The newest registered contract of `kind` (address(0) if none).
+    /// @notice The newest registered contract of `kind` (address(0) if none). Register older deployments first.
     function current(bytes32 kind) external view returns (address) {
         for (uint256 i = registry.length; i > 0; --i) {
             if (registry[i - 1].kind == kind) return registry[i - 1].addr;
@@ -198,10 +200,11 @@ contract CloakConfig {
         _approveAsset(token);
     }
 
-    /// @notice Record a Cloak contract. Apps build users' proofs for the current router, batcher and migrator, so
-    ///         after setup this waits the full timelock like any other loosening change.
-    function register(bytes32 kind, address addr) external onlyOwner onlySetup {
-        _register(kind, addr);
+    /// @notice Record a Cloak contract (earlier deployments' contracts too, with their own start blocks). Apps build
+    ///         users' proofs for the current router, batcher and migrator, so after setup this waits the full timelock
+    ///         like any other loosening change.
+    function register(bytes32 kind, address addr, uint16 version, uint64 startBlock) external onlyOwner onlySetup {
+        _register(kind, addr, version, startBlock);
     }
 
     // ───────────────────────────── tighten at once (always allowed) ─────────────────────────────
@@ -284,7 +287,7 @@ contract CloakConfig {
         if (s == this.setCapExempt.selector) return 2;
         if (s == this.addLaunchFactory.selector) return 1;
         if (s == this.approveAsset.selector) return 1;
-        if (s == this.register.selector) return 2;
+        if (s == this.register.selector) return 4;
         return 0;
     }
 
@@ -317,8 +320,9 @@ contract CloakConfig {
         } else if (s == this.approveAsset.selector) {
             _approveAsset(abi.decode(a, (address)));
         } else {
-            (bytes32 kind, address addr) = abi.decode(a, (bytes32, address));
-            _register(kind, addr);
+            (bytes32 kind, address addr, uint16 version, uint64 startBlock) =
+                abi.decode(a, (bytes32, address, uint16, uint64));
+            _register(kind, addr, version, startBlock);
         }
     }
 
@@ -393,9 +397,10 @@ contract CloakConfig {
         emit AssetApproved(token);
     }
 
-    function _register(bytes32 kind, address addr) internal {
+    function _register(bytes32 kind, address addr, uint16 version, uint64 startBlock) internal {
         if (addr == address(0)) revert ZeroAddress();
-        registry.push(Entry(kind, addr, uint64(block.number)));
+        if (startBlock > block.number) revert BadBlock();
+        registry.push(Entry(kind, addr, version, startBlock));
         emit Registered(kind, addr, registry.length - 1);
     }
 }

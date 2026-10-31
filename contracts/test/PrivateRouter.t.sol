@@ -302,7 +302,7 @@ contract PrivateClaimTest is PrivateRouterTest {
     }
 
     function test_claimPrivate_intoVault() public {
-        config.register("vaults", address(vaults));
+        config.register("vaults", address(vaults), 4, uint64(block.number));
         uint256 id = _settleOnly();
         (uint256 tokens, uint256 refund,) = auction.allocationOf(id);
         assertGt(tokens, 0);
