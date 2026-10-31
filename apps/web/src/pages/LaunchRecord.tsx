@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
-import { cloakAuctionAbi, cloakPairAbi, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
-import { addrLink, ROUTER, txLink } from "../config";
+import { cloakAuctionAbi, cloakPairAbi, cloakVaultsAbi, type AuctionState } from "@cloakely/sdk";
+import { addrLink, PREVIOUS, txLink, VAULTS } from "../config";
 import { launchCreatedLogs } from "../tokenMeta";
 import { friendly } from "../errors";
 import { hype, short, tokens } from "../format";
@@ -32,7 +32,8 @@ async function loadRecord(s: AuctionState): Promise<Step[]> {
     ev(a, cloakAuctionAbi, "Failed"),
     ev(a, cloakAuctionAbi, "Claimed"),
     ev(a, cloakAuctionAbi, "LPReleased"),
-    ROUTER && s.settled ? ev(ROUTER, privateRouterAbi, "PoolCreated", { token: s.token }) : Promise.resolve([]),
+    // vaults are opened by CloakVaults from v4 on, by each router before (same event)
+    s.settled ? Promise.all([VAULTS, ...PREVIOUS.map((p) => p.router)].filter(Boolean).map((a) => ev(a as Address, cloakVaultsAbi, "PoolCreated", { token: s.token }))).then((x) => x.flat()) : Promise.resolve([]),
     s.pair && s.pair !== ZERO ? ev(s.pair, cloakPairAbi, "Swap") : Promise.resolve([]),
   ]);
 

@@ -5,7 +5,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { generatePrivateKey } from "viem/accounts";
 import { anvilLocal, elysiumTestnet, CloakPrivate, createProver, walletSubmitter, relayerSubmitter, privateRouterAbi, privateBatcherAbi, cloakFactoryAbi, cloakTokenAbi, shieldedPoolAbi } from "@cloakely/sdk";
-import { Cloak, clients, deployBatcher, deployFactory, deployPrivacy, exempt, fmt, parseEther, sleep, waitChainTime, waitDrand } from "./lib.mjs";
+import { Cloak, clients, deployBatcher, deployFactory, deployPrivacy, exempt, openVault, register, fmt, parseEther, sleep, waitChainTime, waitDrand } from "./lib.mjs";
 
 const RPC = process.env.RPC_URL ?? "http://127.0.0.1:8545";
 const local = RPC.includes("127.0.0.1") || RPC.includes("localhost");
@@ -82,6 +82,7 @@ let batcherBlock = BigInt(process.env.BATCHER_BLOCK ?? 0);
 if (!batcher) {
   const b = await deployBatcher(d.publicClient, d.walletClient, router, { roundSecs: local ? 8 : 30, maxSlippageBps: 200, refundAfter: 600 });
   batcher = b.batcher;
+  await register(d.publicClient, d.walletClient, config, "batcher", batcher, 4, b.block);
   await exempt(d.publicClient, d.walletClient, config, [router, batcher]);
   batcherBlock = b.block;
   txs.deployBatcher = b.txHash;
@@ -91,9 +92,8 @@ const [, token] = await d.publicClient.readContract({ address: factory, abi: clo
 const SYM = await d.publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "symbol" });
 const existing = await d.publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "poolOf", args: [token] });
 if (existing === "0x0000000000000000000000000000000000000000") {
-  const h = await d.walletClient.writeContract({ address: router, abi: privateRouterAbi, functionName: "createPool", args: [launchIndex] });
-  await d.publicClient.waitForTransactionReceipt({ hash: h });
-  txs.createPool = h;
+  const vaults = await d.publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "vaults" });
+  txs.createPool = (await openVault(d.publicClient, d.walletClient, vaults, factory, launchIndex)).txHash;
 }
 ok(true, "private market enabled for the launch token");
 
@@ -104,7 +104,7 @@ const relayer = clients(chain, RPC, RELAYER_PK);
 const root = new URL("..", import.meta.url).pathname;
 const prover = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
 const submit = process.env.RELAYER_URL ? relayerSubmitter(process.env.RELAYER_URL) : walletSubmitter(relayer.publicClient, relayer.walletClient, router, batcher);
-const keys = await CloakPrivate.keysFromWallet(trader.walletClient, { chainId: chain.id, router, verify: true });
+const keys = await CloakPrivate.keysFromWallet(trader.walletClient, { chainId: chain.id, verify: true });
 const priv = new CloakPrivate(d.publicClient, router, keys, async () => prover, submit, routerBlock, batcher);
 const markets = await priv.loadMarkets();
 const hypePool = markets[0].pool;
@@ -143,7 +143,7 @@ ok(net === out - (out * 25n) / 10_000n && (await d.publicClient.getBalance({ add
 ok((await d.publicClient.readContract({ address: hypePool, abi: shieldedPoolAbi, functionName: "feesOwed" })) > 0n, "withdrawal fees are waiting in the vault for collectFees()");
 
 // a second trader can't see the first one's notes
-const other = new CloakPrivate(d.publicClient, router, await CloakPrivate.keysFromWallet(clients(chain, RPC, generatePrivateKey()).walletClient, { chainId: chain.id, router }), async () => prover, submit, routerBlock, batcher);
+const other = new CloakPrivate(d.publicClient, router, await CloakPrivate.keysFromWallet(clients(chain, RPC, generatePrivateKey()).walletClient, { chainId: chain.id }), async () => prover, submit, routerBlock, batcher);
 await other.loadMarkets();
 ok((await other.balance(hypePool)) === 0n && (await other.balance(tokenPool)) === 0n, "another account sees none of these notes");
 

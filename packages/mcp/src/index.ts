@@ -2,9 +2,10 @@
 // Cloak's MCP server over stdio: `npx @cloakely/mcp`. Configuration is environment variables only (see README).
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createCloakServer, loadSettings, VERSION } from "./server.js";
+import { withLiveDeployment } from "./config.js";
 
 try {
-  const settings = loadSettings();
+  const settings = await withLiveDeployment(loadSettings());
   const server = createCloakServer(settings);
   await server.connect(new StdioServerTransport());
   // stdout carries the protocol, so anything for humans goes to stderr

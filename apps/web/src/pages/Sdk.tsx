@@ -28,9 +28,9 @@ await cloak.settle(auction);
 await cloak.claimAll(auction);`,
   "Private trading": `import { CloakPrivate, loadProver, relayerSubmitter } from "@cloakely/sdk";
 
-const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801, router: ROUTER }); // one signature
+const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801 }); // one signature, the same account forever
 const priv = new CloakPrivate(publicClient, ROUTER, keys,
-  () => loadProver("/circuits"), relayerSubmitter(KEEPER_URL), ROUTER_BLOCK, BATCHER);
+  () => loadProver("/circuits"), relayerSubmitter(KEEPER_URL), VAULTS_BLOCK, BATCHER);
 await priv.loadMarkets();
 
 await priv.shieldHype(walletClient, parseEther("1"));      // the one public step
@@ -59,7 +59,8 @@ const API: [string, [string, string][]][] = [
     ["getAuction · demandCurve · bidsOf · listLaunches", "Read state: phase, clearing price, the revealed demand per price level, a bidder's bids."],
   ]],
   ["CloakPrivate · private balances", [
-    ["keysFromWallet(wallet, { chainId, router, verify? })", "Derive the private account from one EIP-712 signature bound to this chain and router. The same wallet always restores it; verify signs twice to refuse wallets that sign differently each time."],
+    ["keysFromWallet(wallet, { chainId, verify? })", "Derive the private account from one EIP-712 signature bound to this chain only, so it stays the same through every upgrade. The same wallet always restores it; verify signs twice to refuse wallets that sign differently each time."],
+    ["claimPrivately(wallet, auction, bidId)", "Claim a won sealed bid straight into the private balance (v4 launches), so later trades can't be linked to the bid."],
     ["migrateFrom(legacy)", "Move every private balance from the first Cloak deployment into this one, privately, one relayed transaction per note pair."],
     ["shieldHype(wallet, amount)", "Public HYPE → a private note on a one-time key."],
     ["buy · sell(token, amount, { slippageBps })", "Instant private swap through the launch's pool, submitted by the relayer."],

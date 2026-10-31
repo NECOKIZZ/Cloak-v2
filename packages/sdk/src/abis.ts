@@ -78,6 +78,51 @@ export const cloakConfigAbi = [
   },
   {
     "type": "function",
+    "name": "addLaunchFactory",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "approveAsset",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "approvedAsset",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "auctionLimit",
     "inputs": [],
     "outputs": [
@@ -141,6 +186,25 @@ export const cloakConfigAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "current",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -224,6 +288,57 @@ export const cloakConfigAbi = [
         "name": "",
         "type": "bool",
         "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isLaunchFactory",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launchFactories",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launchFactoriesCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -395,6 +510,94 @@ export const cloakConfigAbi = [
         "internalType": "uint256"
       }
     ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "register",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "addr",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "version",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "startBlock",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "registry",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "kind",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "addr",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "version",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "startBlock",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "registryCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "removeLaunchFactory",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
@@ -590,6 +793,19 @@ export const cloakConfigAbi = [
   },
   {
     "type": "event",
+    "name": "AssetApproved",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "AuctionLimitSet",
     "inputs": [
       {
@@ -729,6 +945,32 @@ export const cloakConfigAbi = [
   },
   {
     "type": "event",
+    "name": "LaunchFactoryAdded",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LaunchFactoryRemoved",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "LimitSet",
     "inputs": [
       {
@@ -792,6 +1034,31 @@ export const cloakConfigAbi = [
   },
   {
     "type": "event",
+    "name": "Registered",
+    "inputs": [
+      {
+        "name": "kind",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "addr",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "SetupEnded",
     "inputs": [],
     "anonymous": false
@@ -811,12 +1078,22 @@ export const cloakConfigAbi = [
   },
   {
     "type": "error",
+    "name": "AlreadyAdded",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "AlreadyEnded",
     "inputs": []
   },
   {
     "type": "error",
     "name": "AlreadyQueued",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadBlock",
     "inputs": []
   },
   {
@@ -832,6 +1109,11 @@ export const cloakConfigAbi = [
   {
     "type": "error",
     "name": "FeeTooHigh",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAdded",
     "inputs": []
   },
   {
@@ -1426,6 +1708,34 @@ export const cloakAuctionAbi = [
         "name": "ids",
         "type": "uint256[]",
         "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimPrivate",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "pubKey",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "blinding",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "memo",
+        "type": "bytes",
+        "internalType": "bytes"
       }
     ],
     "outputs": [],
@@ -2168,6 +2478,19 @@ export const cloakAuctionAbi = [
         "name": "penalty",
         "type": "uint256",
         "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClaimedPrivately",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
         "internalType": "uint256"
       }
     ],
@@ -4173,29 +4496,9 @@ export const privateRouterAbi = [
     "type": "constructor",
     "inputs": [
       {
-        "name": "config_",
+        "name": "vaults_",
         "type": "address",
-        "internalType": "contract CloakConfig"
-      },
-      {
-        "name": "hasher2_",
-        "type": "address",
-        "internalType": "contract IPoseidon2"
-      },
-      {
-        "name": "hasher3_",
-        "type": "address",
-        "internalType": "contract IPoseidon3"
-      },
-      {
-        "name": "cloakFactory_",
-        "type": "address",
-        "internalType": "contract ICloakFactory"
-      },
-      {
-        "name": "legacyFactory_",
-        "type": "address",
-        "internalType": "contract ICloakFactory"
+        "internalType": "contract CloakVaults"
       },
       {
         "name": "whype_",
@@ -4224,19 +4527,6 @@ export const privateRouterAbi = [
   },
   {
     "type": "function",
-    "name": "cloakFactory",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ICloakFactory"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "config",
     "inputs": [],
     "outputs": [
@@ -4244,70 +4534,6 @@ export const privateRouterAbi = [
         "name": "",
         "type": "address",
         "internalType": "contract CloakConfig"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "createLegacyPool",
-    "inputs": [
-      {
-        "name": "launchIndex",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "pool",
-        "type": "address",
-        "internalType": "contract ShieldedPool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "createPool",
-    "inputs": [
-      {
-        "name": "launchIndex",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "pool",
-        "type": "address",
-        "internalType": "contract ShieldedPool"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "hasher2",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IPoseidon2"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "hasher3",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IPoseidon3"
       }
     ],
     "stateMutability": "view"
@@ -4330,7 +4556,7 @@ export const privateRouterAbi = [
     "name": "isPool",
     "inputs": [
       {
-        "name": "",
+        "name": "pool",
         "type": "address",
         "internalType": "address"
       }
@@ -4346,23 +4572,10 @@ export const privateRouterAbi = [
   },
   {
     "type": "function",
-    "name": "legacyFactory",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract ICloakFactory"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "pairOf",
     "inputs": [
       {
-        "name": "",
+        "name": "token",
         "type": "address",
         "internalType": "address"
       }
@@ -4381,7 +4594,7 @@ export const privateRouterAbi = [
     "name": "poolOf",
     "inputs": [
       {
-        "name": "",
+        "name": "token",
         "type": "address",
         "internalType": "address"
       }
@@ -4531,7 +4744,7 @@ export const privateRouterAbi = [
     "name": "tokens",
     "inputs": [
       {
-        "name": "",
+        "name": "i",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -4657,6 +4870,19 @@ export const privateRouterAbi = [
   },
   {
     "type": "function",
+    "name": "vaults",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract CloakVaults"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "whype",
     "inputs": [],
     "outputs": [
@@ -4683,31 +4909,6 @@ export const privateRouterAbi = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "PoolCreated",
-    "inputs": [
-      {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "pool",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "pair",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -4798,17 +4999,12 @@ export const privateRouterAbi = [
   },
   {
     "type": "error",
-    "name": "NotLaunched",
+    "name": "NoHypeVault",
     "inputs": []
   },
   {
     "type": "error",
     "name": "OverDepositLimit",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "PoolExists",
     "inputs": []
   },
   {
@@ -5557,9 +5753,14 @@ export const cloakMigratorAbi = [
     "type": "constructor",
     "inputs": [
       {
-        "name": "legacyRouter_",
-        "type": "address",
-        "internalType": "contract ILegacyRouter"
+        "name": "legacyRouters_",
+        "type": "address[]",
+        "internalType": "contract ILegacyRouter[]"
+      },
+      {
+        "name": "legacyPools_",
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
         "name": "router_",
@@ -5571,13 +5772,51 @@ export const cloakMigratorAbi = [
   },
   {
     "type": "function",
-    "name": "legacyRouter",
+    "name": "isLegacyPool",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isOldPool",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "legacyRouters",
     "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "address",
-        "internalType": "contract ILegacyRouter"
+        "type": "address[]",
+        "internalType": "contract ILegacyRouter[]"
       }
     ],
     "stateMutability": "view"
@@ -5826,6 +6065,246 @@ export const cloakFactoryListAbi = [
       }
     ],
     "stateMutability": "view"
+  }
+] as const;
+
+export const cloakVaultsAbi = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "config_",
+        "type": "address",
+        "internalType": "contract CloakConfig"
+      },
+      {
+        "name": "hasher2_",
+        "type": "address",
+        "internalType": "contract IPoseidon2"
+      },
+      {
+        "name": "hasher3_",
+        "type": "address",
+        "internalType": "contract IPoseidon3"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "config",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract CloakConfig"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createAssetPool",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "internalType": "contract ShieldedPool"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createPool",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "contract ILaunchFactory"
+      },
+      {
+        "name": "launchIndex",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "internalType": "contract ShieldedPool"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "hasher2",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IPoseidon2"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasher3",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IPoseidon3"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isPool",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pairOf",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract CloakPair"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "poolOf",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ShieldedPool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tokens",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tokensCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "PoolCreated",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "pool",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "pair",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "NotApproved",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotLaunched",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PoolExists",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnknownFactory",
+    "inputs": []
   }
 ] as const;
 

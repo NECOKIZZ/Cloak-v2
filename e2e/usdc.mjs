@@ -1,5 +1,5 @@
-// Private USDC e2e with REAL Groth16 proofs, on a local chain: a 6-decimal USDC, its own shielded pool next to the
-// router, deposit caps, and the keeper relaying sends and withdrawals with its fee priced in USDC.
+// Private USDC e2e with REAL Groth16 proofs, on a local chain: a 6-decimal USDC, its permanent vault (CloakVaults),
+// deposit caps, and the keeper relaying sends and withdrawals with its fee priced in USDC.
 //   shield (public) → private send to another account → withdraw to a fresh address → withdraw the max
 //   anvil --balance 1000000 & ; node e2e/usdc.mjs   (needs `forge build` for the MockUSDC artifact)
 import { spawn } from "node:child_process";
@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { anvilLocal, CloakPrivate, createProver, relayerSubmitter, shieldedPoolAbi, cloakConfigAbi } from "@cloakely/sdk";
 import { bytecode } from "@cloakely/sdk/bytecode";
-import { clients, deployFactory, deployPrivacy, parseEther, sleep } from "./lib.mjs";
+import { assetVault, clients, deployFactory, deployPrivacy, parseEther, sleep } from "./lib.mjs";
 
 const RPC = "http://127.0.0.1:8545";
 const chain = anvilLocal;
@@ -31,15 +31,15 @@ console.log("deploy: config (fees + caps), factory, router, USDC, USDC pool");
 const f = await deployFactory(d.publicClient, d.walletClient, { rules: { withdrawFeeBps: 25, launchFeeBps: 150 } });
 const r = await deployPrivacy(d.publicClient, d.walletClient, f.factory, { config: f.config });
 const usdc = (await send(d.walletClient.deployContract({ abi: erc20, bytecode: mock.bytecode.object }))).contractAddress;
-const poolRc = await send(d.walletClient.deployContract({ abi: shieldedPoolAbi, bytecode: bytecode.ShieldedPool, args: [f.config, r.poseidon2, r.poseidon3, usdc] }));
-const pool = poolRc.contractAddress;
+const pool = await assetVault(d.publicClient, d.walletClient, f.config, r.vaults, usdc);
+const poolRc = { blockNumber: await d.publicClient.getBlockNumber() };
 await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "turnOnDepositLimits" }));
 await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "setLimit", args: [usdc, 1_000_000_000n, 50_000_000_000n] }));
 const [on, per, total] = await d.publicClient.readContract({ address: f.config, abi: cloakConfigAbi, functionName: "limitOf", args: [usdc] });
 ok(on && per === 1_000_000_000n && total === 50_000_000_000n, "USDC caps: 1,000 per deposit, 50,000 in the pool");
 
 const keeper = spawn(process.execPath, [`${root}services/keeper/index.mjs`], {
-  env: { ...process.env, RPC_URL: RPC, KEEPER_PK, FACTORY: f.factory, ROUTER: r.router, ASSET_POOLS: pool, HYPE_USD: String(HYPE_USD), HYPE_PRICE_URL: "http://127.0.0.1:9/", PORT: "3998", RELAY_PER_MIN: "1000" },
+  env: { ...process.env, RPC_URL: RPC, KEEPER_PK, CONFIG: f.config, HYPE_USD: String(HYPE_USD), HYPE_PRICE_URL: "http://127.0.0.1:9/", PORT: "3998", RELAY_PER_MIN: "1000" },
   stdio: ["ignore", "inherit", "inherit"],
 });
 const KEEPER = "http://127.0.0.1:3998";
@@ -51,14 +51,14 @@ const relayer = privateKeyToAccount(KEEPER_PK).address;
 try {
   const prover = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
   const relay = relayerSubmitter(KEEPER);
-  const asset = { symbol: "USDC", token: usdc, pool, decimals: 6, fromBlock: poolRc.blockNumber };
   const account = async () => {
     const c = clients(chain, RPC, generatePrivateKey());
     await send(d.walletClient.sendTransaction({ to: c.account.address, value: parseEther("5") }));
-    const keys = await CloakPrivate.keysFromWallet(c.walletClient, { chainId: chain.id, router: r.router, verify: true });
+    const keys = await CloakPrivate.keysFromWallet(c.walletClient, { chainId: chain.id, verify: true });
     const p = new CloakPrivate(d.publicClient, r.router, keys, async () => prover, relay, r.block);
     await p.loadMarkets();
-    p.addAsset(asset);
+    // the router lists the USDC vault as an asset (it has no launch pair)
+    if (!p.assets.some((x) => x.pool.toLowerCase() === pool.toLowerCase())) throw new Error("USDC vault not found through the router");
     return { ...c, p };
   };
   const a = await account();

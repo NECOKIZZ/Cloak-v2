@@ -6,8 +6,8 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { generatePrivateKey } from "viem/accounts";
-import { anvilLocal, CloakPrivate, commitmentOf, createProver, randomSalt, relayerSubmitter, walletSubmitter, privateRouterAbi, shieldedPoolAbi } from "@cloakely/sdk";
-import { clients, deployBatcher, deployFactory, deployMigrator, deployPrivacy, exempt, fmt, parseEther, sleep, waitChainTime } from "./lib.mjs";
+import { anvilLocal, CloakPrivate, cloakConfigAbi, commitmentOf, createProver, randomSalt, readRegistry, relayerSubmitter, walletSubmitter, shieldedPoolAbi } from "@cloakely/sdk";
+import { clients, deployBatcher, deployFactory, deployMigrator, deployPrivacy, exempt, fmt, openVault, parseEther, register, sleep, waitChainTime } from "./lib.mjs";
 import * as v1 from "./v1/abis.mjs";
 import { bytecodeV1 } from "./v1/bytecode.mjs";
 
@@ -62,18 +62,26 @@ const oldHype = await oldPriv.balance(oldPriv.hypeMarket.pool);
 const oldTok = await oldPriv.balance(oldPriv.market(token).pool);
 ok(oldHype === parseEther("2") && oldTok > 0n, `v1 private balance: ${fmt(oldHype, 2)} HYPE and ${fmt(oldTok, 0)} OLD`);
 
-// ── 2. v2 next to it ──
-console.log("v2: config with fees, factory, router (legacy pools), batcher, migrator, keeper");
+// ── 2. v4 next to it: permanent vaults ──
+console.log("v4: config with fees, factory, permanent vaults (one for the v1 launch too), router, batcher, migrator, keeper");
 const f2 = await deployFactory(d.publicClient, d.walletClient, { verifier, rules: { withdrawFeeBps: 25, launchFeeBps: 150, caps: { assets: [[whype, parseEther("100"), parseEther("1000")]], defaultBps: [100n, 1000n], auction: [parseEther("100"), parseEther("5000")] } } });
-const r2 = await deployPrivacy(d.publicClient, d.walletClient, f2.factory, { config: f2.config, poseidon2: p2, poseidon3: p3, legacyFactory: factoryV1, whype });
-await send(d.walletClient.writeContract({ address: r2.router, abi: privateRouterAbi, functionName: "createLegacyPool", args: [0n] }));
+// the earlier deployment goes in the registry first (the newest router of all is the current one)
+await register(d.publicClient, d.walletClient, f2.config, "factory", factoryV1, 1, 0n);
+await register(d.publicClient, d.walletClient, f2.config, "router", routerV1, 1, 0n);
+await send(d.walletClient.writeContract({ address: f2.config, abi: cloakConfigAbi, functionName: "addLaunchFactory", args: [factoryV1] }));
+const r2 = await deployPrivacy(d.publicClient, d.walletClient, f2.factory, { config: f2.config, poseidon2: p2, poseidon3: p3, whype });
+await openVault(d.publicClient, d.walletClient, r2.vaults, factoryV1, 0);
 const b2 = await deployBatcher(d.publicClient, d.walletClient, r2.router, { roundSecs: 8, maxSlippageBps: 200, refundAfter: 600 });
-const m = await deployMigrator(d.publicClient, d.walletClient, routerV1, r2.router);
+const m = await deployMigrator(d.publicClient, d.walletClient, [routerV1], r2.router);
+await register(d.publicClient, d.walletClient, f2.config, "batcher", b2.batcher, 4, b2.block);
+await register(d.publicClient, d.walletClient, f2.config, "migrator", m.migrator, 4, m.block);
 await exempt(d.publicClient, d.walletClient, f2.config, [r2.router, b2.batcher, m.migrator]);
-ok(true, "v2 deployed with fees and caps on, reusing v1's WHYPE");
+const reg = await readRegistry(d.publicClient, f2.config);
+const same = (a, b) => a?.toLowerCase() === b?.toLowerCase();
+ok(reg.version === 4 && same(reg.router, r2.router) && same(reg.migrator, m.migrator) && reg.previous[0]?.version === 1 && same(reg.previous[0].router, routerV1), "v4 deployed with fees and caps on, reusing v1's WHYPE; the registry lists v4 as current and v1 as earlier");
 
 const keeper = spawn(process.execPath, [`${root}services/keeper/index.mjs`], {
-  env: { ...process.env, RPC_URL: RPC, KEEPER_PK, FACTORY: f2.factory, ROUTER: r2.router, BATCHER: b2.batcher, MIGRATOR: m.migrator, LEGACY_ROUTER: routerV1, PORT: "3999", RELAY_PER_MIN: "1000" },
+  env: { ...process.env, RPC_URL: RPC, KEEPER_PK, CONFIG: f2.config, PORT: "3999", RELAY_PER_MIN: "1000" },
   stdio: ["ignore", "inherit", "inherit"],
 });
 const KEEPER = "http://127.0.0.1:3999";
@@ -88,7 +96,7 @@ try {
 
   // a call that pays the relayer nothing is refused before it costs any gas
   const freeRider = new CloakPrivate(d.publicClient, routerV1, legacyKeys, async () => prover, Object.assign((c) => relay(c), {}), 0n);
-  const keysV2 = await CloakPrivate.keysFromWallet(trader.walletClient, { chainId: chain.id, router: r2.router, verify: true });
+  const keysV2 = await CloakPrivate.keysFromWallet(trader.walletClient, { chainId: chain.id, verify: true });
   const priv = new CloakPrivate(d.publicClient, r2.router, keysV2, async () => prover, relay, r2.block, b2.batcher, m.migrator);
   const unpaid = new CloakPrivate(d.publicClient, r2.router, keysV2, async () => prover, Object.assign((c) => relay(c), {}), r2.block, b2.batcher, m.migrator);
   await unpaid.loadMarkets();
@@ -112,9 +120,9 @@ try {
   }
   ok(true, "every move was sent by the relayer, not the trader's wallet");
 
-  // the moved balance works in v2: a private buy of the v1 launch token through the v2 router, fee applied
+  // the moved balance works in v4: a private buy of the v1 launch token through the v4 router, fee applied
   const buy = await priv.buy(token, parseEther("0.5"));
-  ok(buy.relayerFee > 0n, `private buy in v2 paid the relayer ${fmt(buy.relayerFee, 6)} HYPE inside the proof`);
+  ok(buy.relayerFee > 0n, `private buy in v4 paid the relayer ${fmt(buy.relayerFee, 6)} HYPE inside the proof`);
   const fees = await d.publicClient.readContract({ address: priv.hypeMarket.pool, abi: shieldedPoolAbi, functionName: "feesOwed" });
   ok(fees === (parseEther("0.5") * 25n) / 10_000n, `0.25% protocol fee kept on the swap: ${fmt(fees, 6)} HYPE`);
 } finally {

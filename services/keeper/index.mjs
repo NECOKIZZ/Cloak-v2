@@ -1,63 +1,49 @@
 // Cloak keeper: watches every launch from a factory and, with no key material beyond a gas wallet,
 //   1. decrypts sealed bids once their drand round is out and reveals them (bidders never come back),
-//   2. settles when the reveal window closes,
-//   3. pushes tokens + refunds to every bidder.
+//   2. settles when the reveal window closes, and opens the launch's permanent private vault,
+//   3. after CLAIM_DELAY (so winners can claim privately first), pushes tokens + refunds to every bidder still unclaimed.
 // Anyone can run one; several keepers racing is harmless (reveal/settle/claim are idempotent on-chain).
 //
-//   4. (with ROUTER set) relays private trades: POST /relay {kind, pool, proof, extData}. The relayer pays gas and is
-//      the on-chain sender, so the trader's wallet never appears. It cannot alter a trade: the proof binds every field.
-//
-//   5. (with BATCHER set) settles every finished private batch round and pays orders out as private notes
-//      (refunds a round whose price moved too far, once the refund delay passes).
-//
-//   6. (with MIGRATIONS set, or MIGRATOR + LEGACY_ROUTER) relays moves of private balances from earlier deployments:
-//      MIGRATIONS=0xoldRouter:0xmigrator,0xolderRouter:0xmigrator… (each migrator moves that router's pools here).
-//
-//   7. (with ASSET_POOLS set) relays private sends and withdrawals for stablecoin pools such as USDC, with the fee
+//   4. relays private trades: POST /relay {kind, pool, proof, extData}. The relayer pays gas and is the on-chain
+//      sender, so the trader's wallet never appears. It cannot alter a trade: the proof binds every field.
+//   5. settles every finished private batch round and pays orders out as private notes (refunds a round whose price
+//      moved too far, once the refund delay passes).
+//   6. relays moves of private balances from earlier deployments through the migrator.
+//   7. relays private sends and withdrawals for asset vaults such as USDC (a vault with no launch pair), with the fee
 //      priced from the live HYPE/USD price (HYPE_USD is the fallback when the price feed is down).
 //
 //   Relayed calls pay the relayer a fee inside the proof (GET /quote?kind=…&pool=… says how much), so relaying can't
 //   be used to drain the relayer's gas.
 //
-//   KEEPER_PK=0x… FACTORY=0x… [ROUTER=0x…] [BATCHER=0x… BATCHER_BLOCK=…] [MIGRATIONS=0xrouter:0xmigrator,…] [ASSET_POOLS=0x…]
-//   [RPC_URL=…] [START_BLOCK=…] [PORT=3001] node services/keeper/index.mjs
+//   KEEPER_PK=0x… CONFIG=0x… [RPC_URL=…] [CLAIM_DELAY=3600] [PORT=3001] node services/keeper/index.mjs
+//   Every address comes from CloakConfig's registry. FACTORY/START_BLOCK/ROUTER/BATCHER/BATCHER_BLOCK/MIGRATOR override it.
 import { createServer } from "node:http";
-import { createPublicClient, createWalletClient, http } from "viem";
+import { createPublicClient, createWalletClient, http, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
+import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
 
 const RPC = process.env.RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];
 const chain = RPC.includes("127.0.0.1") || RPC.includes("localhost") ? anvilLocal : elysiumTestnet;
-const FACTORY = process.env.FACTORY;
 const PK = process.env.KEEPER_PK;
-const START_BLOCK = BigInt(process.env.START_BLOCK ?? 0);
 const POLL_MS = Number(process.env.POLL_MS ?? 3000);
-const ROUTER = process.env.ROUTER; // enables POST /relay for private trades
-const BATCHER = process.env.BATCHER; // enables batch-auction orders + settles/claims rounds
-const BATCHER_BLOCK = BigInt(process.env.BATCHER_BLOCK ?? START_BLOCK);
-// relayed moves from earlier deployments: [{ router, migrator }], newest first (MIGRATOR + LEGACY_ROUTER is the one-pair form)
-const MIGRATIONS = (process.env.MIGRATIONS ?? (process.env.MIGRATOR && process.env.LEGACY_ROUTER ? `${process.env.LEGACY_ROUTER}:${process.env.MIGRATOR}` : ""))
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean)
-  .map((s) => {
-    const [router, migrator] = s.split(":").map((x) => x.trim());
-    return { router, migrator };
-  })
-  .filter(({ router, migrator }) => {
-    const ok = /^0x[0-9a-fA-F]{40}$/.test(router ?? "") && /^0x[0-9a-fA-F]{40}$/.test(migrator ?? "");
-    if (!ok) console.error(`MIGRATIONS: skipped "${router}:${migrator ?? ""}", expected 0xrouter:0xmigrator`);
-    return ok;
-  });
-const MIGRATOR = MIGRATIONS[0]?.migrator;
-if (!FACTORY || !PK) {
-  console.error("set FACTORY and KEEPER_PK");
+const CLAIM_DELAY = Number(process.env.CLAIM_DELAY ?? 3600); // seconds after the reveal window before public claims
+if (!PK || (!process.env.CONFIG && !process.env.FACTORY)) {
+  console.error("set KEEPER_PK and CONFIG");
   process.exit(1);
 }
-
-const account = privateKeyToAccount(PK);
 const transport = http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
 const publicClient = createPublicClient({ chain, transport, pollingInterval: 250 });
+const reg = process.env.CONFIG ? await readRegistry(publicClient, process.env.CONFIG) : undefined;
+const FACTORY = process.env.FACTORY ?? reg?.factory;
+const START_BLOCK = BigInt(process.env.START_BLOCK ?? reg?.factoryBlock ?? 0);
+const ROUTER = process.env.ROUTER ?? reg?.router; // enables POST /relay for private trades
+const BATCHER = process.env.BATCHER ?? reg?.batcher; // enables batch-auction orders + settles/claims rounds
+const BATCHER_BLOCK = BigInt(process.env.BATCHER_BLOCK ?? reg?.batcherBlock ?? START_BLOCK);
+const MIGRATOR = process.env.MIGRATOR ?? reg?.migrator; // enables relayed moves from earlier deployments
+// v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
+const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
+
+const account = privateKeyToAccount(PK);
 const walletClient = createWalletClient({ chain, transport, account });
 
 // One wallet sends everything (reveals, settles, payouts and relays, which arrive at any time), so its transactions go
@@ -80,14 +66,15 @@ for (const m of ["writeContract", "sendTransaction"]) {
 }
 const cloak = new Cloak(publicClient, walletClient, FACTORY);
 
-const status = { keeper: account.address, chain: chain.id, factory: FACTORY, launches: {}, lastTick: 0 };
+const status = { keeper: account.address, chain: chain.id, config: process.env.CONFIG ?? null, factory: FACTORY, launches: {}, lastTick: 0 };
 const done = new Set(); // auctions fully claimed
 const log = (a, m) => console.log(`[${new Date().toISOString()}] ${a.slice(0, 10)} ${m}`);
 
 async function tick() {
   const launches = await cloak.listLaunches();
+  status.launchCount = launches.length;
   const now = Number((await publicClient.getBlock()).timestamp);
-  for (const { auction } of launches) {
+  for (const { auction, token, factory, index } of launches) {
     if (done.has(auction)) continue;
     try {
       const s = await cloak.getAuction(auction);
@@ -98,7 +85,10 @@ async function tick() {
       } else if (s.phase === "settle" && now >= s.revealEnd) {
         const h = await cloak.settle(auction);
         log(auction, `settled ${h}`);
+        if (!(await cloak.getAuction(auction)).failed) await openVault(auction, token, factory, index);
       } else if (s.phase === "settled") {
+        if (!s.failed) await openVault(auction, token, factory, index);
+        if (now < s.revealEnd + CLAIM_DELAY) continue; // winners' window to claim privately
         const r = await cloak.claimAll(auction, { fromBlock: START_BLOCK });
         if (r.claimed) log(auction, `delivered ${r.claimed} claims`);
         // pull payments: the creator's proceeds and the launch fee (a recipient that can't take HYPE only blocks itself)
@@ -115,6 +105,16 @@ async function tick() {
     }
   }
   status.lastTick = Date.now();
+}
+
+/** The launch's permanent private vault, so winners can claim privately and the token trades privately at once. */
+async function openVault(auction, token, factory, index) {
+  if (!VAULTS) return;
+  const pool = await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [token] });
+  if (pool !== zeroAddress) return;
+  const c = { address: VAULTS, abi: cloakVaultsAbi, functionName: "createPool", args: [factory, index] };
+  await publicClient.simulateContract({ ...c, account });
+  log(auction, `opened private vault ${await walletClient.writeContract(c)}`);
 }
 
 // ───────────── private batch rounds ─────────────
@@ -210,20 +210,19 @@ let ticks = 0;
 
 // ───────────── private-trade relay ─────────────
 const submit = ROUTER ? walletSubmitter(publicClient, walletClient, ROUTER, BATCHER, MIGRATOR) : null;
+const readRouter = (functionName, args = []) => publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName, args });
 const big = (x) => (Array.isArray(x) ? x.map(big) : BigInt(x));
 const err = (msg, status) => Object.assign(new Error(msg), { status });
 const KINDS = ["privateSwap", "unshieldHype", "transact", "placeOrder", "migrate"];
-const isPool = (pool, router = ROUTER) => publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "isPool", args: [pool] });
-/** The earlier deployment a pool belongs to, and the migrator that moves it here. */
-async function migrationFor(pool) {
-  for (const m of MIGRATIONS) if (await isPool(pool, m.router).catch(() => false)) return m;
-  return undefined;
+const isPool = (pool) => readRouter("isPool", [pool]);
+/** Whether the migrator moves `pool` (a vault of an earlier deployment) into the permanent vaults. */
+const isOldPool = (pool) => (MIGRATOR ? publicClient.readContract({ address: MIGRATOR, abi: cloakMigratorAbi, functionName: "isOldPool", args: [pool] }).catch(() => false) : false);
+const tokenOf = (pool) => publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "token" });
+/** How a vault's token is priced: "hype", "launch" (its pair) or "asset" (a dollar stablecoin such as USDC). */
+async function priceKind(token) {
+  if (token.toLowerCase() === (await readRouter("whype")).toLowerCase()) return "hype";
+  return (await readRouter("pairOf", [token])) === zeroAddress ? "asset" : "launch";
 }
-
-// Shielded pools for existing dollar stablecoins (USDC) that live next to the router: private sends and withdrawals only.
-// ASSET_POOLS=0xpool,0xpool… ; their relayer fee is the HYPE gas cost at the HYPE/USD price.
-const ASSET_POOLS = new Set((process.env.ASSET_POOLS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
-const isAssetPool = (pool) => ASSET_POOLS.has(String(pool).toLowerCase());
 const decimalsAbi = [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }];
 let hypeUsdCache = { at: 0, price: 0 };
 async function hypeUsd() {
@@ -250,24 +249,23 @@ const MARGIN_BPS = BigInt(process.env.RELAY_FEE_MARGIN_BPS ?? 12_500); // 1.25×
 const MIN_GAS_PRICE = BigInt(process.env.RELAY_MIN_GAS_PRICE ?? 100_000_000); // 0.1 gwei floor
 async function quote(kind, pool) {
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
-  const router = kind === "migrate" ? (await migrationFor(pool))?.router : ROUTER;
-  const asset = isAssetPool(pool);
-  if (asset && kind !== "transact") throw err("this pool supports private sends and withdrawals only", 400);
-  if (!asset && (!router || !(await isPool(pool, router)))) throw err("unknown pool", 400);
+  if (!ROUTER) throw err("relay disabled", 503);
+  if (kind === "migrate" ? !(await isOldPool(pool)) : !(await isPool(pool))) throw err("unknown pool", 400);
+  const token = await tokenOf(pool);
+  const pk = await priceKind(token);
+  const asset = pk === "asset";
+  if (asset && kind !== "transact" && kind !== "migrate") throw err("this vault supports private sends and withdrawals only", 400);
   const gasPrice = await publicClient.getGasPrice();
   const hype = (GAS[kind] * (gasPrice > MIN_GAS_PRICE ? gasPrice : MIN_GAS_PRICE) * MARGIN_BPS) / 10_000n;
   if (asset) {
     // a dollar stablecoin pays the HYPE cost at the HYPE/USD price, rounded up to the token's smallest unit
-    const token = await publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "token" });
     const dec = await publicClient.readContract({ address: token, abi: decimalsAbi, functionName: "decimals" });
     const micro = BigInt(Math.round((await hypeUsd()) * 1e6)); // USD per HYPE, ×1e6
     return (hype * micro * 10n ** BigInt(dec)) / (10n ** 18n * 1_000_000n) + 1n;
   }
-  const token = await publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "token" });
-  const whype = await publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "whype" });
-  if (token.toLowerCase() === whype.toLowerCase()) return hype;
+  if (pk === "hype") return hype;
   // a launch token pays the HYPE cost at the pair's spot price
-  const pair = await publicClient.readContract({ address: router, abi: privateRouterAbi, functionName: "pairOf", args: [token] });
+  const pair = await readRouter("pairOf", [token]);
   const [rH, rT] = await Promise.all([
     publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveHype" }),
     publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
@@ -290,10 +288,9 @@ async function relay(body) {
   const { kind, pool, proof: p, extData: e } = body;
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
   if (kind === "placeOrder" && !BATCHER) throw err("batching disabled (set BATCHER)", 503);
-  if (kind === "migrate" && !MIGRATIONS.length) throw err("migration disabled", 503);
-  const migration = kind === "migrate" ? await migrationFor(pool) : undefined;
-  if (kind === "migrate" && !migration) throw err("unknown pool", 400);
-  if (kind !== "migrate" && (isAssetPool(pool) ? kind !== "transact" : !(await isPool(pool, ROUTER)))) throw err("unknown pool", 400);
+  if (kind === "migrate" && !MIGRATOR) throw err("migration disabled", 503);
+  if (kind === "migrate" ? !(await isOldPool(pool)) : !(await isPool(pool))) throw err("unknown pool", 400);
+  if (kind !== "transact" && kind !== "migrate" && (await priceKind(await tokenOf(pool))) === "asset") throw err("this vault supports private sends and withdrawals only", 400);
   const proof = {
     a: big(p.a), b: big(p.b), c: big(p.c), root: big(p.root), publicAmount: big(p.publicAmount),
     extDataHash: big(p.extDataHash), inputNullifiers: big(p.inputNullifiers), outputCommitments: big(p.outputCommitments),
@@ -317,7 +314,7 @@ async function relay(body) {
       : kind === "placeOrder"
         ? { address: BATCHER, abi: privateBatcherAbi, functionName: "placeOrder", args: [pool, proof, extData] }
         : kind === "migrate"
-          ? { address: migration.migrator, abi: cloakMigratorAbi, functionName: "migrate", args: [pool, proof, extData] }
+          ? { address: MIGRATOR, abi: cloakMigratorAbi, functionName: "migrate", args: [pool, proof, extData] }
           : { address: ROUTER, abi: privateRouterAbi, functionName: kind, args: kind === "privateSwap" ? [pool, proof, extData] : [proof, extData] };
     // dry-run first so a bad proof costs the relayer nothing; a node that drops the call gets one more try
     await publicClient.simulateContract({ ...sim, account }).catch(async (e) => {
@@ -331,7 +328,7 @@ async function relay(body) {
   }
   // From here the transaction may be out, so the spend stays locked until it lands (or the lock expires).
   try {
-    return await submit({ kind, pool, proof, extData, migrator: migration?.migrator });
+    return await submit({ kind, pool, proof, extData, migrator: MIGRATOR });
   } catch (e) {
     if (isNetworkError(e)) throw err("The network didn't answer while sending. Check your balance in a minute before trying again.", 503);
     keys.forEach((k) => inflight.delete(k)); // the node refused it outright: nothing went out
@@ -409,7 +406,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, migrations: MIGRATIONS, assetPools: [...ASSET_POOLS] });
+    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, claimDelay: CLAIM_DELAY });
   }
   send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));

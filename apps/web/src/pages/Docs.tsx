@@ -166,7 +166,7 @@ const cloak = new Cloak(publicClient, walletClient, FACTORY);
 const { auction } = await cloak.createLaunch({ name, symbol, saleSupply, minPrice, tickSize, commitEnd, revealEnd });
 await cloak.bid(auction, { maxPrice, quantity });
 
-const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801, router: ROUTER });
+const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801 });
 const priv = new CloakPrivate(publicClient, ROUTER, keys, loadProver, relayerSubmitter(KEEPER), 0n, BATCHER);
 await priv.loadMarkets();
 await priv.shieldHype(walletClient, parseEther("1"));

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
-import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, type AuctionState, type Wallet, Cloak } from "@cloakely/sdk";
-import { FACTORY, txLink } from "./config";
+import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, type AuctionState, type Wallet, Cloak } from "@cloakely/sdk";
+import { FACTORY, txLink, VAULTS } from "./config";
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
 import { useApp } from "./state";
@@ -206,9 +206,32 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
 
 type MyBid = Awaited<ReturnType<Cloak["bidsOf"]>>[number];
 
+/** Whether a settled launch can be claimed straight into the private vault (a v4 launch whose vault is open). */
+function usePrivateClaim(s: AuctionState) {
+  const [ok, setOk] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!VAULTS || !FACTORY || !s.settled || s.failed) return false;
+      const factory = await publicClient.readContract({ address: s.address, abi: cloakAuctionAbi, functionName: "factory" }).catch(() => undefined);
+      if (factory?.toLowerCase() !== FACTORY.toLowerCase()) return false; // older launches have no private claim
+      const pool = await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [s.token] });
+      return pool !== "0x0000000000000000000000000000000000000000";
+    })()
+      .then((v) => alive && setOk(v))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [s.address, s.settled, s.failed, s.token]);
+  return ok;
+}
+
 export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: Wallet | null; bids: MyBid[]; onDone: () => void }) {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const { priv, unlock, toast } = useApp();
+  const canPrivate = usePrivateClaim(s);
   if (!wallet) return null;
   const secrets = loadSecrets(s.address);
 
@@ -226,16 +249,36 @@ export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: W
   }
 
   const unclaimed = bids.filter((b) => !b.claimed).map((b) => b.id);
+  const won = bids.filter((b) => !b.claimed && b.tokens > 0n);
+  const claimPrivately = () =>
+    act("pclaim", async () => {
+      const p = priv ?? (await unlock());
+      if (!p) throw new Error("Unlock your private account to claim privately.");
+      for (const b of won) await p.claimPrivately(wallet!, s.address, b.id);
+      toast(`${s.tokenSymbol} claimed into your private balance`);
+    });
   return (
     <div className="card">
       <div className="card-head">
         <h3>Your bids</h3>
         {s.settled && unclaimed.length > 0 && (
-          <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => act("claim", (c) => c.claim(s.address, unclaimed))}>
-            {busy === "claim" ? "Claiming…" : "Claim all"}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {canPrivate && won.length > 0 && (
+              <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={claimPrivately}>
+                {busy === "pclaim" ? "Claiming…" : "Claim privately"}
+              </button>
+            )}
+            <button className={`btn ${canPrivate && won.length > 0 ? "btn-ghost" : "btn-primary"} btn-sm`} disabled={!!busy} onClick={() => act("claim", (c) => c.claim(s.address, unclaimed))}>
+              {busy === "claim" ? "Claiming…" : canPrivate && won.length > 0 ? "Claim to wallet" : "Claim all"}
+            </button>
+          </div>
         )}
       </div>
+      {s.settled && canPrivate && won.length > 0 && (
+        <p className="xs mute" style={{ margin: "0 0 10px" }}>
+          Claim privately to put your {s.tokenSymbol} straight into your private balance, so your later trades can't be linked to this bid. Any HYPE refund still goes to your wallet. Bids nobody claims are sent to wallets about an hour after bidding closes.
+        </p>
+      )}
       {bids.length === 0 ? (
         <p className="mute small" style={{ margin: 0 }}>No bids from {short(wallet.account.address)} yet.</p>
       ) : (

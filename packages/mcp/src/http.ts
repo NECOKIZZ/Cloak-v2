@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { loadSettings, type Settings } from "./config.js";
+import { loadSettings, withLiveDeployment, type Settings } from "./config.js";
 import { createCloakServer } from "./server.js";
 
 /**
@@ -43,7 +43,9 @@ function limited(ip: string): number {
   return h.n > REQUESTS_PER_MINUTE ? Math.ceil((h.start + 60_000 - now) / 1000) : 0;
 }
 
-let settings: Settings | undefined;
+let settings: Promise<Settings> | undefined;
+let settingsAt = 0;
+const SETTINGS_TTL = 10 * 60_000; // re-read the registry every 10 minutes
 
 /** `settings` defaults to Elysium testnet, without a key (tests pass their own). */
 export async function handleMcpRequest(req: Request, opts: { settings?: Settings } = {}): Promise<Response> {
@@ -77,7 +79,11 @@ export async function handleMcpRequest(req: Request, opts: { settings?: Settings
   const forward = new Request(req.url, { method: "POST", headers });
 
   // never a key here, whatever the environment says
-  const s = opts.settings ?? (settings ??= loadSettings({ CLOAK_NETWORK: "testnet", CLOAK_RPC_URL: process.env.CLOAK_RPC_URL, CLOAK_RELAYER_URL: process.env.CLOAK_RELAYER_URL }));
+  if (!opts.settings && (!settings || Date.now() - settingsAt > SETTINGS_TTL)) {
+    settingsAt = Date.now();
+    settings = withLiveDeployment(loadSettings({ CLOAK_NETWORK: "testnet", CLOAK_RPC_URL: process.env.CLOAK_RPC_URL, CLOAK_RELAYER_URL: process.env.CLOAK_RELAYER_URL }));
+  }
+  const s = opts.settings ?? (await settings!);
   const server = createCloakServer(s, { hosted: true });
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   try {

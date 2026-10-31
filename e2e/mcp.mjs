@@ -16,7 +16,7 @@ import { loadSettings } from "@cloakely/mcp";
 import { handleMcpRequest } from "@cloakely/mcp/http";
 import { anvilLocal, cloakConfigAbi, privateRouterAbi, shieldedPoolAbi } from "@cloakely/sdk";
 import { bytecode } from "@cloakely/sdk/bytecode";
-import { clients, deployBatcher, deployFactory, deployPrivacy, exempt, parseEther, sleep } from "./lib.mjs";
+import { assetVault, clients, deployBatcher, deployFactory, deployPrivacy, exempt, parseEther, register, sleep } from "./lib.mjs";
 
 const RPC = "http://127.0.0.1:8545";
 const chain = anvilLocal;
@@ -37,19 +37,20 @@ console.log("deploy: config, factory, router, batcher, USDC and its vault");
 const f = await deployFactory(d.publicClient, d.walletClient, { rules: { withdrawFeeBps: 25, launchFeeBps: 150 } });
 const r = await deployPrivacy(d.publicClient, d.walletClient, f.factory, { config: f.config });
 const b = await deployBatcher(d.publicClient, d.walletClient, r.router, { roundSecs: 8, maxSlippageBps: 200, refundAfter: 600 });
+await register(d.publicClient, d.walletClient, f.config, "batcher", b.batcher, 4, b.block);
 await exempt(d.publicClient, d.walletClient, f.config, [r.router, b.batcher]);
 const usdc = (await send(d.walletClient.deployContract({ abi: mock.abi, bytecode: mock.bytecode.object }))).contractAddress;
-const usdcPoolRc = await send(d.walletClient.deployContract({ abi: shieldedPoolAbi, bytecode: bytecode.ShieldedPool, args: [f.config, r.poseidon2, r.poseidon3, usdc] }));
+const usdcPool = await assetVault(d.publicClient, d.walletClient, f.config, r.vaults, usdc);
 const [hypePool, whype] = await Promise.all(["hypePool", "whype"].map((fn) => d.publicClient.readContract({ address: r.router, abi: privateRouterAbi, functionName: fn })));
 await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "turnOnDepositLimits" }));
 await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "setLimit", args: [whype, parseEther("100"), parseEther("10000")] }));
 await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "setLimit", args: [usdc, 1_000_000_000n, 50_000_000_000n] }));
 await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "setAuctionLimit", args: [parseEther("100"), parseEther("10000")] }));
-await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "setDefaultLimit", args: [100n, 1000n] }));
+await send(d.walletClient.writeContract({ address: f.config, abi: cloakConfigAbi, functionName: "setDefaultLimit", args: [10000n, 10000n] })); // so a winner's whole allocation can be claimed privately
 
 const PORT = "3997";
 const keeper = spawn(process.execPath, [`${root}services/keeper/index.mjs`], {
-  env: { ...process.env, RPC_URL: RPC, KEEPER_PK, FACTORY: f.factory, START_BLOCK: "0", ROUTER: r.router, BATCHER: b.batcher, BATCHER_BLOCK: b.block.toString(), ASSET_POOLS: usdcPoolRc.contractAddress, HYPE_USD: "25", HYPE_PRICE_URL: "http://127.0.0.1:9/", PORT, POLL_MS: "1000", RELAY_PER_MIN: "1000" },
+  env: { ...process.env, RPC_URL: RPC, KEEPER_PK, CONFIG: f.config, CLAIM_DELAY: "600", HYPE_USD: "25", HYPE_PRICE_URL: "http://127.0.0.1:9/", PORT, POLL_MS: "1000", RELAY_PER_MIN: "1000" },
   stdio: ["ignore", process.env.KEEPER_LOG ? "inherit" : "ignore", "inherit"],
 });
 for (let i = 0; i < 50; i++) {
@@ -59,7 +60,7 @@ for (let i = 0; i < 50; i++) {
 
 const dir = mkdtempSync(join(tmpdir(), "cloak-mcp-e2e-"));
 const deploymentFile = join(dir, "deployment.json");
-writeFileSync(deploymentFile, JSON.stringify({ chainId: chain.id, rpcUrl: RPC, config: f.config, factory: f.factory, router: r.router, routerBlock: r.block.toString(), batcher: b.batcher, hypePool, whype, relayerUrl: `http://127.0.0.1:${PORT}`, circuitsUrl: "", launchesFromBlock: 0, assets: [{ symbol: "USDC", token: usdc, pool: usdcPoolRc.contractAddress, decimals: 6, fromBlock: usdcPoolRc.blockNumber.toString() }] }));
+writeFileSync(deploymentFile, JSON.stringify({ chainId: chain.id, rpcUrl: RPC, config: f.config, factory: f.factory, router: r.router, routerBlock: r.block.toString(), vaultsBlock: r.vaultsBlock.toString(), batcher: b.batcher, hypePool, whype, relayerUrl: `http://127.0.0.1:${PORT}`, circuitsUrl: "", launchesFromBlock: 0, assets: [{ symbol: "USDC", token: usdc, pool: usdcPool, decimals: 6, fromBlock: r.vaultsBlock.toString() }] }));
 
 /** An agent: the MCP server as a child process, with its own key, state directory and limits. */
 async function agent(name, key, extra = {}) {
@@ -143,14 +144,20 @@ try {
     await sleep(2000);
   }
   ok(st.phase === "settled" && st.clearingPrice === "0.00002 HYPE per token", `the keeper opened the bid and settled at ${st.clearingPrice}, no action from the agent`);
+  let vaultOpen = false;
+  for (let i = 0; i < 10 && !vaultOpen; i++) {
+    vaultOpen = !!(await A.call("enable_private_trading", { auction: launch.auction, dry_run: true })).alreadyOn;
+    if (!vaultOpen) await sleep(1000);
+  }
+  ok(vaultOpen, "the keeper opened the launch's private vault at settlement");
   const claim = await A.call("claim", { auction: launch.auction });
-  ok(num(claim.tokensWon) === 1_000_000, `claim: ${claim.tokensWon} EMBR won (${typeof claim.claimed === "string" ? claim.claimed : "claimed now"})`);
+  ok(num(claim.tokensWon) === 1_000_000 && claim.claimedPrivately?.length === 1, `claim: ${claim.tokensWon} EMBR won, claimed straight into the private balance`);
+  const embr = (await d.publicClient.readContract({ address: launch.token ?? (await R.call("get_launch", { auction: launch.auction })).token, abi: mock.abi, functionName: "balanceOf", args: [alice] }).catch(() => 0n));
+  ok(embr === 0n && num(Object.values((await A.call("private_balance")).launchTokens)[0]?.balance ?? 0) === 1_000_000, "the wallet holds no EMBR: all 1,000,000 are private");
   const mine = await A.call("my_bids", { auction: launch.auction });
   ok(mine.bids[0].opened && mine.bids[0].claimed, "my_bids: opened and claimed");
 
   // ── private trading ──
-  const en = await A.call("enable_private_trading", { auction: launch.auction });
-  ok(en.enabled && (await A.call("enable_private_trading", { auction: launch.auction })).alreadyOn, "enable_private_trading opens the vault, and a second call is a no-op");
   const over = await A.call("shield", { asset: "HYPE", amount: "31" });
   ok(/over the 30 HYPE allowed per transaction/.test(over.error), "a 31 HYPE shield is refused by the per-transaction limit");
   const sh = await A.call("shield", { asset: "HYPE", amount: "10" });
@@ -187,7 +194,7 @@ try {
 
   // ── USDC ──
   const su = await A.call("shield", { asset: "USDC", amount: "50" });
-  ok(su.privateBalance === "50 USDC", "shield: 50 USDC now private (approve, then deposit)");
+  ok(su.privateBalance === "50 USDC", `shield: 50 USDC now private (approve, then deposit): ${JSON.stringify(su).slice(0, 300)}`);
   const pu = await A.call("private_send", { asset: "USDC", to: bobAddr, amount: "20" });
   ok(pu.sent === "20 USDC" && (await B.call("private_balance")).balances.USDC === "20", "private_send: 20 USDC to the second agent, fee paid in USDC");
   const wu = await B.call("withdraw", { asset: "USDC", to: fresh, amount: "max" });

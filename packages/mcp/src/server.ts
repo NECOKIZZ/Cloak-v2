@@ -21,7 +21,9 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   Cloak,
   CloakPrivate,
+  cloakAuctionAbi,
   cloakPairAbi,
+  cloakVaultsAbi,
   createProver,
   loadProver,
   privateRouterAbi,
@@ -37,12 +39,12 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
 
-Launches: create_launch starts a sealed-bid auction. place_sealed_bid commits a bid that nobody can read until bidding closes; bids then open by themselves (the keeper reveals them from the drand beacon), so there is nothing to come back for. Everyone who wins pays one clearing price. After settlement, claim pays out tokens and refunds (the keeper usually pushes claims already), and enable_private_trading opens a private vault for the token if nobody has yet.
+Launches: create_launch starts a sealed-bid auction. place_sealed_bid commits a bid that nobody can read until bidding closes; bids then open by themselves (the keeper reveals them from the drand beacon), so there is nothing to come back for. Everyone who wins pays one clearing price. After settlement, claim puts won tokens straight into the private balance (and refunds into the wallet); the keeper opens each launch's private vault at settlement, and pushes bids nobody claimed to wallets publicly about an hour later. enable_private_trading opens a private vault for an older launch if nobody has yet.
 
 Private balances: shield moves HYPE or USDC from the wallet into a private balance (the one public step). private_swap, batch_order, private_send and withdraw then run from that balance: each is proven on this machine and sent by a relayer, so the wallet never appears on chain. batch_order also hides trade size. withdraw lands funds at a normal address, ideally a fresh one. Amounts are in whole units ("0.5" HYPE), and send, sell and withdraw accept "max".
 
@@ -132,8 +134,9 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   async function priv(): Promise<CloakPrivate> {
     if (!wallet) throw new Error("No wallet configured: set CLOAK_KEY_FILE (or CLOAK_PRIVATE_KEY) to use private balances.");
     privP ??= (async () => {
-      const keys = await CloakPrivate.keysFromWallet(wallet, { chainId: settings.chain.id, router: d.router, verify: true });
-      const p = new CloakPrivate(pub, d.router, keys, prover, submit, d.routerBlock, d.batcher, d.migrator);
+      const keys = await CloakPrivate.keysFromWallet(wallet, { chainId: settings.chain.id, verify: true });
+      // notes are scanned from the permanent vaults' first block, whichever router is current
+      const p = new CloakPrivate(pub, d.router, keys, prover, submit, d.vaultsBlock ?? d.routerBlock, d.batcher, d.migrator);
       for (const a of d.assets ?? []) p.addAsset(a);
       return p;
     })().catch((e) => {
@@ -164,6 +167,9 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     if (!symbols.has(k)) symbols.set(k, await pub.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }).catch(() => "?"));
     return symbols.get(k)!;
   }
+  async function decimalsOf(token: Address): Promise<number> {
+    return Number(await pub.readContract({ address: token, abi: erc20Abi, functionName: "decimals" }).catch(() => 18));
+  }
 
   /** Every asset with a private vault: HYPE, USDC-like assets, and every launch token with a private market. */
   async function vaults(): Promise<Asset[]> {
@@ -171,14 +177,17 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     const n = await pub.readContract({ ...c, functionName: "tokensCount" });
     const out: Asset[] = [{ kind: "hype", symbol: "HYPE", token: d.whype, pool: d.hypePool, decimals: 18 }];
     for (const a of d.assets ?? []) out.push({ kind: "asset", symbol: a.symbol, token: a.token, pool: a.pool, decimals: a.decimals });
-    const toks = await Promise.all(Array.from({ length: Number(n) - 1 }, (_, i) => pub.readContract({ ...c, functionName: "tokens", args: [BigInt(i + 1)] })));
+    const toks = await Promise.all(Array.from({ length: Number(n) }, (_, i) => pub.readContract({ ...c, functionName: "tokens", args: [BigInt(i)] })));
     for (const token of toks) {
+      if (out.some((a) => a.token.toLowerCase() === token.toLowerCase())) continue; // HYPE, or an asset already listed
       const [pool, pair, symbol] = await Promise.all([
         pub.readContract({ ...c, functionName: "poolOf", args: [token] }),
         pub.readContract({ ...c, functionName: "pairOf", args: [token] }),
         symbolOf(token),
       ]);
-      out.push({ kind: "token", symbol, token, pool, pair, decimals: 18 });
+      // a vault without a launch pair holds an existing token (USDC): an asset, not a market
+      if (pair === zeroAddress) out.push({ kind: "asset", symbol, token, pool, decimals: await decimalsOf(token) });
+      else out.push({ kind: "token", symbol, token, pool, pair, decimals: 18 });
     }
     return out;
   }
@@ -570,27 +579,54 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
 
   server.registerTool(
     "claim",
-    { title: "Claim tokens and refunds", description: "After bids open, settle the launch if nobody has yet, then claim the wallet's tokens and refunds. Cloak's keeper usually pushes claims already.", inputSchema: { auction: addr, dry_run: dry }, annotations: WRITE },
-    safe(async ({ auction, dry_run }: { auction: string; dry_run?: boolean }) => {
+    {
+      title: "Claim tokens and refunds",
+      description:
+        "After bids open, settle the launch if nobody has yet, then claim the wallet's tokens and refunds. Won tokens go straight into the private balance (privately: true, the default) when the launch supports it, so later trades can't be linked to the bid; refunds go to the wallet. Cloak's keeper pushes unclaimed bids to wallets publicly about an hour after bidding closes.",
+      inputSchema: { auction: addr, privately: z.boolean().optional().describe("Claim won tokens into the private balance (default true where supported)"), dry_run: dry },
+      annotations: WRITE,
+    },
+    safe(async ({ auction, privately, dry_run }: { auction: string; privately?: boolean; dry_run?: boolean }) => {
       const { account } = needWallet();
       let s = await cloak.getAuction(auction as Address);
       if (s.phase === "commit" || s.phase === "reveal") throw new Error(`${s.tokenSymbol} can't settle yet: bids are ${s.phase === "commit" ? "still being placed" : "still opening"} until ${iso(s.phase === "commit" ? s.commitEnd : s.revealEnd)}.`);
       const bids = await cloak.bidsOf(s.address, account.address, await bidsFrom(s.address));
       const open = bids.filter((b) => !b.claimed);
-      if (isDry(dry_run)) return { dryRun: true, wouldSettle: !s.settled, wouldClaim: open.map((b) => b.id) };
+      // private claims: launches from this deployment's factory, once their private vault is open
+      const canPrivate = async () =>
+        privately !== false && !s.failed && (await bidsFrom(s.address)) === settings.launchesFromBlock && (await privateTradingOn(s.token));
+      if (isDry(dry_run)) return { dryRun: true, wouldSettle: !s.settled, wouldClaim: open.map((b) => b.id), privately: s.settled ? await canPrivate() : privately !== false };
       return exclusive(async () => {
         const txs: string[] = [];
         if (!s.settled) {
           txs.push(link(await cloak.settle(s.address)));
           s = await cloak.getAuction(s.address);
         }
-        if (open.length) txs.push(link(await cloak.claim(s.address, open.map((b) => b.id))));
+        const priv8 = await canPrivate();
+        const won: typeof open = [];
+        let publicWhy: string | undefined;
+        if (priv8) {
+          const p = await priv();
+          for (const b of open.filter((x) => x.tokens > 0n)) {
+            // a deposit limit can refuse a large claim; that bid is then claimed to the wallet instead
+            const ok = await pub
+              .simulateContract({ address: s.address, abi: cloakAuctionAbi, functionName: "claimPrivate", args: [b.id, 1n, 1n, "0x"], account: account.address })
+              .then(() => true, (e) => ((publicWhy = explain(e)), false));
+            if (!ok) continue;
+            txs.push(link((await p.claimPrivately(wallet!, s.address, b.id)).txHash));
+            won.push(b);
+          }
+        }
+        const rest = open.filter((b) => !won.includes(b));
+        if (rest.length) txs.push(link(await cloak.claim(s.address, rest.map((b) => b.id))));
         const after = await cloak.bidsOf(s.address, account.address, await bidsFrom(s.address));
         return {
           launch: s.tokenSymbol,
           settled: s.settled,
           ...(s.failed ? { failed: "No demand was revealed, so every bid was refunded in full." } : { clearingPrice: `${formatEther(s.clearingPrice)} HYPE per token` }),
           claimed: open.length ? open.map((b) => b.id) : "nothing left to claim (already paid out)",
+          ...(won.length ? { claimedPrivately: won.map((b) => b.id), privateBalance: "won tokens are in the private balance (private_balance)" } : {}),
+          ...(publicWhy ? { claimedToWallet: `some won tokens went to the wallet instead of the private balance: ${publicWhy}` } : {}),
           tokensWon: formatEther(after.reduce((a, b) => a + b.tokens, 0n)),
           refunds: hype(after.reduce((a, b) => a + b.refund, 0n)),
           txs,
@@ -607,15 +643,12 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const s = await cloak.getAuction(auction as Address);
       if (!s.settled || s.failed) throw new Error(`${s.tokenSymbol} needs to settle successfully first (phase: ${s.phase}).`);
       if (await privateTradingOn(s.token)) return { alreadyOn: true, token: s.token };
-      const all = await cloak.listLaunches();
-      const idx = all.findIndex((l) => l.auction.toLowerCase() === s.address.toLowerCase());
-      if (idx < 0) throw new Error("This launch isn't from a Cloak factory, so it can't get a private vault.");
-      // earlier deployments' launches go through the router's list of earlier factories, in the order they're listed
-      const legacy = !!all[idx].legacy;
-      const index = BigInt(legacy ? idx - all.filter((l) => !l.legacy).length : idx);
-      if (isDry(dry_run)) return { dryRun: true, wouldEnable: s.tokenSymbol, launchIndex: index, earlierDeployment: legacy };
+      const l = (await cloak.listLaunches()).find((x) => x.auction.toLowerCase() === s.address.toLowerCase());
+      if (!l) throw new Error("This launch isn't from a Cloak factory, so it can't get a private vault.");
+      const vaults = d.vaults ?? (await pub.readContract({ address: d.router, abi: privateRouterAbi, functionName: "vaults" }));
+      if (isDry(dry_run)) return { dryRun: true, wouldEnable: s.tokenSymbol, factory: l.factory, launchIndex: l.index };
       return exclusive(async () => {
-        const h = await wallet.writeContract({ address: d.router, abi: privateRouterAbi, functionName: legacy ? "createLegacyPool" : "createPool", args: [index] });
+        const h = await wallet.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createPool", args: [l.factory, l.index] });
         await receipt(h);
         return { enabled: true, token: s.token, vault: await pub.readContract({ address: d.router, abi: privateRouterAbi, functionName: "poolOf", args: [s.token] }), tx: link(h) };
       });

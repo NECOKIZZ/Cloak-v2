@@ -1,22 +1,31 @@
-import type { Address } from "viem";
+import type { Address, PublicClient } from "viem";
+import { privateRouterAbi } from "./abis.js";
+import { readRegistry } from "./registry.js";
 
-/** An earlier deployment on the same chain: its launches still list, and `migrator` moves its private balances here. */
+/** An earlier deployment on the same chain: its launches still list, and the migrator moves its private balances here. */
 export interface PreviousDeployment {
   version: number;
   factory: Address;
   router: Address;
   routerBlock: bigint;
   batcher?: Address;
-  /** Moves this deployment's private balances into the current one (`CloakPrivate.migrateFrom(…, { migrator })`). */
+  /** Moved its balances into v3 (v1 and v2 only; from v4 on, the current deployment's `migrator` moves every version). */
   migrator?: Address;
+  /** Standalone vaults outside its router (v2's USDC vault), moved too. */
+  pools?: { pool: Address; fromBlock: bigint }[];
 }
 
 /** Where Cloak lives on each chain, so integrators never copy addresses by hand. */
 export interface CloakDeployment {
   chainId: number;
-  /** Which Cloak deployment this is (3 on Elysium testnet). */
+  /** Which Cloak deployment this is (4 on Elysium testnet). */
   version: number;
+  /** CloakConfig: the rules and the registry of every Cloak contract. `liveDeployment` reads the current ones from it. */
   config: Address;
+  /** CloakVaults: the permanent vaults (v4 on). */
+  vaults?: Address;
+  /** First block of the permanent vaults: scan private notes from here, whichever router is current. */
+  vaultsBlock?: bigint;
   factory: Address;
   /** Block the factory was deployed in: scan launch events from here. */
   factoryBlock: bigint;
@@ -24,7 +33,7 @@ export interface CloakDeployment {
   /** Block the router was deployed in: scan private-pool events from here. */
   routerBlock: bigint;
   batcher: Address;
-  /** The migrator from the newest earlier deployment (each one in `previous` has its own). */
+  /** Moves balances from every earlier deployment into the permanent vaults. */
   migrator?: Address;
   hypePool: Address;
   whype: Address;
@@ -85,3 +94,46 @@ export function deploymentFor(chainId: number): CloakDeployment {
   if (!d) throw new Error(`Cloak isn't deployed on chain ${chainId} (available: ${Object.keys(deployments).join(", ")})`);
   return d;
 }
+
+/**
+ * `base` with the current factory, router, batcher, migrator and vaults read from CloakConfig's registry, so a router or
+ * batcher added on-chain is picked up without a new SDK. Earlier deployments keep what `base` knows about them.
+ */
+export async function liveDeployment(publicClient: PublicClient, base: CloakDeployment): Promise<CloakDeployment> {
+  const reg = await readRegistry(publicClient, base.config).catch(() => undefined);
+  if (!reg) return base;
+  const [hypePool, whype] = await Promise.all([
+    publicClient.readContract({ address: reg.router, abi: privateRouterAbi, functionName: "hypePool" }),
+    publicClient.readContract({ address: reg.router, abi: privateRouterAbi, functionName: "whype" }),
+  ]);
+  const known = new Map((base.previous ?? []).map((p) => [p.version, p]));
+  return {
+    ...base,
+    version: reg.version,
+    vaults: reg.vaults ?? base.vaults,
+    vaultsBlock: reg.vaultsBlock ?? base.vaultsBlock,
+    factory: reg.factory,
+    factoryBlock: reg.factoryBlock,
+    router: reg.router,
+    routerBlock: reg.routerBlock,
+    batcher: reg.batcher ?? base.batcher,
+    migrator: reg.migrator ?? base.migrator,
+    hypePool,
+    whype,
+    previous: reg.previous.length
+      ? reg.previous.map((p) => {
+          const k = known.get(p.version);
+          return {
+            version: p.version,
+            factory: p.factory ?? k?.factory ?? ("0x" + "0".repeat(40)) as Address,
+            router: p.router ?? k?.router ?? ("0x" + "0".repeat(40)) as Address,
+            routerBlock: p.routerBlock ?? k?.routerBlock ?? 0n,
+            batcher: p.batcher ?? k?.batcher,
+            migrator: k?.migrator,
+            pools: p.pools.length ? p.pools.map((x) => ({ pool: x.addr, fromBlock: x.startBlock })) : k?.pools,
+          };
+        })
+      : base.previous,
+  };
+}
+

@@ -222,7 +222,7 @@ export class Cloak {
    * Every launch, newest factory first. Launches from the `legacyFactory` list (earlier deployments) are included with
    * `legacy: true`; the first deployment's have no vesting contract.
    */
-  async listLaunches(): Promise<{ auction: Address; token: Address; creator: Address; launchpad: Address; creatorAlloc: bigint; vesting: Address; factory: Address; legacy?: boolean }[]> {
+  async listLaunches(): Promise<{ auction: Address; token: Address; creator: Address; launchpad: Address; creatorAlloc: bigint; vesting: Address; factory: Address; index: bigint; legacy?: boolean }[]> {
     if (!this.factory) throw new Error("Cloak: factory address required");
     const legacy = [];
     for (const f of this.legacyFactories) legacy.push(...(await this.listLegacy(f)));
@@ -237,7 +237,7 @@ export class Cloak {
       const six = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launches", args: [i] }).catch(() => null);
       const [auction, token, creator, launchpad, creatorAlloc] =
         six ?? (await this.publicClient.readContract({ address: factory, abi: LEGACY_LAUNCHES_ABI, functionName: "launches", args: [i] }));
-      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting: (six?.[5] ?? zeroAddress) as Address, factory, legacy: true });
+      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting: (six?.[5] ?? zeroAddress) as Address, factory, index: i, legacy: true });
     }
     return out;
   }
@@ -257,7 +257,7 @@ export class Cloak {
         functionName: "launches",
         args: [i],
       });
-      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting, factory: this.factory });
+      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting, factory: this.factory, index: i });
     }
     return out;
   }

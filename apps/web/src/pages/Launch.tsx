@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Address } from "viem";
-import { Cloak, cloakAuctionAbi, drandRoundTime, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
+import { Cloak, cloakAuctionAbi, cloakVaultsAbi, drandRoundTime, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
-import { addrLink, KEEPER_URL, ROUTER } from "../config";
+import { addrLink, KEEPER_URL, ROUTER, VAULTS } from "../config";
 import { duration, hype, short, tokens } from "../format";
 import { Link } from "../router";
 import { useApp } from "../state";
@@ -81,15 +81,11 @@ export function Launch({ auction }: { auction: Address }) {
 
   async function enablePrivate() {
     if (!wallet || !ROUTER || !s) return;
-    const n = await readCloak.listLaunches();
-    const idx = n.findIndex((l) => l.auction.toLowerCase() === s.address.toLowerCase());
-    if (idx < 0) return setError("This launch wasn't made with the Cloak factory, so it can't get private trading.");
-    // launches from earlier deployments are read through the router's list of earlier factories, newest first, which
-    // is the order listLaunches puts them in after the current factory's
-    const current = n.filter((l) => !l.legacy).length;
-    const legacy = !!n[idx].legacy;
+    const l = (await readCloak.listLaunches()).find((x) => x.auction.toLowerCase() === s.address.toLowerCase());
+    if (!l) return setError("This launch wasn't made with a Cloak factory, so it can't get private trading.");
     await run("enable", async () => {
-      const h = await wallet.writeContract({ address: ROUTER!, abi: privateRouterAbi, functionName: legacy ? "createLegacyPool" : "createPool", args: [BigInt(legacy ? idx - current : idx)] });
+      const vaults = VAULTS ?? (await publicClient.readContract({ address: ROUTER!, abi: privateRouterAbi, functionName: "vaults" }));
+      const h = await wallet.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createPool", args: [l.factory, l.index] });
       await publicClient.waitForTransactionReceipt({ hash: h });
       setPrivMarket(true);
     });

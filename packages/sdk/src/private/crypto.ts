@@ -22,15 +22,26 @@ export async function poseidon(inputs: bigint[]): Promise<bigint> {
   return _poseidon.F.toObject(_poseidon(inputs.map((x) => BigInt(x))));
 }
 
-/** The message a wallet signs to derive its Cloak private account (deterministic for standard EOAs). */
+/**
+ * EIP-712 request whose signature derives a wallet's Cloak private account (v4 on). It is bound to the chain only, never
+ * to a contract, so the account and its `cloak:` address stay the same through every upgrade.
+ */
+export const ACCOUNT_TYPED_DATA = (chainId: number) =>
+  ({
+    domain: { name: "Cloak", version: "4", chainId },
+    types: { PrivateAccount: [{ name: "purpose", type: "string" }] },
+    primaryType: "PrivateAccount",
+    message: {
+      purpose: "Derive my Cloak private account. This costs nothing and moves no funds. Only sign this on cloak.boblabs.tech.",
+    },
+  }) as const;
+
+/** The plain message v1 accounts were derived from. Only used to move an old v1 balance. */
 export const ACCOUNT_MESSAGE =
   "Cloak private account v1\n\nSigning this derives your private trading keys on Elysium. It costs nothing and does not move funds.";
 
-/**
- * EIP-712 request whose signature derives the private keys of a Cloak v2 account. It is bound to the chain and the
- * router, so a signature collected by another site or for another contract can't reproduce the keys.
- */
-export const ACCOUNT_TYPED_DATA = (chainId: number, router: `0x${string}`) =>
+/** The EIP-712 request v2 and v3 accounts were derived from, bound to that deployment's router. Only used to move an old balance. */
+export const ROUTER_ACCOUNT_TYPED_DATA = (chainId: number, router: `0x${string}`) =>
   ({
     domain: { name: "Cloak", version: "2", chainId, verifyingContract: router },
     types: { PrivateAccount: [{ name: "purpose", type: "string" }] },

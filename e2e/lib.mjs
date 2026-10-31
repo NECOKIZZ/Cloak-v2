@@ -73,20 +73,63 @@ export async function waitDrand(round) {
 
 export { Cloak, parseEther };
 
-import { cloakConfigAbi, cloakMigratorAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi } from "@cloakely/sdk";
+import { cloakConfigAbi, cloakMigratorAbi, cloakVaultsAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi, whypeAbi } from "@cloakely/sdk";
+import { stringToHex } from "viem";
 
-const ZERO = "0x0000000000000000000000000000000000000000";
+const send = async (publicClient, p) => {
+  const r = await publicClient.waitForTransactionReceipt({ hash: await p });
+  if (r.status !== "success") throw new Error(`reverted: ${r.transactionHash}`);
+  return r;
+};
+const configCall = (publicClient, walletClient, config, functionName, args) =>
+  send(publicClient, walletClient.writeContract({ address: config, abi: cloakConfigAbi, functionName, args }));
+
+/** Record a contract in CloakConfig's registry (the config must be in setup). */
+export async function register(publicClient, walletClient, config, kind, addr, version, startBlock) {
+  await configCall(publicClient, walletClient, config, "register", [stringToHex(kind, { size: 32 }), addr, version, BigInt(startBlock)]);
+}
 
 /**
- * Deploy the PrivateRouter (it deploys its HYPE pool, and WHYPE unless an existing one is passed). Hashers and the
- * verifier can be reused from an earlier deployment: they are stateless.
+ * The privacy side of a v4 deployment, on a config still in setup: CloakVaults (the permanent vaults), its HYPE vault,
+ * and a router around them. The factory is added to the config's launch factories, and vaults, router and factory are
+ * registered. Hashers, WHYPE and the verifier are stateless and can be reused from an earlier deployment.
  */
-export async function deployPrivacy(publicClient, walletClient, factory, { config, poseidon2, poseidon3, legacyFactory = ZERO, whype = ZERO } = {}) {
+export async function deployPrivacy(publicClient, walletClient, factory, { config, poseidon2, poseidon3, whype, factoryBlock = 0n, version = 4 } = {}) {
   const p2 = poseidon2 ?? (await deployRaw(publicClient, walletClient, bytecode.Poseidon2)).address;
   const p3 = poseidon3 ?? (await deployRaw(publicClient, walletClient, bytecode.Poseidon3)).address;
-  const hash = await walletClient.deployContract({ abi: privateRouterAbi, bytecode: bytecode.PrivateRouter, args: [config, p2, p3, factory, legacyFactory, whype] });
-  const r = await publicClient.waitForTransactionReceipt({ hash });
-  return { router: r.contractAddress, poseidon2: p2, poseidon3: p3, block: r.blockNumber, txHash: hash };
+  const w = whype ?? (await send(publicClient, walletClient.deployContract({ abi: whypeAbi, bytecode: bytecode.WHYPE, args: [] }))).contractAddress;
+  const c = { address: config, abi: cloakConfigAbi };
+  if (!(await publicClient.readContract({ ...c, functionName: "isLaunchFactory", args: [factory] }))) await configCall(publicClient, walletClient, config, "addLaunchFactory", [factory]);
+  if (!(await publicClient.readContract({ ...c, functionName: "approvedAsset", args: [w] }))) await configCall(publicClient, walletClient, config, "approveAsset", [w]);
+  const vr = await send(publicClient, walletClient.deployContract({ abi: cloakVaultsAbi, bytecode: bytecode.CloakVaults, args: [config, p2, p3] }));
+  const vaults = vr.contractAddress;
+  await send(publicClient, walletClient.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createAssetPool", args: [w] }));
+  const hash = await walletClient.deployContract({ abi: privateRouterAbi, bytecode: bytecode.PrivateRouter, args: [vaults, w] });
+  const r = await send(publicClient, hash);
+  await register(publicClient, walletClient, config, "vaults", vaults, version, vr.blockNumber);
+  await register(publicClient, walletClient, config, "factory", factory, version, factoryBlock);
+  await register(publicClient, walletClient, config, "router", r.contractAddress, version, r.blockNumber);
+  return { router: r.contractAddress, vaults, whype: w, poseidon2: p2, poseidon3: p3, block: r.blockNumber, vaultsBlock: vr.blockNumber, txHash: hash };
+}
+
+/** Open the permanent vault for launch `index` of `factory` (anyone can, once it settled with a pool). */
+export async function openVault(publicClient, walletClient, vaults, factory, index) {
+  const r = await send(publicClient, walletClient.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createPool", args: [factory, BigInt(index)] }));
+  return { txHash: r.transactionHash, pool: await publicClient.readContract({ address: vaults, abi: cloakVaultsAbi, functionName: "poolOf", args: [await launchToken(publicClient, factory, index)] }) };
+}
+
+// the first two fields of `launches` are the same in every factory (v1's returns five fields, later ones six)
+const LAUNCH_HEAD_ABI = [{ type: "function", name: "launches", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "address" }, { type: "address" }, { type: "address" }, { type: "address" }, { type: "uint256" }] }];
+async function launchToken(publicClient, factory, index) {
+  const [, token] = await publicClient.readContract({ address: factory, abi: LAUNCH_HEAD_ABI, functionName: "launches", args: [BigInt(index)] });
+  return token;
+}
+
+/** Approve a non-launch token (USDC) in the config and open its permanent vault. */
+export async function assetVault(publicClient, walletClient, config, vaults, token) {
+  await configCall(publicClient, walletClient, config, "approveAsset", [token]);
+  await send(publicClient, walletClient.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createAssetPool", args: [token] }));
+  return publicClient.readContract({ address: vaults, abi: cloakVaultsAbi, functionName: "poolOf", args: [token] });
 }
 
 export async function deployBatcher(publicClient, walletClient, router, { roundSecs, maxSlippageBps, refundAfter, minOrder = 10n ** 12n }) {
@@ -95,8 +138,9 @@ export async function deployBatcher(publicClient, walletClient, router, { roundS
   return { batcher: r.contractAddress, block: r.blockNumber, txHash: hash };
 }
 
-export async function deployMigrator(publicClient, walletClient, legacyRouter, router) {
-  const hash = await walletClient.deployContract({ abi: cloakMigratorAbi, bytecode: bytecode.CloakMigrator, args: [legacyRouter, router] });
+/** One migrator from every earlier router (and standalone earlier vaults) into `router`'s vaults. */
+export async function deployMigrator(publicClient, walletClient, legacyRouters, router, legacyPools = []) {
+  const hash = await walletClient.deployContract({ abi: cloakMigratorAbi, bytecode: bytecode.CloakMigrator, args: [legacyRouters, legacyPools, router] });
   const r = await publicClient.waitForTransactionReceipt({ hash });
   return { migrator: r.contractAddress, block: r.blockNumber, txHash: hash };
 }

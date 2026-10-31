@@ -1,9 +1,10 @@
 import { encodeAbiParameters, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient } from "viem";
-import { cloakMigratorAbi, cloakPairAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi } from "../abis.js";
+import { cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi } from "../abis.js";
 import type { Wallet } from "../cloak.js";
 import {
   ACCOUNT_MESSAGE,
   ACCOUNT_TYPED_DATA,
+  ROUTER_ACCOUNT_TYPED_DATA,
   CloakKeys,
   MAIN_KEY,
   noteCommitment,
@@ -68,6 +69,8 @@ const ERC20_ABI = [
   { type: "function", name: "allowance", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "bool" }] },
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
 ] as const;
 
 interface PoolState {
@@ -156,14 +159,35 @@ export class CloakPrivate {
   ) {}
 
   /**
-   * Derive the private keys from one EIP-712 signature bound to this chain and router, so a signature asked for by any
-   * other site or contract can't reproduce them. With `verify`, the wallet signs twice and the keys are refused if the
-   * two signatures differ (some smart and MPC wallets sign differently each time, which would hide earlier notes).
+   * Derive the wallet's Cloak private account from one EIP-712 signature bound to this chain (never to a contract, so
+   * the account survives every upgrade). With `verify`, the wallet signs twice and the keys are refused if the two
+   * signatures differ (some smart and MPC wallets sign differently each time, which would hide earlier notes).
    */
-  static async keysFromWallet(wallet: Wallet, opts: { chainId: number; router: Address; verify?: boolean }): Promise<CloakKeys> {
-    const req = { account: wallet.account!, ...ACCOUNT_TYPED_DATA(opts.chainId, opts.router) };
+  static async keysFromWallet(wallet: Wallet, opts: { chainId: number; verify?: boolean }): Promise<CloakKeys> {
+    return CloakPrivate.signedKeys(wallet, ACCOUNT_TYPED_DATA(opts.chainId), opts.verify);
+  }
+
+  /** Keys of a v2 or v3 account, bound to that deployment's router. Only needed to move an old balance across. */
+  static async routerKeysFromWallet(wallet: Wallet, opts: { chainId: number; router: Address }): Promise<CloakKeys> {
+    return CloakPrivate.signedKeys(wallet, ROUTER_ACCOUNT_TYPED_DATA(opts.chainId, opts.router), false);
+  }
+
+  /** The keys an earlier deployment's notes were made for: v1 a plain message, v2 and v3 their router, v4 on the account. */
+  static async keysForVersion(wallet: Wallet, opts: { chainId: number; version: number; router: Address }): Promise<CloakKeys> {
+    if (opts.version <= 1) return CloakPrivate.legacyKeysFromWallet(wallet);
+    if (opts.version <= 3) return CloakPrivate.routerKeysFromWallet(wallet, opts);
+    return CloakPrivate.keysFromWallet(wallet, opts);
+  }
+
+  private static async signedKeys(
+    wallet: Wallet,
+    typed: ReturnType<typeof ACCOUNT_TYPED_DATA> | ReturnType<typeof ROUTER_ACCOUNT_TYPED_DATA>,
+    verify?: boolean,
+  ): Promise<CloakKeys> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const req = { account: wallet.account!, ...typed } as any;
     const sig = await wallet.signTypedData(req);
-    if (opts.verify) {
+    if (verify) {
       const again = await wallet.signTypedData(req);
       if (again.toLowerCase() !== sig.toLowerCase()) {
         throw new Error("This wallet gives a different signature each time, so it can't hold a Cloak private account. Use a standard wallet such as MetaMask or Rabby.");
@@ -178,20 +202,43 @@ export class CloakPrivate {
     return CloakKeys.fromSignature(sig);
   }
 
+  /**
+   * Read the router's vaults: HYPE first, then every launch market. A vault without a launch pair (USDC) is an asset,
+   * not a market, and is added to `assets` instead.
+   */
   async loadMarkets(): Promise<PrivateMarket[]> {
     const c = { address: this.router, abi: privateRouterAbi } as const;
-    const n = await this.publicClient.readContract({ ...c, functionName: "tokensCount" });
+    const [n, whype] = await Promise.all([
+      this.publicClient.readContract({ ...c, functionName: "tokensCount" }),
+      this.publicClient.readContract({ ...c, functionName: "whype" }),
+    ]);
+    const tokens = await Promise.all(Array.from({ length: Number(n) }, (_, i) => this.publicClient.readContract({ ...c, functionName: "tokens", args: [BigInt(i)] })));
+    const rows = await Promise.all(
+      tokens.map((token) =>
+        Promise.all([
+          this.publicClient.readContract({ ...c, functionName: "poolOf", args: [token] }),
+          this.publicClient.readContract({ ...c, functionName: "pairOf", args: [token] }),
+        ]),
+      ),
+    );
     const out: PrivateMarket[] = [];
-    for (let i = 0n; i < n; i++) {
-      const token = await this.publicClient.readContract({ ...c, functionName: "tokens", args: [i] });
-      const [pool, pair] = await Promise.all([
-        this.publicClient.readContract({ ...c, functionName: "poolOf", args: [token] }),
-        this.publicClient.readContract({ ...c, functionName: "pairOf", args: [token] }),
-      ]);
-      out.push({ token, pool, pair: i === 0n ? null : pair });
+    let hype: PrivateMarket | undefined;
+    for (let i = 0; i < tokens.length; i++) {
+      const [pool, pair] = rows[i];
+      const token = tokens[i];
+      if (token.toLowerCase() === whype.toLowerCase()) hype = { token, pool, pair: null };
+      else if (pair !== zeroAddress) out.push({ token, pool, pair });
+      else if (!this.assets.some((a) => a.pool.toLowerCase() === pool.toLowerCase())) {
+        const [symbol, decimals] = await Promise.all([
+          this.publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?"),
+          this.publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
+        ]);
+        this.addAsset({ symbol, token, pool, decimals: Number(decimals), fromBlock: this.fromBlock });
+      }
     }
-    this.markets = out;
-    return out;
+    if (!hype) throw new Error("the router has no HYPE vault");
+    this.markets = [hype, ...out];
+    return this.markets;
   }
 
   get hypeMarket(): PrivateMarket {
@@ -406,6 +453,28 @@ export class CloakPrivate {
     const r = await this.publicClient.waitForTransactionReceipt({ hash });
     if (r.status !== "success") throw new Error("shield reverted");
     return hash;
+  }
+
+  /**
+   * Claim a won sealed bid straight into the private vault (v4 launches): the tokens become a note for a one-time key,
+   * so later trades can't be linked to the bid. Sent from the bidder's wallet (only the bidder can claim this way); the
+   * HYPE refund, if any, still goes to the wallet. The token's vault must exist (the keeper opens it at settlement).
+   */
+  async claimPrivately(wallet: Wallet, auction: Address, bidId: bigint): Promise<{ txHash: Hex; tokens: bigint }> {
+    const [tokens] = await this.publicClient.readContract({ address: auction, abi: cloakAuctionAbi, functionName: "allocationOf", args: [bidId] });
+    if (tokens === 0n) throw new Error("this bid won no tokens");
+    const keyIndex = randomKeyIndex();
+    const k = await this.keys.key(keyIndex);
+    const blinding = randomField();
+    const hash = await wallet.writeContract({
+      address: auction,
+      abi: cloakAuctionAbi,
+      functionName: "claimPrivate",
+      args: [bidId, k.pubKey, blinding, encryptFullMemo(this.keys.encPub, tokens, blinding, keyIndex)],
+    });
+    const r = await this.publicClient.waitForTransactionReceipt({ hash });
+    if (r.status !== "success") throw new Error("private claim reverted");
+    return { txHash: hash, tokens };
   }
 
   // ───────────── batch auctions (hide trade size) ─────────────
@@ -642,10 +711,11 @@ export class CloakPrivate {
   async migrateFrom(legacy: CloakPrivate, onStatus: Status = () => {}, opts: { migrator?: Address } = {}): Promise<{ token: Address; amount: bigint; txHash: Hex }[]> {
     const migrator = opts.migrator ?? this.migratorAddress();
     const moved: { token: Address; amount: bigint; txHash: Hex }[] = [];
-    const markets = await legacy.loadMarkets();
+    const markets = [...(await legacy.loadMarkets()), ...legacy.assets];
     await this.loadMarkets();
+    const here = [...this.markets, ...this.assets];
     for (const m of markets) {
-      if (!this.markets.some((x) => x.token.toLowerCase() === m.token.toLowerCase())) continue; // no pool here yet
+      if (!here.some((x) => x.token.toLowerCase() === m.token.toLowerCase())) continue; // no vault here yet
       for (;;) {
         const live = (await legacy.sync(m.pool)).sort((a, b) => (a.amount > b.amount ? -1 : 1));
         if (!live.length) break;

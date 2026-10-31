@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { defineChain, parseEther, parseUnits, type Address, type Chain, type Hex } from "viem";
-import { deploymentFor, elysiumTestnet, type CloakDeployment } from "@cloakely/sdk";
+import { createPublicClient, defineChain, http, parseEther, parseUnits, type Address, type Chain, type Hex, type PublicClient } from "viem";
+import { deploymentFor, elysiumTestnet, liveDeployment, type CloakDeployment } from "@cloakely/sdk";
 
 /** Where the server points, and what it may do. Everything comes from environment variables (see README). */
 export interface Settings {
@@ -33,9 +33,10 @@ const NETWORKS: Record<string, { chain: Chain }> = {
 };
 
 /** A deployment file (`CLOAK_DEPLOYMENT_FILE`) for a local chain or a private test deployment. */
-interface DeploymentFile extends Omit<CloakDeployment, "routerBlock" | "factoryBlock" | "version" | "assets" | "previous"> {
+interface DeploymentFile extends Omit<CloakDeployment, "routerBlock" | "factoryBlock" | "vaultsBlock" | "version" | "assets" | "previous"> {
   rpcUrl: string;
   routerBlock: string | number;
+  vaultsBlock?: string | number;
   version?: number;
   launchesFromBlock?: string | number;
   assets?: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: string | number }[];
@@ -56,7 +57,14 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     rpcUrl = f.rpcUrl;
     chain = defineChain({ id: f.chainId, name: `Cloak custom (${f.chainId})`, nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } }, testnet: true });
     launchesFromBlock = BigInt(f.launchesFromBlock ?? 0);
-    deployment = { ...f, version: f.version ?? 0, factoryBlock: launchesFromBlock, routerBlock: BigInt(f.routerBlock), assets: f.assets?.map((a) => ({ ...a, fromBlock: BigInt(a.fromBlock) })) };
+    deployment = {
+      ...f,
+      version: f.version ?? 0,
+      factoryBlock: launchesFromBlock,
+      routerBlock: BigInt(f.routerBlock),
+      vaultsBlock: f.vaultsBlock === undefined ? undefined : BigInt(f.vaultsBlock),
+      assets: f.assets?.map((a) => ({ ...a, fromBlock: BigInt(a.fromBlock) })),
+    };
   } else {
     const n = NETWORKS[network];
     if (!n) throw new Error(`unknown CLOAK_NETWORK "${network}" (use testnet)`);
@@ -97,3 +105,15 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     },
   };
 }
+
+/**
+ * `settings` with the current factory, router, batcher, migrator and vaults read from CloakConfig's registry, so a
+ * router added on-chain is used without a new release. Keeps the configured deployment if the registry can't be read.
+ */
+export async function withLiveDeployment(settings: Settings): Promise<Settings> {
+  const pub = createPublicClient({ chain: settings.chain, transport: http(settings.rpcUrl, { retryCount: 3, timeout: 15_000 }) }) as PublicClient;
+  const deployment = await liveDeployment(pub, settings.deployment).catch(() => settings.deployment);
+  const moved = deployment.factory.toLowerCase() !== settings.deployment.factory.toLowerCase();
+  return { ...settings, deployment, launchesFromBlock: moved ? deployment.factoryBlock : settings.launchesFromBlock };
+}
+

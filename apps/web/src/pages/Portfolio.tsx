@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
-import { CloakPrivate } from "@cloakely/sdk";
-import { ASSETS, CHAIN_ID, PREVIOUS, txLink } from "../config";
+import { CloakPrivate, shieldedPoolAbi } from "@cloakely/sdk";
+import { ASSETS, CHAIN_ID, MIGRATOR, PREVIOUS, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
 import { getProver, useApp } from "../state";
@@ -31,13 +31,19 @@ export function Portfolio() {
     try {
       await getProver();
       let n = 0;
-      for (const p of PREVIOUS.filter((x) => x.migrator)) {
+      for (const p of PREVIOUS) {
         setMoveMsg({ busy: `Sign once more to open your v${p.version} private account…` });
-        const keys = p.version === 1 ? await CloakPrivate.legacyKeysFromWallet(wallet) : await CloakPrivate.keysFromWallet(wallet, { chainId: CHAIN_ID, router: p.router });
+        const keys = await CloakPrivate.keysForVersion(wallet, { chainId: CHAIN_ID, version: p.version, router: p.router });
         const legacy = new CloakPrivate(publicClient, p.router, keys, getProver, priv.submit, p.routerBlock);
-        n += (await priv.migrateFrom(legacy, (m) => setMoveMsg({ busy: `v${p.version}: ${m}` }), { migrator: p.migrator })).length;
+        // vaults that version kept outside its router (v2's USDC vault)
+        for (const x of p.pools ?? []) {
+          const token = await publicClient.readContract({ address: x.pool, abi: shieldedPoolAbi, functionName: "token" });
+          const a = ASSETS.find((y) => y.token.toLowerCase() === token.toLowerCase());
+          legacy.addAsset({ symbol: a?.symbol ?? "token", token, pool: x.pool, decimals: a?.decimals ?? 18, fromBlock: x.fromBlock });
+        }
+        n += (await priv.migrateFrom(legacy, (m) => setMoveMsg({ busy: `v${p.version}: ${m}` }))).length;
       }
-      setMoveMsg({ ok: n ? `Moved ${n} private balance${n > 1 ? "s" : ""} into the new vaults.` : "Nothing to move: your old private accounts are empty." });
+      setMoveMsg({ ok: n ? `Moved ${n} private balance${n > 1 ? "s" : ""} into the permanent vaults.` : "Nothing to move: your old private accounts are empty." });
       refresh();
     } catch (e) {
       setMoveMsg({ err: friendly(e) });
@@ -204,10 +210,10 @@ export function Portfolio() {
             <div className="summary mono xs" style={{ wordBreak: "break-all", marginTop: 12 }}>{privAddress}</div>
             <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(privAddress).catch(() => {}); toast("Cloak address copied"); }}><Icon.copy size={14} />Copy</button>
           </div>
-          {PREVIOUS.some((p) => p.migrator) && (
+          {MIGRATOR && PREVIOUS.length > 0 && (
             <div className="card">
               <div className="card-head"><h3>Balance in the old vaults?</h3><Icon.lock size={16} /></div>
-              <p className="small mute">Cloak moved to new contracts with fees, caps and security fixes. If you held a private balance before, move it here in one step. It stays private, and nobody can redirect it.</p>
+              <p className="small mute">Cloak's vaults are now permanent, and your private account stays the same from here on. If you held a private balance in an earlier version, move it here once. It stays private, and nobody can redirect it.</p>
               <button className="btn btn-ghost btn-sm" disabled={!!moveMsg.busy} onClick={moveOld}>{moveMsg.busy ?? "Move my old balance"}</button>
               {moveMsg.ok && <div className="okmsg">{moveMsg.ok}</div>}
               {moveMsg.err && <div className="err">{moveMsg.err}</div>}
