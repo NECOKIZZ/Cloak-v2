@@ -1,0 +1,112 @@
+{
+  "chainId": 99801,
+  "version": 4,
+  "config": "0x9fdf166f0671166148ea98cdd3ef0118d256167f",
+  "verifier": "0xA554AC0150E853DEAC5214cFf9F5001Ad2f441ED",
+  "poseidon2": "0x80d9d0b2bdd42a77d083235662925f2907392723",
+  "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
+  "vaults": "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
+  "vaultsBlock": "19485039",
+  "factory": "0xa88df63d7d44acc66052e5cbe5ba9503bf940993",
+  "factoryBlock": "19484794",
+  "router": "0x343ab9a7aac93cee28321410510ea24417cc6386",
+  "routerBlock": "19485063",
+  "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
+  "hypePool": "0x3ACB22829bb422446caaDd8546e65ab530A53031",
+  "batcher": "0xc69e4bca18020ae93bc9f17093985bfb139a3203",
+  "batcherBlock": "19485270",
+  "migrator": "0x86c5d8035224493f10938aaa07b179be316dadf4",
+  "treasury": "0x6616C2566baD950FcDD420159a51fDdfFa220E8e",
+  "rules": {
+    "withdrawFeeBps": 25,
+    "launchFeeBps": 150,
+    "caps": "WHYPE 100/10000 HYPE; USDC 1000/50000; tokens 100/1000 bps of supply"
+  },
+  "vaultCount": 9,
+  "assets": [
+    {
+      "symbol": "USDC",
+      "token": "0x7D29d8047B905000459c0E80c34a26CeedcB47b2",
+      "pool": "0x3d5cB722490D9908a118f8B3151f83fcE943E4F0",
+      "decimals": 6,
+      "fromBlock": "19485039"
+    }
+  ],
+  "previous": [
+    {
+      "version": 3,
+      "factory": "0xd0f4aacf339f07211a9155194925b2f94e250e29",
+      "factoryBlock": "19096456",
+      "router": "0x78319bee7c21ca411166acc67c750aca10280e86",
+      "routerBlock": "19096485",
+      "batcher": "0x9902d86c5be81f6c6ce059acf4c89193d06069c4",
+      "pools": [
+        {
+          "pool": "0x61de30970e3c53665ce5a89323284e7ab379fa08",
+          "fromBlock": "18329466"
+        }
+      ]
+    },
+    {
+      "version": 2,
+      "factory": "0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc",
+      "factoryBlock": "15855986",
+      "router": "0xd51e731467c49991496329c2b7979cb1aa220ee2",
+      "routerBlock": "15856031",
+      "batcher": "0xa13ffd763a8cccfea1b868c616291723579ddb77",
+      "pools": [
+        {
+          "pool": "0x61de30970e3c53665ce5a89323284e7ab379fa08",
+          "fromBlock": "18329466"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "factory": "0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c",
+      "factoryBlock": "10958927",
+      "router": "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41",
+      "routerBlock": "10973723",
+      "batcher": "0xf6582cc5a84fccf74e571e652fb7b603a2c25812",
+      "pools": []
+    }
+  ],
+  "earlierLaunchVaults": [
+    {
+      "version": 1,
+      "index": 0,
+      "tx": "0x3d0e5a4eb409fae489554c71cb13774e9cc0f96c8153e36e3b55032b7e130360"
+    },
+    {
+      "version": 2,
+      "index": 1,
+      "tx": "0xee317863e5ffdb43dd60c3ae3bbcf1a257043089c8e1584464386a4e075d1c12"
+    },
+    {
+      "version": 2,
+      "index": 2,
+      "tx": "0x685583267e04fe1b419621a075d3896eb1035ab2079c64bbeed96bf366224ba5"
+    },
+    {
+      "version": 2,
+      "index": 3,
+      "tx": "0x7dfdb8ffdda831cc56cf146ab2819295b520d020443ee52222c9a34dedb67bf8"
+    },
+    {
+      "version": 2,
+      "index": 5,
+      "tx": "0xd6c8fdbf5a2f89ebe3589645fb3f735b202e305107e404d5394138bc89cf2d1c"
+    },
+    {
+      "version": 2,
+      "index": 6,
+      "tx": "0xecb840300e801067ae8d7fd20a451cd2c91564008e0bb3a3e591a299eed78010"
+    },
+    {
+      "version": 2,
+      "index": 7,
+      "tx": "0x1aa344cda0d8941b6fa672e1a68a1a221bdf3454bfe0db109b82b94d40b13498"
+    }
+  ],
+  "deployCost": "0.0036757640369 HYPE"
+}

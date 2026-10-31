@@ -21,8 +21,9 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 - **Private sends** to a `cloak:` address, with sender, receiver and amount all hidden.
 - **Withdraw** to any address, ideally a fresh one.
 - **Private USDC:** shield, send privately and withdraw, with the relayer paid in USDC.
-- **Migration:** private balances move from v1 to v2 privately, in one step.
-- **Your account comes from one wallet signature.** Nothing is stored on a server.
+- **Permanent vaults (v4):** every asset has one vault, made once and never replaced. Upgrades add helpers around the vaults, so balances never have to move again. Balances from v1, v2 and v3 move in once, privately, in one step.
+- **Private claims:** a sealed-bid winner can claim tokens straight into the vault, so later trades can't be linked to the bid.
+- **Your account comes from one wallet signature**, bound to the chain only, so it and your `cloak:` address never change. Nothing is stored on a server.
 
 **Rules and safety**
 - **No contract can move user funds.** Notes leave a vault only with their owner's proof.
@@ -31,13 +32,13 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 - **A public 3-day timelock** on any loosening rule change, once setup ends.
 
 **For builders**
-- **`@cloakely/sdk` on npm** (0.2.6), published from GitHub with npm trusted publishing. It covers launches, bids, private balances, swaps, batch orders, sends, USDC, and the on-device prover.
-- **A hosted keeper** that reveals bids, settles launches and batch rounds, and relays private transactions for a quoted fee.
+- **`@cloakely/sdk` on npm** (0.4.0), published from GitHub with npm trusted publishing. It covers launches, bids, private balances, swaps, batch orders, sends, USDC, and the on-device prover.
+- **A hosted keeper** that reveals bids, settles launches and batch rounds, opens each launch's vault at settlement, and relays private transactions for a quoted fee.
+- **One address for everything:** `CloakConfig` lists every Cloak contract with its start block (`readRegistry` in the SDK).
 - **An MCP server for AI agents:** a hosted link (`https://cloak.boblabs.tech/mcp`, read and plan, no install) and a local server (`npx @cloakely/mcp`, on npm) with 18 tools covering launches, bids and private trading, under spending limits with dry runs.
 
 **Not yet**
 - **No private swaps for USDC yet:** see 3b.
-- **A token's private vault isn't created automatically.** Anyone can create it in one click after the launch settles: see 1.
 - **No minimum raise:** a launch settles as long as at least one bid was revealed.
 - **The trusted setup is single-party for now.** Caps stay on until the public ceremony and an external audit.
 
@@ -170,13 +171,15 @@ Selective disclosure, applied to tokens.
 - every fix from the internal review, each with a regression test
 - private balance moves from the first deployment (`CloakMigrator`)
 
+**Done on testnet (v4, Oct 31):** permanent vaults, the address registry, fixed account keys and private claims: the layout mainnet deploys once.
+
 **Still to do before Nov 9:**
 - **Public trusted-setup ceremony**, with outside contributors and a drand beacon. The new verifier goes in through the config.
 - **Hand ownership to a multisig, then `endSetup()`.** After that, every loosening change waits 3 days.
 - **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
 - **Source verification** on the explorer for every contract.
 - **Rehearse the mainnet deploy** on a fork, then deploy, verify and publish the addresses.
-- **Settle the vault model before the ceremony.** Today each asset gets its own vault. A single vault for every asset (the asset goes inside each note, like Gloam) pools everyone's privacy into one crowd, but it needs a new circuit, and a ceremony is run per circuit. So it has to be decided before the ceremony, or not at all until a second one.
+- **Vault model: decided (one vault per asset, v4).** A shared vault would hide which token a private send moved, but it needs a new circuit, and a worthless new token could endanger every asset if that circuit had a bug. Kept as a later option ([VAULT.md](VAULT.md)).
 - **Private USDC on mainnet:** a vault for mainnet USDC, with the same caps until the audit.
 
 At launch:

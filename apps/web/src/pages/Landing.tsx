@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "../router";
 import { Announce, EXPLORER, Footer, GITHUB, Icon, Logo, Nav, Section } from "../ui";
+import { FACTORY } from "../config";
 
 // each public card has a sealed twin; it turns into it as it crosses the Cloak line
 const PAIRS = [
@@ -307,7 +308,7 @@ export function Landing() {
           <div className="split">
             <div>
               <h2 className="display-2">No middlemen</h2>
-              <a href={`${EXPLORER}/address/0xd0f4aacf339f07211a9155194925b2f94e250e29`} target="_blank" rel="noreferrer" className="arrow" style={{ display: "inline-block", marginTop: 18, fontSize: 14 }}>Verify the contracts</a>
+              <a href={`${EXPLORER}/address/${FACTORY}`} target="_blank" rel="noreferrer" className="arrow" style={{ display: "inline-block", marginTop: 18, fontSize: 14 }}>Verify the contracts</a>
             </div>
             <div className="three">
               <div><h3>Nobody can take funds</h3><p>No function lets anyone, including us, move funds out of an auction or a vault. Rule changes wait a public 3-day delay.</p></div>

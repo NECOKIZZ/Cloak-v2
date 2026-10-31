@@ -16,7 +16,8 @@
 //   be used to drain the relayer's gas.
 //
 //   KEEPER_PK=0x… CONFIG=0x… [RPC_URL=…] [CLAIM_DELAY=3600] [PORT=3001] node services/keeper/index.mjs
-//   Every address comes from CloakConfig's registry. FACTORY/START_BLOCK/ROUTER/BATCHER/BATCHER_BLOCK/MIGRATOR override it.
+//   Every address comes from CloakConfig's registry. Without CONFIG (tests), FACTORY/START_BLOCK/ROUTER/BATCHER/
+//   BATCHER_BLOCK/MIGRATOR give them directly; with CONFIG those are ignored.
 import { createServer } from "node:http";
 import { createPublicClient, createWalletClient, http, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -34,12 +35,17 @@ if (!PK || (!process.env.CONFIG && !process.env.FACTORY)) {
 const transport = http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
 const publicClient = createPublicClient({ chain, transport, pollingInterval: 250 });
 const reg = process.env.CONFIG ? await readRegistry(publicClient, process.env.CONFIG) : undefined;
-const FACTORY = process.env.FACTORY ?? reg?.factory;
-const START_BLOCK = BigInt(process.env.START_BLOCK ?? reg?.factoryBlock ?? 0);
-const ROUTER = process.env.ROUTER ?? reg?.router; // enables POST /relay for private trades
-const BATCHER = process.env.BATCHER ?? reg?.batcher; // enables batch-auction orders + settles/claims rounds
-const BATCHER_BLOCK = BigInt(process.env.BATCHER_BLOCK ?? reg?.batcherBlock ?? START_BLOCK);
-const MIGRATOR = process.env.MIGRATOR ?? reg?.migrator; // enables relayed moves from earlier deployments
+// With CONFIG, the registry is the only source of addresses: stale address variables can't point the keeper elsewhere.
+const OVERRIDES = ["FACTORY", "START_BLOCK", "ROUTER", "BATCHER", "BATCHER_BLOCK", "MIGRATOR", "MIGRATIONS", "LEGACY_ROUTER", "ASSET_POOLS"];
+const ignored = reg ? OVERRIDES.filter((k) => process.env[k]) : [];
+if (ignored.length) console.error(`CONFIG is set, so these are ignored (addresses come from the registry): ${ignored.join(", ")}`);
+const env = (k) => (reg ? undefined : process.env[k]);
+const FACTORY = env("FACTORY") ?? reg?.factory;
+const START_BLOCK = BigInt(env("START_BLOCK") ?? reg?.factoryBlock ?? 0);
+const ROUTER = env("ROUTER") ?? reg?.router; // enables POST /relay for private trades
+const BATCHER = env("BATCHER") ?? reg?.batcher; // enables batch-auction orders + settles/claims rounds
+const BATCHER_BLOCK = BigInt(env("BATCHER_BLOCK") ?? reg?.batcherBlock ?? START_BLOCK);
+const MIGRATOR = env("MIGRATOR") ?? reg?.migrator; // enables relayed moves from earlier deployments
 // v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
 const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
 
@@ -66,7 +72,7 @@ for (const m of ["writeContract", "sendTransaction"]) {
 }
 const cloak = new Cloak(publicClient, walletClient, FACTORY);
 
-const status = { keeper: account.address, chain: chain.id, config: process.env.CONFIG ?? null, factory: FACTORY, launches: {}, lastTick: 0 };
+const status = { keeper: account.address, chain: chain.id, config: process.env.CONFIG ?? null, version: reg?.version ?? null, factory: FACTORY, ignoredEnv: ignored, launches: {}, lastTick: 0 };
 const done = new Set(); // auctions fully claimed
 const log = (a, m) => console.log(`[${new Date().toISOString()}] ${a.slice(0, 10)} ${m}`);
 

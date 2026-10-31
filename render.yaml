@@ -7,31 +7,19 @@ services:
     envVars:
       - key: KEEPER_PK
         sync: false
-      # Cloak v3 on Elysium testnet (public addresses; see deployments/elysium-testnet-v3.json)
-      - key: FACTORY
-        value: "0xd0f4aacf339f07211a9155194925b2f94e250e29"
-      - key: START_BLOCK
-        value: "19096456"
-      - key: ROUTER
-        value: "0x78319bee7c21ca411166acc67c750aca10280e86"
-      - key: BATCHER
-        value: "0x9902d86c5be81f6c6ce059acf4c89193d06069c4"
-      - key: BATCHER_BLOCK
-        value: "19096615"
-      # moves of private balances from v2 and v1: earlier router:its migrator into v3
-      - key: MIGRATIONS
-        value: "0xd51e731467c49991496329c2b7979cb1aa220ee2:0x295f816aa6dac1901bd793120248d8f9cbbd5eec,0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41:0x5f3d82a6aa1b20ba9d0f58a98d1c4933c115a0da"
-      # private USDC: sends and withdrawals, relayer fee priced from the live HYPE/USD price (HYPE_USD is the fallback)
-      - key: ASSET_POOLS
-        value: "0x61de30970e3c53665ce5a89323284e7ab379fa08"
+      # Every contract address comes from CloakConfig's registry (Cloak v4 on Elysium testnet:
+      # deployments/elysium-testnet-v4.json). With CONFIG set, FACTORY/ROUTER/BATCHER/… are ignored.
+      - key: CONFIG
+        value: "0x9fdf166f0671166148ea98cdd3ef0118d256167f"
+      # seconds after the reveal window before the keeper pushes unclaimed bids to wallets, so winners can claim privately
+      - key: CLAIM_DELAY
+        value: "3600"
   - type: web
     name: cloak-web
     runtime: static
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/web build
     staticPublishPath: apps/web/dist
     envVars:
-      - key: VITE_FACTORY
-        sync: false
       - key: VITE_KEEPER_URL
         sync: false
       - key: VITE_RELAYER_URL

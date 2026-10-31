@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "../router";
 import { EXPLORER, Footer, GITHUB, Icon, Nav } from "../ui";
+import { DEPLOYMENT, VERSION } from "../config";
 
+// every address from the SDK's deployment record, so this table can't drift from what the app uses
 const ADDR = {
-  config: "0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373",
-  factory: "0xd0f4aacf339f07211a9155194925b2f94e250e29",
-  router: "0x78319bee7c21ca411166acc67c750aca10280e86",
-  batcher: "0x9902d86c5be81f6c6ce059acf4c89193d06069c4",
-  hypePool: "0x786886a61Dd77581ef03787c5939fC44B004064d",
-  usdcPool: "0x61de30970e3c53665ce5a89323284e7ab379fa08",
-  migratorV2: "0x295f816aa6dac1901bd793120248d8f9cbbd5eec",
-  migratorV1: "0x5f3d82a6aa1b20ba9d0f58a98d1c4933c115a0da",
+  config: DEPLOYMENT?.config ?? "",
+  vaults: DEPLOYMENT?.vaults ?? "",
+  factory: DEPLOYMENT?.factory ?? "",
+  router: DEPLOYMENT?.router ?? "",
+  batcher: DEPLOYMENT?.batcher ?? "",
+  migrator: DEPLOYMENT?.migrator ?? "",
+  hypePool: DEPLOYMENT?.hypePool ?? "",
+  usdcPool: DEPLOYMENT?.assets?.find((a) => a.symbol === "USDC")?.pool ?? "",
 };
 
 const NAV: [string, [string, string][]][] = [
@@ -184,21 +186,22 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           </ul>
           <p><b>The full agent (launch, bid, trade privately).</b> This part runs on your own machine with a wallet made just for the agent, signs there, and makes its proofs there, under spending limits per transaction and per day (1 and 10 HYPE by default) with a dry run on every action. Make a fresh wallet for the agent, fund it from the faucet, save its key to a file only you can read, then add it with <code>claude mcp add cloak --env CLOAK_KEY_FILE=$HOME/.cloak-agent-key -- npx -y @cloakely/mcp</code> (or the same <code>npx -y @cloakely/mcp</code> command in any other app's MCP settings). Full setup is in the <a href="https://www.npmjs.com/package/@cloakely/mcp" target="_blank" rel="noreferrer">package README</a>.</p>
 
-          <h2 id="contracts">Contracts (Cloak v3, Elysium testnet, chain 99801)</h2>
+          <h2 id="contracts">Contracts (Cloak v{VERSION}, Elysium testnet, chain 99801)</h2>
           <table>
             <tbody>
-              <tr><td>CloakConfig</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
+              <tr><td>CloakConfig (rules and the list of every Cloak contract)</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
+              <tr><td>CloakVaults (the permanent vaults)</td><td><a href={A(ADDR.vaults)} target="_blank" rel="noreferrer"><code>{ADDR.vaults}</code></a></td></tr>
               <tr><td>CloakFactory</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
               <tr><td>PrivateRouter</td><td><a href={A(ADDR.router)} target="_blank" rel="noreferrer"><code>{ADDR.router}</code></a></td></tr>
               <tr><td>PrivateBatcher</td><td><a href={A(ADDR.batcher)} target="_blank" rel="noreferrer"><code>{ADDR.batcher}</code></a></td></tr>
-              <tr><td>Shielded HYPE pool</td><td><a href={A(ADDR.hypePool)} target="_blank" rel="noreferrer"><code>{ADDR.hypePool}</code></a></td></tr>
-              <tr><td>Shielded USDC pool</td><td><a href={A(ADDR.usdcPool)} target="_blank" rel="noreferrer"><code>{ADDR.usdcPool}</code></a></td></tr>
-              <tr><td>CloakMigrator (from v2)</td><td><a href={A(ADDR.migratorV2)} target="_blank" rel="noreferrer"><code>{ADDR.migratorV2}</code></a></td></tr>
-              <tr><td>CloakMigrator (from v1)</td><td><a href={A(ADDR.migratorV1)} target="_blank" rel="noreferrer"><code>{ADDR.migratorV1}</code></a></td></tr>
+              <tr><td>HYPE vault</td><td><a href={A(ADDR.hypePool)} target="_blank" rel="noreferrer"><code>{ADDR.hypePool}</code></a></td></tr>
+              <tr><td>USDC vault</td><td><a href={A(ADDR.usdcPool)} target="_blank" rel="noreferrer"><code>{ADDR.usdcPool}</code></a></td></tr>
+              <tr><td>CloakMigrator (from v1, v2 and v3)</td><td><a href={A(ADDR.migrator)} target="_blank" rel="noreferrer"><code>{ADDR.migrator}</code></a></td></tr>
             </tbody>
           </table>
           <p>No function in any of these contracts lets anyone, including us, move funds out of an auction or a vault. Money leaves a vault only with its owner's proof. <code>CloakConfig</code> holds the rules every contract reads: the fees, the deposit caps and the proof verifier. Tightening a rule (a lower fee, a lower cap, closing deposits) takes effect at once. Loosening one, or changing the verifier, is queued on-chain and waits a public 3-day delay, so anyone who disagrees can leave first. Fees have hard ceilings in the contract. Source, tests and real testnet runs are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
-          <p>Cloak's earlier contracts (v1 and v2) are still on-chain. Their launches still show here, their tokens have vaults in v3, and a private balance held in them moves across in one step from the Portfolio page, through a <code>CloakMigrator</code> for each version. It stays private, and the relayer can't redirect it. v3 ships one fix found in a review before mainnet: a winning bidder whose address can't receive HYPE still gets its tokens, and its refund is held for it to collect.</p>
+          <p><b>The vaults are permanent.</b> Every asset has one vault, made once by <code>CloakVaults</code> and never replaced. Routers, batchers and factories are helpers around the vaults: a better one is added next to the old one and nobody's balance moves. Your private account is signed for this chain only, never for a contract, so it and your <code>cloak:</code> address stay the same from now on. <code>CloakConfig</code> keeps the list of every Cloak contract with the block it started, and adding one waits the same public 3-day delay as any other loosening change. The rules for later upgrades are in <a href={`${GITHUB}/blob/main/docs/VAULT.md`} target="_blank" rel="noreferrer">docs/VAULT.md</a>.</p>
+          <p>Cloak's earlier contracts (v1, v2 and v3) are still on-chain. Their launches still show here, their tokens have permanent vaults, and a private balance held in them moves across once from the Portfolio page through <code>CloakMigrator</code>. It stays private, and the relayer can't redirect it.</p>
 
           <h2 id="fees">Fees & caps</h2>
           <table>

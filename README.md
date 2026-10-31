@@ -21,20 +21,20 @@ A **[Bob Labs](https://github.com/NECOKIZZ)** product, live on Kinetiq's **Elysi
 
 ## Live on Elysium testnet (chain `99801`)
 
-Cloak **v3** (Oct 30): v2's fees, caps and timelocked rule book, plus a fix found in a review before mainnet (a winning bidder whose address can't receive HYPE still gets its tokens; its refund is held for it to collect). v3 also opens vaults for every earlier launch, so balances from v1 and v2 move across and keep trading.
+Cloak **v4** (Oct 31): **permanent vaults**. Every asset has one vault, made once by `CloakVaults` and never replaced; routers, batchers and factories are helpers around them, so an upgrade adds a helper and nobody's balance moves again. Your private account is signed for the chain only, never for a contract, so it and your `cloak:` address stay the same from here on. Sealed-bid winners can **claim privately**, straight into the vault. `CloakConfig` lists every Cloak contract with the block it started, so apps need only its address. The rules for later upgrades are in [`docs/VAULT.md`](docs/VAULT.md).
 
 | Contract | Address |
 |---|---|
-| **CloakConfig** (fees, caps, verifier; changes behind a 3-day timelock) | [`0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9d30c7b23fa2d5c40779d3db3bb4292e18c94373) |
-| **CloakFactory** | [`0xd0f4aacf339f07211a9155194925b2f94e250e29`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xd0f4aacf339f07211a9155194925b2f94e250e29) |
-| **PrivateRouter** (private swaps and vaults) | [`0x78319bee7c21ca411166acc67c750aca10280e86`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x78319bee7c21ca411166acc67c750aca10280e86) |
-| **PrivateBatcher** (batch auctions) | [`0x9902d86c5be81f6c6ce059acf4c89193d06069c4`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9902d86c5be81f6c6ce059acf4c89193d06069c4) |
-| **CloakFactoryList** (v2 and v1 factories, so v3 opens vaults for their launches) | [`0x3cf790511b85e0e38fd5f1d781f8014842b7847a`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3cf790511b85e0e38fd5f1d781f8014842b7847a) |
-| **CloakMigrator** (moves v2 private balances here) | [`0x295f816aa6dac1901bd793120248d8f9cbbd5eec`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x295f816aa6dac1901bd793120248d8f9cbbd5eec) |
-| **CloakMigrator** (moves v1 private balances here) | [`0x5f3d82a6aa1b20ba9d0f58a98d1c4933c115a0da`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x5f3d82a6aa1b20ba9d0f58a98d1c4933c115a0da) |
-| **USDC vault** (private USDC: shield, send, withdraw) | [`0x61de30970e3c53665ce5a89323284e7ab379fa08`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x61de30970e3c53665ce5a89323284e7ab379fa08) |
+| **CloakConfig** (rules, and the list of every Cloak contract; changes behind a 3-day timelock) | [`0x9fdf166f0671166148ea98cdd3ef0118d256167f`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9fdf166f0671166148ea98cdd3ef0118d256167f) |
+| **CloakVaults** (the permanent vaults, one per asset) | [`0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43) |
+| **CloakFactory** (auctions with private claims) | [`0xa88df63d7d44acc66052e5cbe5ba9503bf940993`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa88df63d7d44acc66052e5cbe5ba9503bf940993) |
+| **PrivateRouter** (private swaps) | [`0x343ab9a7aac93cee28321410510ea24417cc6386`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x343ab9a7aac93cee28321410510ea24417cc6386) |
+| **PrivateBatcher** (batch auctions) | [`0xc69e4bca18020ae93bc9f17093985bfb139a3203`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc69e4bca18020ae93bc9f17093985bfb139a3203) |
+| **CloakMigrator** (moves v1, v2 and v3 private balances into the vaults) | [`0x86c5d8035224493f10938aaa07b179be316dadf4`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x86c5d8035224493f10938aaa07b179be316dadf4) |
+| **HYPE vault** | [`0x3ACB22829bb422446caaDd8546e65ab530A53031`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3ACB22829bb422446caaDd8546e65ab530A53031) |
+| **USDC vault** (private USDC: shield, send, withdraw) | [`0x3d5cB722490D9908a118f8B3151f83fcE943E4F0`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3d5cB722490D9908a118f8B3151f83fcE943E4F0) |
 
-All addresses, including the vaults, are in [`deployments/elysium-testnet-v3.json`](deployments/elysium-testnet-v3.json). v3 reuses v2's `CloakConfig`, the Poseidon hashers, the verifier, WHYPE and the USDC vault, none of which hold deployment state. The earlier deployments stay on-chain: v2 (factory `0xc1fc…57fc`, router `0xd51e…0ee2`, [`elysium-testnet-v2.json`](deployments/elysium-testnet-v2.json)) and v1 (factory `0x1dc1…7e1c`, router `0xfa25…fc41`). Their launches still list on the site, their history still counts on the Volume page, and their private balances move to v3 in one step from the Portfolio page. The v1 sources are verified on the explorer; verification of v2 and v3 is in progress. The deploy was rehearsed first on a fork of testnet (`e2e/fork-v3.mjs`).
+All addresses are in [`deployments/elysium-testnet-v4.json`](deployments/elysium-testnet-v4.json) and in CloakConfig's registry (`readRegistry` in the SDK). v4 reuses the Poseidon hashers, the verifier and WHYPE, none of which hold state. Every earlier launch that settled with a pool has a permanent vault, and the earlier deployments stay on-chain and in the registry: v3 (factory `0xd0f4…0e29`, router `0x7831…0e86`), v2 (factory `0xc1fc…57fc`, router `0xd51e…0ee2`) and v1 (factory `0x1dc1…7e1c`, router `0xfa25…fc41`). Their launches still list, their history still counts on the Volume page, and their private balances move into the vaults once from the Portfolio page. The deploy was rehearsed first on a fork of testnet (`e2e/fork-v4.mjs`).
 
 ### Fees, caps and governance
 
@@ -83,12 +83,12 @@ Private balances usually stop at stablecoins. Cloak extends them to **trading la
 - **Private USDC**: Elysium's USDC ([`0x7D29…47b2`](https://elysium.kinetiq.xyz/testnet-explorer/token/0x7D29d8047B905000459c0E80c34a26CeedcB47b2), bridged from Circle's USDC on HyperEVM) has its own vault: the same `ShieldedPool`, deployed next to the router. Shield it from a wallet, send it privately, withdraw it to any address. The relayer's fee is paid in USDC, priced from the live HYPE/USD price. Beta caps: 1,000 USDC per deposit and 50,000 in the vault. Private swaps between USDC and HYPE or launch tokens come later, once Elysium has a USDC market to route through.
 - **Batch mode (PrivateBatcher), which hides trade size**: your amount is split into **standard sizes** (1, 2 or 5 × 10ⁿ) that everyone uses, and the orders go into a round (30 s on testnet). When the round ends, buys and sells **cross each other at the pool's time-weighted average price over the round** (no pool fee, no price impact), and only the **net** difference trades through the pool, in one swap. Every buyer in the round gets the same price, and so does every seller. Outputs come back as private notes to one-time keys. Observers see "round N: 7 standard-size orders, net +0.4 HYPE hit the pool", not who placed which or how much any one trader moved. A price guard (spot within 2% of that average, and at most 5% price impact on the net swap) stops a settler from sandwiching the batch. If a round can't settle, every order is refunded after a delay.
 
-| Live on Elysium testnet (v3) | |
+| Live on Elysium testnet (v4) | |
 |---|---|
-| **PrivateRouter** | [`0x78319bee7c21ca411166acc67c750aca10280e86`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x78319bee7c21ca411166acc67c750aca10280e86) |
-| Shielded HYPE pool | [`0x786886a61Dd77581ef03787c5939fC44B004064d`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x786886a61Dd77581ef03787c5939fC44B004064d) |
-| Shielded $CLOAK pool | [`0xc5e06D5EAd18bDF9346C527D86D351712E4344A0`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc5e06D5EAd18bDF9346C527D86D351712E4344A0) |
-| **PrivateBatcher** (30 s rounds) | [`0x9902d86c5be81f6c6ce059acf4c89193d06069c4`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9902d86c5be81f6c6ce059acf4c89193d06069c4) |
+| **PrivateRouter** | [`0x343ab9a7aac93cee28321410510ea24417cc6386`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x343ab9a7aac93cee28321410510ea24417cc6386) |
+| HYPE vault | [`0x3ACB22829bb422446caaDd8546e65ab530A53031`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3ACB22829bb422446caaDd8546e65ab530A53031) |
+| $CLOAK vault | [`0x19EaeA4A15F407D2520588d11645796179Cab4c7`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x19EaeA4A15F407D2520588d11645796179Cab4c7) |
+| **PrivateBatcher** (30 s rounds) | [`0xc69e4bca18020ae93bc9f17093985bfb139a3203`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc69e4bca18020ae93bc9f17093985bfb139a3203) |
 
 **A real private-trading run on testnet against v2** (`e2e/private.mjs`, 19/19 checks, real proofs, fees on):
 
@@ -140,9 +140,9 @@ apps/web/          The site (Vite + React): landing (hover-to-uncloak hero), app
                    portfolio, create, volume), docs, SDK and pitch (/pitch). Wallet modal lists every installed wallet
                    (EIP-6963) plus WalletConnect; src/errors.ts turns every error into a plain sentence. Deployed on Vercel.
 e2e/               run.mjs (launch flow), private.mjs (private trading, real proofs), mcp.mjs (an agent through the
-                   MCP server, real proofs), usdc.mjs (private USDC), migrate.mjs (v1 → v2 moves
-                   through the relayer, real proofs), deploy-v3.mjs (the testnet deployment) and fork-v3.mjs
-                   (its rehearsal on a fork of testnet), seed.mjs
+                   MCP server, real proofs), usdc.mjs (private USDC), migrate.mjs (v1 → v4 moves
+                   through the relayer, real proofs), deploy-v4.mjs (the testnet deployment) and fork-v4.mjs
+                   (its rehearsal on a fork of testnet: a real v3 balance moved into the vaults), seed.mjs
 docs/DESIGN.md     Research, design, roadmap
 ```
 
@@ -211,16 +211,16 @@ Use **Dev wallet** (an anvil-funded burner) to bid.
 cp .env.example .env                        # DEPLOYER_PK with testnet HYPE
 DEPLOYER_PK=0x… pnpm deploy:factory               # → deployments/elysium-testnet-factory.json
 DEPLOYER_PK=0x… FACTORY=0x… RPC_URL=https://testnet-rpc.elysium.kinetiq.xyz pnpm e2e   # real run → explorer links in deployments/elysium-testnet.json
-KEEPER_PK=0x… FACTORY=0x… pnpm keeper
-cd apps/web && VITE_FACTORY=0x… pnpm build  # static site
+KEEPER_PK=0x… CONFIG=0x… pnpm keeper       # every address from CloakConfig's registry
+cd apps/web && pnpm build                   # static site; addresses from packages/sdk/src/deployments.ts
 ```
 
 ### Hosting (how the live version runs)
 
 | Part | Where | Notes |
 |---|---|---|
-| Site | **Vercel**, at [cloak.boblabs.tech](https://cloak.boblabs.tech) | Root directory `apps/web`. `vercel.json` handles the monorepo build, SPA routes, security headers (CSP, frame and referrer policy) and long-lived caching for hashed assets. Env: `VITE_KEEPER_URL`, and optionally `VITE_WC_PROJECT_ID` (a free [Reown](https://cloud.reown.com) project ID) to show WalletConnect in the connect modal. Contract addresses come from `apps/web/.env.production`. |
-| Keeper + relayer | **Render** web service, [cloak-keeper.onrender.com](https://cloak-keeper.onrender.com) | `node services/keeper/index.mjs`. Env: `KEEPER_PK`, `FACTORY`, `START_BLOCK`, `ROUTER`, `BATCHER`, `BATCHER_BLOCK`, `MIGRATOR`, `LEGACY_ROUTER` (see `render.yaml`), plus optional `CORS_ORIGINS` (default: the Cloak site and localhost) and `RELAY_PER_MIN` (default 20 relay requests per IP per minute). Requests over 64 KB or malformed are refused before anything is simulated. The relayer wallet pays gas for private transactions and earns it back from the relayer fee in each one (`GET /quote`, 1.25× the gas cost; calls that don't pay it are refused). |
+| Site | **Vercel**, at [cloak.boblabs.tech](https://cloak.boblabs.tech) | Root directory `apps/web`. `vercel.json` handles the monorepo build, SPA routes, security headers (CSP, frame and referrer policy) and long-lived caching for hashed assets. Env: `VITE_KEEPER_URL`, and optionally `VITE_WC_PROJECT_ID` (a free [Reown](https://cloud.reown.com) project ID) to show WalletConnect in the connect modal. Contract addresses come from the SDK's deployment record (`packages/sdk/src/deployments.ts`), never from env vars. |
+| Keeper + relayer | **Render** web service, [cloak-keeper.onrender.com](https://cloak-keeper.onrender.com) | `node services/keeper/index.mjs`. Env: `KEEPER_PK`, `CONFIG` (every contract address comes from its registry; address variables are then ignored) and `CLAIM_DELAY` (default 3600 s: winners' window to claim privately before unclaimed bids are pushed to wallets), see `render.yaml`, plus optional `CORS_ORIGINS` (default: the Cloak site and localhost) and `RELAY_PER_MIN` (default 20 relay requests per IP per minute). Requests over 64 KB or malformed are refused before anything is simulated. The relayer wallet pays gas for private transactions and earns it back from the relayer fee in each one (`GET /quote`, 1.25× the gas cost; calls that don't pay it are refused). |
 
 `GET /health` returns the keeper's status. A scheduled GitHub workflow (`.github/workflows/keeper-ping.yml`) pings it every 10 minutes so the host doesn't sleep. Bids can still be opened from the launch page without the keeper, but private trades wait for it.
 

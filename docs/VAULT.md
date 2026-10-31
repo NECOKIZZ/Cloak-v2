@@ -1,5 +1,7 @@
 # Permanent vaults (v4)
 
+Live on Elysium testnet since Oct 31 (`deployments/elysium-testnet-v4.json`).
+
 How Cloak holds private balances from v4 on, and the rules every later upgrade follows.
 
 ## In plain words

@@ -4,10 +4,11 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 ## Waiting on you
 
-- [ ] **Top up the keeper wallet** `0x6616C2566baD950FcDD420159a51fDdfFa220E8e` from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), a few times over. It pays gas for every reveal, settlement and relayed private trade, it's down to about 0.0156 HYPE, and the v3 deploy comes out of it too.
+- [ ] **Top up the keeper wallet** `0x6616C2566baD950FcDD420159a51fDdfFa220E8e` from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), a few times over. It pays gas for every reveal, settlement, vault opening and relayed private trade, and it's down to about 0.007 HYPE after the v4 deploy.
+- [ ] **Point Render at v4** (cloak-keeper, Environment): add `CONFIG` = `0x9fdf166f0671166148ea98cdd3ef0118d256167f` and `CLAIM_DELAY` = `3600`, then delete `FACTORY`, `START_BLOCK`, `ROUTER`, `BATCHER`, `BATCHER_BLOCK`, `MIGRATIONS`, `MIGRATOR`, `LEGACY_ROUTER` and `ASSET_POOLS`. Keep `KEEPER_PK`. With `CONFIG` set the keeper ignores the old ones anyway, so this can't go wrong again.
+- [ ] **Vercel**: the site no longer reads any contract address from env vars, so `VITE_FACTORY`, `VITE_ROUTER`, `VITE_ROUTER_BLOCK`, `VITE_BATCHER`, `VITE_PREVIOUS`, `VITE_USDC*` can all be deleted (they're ignored).
 - [x] ~~Say go on v3~~: v3 deployed (Oct 30).
-- [x] ~~Point the Render keeper and Vercel at v3~~ (Oct 30).
-- [ ] **Fix `MIGRATIONS` on Render**: it arrived as only the v2 router, with no `:migrator` and no v1 pair, so moving old balances fails. The full value is in `render.yaml`.
+- [x] ~~Point the Render keeper and Vercel at v3~~ (Oct 30), ~~fix `MIGRATIONS` on Render~~ (Oct 30).
 - [x] ~~First npm release of the MCP server~~: `@cloakely/mcp` 0.1.0 is on npm (Oct 30).
 - [x] ~~Switch the MCP package to trusted publishing~~: 0.1.2 published by GitHub Actions with no token (Oct 30).
 - [ ] **Remove the publish token, now that nothing needs it:**
@@ -31,12 +32,7 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 ## Before mainnet (Nov 9)
 
-- [ ] **Deploy the vaults once and never move funds again.** Today every redeploy opens new vaults and asks users to move their balances, and every deployment's stats have to be stitched together by hand. Mainnet should work like this:
-  1. Vaults (the contracts holding funds) are deployed once and kept for good. The only thing that forces new vaults is a circuit change, and the circuit is final after the ceremony.
-  2. A new factory (like v3's `claim()` fix) is **added** to the existing router through `CloakConfig`, with the 3-day wait, instead of redeploying the router. v3 only needed a new router because the router's factory list is fixed at deploy.
-  3. A new router or batcher **adopts** the existing vaults (checked against the old router's list) instead of creating new ones, so balances stay where they are.
-  4. A small on-chain **deployment registry** lists every factory, router and batcher ever used, so the site, SDK and MCP find all of them on their own and stats carry over without `VITE_PREVIOUS` edits.
-  These are contract changes, so they go in before the audit.
+- [x] ~~**Deploy the vaults once and never move funds again**~~ (v4, Oct 31, live on testnet; [VAULT.md](VAULT.md)): permanent vaults in `CloakVaults`, routers and batchers around them, factories added through `CloakConfig`, a registry of every contract, account keys bound to the chain only, private claims, one last move from v1, v2 and v3. Mainnet deploys this same layout once.
 
 - [ ] **Outside review of the circuit** (`circuits/`) by someone who knows circom. A soundness bug there could forge proofs, which nothing in the contracts can catch. Top priority.
 - [ ] **Public trusted-setup ceremony** with outside contributors and a drand beacon. The new verifier goes in through `CloakConfig`.
@@ -49,9 +45,8 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 ## Decisions to make
 
-- [ ] **Vault model:** one vault per asset (today) or one shared vault for every asset, like Gloam. A shared vault needs a new circuit, so it has to be decided **before the ceremony**.
+- [ ] **Shared vault later?** We chose one vault per asset (v4). A shared vault would hide which token a private send moved, but needs a new circuit, so it can only come with a ceremony. See [VAULT.md](VAULT.md).
 - [ ] **USDC swap adapter cap exemption:** instant while `CloakConfig` is in setup, 3 days after `endSetup()`. Decide before setup ends.
-- [ ] **Keeper creates private vaults automatically** at settlement, optionally only above a liquidity bar.
 - [ ] **Redeploy again if the circuit review changes the circuit** (only if it finds something that changes the public inputs).
 
 ## Later
