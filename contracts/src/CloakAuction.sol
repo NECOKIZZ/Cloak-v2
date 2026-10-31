@@ -4,6 +4,17 @@ pragma solidity ^0.8.24;
 import {CloakPair, IERC20Min} from "./CloakPair.sol";
 import {CloakConfig} from "./CloakConfig.sol";
 
+/// The permanent private vault of one asset (ShieldedPool) and the list of them (CloakVaults), as far as a claim needs.
+interface IPrivateVault {
+    function depositTo(uint256 pubKey, uint256 amount, uint256 blinding, bytes calldata encryptedOutput)
+        external
+        returns (uint256 commitment, uint256 index);
+}
+
+interface IVaultList {
+    function poolOf(address token) external view returns (IPrivateVault);
+}
+
 interface IERC20Approve is IERC20Min {
     function approve(address spender, uint256 value) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
@@ -117,6 +128,7 @@ contract CloakAuction {
     event FeesCollected(address to, uint256 amount);
     event DustSwept(uint256 hype, uint256 tokens);
     event RefundHeld(address indexed bidder, uint256 amount);
+    event ClaimedPrivately(uint256 indexed id);
     event RefundWithdrawn(address indexed bidder, address to, uint256 amount);
 
     modifier onlyFactory() {
@@ -365,15 +377,39 @@ contract CloakAuction {
         b.claimed = true;
         ++claimedCount;
         if (tokens > 0) require(token.transfer(b.bidder, tokens), "t");
+        _settleRest(id, b.bidder, tokens, refund, penalty);
+    }
+
+    /// @notice The bidder claims its tokens straight into the private vault, as a note for `pubKey` (a one-time key),
+    ///         so its later trades can't be linked to this bid. The refund (if any) still goes to the bidder.
+    ///         The token's vault must exist (CloakVaults.createPool, which the keeper calls at settlement).
+    function claimPrivate(uint256 id, uint256 pubKey, uint256 blinding, bytes calldata memo) external {
+        require(settled, "not settled");
+        Bid storage b = _bids[id];
+        require(msg.sender == b.bidder, "bidder");
+        require(!b.claimed, "claimed");
+        (uint256 tokens, uint256 refund, uint256 penalty) = allocationOf(id);
+        require(tokens > 0, "no tokens");
+        b.claimed = true;
+        ++claimedCount;
+        IPrivateVault vault = IVaultList(config.current("vaults")).poolOf(address(token));
+        require(address(vault) != address(0), "no vault");
+        require(token.approve(address(vault), tokens), "approve");
+        vault.depositTo(pubKey, tokens, blinding, memo);
+        emit ClaimedPrivately(id);
+        _settleRest(id, b.bidder, tokens, refund, penalty);
+    }
+
+    function _settleRest(uint256 id, address bidder, uint256 tokens, uint256 refund, uint256 penalty) internal {
         if (penalty > 0) _sendHype(DEAD, penalty);
         // A bidder whose address can't take HYPE (or burns the gas it's given) must not block its own tokens, a
         // keeper's batch or the dust sweep: the refund is held for it instead, to pull to any address.
-        if (refund > 0 && !_trySendHype(b.bidder, refund)) {
-            refundOwed[b.bidder] += refund;
+        if (refund > 0 && !_trySendHype(bidder, refund)) {
+            refundOwed[bidder] += refund;
             refundsHeld += refund;
-            emit RefundHeld(b.bidder, refund);
+            emit RefundHeld(bidder, refund);
         }
-        emit Claimed(id, b.bidder, tokens, refund, penalty);
+        emit Claimed(id, bidder, tokens, refund, penalty);
     }
 
     /// @notice Pull a refund that couldn't be sent at claim time, to any address (only the bidder can).

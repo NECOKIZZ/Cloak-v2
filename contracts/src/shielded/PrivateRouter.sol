@@ -3,39 +3,27 @@ pragma solidity ^0.8.24;
 
 import {ShieldedPool, IERC20} from "./ShieldedPool.sol";
 import {WHYPE} from "./WHYPE.sol";
-import {IPoseidon2, IPoseidon3} from "./interfaces/IHasher.sol";
 import {CloakPair} from "../CloakPair.sol";
 import {CloakConfig} from "../CloakConfig.sol";
 
-interface ICloakFactory {
-    function launches(uint256 i)
-        external
-        view
-        returns (address auction, address token, address creator, address launchpad, uint256 creatorAlloc);
-}
-
-interface ICloakAuction {
-    function pair() external view returns (CloakPair);
-    function settled() external view returns (bool);
-}
+import {CloakVaults} from "./CloakVaults.sol";
 
 /// @title PrivateRouter — private buys and sells of Cloak launch tokens.
-/// @notice Holds one ShieldedPool per asset (WHYPE + every launched token) and swaps *between* them through the
-///         launch's CloakPair:
+/// @notice Swaps *between* the permanent vaults in CloakVaults through each launch's CloakPair:
 ///
 ///           shielded WHYPE note ──proof──▶ router ──unwrap──▶ CloakPair ──▶ tokens ──depositTo──▶ shielded token note
 ///
-///         The swap is submitted by a relayer, so the trader's wallet never appears. The instructions (pair, pool, min
+///         The swap is submitted by a relayer, so the trader's wallet never appears. The instructions (pair, vault, min
 ///         out, output note) sit in `ExtData.data`, which the proof commits to, so the relayer can only submit the
 ///         swap exactly as the user built it. Trade size and direction are visible on the AMM; the trader is not.
 ///
-///         A swap is a withdrawal from the input pool, so the pool's withdrawal fee (CloakConfig) applies; the router
-///         trades what actually arrived. Launches from an earlier Cloak factory (`legacyFactory`) can get pools too, so
-///         their private balances can move here.
+///         A swap is a withdrawal from the input vault, so the vault's withdrawal fee (CloakConfig) applies; the router
+///         trades what actually arrived. The router holds no vaults and no funds between calls: a newer router can be
+///         added next to this one and every balance stays where it is.
 contract PrivateRouter {
     struct SwapData {
-        address pair; // CloakPair of the launch (verified against the registry)
-        address poolOut; // shielded pool that receives the output
+        address pair; // CloakPair of the launch (checked against CloakVaults)
+        address poolOut; // vault that receives the output
         uint256 minOut;
         uint256 outPubKey; // one-time pubKey for the output note
         uint256 outBlinding;
@@ -46,29 +34,19 @@ contract PrivateRouter {
     uint256 public constant HYPE_SEND_GAS = 100_000;
 
     CloakConfig public immutable config;
-    IPoseidon2 public immutable hasher2;
-    IPoseidon3 public immutable hasher3;
+    CloakVaults public immutable vaults;
     WHYPE public immutable whype;
-    ICloakFactory public immutable cloakFactory;
-    ICloakFactory public immutable legacyFactory; // address(0) if none
     ShieldedPool public immutable hypePool;
-
-    mapping(address => ShieldedPool) public poolOf; // token → pool
-    mapping(address => CloakPair) public pairOf; // token → its launch pair
-    mapping(address => bool) public isPool;
-    address[] public tokens;
 
     uint256 private _lock = 1;
 
-    event PoolCreated(address indexed token, address pool, address pair);
     event Shielded(address indexed pool, uint256 amount);
     event PrivateSwap(address indexed poolIn, address indexed poolOut, uint256 amountIn, uint256 amountOut);
     event Unshielded(address indexed pool, uint256 amount);
     event PaidInWhype(address indexed to, uint256 amount);
 
     error Reentrancy();
-    error NotLaunched();
-    error PoolExists();
+    error NoHypeVault();
     error UnknownPool();
     error BadRecipient();
     error BadPair();
@@ -81,26 +59,12 @@ contract PrivateRouter {
         _lock = 1;
     }
 
-    /// @param whype_ an existing WHYPE (so balances from an earlier deployment move without unwrapping), or 0 for a new one
-    constructor(
-        CloakConfig config_,
-        IPoseidon2 hasher2_,
-        IPoseidon3 hasher3_,
-        ICloakFactory cloakFactory_,
-        ICloakFactory legacyFactory_,
-        WHYPE whype_
-    ) {
-        config = config_;
-        hasher2 = hasher2_;
-        hasher3 = hasher3_;
-        cloakFactory = cloakFactory_;
-        legacyFactory = legacyFactory_;
-        whype = address(whype_) == address(0) ? new WHYPE() : whype_;
-        hypePool = new ShieldedPool(config_, hasher2_, hasher3_, IERC20(address(whype)));
-        poolOf[address(whype)] = hypePool;
-        isPool[address(hypePool)] = true;
-        tokens.push(address(whype));
-        emit PoolCreated(address(whype), address(hypePool), address(0));
+    constructor(CloakVaults vaults_, WHYPE whype_) {
+        vaults = vaults_;
+        config = vaults_.config();
+        whype = whype_;
+        hypePool = vaults_.poolOf(address(whype_));
+        if (address(hypePool) == address(0)) revert NoHypeVault();
     }
 
     receive() external payable {
@@ -110,39 +74,32 @@ contract PrivateRouter {
     function isPairAddress(address a) internal view returns (bool) {
         CloakPair p = CloakPair(payable(a));
         try p.token() returns (address t) {
-            return address(pairOf[t]) == a;
+            return address(vaults.pairOf(t)) == a;
         } catch {
             return false;
         }
     }
 
+    // The vault list lives in CloakVaults; these read it, so batchers, migrators and apps can ask the router.
+
+    function poolOf(address token) public view returns (ShieldedPool) {
+        return vaults.poolOf(token);
+    }
+
+    function pairOf(address token) public view returns (CloakPair) {
+        return vaults.pairOf(token);
+    }
+
+    function isPool(address pool) public view returns (bool) {
+        return vaults.isPool(pool);
+    }
+
+    function tokens(uint256 i) external view returns (address) {
+        return vaults.tokens(i);
+    }
+
     function tokensCount() external view returns (uint256) {
-        return tokens.length;
-    }
-
-    /// @notice Turn on private trading for a settled Cloak launch (permissionless).
-    function createPool(uint256 launchIndex) external returns (ShieldedPool pool) {
-        return _createPool(cloakFactory, launchIndex);
-    }
-
-    /// @notice Same, for a launch from the earlier factory.
-    function createLegacyPool(uint256 launchIndex) external returns (ShieldedPool pool) {
-        if (address(legacyFactory) == address(0)) revert NotLaunched();
-        return _createPool(legacyFactory, launchIndex);
-    }
-
-    function _createPool(ICloakFactory f, uint256 launchIndex) internal returns (ShieldedPool pool) {
-        (address auction, address token,,,) = f.launches(launchIndex);
-        if (!ICloakAuction(auction).settled()) revert NotLaunched();
-        CloakPair pair = ICloakAuction(auction).pair();
-        if (address(pair) == address(0)) revert NotLaunched();
-        if (address(poolOf[token]) != address(0)) revert PoolExists();
-        pool = new ShieldedPool(config, hasher2, hasher3, IERC20(token));
-        poolOf[token] = pool;
-        pairOf[token] = pair;
-        isPool[address(pool)] = true;
-        tokens.push(token);
-        emit PoolCreated(token, address(pool), address(pair));
+        return vaults.tokensCount();
     }
 
     /// @notice Public HYPE → private WHYPE note (one tx, no proof). Use a one-time pubKey.
@@ -162,11 +119,11 @@ contract PrivateRouter {
         lock
         returns (uint256 out)
     {
-        if (!isPool[address(poolIn)]) revert UnknownPool();
+        if (!isPool(address(poolIn))) revert UnknownPool();
         if (ext.recipient != address(this) || ext.extAmount >= 0) revert BadRecipient();
         SwapData memory d = abi.decode(ext.data, (SwapData));
         if (block.timestamp > d.deadline) revert Expired();
-        if (!isPool[d.poolOut]) revert UnknownPool();
+        if (!isPool(d.poolOut)) revert UnknownPool();
 
         address tokenIn = address(poolIn.token());
         uint256 before = IERC20(tokenIn).balanceOf(address(this));
@@ -177,12 +134,12 @@ contract PrivateRouter {
         CloakPair pair = CloakPair(payable(d.pair));
         if (tokenIn == address(whype)) {
             // buy: WHYPE → HYPE → launch token
-            if (address(pairOf[tokenOut]) != d.pair) revert BadPair();
+            if (address(pairOf(tokenOut)) != d.pair || d.pair == address(0)) revert BadPair();
             whype.withdraw(amountIn);
             out = pair.swapExactHypeForTokens{value: amountIn}(d.minOut, address(this));
         } else {
             // sell: launch token → HYPE → WHYPE
-            if (tokenOut != address(whype) || address(pairOf[tokenIn]) != d.pair) revert BadPair();
+            if (tokenOut != address(whype) || address(pairOf(tokenIn)) != d.pair || d.pair == address(0)) revert BadPair();
             IERC20Approve(tokenIn).approve(d.pair, amountIn);
             out = pair.swapExactTokensForHype(amountIn, d.minOut, address(this));
             whype.deposit{value: out}();

@@ -3,10 +3,9 @@ pragma solidity ^0.8.24;
 
 import {PrivateBatcherTest} from "./PrivateBatcher.t.sol";
 import {ShieldedPool} from "../src/shielded/ShieldedPool.sol";
-import {IERC20} from "../src/shielded/ShieldedPool.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
-/// A shielded pool for a 6-decimal stablecoin: the same ShieldedPool, deployed on its own next to the router.
+/// A permanent vault for a 6-decimal stablecoin: the same ShieldedPool, made by CloakVaults once the config approves it.
 contract UsdcPoolTest is PrivateBatcherTest {
     MockUSDC usdc;
     ShieldedPool usdcPool;
@@ -16,7 +15,10 @@ contract UsdcPoolTest is PrivateBatcherTest {
     function setUp() public override {
         super.setUp();
         usdc = new MockUSDC();
-        usdcPool = new ShieldedPool(config, router.hasher2(), router.hasher3(), IERC20(address(usdc)));
+        config.approveAsset(address(usdc));
+        usdcPool = router.vaults().createAssetPool(address(usdc));
+        assertTrue(router.isPool(address(usdcPool)));
+        assertEq(address(router.pairOf(address(usdc))), address(0)); // an asset vault, not a launch market
         usdc.mint(address(this), 1_000_000e6);
         usdc.approve(address(usdcPool), type(uint256).max);
     }

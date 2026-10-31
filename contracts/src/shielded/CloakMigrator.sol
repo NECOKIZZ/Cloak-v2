@@ -8,7 +8,9 @@ interface ILegacyRouter {
     function isPool(address pool) external view returns (bool);
 }
 
-/// @title CloakMigrator — move a private balance from an earlier Cloak deployment into this one, in one transaction.
+/// @title CloakMigrator — move a private balance from an earlier Cloak deployment into the permanent vaults, in one
+///        transaction. One migrator covers every earlier deployment: the vaults of each earlier router, plus any
+///        standalone vaults (v2's USDC vault).
 /// @notice The old pool's proof withdraws the notes to this contract, and the same transaction deposits the amount into
 ///         the matching pool here as a new note for a one-time key. The instructions (output key, memo) sit in
 ///         `ExtData.data`, bound by the old proof, so the relayer can't redirect anything. Like any public entry, the
@@ -22,8 +24,9 @@ contract CloakMigrator {
         bytes outMemo;
     }
 
-    ILegacyRouter public immutable legacyRouter;
     PrivateRouter public immutable router;
+    ILegacyRouter[] internal _legacyRouters;
+    mapping(address => bool) public isLegacyPool; // standalone earlier vaults, outside any router
     uint256 private _lock = 1;
 
     event Migrated(address indexed fromPool, address indexed toPool, uint256 amount);
@@ -40,9 +43,25 @@ contract CloakMigrator {
         _lock = 1;
     }
 
-    constructor(ILegacyRouter legacyRouter_, PrivateRouter router_) {
-        legacyRouter = legacyRouter_;
+    constructor(ILegacyRouter[] memory legacyRouters_, address[] memory legacyPools_, PrivateRouter router_) {
         router = router_;
+        _legacyRouters = legacyRouters_;
+        for (uint256 i; i < legacyPools_.length; ++i) {
+            isLegacyPool[legacyPools_[i]] = true;
+        }
+    }
+
+    function legacyRouters() external view returns (ILegacyRouter[] memory) {
+        return _legacyRouters;
+    }
+
+    /// @notice Whether `pool` is a vault of an earlier deployment this migrator moves from.
+    function isOldPool(address pool) public view returns (bool) {
+        if (isLegacyPool[pool]) return true;
+        for (uint256 i; i < _legacyRouters.length; ++i) {
+            if (_legacyRouters[i].isPool(pool)) return true;
+        }
+        return false;
     }
 
     function migrate(ShieldedPool oldPool, ShieldedPool.Proof calldata proof, ShieldedPool.ExtData calldata ext)
@@ -50,7 +69,7 @@ contract CloakMigrator {
         lock
         returns (uint256 amount)
     {
-        if (!legacyRouter.isPool(address(oldPool))) revert UnknownPool();
+        if (!isOldPool(address(oldPool)) || router.isPool(address(oldPool))) revert UnknownPool();
         if (ext.recipient != address(this) || ext.extAmount >= 0) revert BadRecipient();
         MoveData memory d = abi.decode(ext.data, (MoveData));
         IERC20 token = oldPool.token();

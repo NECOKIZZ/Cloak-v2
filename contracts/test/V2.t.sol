@@ -8,7 +8,8 @@ import {CloakToken} from "../src/CloakToken.sol";
 import {CloakConfig} from "../src/CloakConfig.sol";
 import {CloakVesting, CloakVestingDeployer} from "../src/CloakVesting.sol";
 import {ShieldedPool} from "../src/shielded/ShieldedPool.sol";
-import {PrivateRouter, ICloakFactory} from "../src/shielded/PrivateRouter.sol";
+import {PrivateRouter} from "../src/shielded/PrivateRouter.sol";
+import {CloakVaults} from "../src/shielded/CloakVaults.sol";
 import {PrivateBatcher} from "../src/shielded/PrivateBatcher.sol";
 import {CloakMigrator, ILegacyRouter} from "../src/shielded/CloakMigrator.sol";
 import {MerkleTreeWithHistory} from "../src/shielded/MerkleTreeWithHistory.sol";
@@ -366,6 +367,52 @@ contract V2Test is PrivateBatcherTest {
         config.queueChange(call);
     }
 
+    function test_registry_setupThenTimelock() public {
+        assertEq(config.current("router"), address(0));
+        config.register("router", address(0xA1));
+        config.register("batcher", address(0xB1));
+        config.register("router", address(0xA2));
+        assertEq(config.current("router"), address(0xA2), "newest entry of a kind is current");
+        assertEq(config.current("batcher"), address(0xB1));
+        assertEq(config.registryCount(), 3);
+        (bytes32 kind, address addr, uint64 at) = config.registry(0);
+        assertEq(kind, bytes32("router"));
+        assertEq(addr, address(0xA1));
+        assertEq(at, block.number);
+        vm.expectRevert(CloakConfig.ZeroAddress.selector);
+        config.register("router", address(0));
+
+        config.endSetup();
+        // every registry change loosens a rule, so after setup it waits the timelock
+        vm.expectRevert(CloakConfig.TimelockRequired.selector);
+        config.register("router", address(0xA3));
+        vm.expectRevert(CloakConfig.TimelockRequired.selector);
+        config.addLaunchFactory(address(0xF1));
+        vm.expectRevert(CloakConfig.TimelockRequired.selector);
+        config.approveAsset(address(0xC1));
+        bytes[3] memory calls = [
+            abi.encodeCall(CloakConfig.register, (bytes32("router"), address(0xA3))),
+            abi.encodeCall(CloakConfig.addLaunchFactory, (address(0xF1))),
+            abi.encodeCall(CloakConfig.approveAsset, (address(0xC1)))
+        ];
+        for (uint256 i; i < 3; i++) config.queueChange(calls[i]);
+        vm.expectRevert(CloakConfig.NotReady.selector);
+        config.executeChange(calls[0]);
+        vm.warp(block.timestamp + 3 days);
+        for (uint256 i; i < 3; i++) config.executeChange(calls[i]);
+        assertEq(config.current("router"), address(0xA3));
+        assertTrue(config.isLaunchFactory(address(0xF1)) && config.approvedAsset(address(0xC1)));
+
+        // removing a factory tightens, so it is instant
+        config.removeLaunchFactory(address(0xF1));
+        assertFalse(config.isLaunchFactory(address(0xF1)));
+        vm.expectRevert(CloakConfig.NotAdded.selector);
+        config.removeLaunchFactory(address(0xF1));
+        vm.prank(makeAddr("mallory"));
+        vm.expectRevert(CloakConfig.NotOwner.selector);
+        config.removeLaunchFactory(address(0xF1));
+    }
+
     function test_timelock_expires_andCancels() public {
         config.endSetup();
         bytes memory call = abi.encodeCall(CloakConfig.setVerifier, (address(0xBEEF)));
@@ -409,16 +456,9 @@ contract V2Test is PrivateBatcherTest {
     // ───────────── migration ─────────────
 
     function test_migrate_oldPoolToNewPool() public {
-        // the deployment set up in setUp() plays "v1"; v2 reuses its WHYPE
-        PrivateRouter v2 = new PrivateRouter(
-            config,
-            IPoseidon2(_deployCode("test/fixtures/poseidon2.hex")),
-            IPoseidon3(_deployCode("test/fixtures/poseidon3.hex")),
-            ICloakFactory(address(0)),
-            ICloakFactory(address(0)),
-            whype
-        );
-        CloakMigrator m = new CloakMigrator(ILegacyRouter(address(router)), v2);
+        // the deployment set up in setUp() plays "an earlier one"; the next one reuses its WHYPE
+        PrivateRouter v2 = _nextDeployment();
+        CloakMigrator m = _migrator(v2, new address[](0));
         config.turnOnDepositLimits();
         config.setLimit(address(whype), 0, 0); // even with v2 deposits closed, a balance can move
         config.setCapExempt(address(m), true);
@@ -440,6 +480,59 @@ contract V2Test is PrivateBatcherTest {
         m.migrate(hypePool, pr, ext);
         assertEq(whype.balanceOf(address(v2.hypePool())), 40 ether);
         assertEq(v2.hypePool().deposited(), 40 ether);
+    }
+
+    function _nextDeployment() internal returns (PrivateRouter) {
+        CloakVaults next = new CloakVaults(
+            config, IPoseidon2(_deployCode("test/fixtures/poseidon2.hex")), IPoseidon3(_deployCode("test/fixtures/poseidon3.hex"))
+        );
+        next.createAssetPool(address(whype));
+        return new PrivateRouter(next, whype);
+    }
+
+    function _migrator(PrivateRouter to, address[] memory standalone) internal returns (CloakMigrator) {
+        ILegacyRouter[] memory olds = new ILegacyRouter[](1);
+        olds[0] = ILegacyRouter(address(router));
+        return new CloakMigrator(olds, standalone, to);
+    }
+
+    function _moveExt(CloakMigrator m, ShieldedPool pool, int256 amount, uint256 n)
+        internal
+        returns (ShieldedPool.Proof memory pr, ShieldedPool.ExtData memory ext)
+    {
+        ext = ShieldedPool.ExtData(address(m), -amount, address(0), 0, "", "", abi.encode(CloakMigrator.MoveData(77, 88, "")));
+        pr.root = pool.currentRoot();
+        pr.publicAmount = pool.calculatePublicAmount(ext.extAmount, 0);
+        pr.extDataHash = this.hashExt(pool, ext);
+        pr.inputNullifiers = [n, n + 1];
+        pr.outputCommitments = [uint256(11), uint256(12)];
+    }
+
+    /// A standalone earlier vault (v2's USDC vault lived outside its router) moves too; the target's own vaults don't.
+    function test_migrate_standaloneVault_andNotFromTarget() public {
+        PrivateRouter v2 = _nextDeployment();
+        // a standalone WHYPE vault on the old config stands in for v2's USDC vault
+        ShieldedPool standalone = new ShieldedPool(config, hypePool.hasher(), hypePool.hasher3(), hypePool.token());
+        address[] memory list = new address[](1);
+        list[0] = address(standalone);
+        CloakMigrator m = _migrator(v2, list);
+        config.setCapExempt(address(m), true);
+        assertTrue(m.isOldPool(address(standalone)) && m.isOldPool(address(hypePool)));
+        assertFalse(m.isOldPool(address(v2.hypePool())));
+
+        vm.deal(address(this), 3 ether);
+        whype.deposit{value: 3 ether}();
+        whype.approve(address(standalone), 3 ether);
+        standalone.depositTo(5, 3 ether, 6, "");
+        (ShieldedPool.Proof memory pr, ShieldedPool.ExtData memory ext) = _moveExt(m, standalone, 3 ether, 981);
+        m.migrate(standalone, pr, ext);
+        assertEq(v2.hypePool().deposited(), 3 ether);
+
+        // moving "out of" the target's own vault is refused
+        ShieldedPool target = v2.hypePool();
+        (pr, ext) = _moveExt(m, target, 1 ether, 991);
+        vm.expectRevert(CloakMigrator.UnknownPool.selector);
+        m.migrate(target, pr, ext);
     }
 
     // ───────────── fuzz: solvency ─────────────

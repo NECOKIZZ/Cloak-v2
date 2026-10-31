@@ -9,7 +9,8 @@ import {CloakPair} from "../src/CloakPair.sol";
 import {CloakConfig} from "../src/CloakConfig.sol";
 import {CloakVestingDeployer} from "../src/CloakVesting.sol";
 import {ShieldedPool} from "../src/shielded/ShieldedPool.sol";
-import {PrivateRouter, ICloakFactory} from "../src/shielded/PrivateRouter.sol";
+import {PrivateRouter} from "../src/shielded/PrivateRouter.sol";
+import {CloakVaults, ILaunchFactory} from "../src/shielded/CloakVaults.sol";
 import {PrivateBatcher} from "../src/shielded/PrivateBatcher.sol";
 import {WHYPE} from "../src/shielded/WHYPE.sol";
 import {IPoseidon2, IPoseidon3} from "../src/shielded/interfaces/IHasher.sol";
@@ -60,17 +61,16 @@ contract PrivateBatcherTest is Test {
         auction.claim(0);
         pair = auction.pair();
 
-        router = new PrivateRouter(
-            config,
-            IPoseidon2(_deployCode("test/fixtures/poseidon2.hex")),
-            IPoseidon3(_deployCode("test/fixtures/poseidon3.hex")),
-            ICloakFactory(address(factory)),
-            ICloakFactory(address(0)),
-            WHYPE(payable(address(0)))
+        whype = new WHYPE();
+        config.addLaunchFactory(address(factory));
+        config.approveAsset(address(whype));
+        CloakVaults vaults = new CloakVaults(
+            config, IPoseidon2(_deployCode("test/fixtures/poseidon2.hex")), IPoseidon3(_deployCode("test/fixtures/poseidon3.hex"))
         );
-        tokenPool = router.createPool(0);
+        vaults.createAssetPool(address(whype));
+        router = new PrivateRouter(vaults, whype);
+        tokenPool = vaults.createPool(ILaunchFactory(address(factory)), 0);
         hypePool = router.hypePool();
-        whype = router.whype();
         batcher = new PrivateBatcher(router, ROUND, 200, 10 minutes, 1);
 
         // fund the shielded pools: 100 HYPE, and 10k tokens bought publicly then shielded

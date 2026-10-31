@@ -9,7 +9,8 @@ import {CloakPair} from "../src/CloakPair.sol";
 import {CloakConfig} from "../src/CloakConfig.sol";
 import {CloakVestingDeployer} from "../src/CloakVesting.sol";
 import {ShieldedPool} from "../src/shielded/ShieldedPool.sol";
-import {PrivateRouter, ICloakFactory} from "../src/shielded/PrivateRouter.sol";
+import {PrivateRouter} from "../src/shielded/PrivateRouter.sol";
+import {CloakVaults, ILaunchFactory} from "../src/shielded/CloakVaults.sol";
 import {WHYPE} from "../src/shielded/WHYPE.sol";
 import {IPoseidon2, IPoseidon3} from "../src/shielded/interfaces/IHasher.sol";
 import {IVerifier} from "../src/shielded/interfaces/IVerifier.sol";
@@ -23,6 +24,7 @@ contract PrivateRouterTest is Test {
     CloakToken token;
     CloakPair pair;
     PrivateRouter router;
+    CloakVaults vaults;
     MockVerifier verifier;
     ShieldedPool hypePool;
     ShieldedPool tokenPool;
@@ -63,9 +65,13 @@ contract PrivateRouterTest is Test {
         verifier = MockVerifier(config.verifier());
         IPoseidon2 p2 = IPoseidon2(_deployCode("test/fixtures/poseidon2.hex"));
         IPoseidon3 p3 = IPoseidon3(_deployCode("test/fixtures/poseidon3.hex"));
-        router = new PrivateRouter(config, p2, p3, ICloakFactory(address(factory)), ICloakFactory(address(0)), WHYPE(payable(address(0))));
+        whype = new WHYPE();
+        config.addLaunchFactory(address(factory));
+        config.approveAsset(address(whype));
+        vaults = new CloakVaults(config, p2, p3);
+        vaults.createAssetPool(address(whype));
+        router = new PrivateRouter(vaults, whype);
         hypePool = router.hypePool();
-        whype = router.whype();
     }
 
     function _settleLaunch() internal {
@@ -80,7 +86,20 @@ contract PrivateRouterTest is Test {
         auction.settle();
         auction.claim(id);
         pair = auction.pair();
-        tokenPool = router.createPool(0);
+        tokenPool = vaults.createPool(ILaunchFactory(address(factory)), 0);
+    }
+
+    function _settleLaunchNoPool() internal {
+        vm.deal(alice, 10_000 ether);
+        bytes32 salt = bytes32(uint256(7));
+        bytes32 h = auction.commitmentOf(alice, 4, 1_000_000e18, salt);
+        vm.prank(alice);
+        uint256 id = auction.commit{value: 5_000 ether}(h, "");
+        vm.warp(block.timestamp + 1 hours);
+        auction.reveal(id, 4, 1_000_000e18, salt);
+        vm.warp(block.timestamp + 1 hours);
+        auction.settle();
+        pair = auction.pair();
     }
 
     function _proof(ShieldedPool pool, ShieldedPool.ExtData memory ext) internal returns (ShieldedPool.Proof memory pr) {
@@ -109,13 +128,50 @@ contract PrivateRouterTest is Test {
     }
 
     function test_createPool_onlyAfterSettle() public {
-        vm.expectRevert(PrivateRouter.NotLaunched.selector);
-        router.createPool(0);
+        vm.expectRevert(CloakVaults.NotLaunched.selector);
+        vaults.createPool(ILaunchFactory(address(factory)), 0);
         _settleLaunch();
         assertEq(address(router.poolOf(address(token))), address(tokenPool));
         assertEq(address(router.pairOf(address(token))), address(pair));
-        vm.expectRevert(PrivateRouter.PoolExists.selector);
-        router.createPool(0);
+        assertTrue(router.isPool(address(tokenPool)));
+        assertEq(router.tokensCount(), 2);
+        assertEq(router.tokens(1), address(token));
+        vm.expectRevert(CloakVaults.PoolExists.selector);
+        vaults.createPool(ILaunchFactory(address(factory)), 0);
+    }
+
+    function test_vaults_onlyRegisteredFactoriesAndApprovedAssets() public {
+        _settleLaunchNoPool();
+        CloakVaults other = new CloakVaults(config, vaults.hasher2(), vaults.hasher3());
+        config.removeLaunchFactory(address(factory));
+        vm.expectRevert(CloakVaults.UnknownFactory.selector);
+        other.createPool(ILaunchFactory(address(factory)), 0);
+        vm.expectRevert(CloakVaults.NotApproved.selector);
+        other.createAssetPool(address(token));
+        vm.expectRevert(CloakVaults.PoolExists.selector);
+        vaults.createAssetPool(address(whype));
+    }
+
+    /// A newer router uses the same vaults: a balance shielded through one is swapped through the other.
+    function test_newRouter_sameVaults() public {
+        _settleLaunch();
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        router.shieldHype{value: 1 ether}(42, 43, "");
+        PrivateRouter next = new PrivateRouter(vaults, whype);
+        assertEq(address(next.hypePool()), address(hypePool));
+        assertEq(address(next.poolOf(address(token))), address(tokenPool));
+        ShieldedPool.ExtData memory ext = _swapExt(0.5 ether, address(tokenPool), 1, 0);
+        ext.recipient = address(next);
+        uint256 out = next.privateSwap(hypePool, _proof(hypePool, ext), ext);
+        assertGt(out, 0);
+        assertEq(token.balanceOf(address(tokenPool)), out);
+    }
+
+    function test_newRouter_needsHypeVault() public {
+        CloakVaults empty = new CloakVaults(config, vaults.hasher2(), vaults.hasher3());
+        vm.expectRevert(PrivateRouter.NoHypeVault.selector);
+        new PrivateRouter(empty, whype);
     }
 
     function test_shieldHype() public {
@@ -229,4 +285,50 @@ contract PrivateRouterTest is Test {
     }
 
     receive() external payable {}
+}
+
+/// Private claims: a winner's tokens go straight into the token's permanent vault as a note for a one-time key.
+contract PrivateClaimTest is PrivateRouterTest {
+    function _settleOnly() internal returns (uint256 id) {
+        vm.deal(alice, 10_000 ether);
+        bytes32 salt = bytes32(uint256(7));
+        bytes32 h = auction.commitmentOf(alice, 4, 1_000_000e18, salt);
+        vm.prank(alice);
+        id = auction.commit{value: 5_000 ether}(h, "");
+        vm.warp(block.timestamp + 1 hours);
+        auction.reveal(id, 4, 1_000_000e18, salt);
+        vm.warp(block.timestamp + 1 hours);
+        auction.settle();
+    }
+
+    function test_claimPrivate_intoVault() public {
+        config.register("vaults", address(vaults));
+        uint256 id = _settleOnly();
+        (uint256 tokens, uint256 refund,) = auction.allocationOf(id);
+        assertGt(tokens, 0);
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("no vault"));
+        auction.claimPrivate(id, 7, 8, hex"cc");
+
+        tokenPool = vaults.createPool(ILaunchFactory(address(factory)), 0);
+        vm.prank(makeAddr("mallory"));
+        vm.expectRevert(bytes("bidder"));
+        auction.claimPrivate(id, 7, 8, hex"cc");
+
+        uint256 before = alice.balance;
+        vm.prank(alice);
+        auction.claimPrivate(id, 7, 8, hex"cc");
+        assertEq(token.balanceOf(address(tokenPool)), tokens, "tokens are in the vault");
+        assertEq(tokenPool.deposited(), tokens);
+        assertEq(token.balanceOf(alice), 0, "nothing public to the bidder");
+        assertEq(alice.balance - before, refund, "refund still paid");
+        assertEq(tokenPool.nextIndex(), 1, "one note");
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("claimed"));
+        auction.claimPrivate(id, 7, 8, hex"cc");
+        vm.expectRevert(bytes("claimed"));
+        auction.claim(id);
+    }
 }

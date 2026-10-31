@@ -6,9 +6,8 @@ import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
 import {CloakConfig} from "../src/CloakConfig.sol";
 import {CloakVestingDeployer} from "../src/CloakVesting.sol";
-import {PrivateRouter, ICloakFactory} from "../src/shielded/PrivateRouter.sol";
+import {CloakVaults, ILaunchFactory} from "../src/shielded/CloakVaults.sol";
 import {CloakFactoryList, ICloakFactoryRead} from "../src/shielded/CloakFactoryList.sol";
-import {WHYPE} from "../src/shielded/WHYPE.sol";
 import {IPoseidon2, IPoseidon3} from "../src/shielded/interfaces/IHasher.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
 
@@ -34,7 +33,8 @@ contract FiveFieldFactory {
     }
 }
 
-/// v3 wiring: one new router opens private vaults for launches from every earlier factory, through CloakFactoryList.
+/// Launches from every Cloak factory get permanent vaults: CloakConfig lists the factories (v4), and CloakFactoryList
+/// (v3) still reads earlier factories as one list.
 contract FactoryListTest is Test {
     CloakConfig config;
     IPoseidon2 p2;
@@ -83,7 +83,7 @@ contract FactoryListTest is Test {
         p3 = IPoseidon3(_deployCode("test/fixtures/poseidon3.hex"));
     }
 
-    function test_newRouter_opensVaultsForEveryEarlierFactory() public {
+    function test_vaults_openForEveryRegisteredFactory() public {
         // v1: a five-field factory; v2: today's factory with two launches; v3: the new factory
         CloakFactory v2 = new CloakFactory(config, new CloakVestingDeployer());
         CloakFactory scratch = new CloakFactory(config, new CloakVestingDeployer());
@@ -104,23 +104,31 @@ contract FactoryListTest is Test {
         vm.expectRevert(bytes("index"));
         old.launches(3);
 
-        PrivateRouter r = new PrivateRouter(
-            config, p2, p3, ICloakFactory(address(v3)), ICloakFactory(address(old)), WHYPE(payable(address(0)))
-        );
-        r.createLegacyPool(0);
-        r.createLegacyPool(1);
-        r.createLegacyPool(2);
-        assertTrue(address(r.poolOf(t1)) != address(0), "v1 launch has a v3 vault");
-        assertTrue(
-            address(r.poolOf(t2)) != address(0) && address(r.poolOf(t3)) != address(0), "v2 launches have v3 vaults"
-        );
+        config.addLaunchFactory(address(v1));
+        config.addLaunchFactory(address(v2));
+        config.addLaunchFactory(address(v3));
+        vm.expectRevert(CloakConfig.AlreadyAdded.selector);
+        config.addLaunchFactory(address(v2));
+        assertEq(config.launchFactoriesCount(), 3);
+        CloakVaults r = new CloakVaults(config, p2, p3);
+        r.createPool(ILaunchFactory(address(v1)), 0);
+        r.createPool(ILaunchFactory(address(v2)), 0);
+        r.createPool(ILaunchFactory(address(v2)), 1);
+        assertTrue(address(r.poolOf(t1)) != address(0), "five-field (v1) launch has a vault");
+        assertTrue(address(r.poolOf(t2)) != address(0) && address(r.poolOf(t3)) != address(0), "v2 launches have vaults");
         assertEq(
             address(r.pairOf(t2)),
             address(CloakAuction(payable(_auctionOf(v2, 0))).pair()),
             "trades through the launch's own pair"
         );
-        vm.expectRevert(PrivateRouter.PoolExists.selector);
-        r.createLegacyPool(1);
+        vm.expectRevert(CloakVaults.PoolExists.selector);
+        r.createPool(ILaunchFactory(address(v2)), 0);
+        // a removed factory lists nothing new, and keeps its place in the list
+        config.removeLaunchFactory(address(v3));
+        vm.expectRevert(CloakVaults.UnknownFactory.selector);
+        r.createPool(ILaunchFactory(address(v3)), 0);
+        config.addLaunchFactory(address(v3));
+        assertEq(config.launchFactoriesCount(), 3);
     }
 
     function test_list_isFixed_andRejectsEmptyOrZero() public {

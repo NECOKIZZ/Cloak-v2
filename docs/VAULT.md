@@ -1,116 +1,84 @@
-# The permanent vault (v4)
+# Permanent vaults (v4)
 
-> **Draft.** The shared vault (one vault for every token) vs one permanent vault per token is still being decided. Nothing here is built or deployed yet.
-
-How Cloak holds private balances from v4 on, and the rules every later upgrade follows. Modelled on Gloam's mainnet
-design: one vault, deployed once, with everything that changes kept outside it.
+How Cloak holds private balances from v4 on, and the rules every later upgrade follows.
 
 ## In plain words
 
-- **One vault holds everything.** Private HYPE, USDC and every launch token sit in one contract, in one shared list of
-  notes. A new launch gets a shelf in that vault. It never gets a vault of its own.
-- **The vault is never replaced.** Swaps, sealed batches and moves from old versions are done by separate helper
-  contracts (the router, the batcher, the migrator). Better helpers are added next to the old ones. Nobody's money moves.
+- **Every asset has one private vault, made once and kept for good.** Private HYPE, USDC and each launch token sit in
+  their own vault. The vaults are made by `CloakVaults`, which is never replaced.
+- **Helpers come and go, vaults stay.** Swaps, sealed batches and moves from old versions are done by separate helper
+  contracts (the router, the batcher, the migrator). A better helper is added next to the old one. Nobody's money moves.
 - **Your private account never changes.** It comes from one fixed message you sign, not from any contract address, so
   your `cloak:` address stays the same for good.
+- **Winners can claim privately.** A sealed-bid winner can claim tokens straight into the vault, so every launch starts
+  with its winners already hidden.
 - **Rules change in place, slowly.** Fees, limits, the proof checker and the list of helpers live in `CloakConfig`.
   After setup, anything that loosens a rule waits 3 days in public. Tightening (lower a fee, lower a limit) is instant.
-- **One list of addresses, on-chain.** `CloakConfig` lists every factory, vault, router, batcher and migrator with the
-  block it started. The site, SDK, keeper and MCP read that list. No contract addresses in Vercel or Render.
+- **One list of addresses, on-chain.** `CloakConfig` lists every factory, vault list, router, batcher and migrator with
+  the block it started. The site, SDK, keeper and MCP read that list.
 
-## What it hides, and what it doesn't
+## Why one vault per asset, not one shared vault
 
-| | Visible on-chain | Hidden |
-|---|---|---|
-| Shield (deposit) | asset, amount, depositor | which notes it becomes later |
-| Private send | that a send happened | **asset**, amount, sender, receiver |
-| Private swap | asset in, asset out, amounts (the AMM trade is public) | who swapped |
-| Sealed batch order | asset, standard order size | who ordered |
-| Withdraw | asset, amount, recipient | who withdrew |
+We weighed Gloam's design (one vault for every asset) and chose one vault per asset for now:
 
-A send hides **which token** moved. That is new: with one vault per token, a send in the SHADE vault told everyone it
-was SHADE.
+- **Same privacy for trades.** Buys and sells go through a public market, so the token shows either way. Selling SHADE
+  hides you among everyone holding private SHADE, whichever design.
+- **A shared vault would hide which token a private send moved.** That is its one privacy gain.
+- **But anyone can launch a token.** In a shared vault, a bug that let one asset's notes count as another's would let a
+  worthless new token drain HYPE and USDC. With one vault per asset, a token's vault can never touch another's.
+- **Gradual upgrades.** A newer vault design can serve new launches while older tokens keep their vaults.
+- **No new circuit before mainnet.** The circuit we have still needs its review and ceremony.
 
-A swap or withdrawal still shows the asset, because the tokens leave the vault in public. Selling SHADE from the vault
-hides you among everyone holding private SHADE notes, the same as before. The crowd for a sell is the number of SHADE
-notes, not the whole vault. Growing that crowd is the job of sealed batches and of more people holding launches
-privately.
-
-## The circuit
-
-`circuits/src/transaction.circom`, 2 notes in, 2 notes out, Merkle depth 20 with epochs (as today).
-
-```
-pubKey     = Poseidon(privKey)
-commitment = Poseidon(amount, pubKey, blinding, asset)     // asset = uint160 token address
-signature  = Poseidon(privKey, commitment, leafIndex)
-nullifier  = Poseidon(commitment, leafIndex, signature)
-```
-
-- Every note in one transaction has the same private `asset`.
-- Value: `sum(in) + publicAmount == sum(out)`, amounts range-checked to 128 bits, asset to 160 bits.
-- Public inputs, in order: `root, publicAmount, extDataHash, publicAsset, inputNullifier[2], outputCommitment[2]`.
-- **Asset binding:** `publicAmount * (asset - publicAsset) === 0`. Whenever value enters or leaves (deposit,
-  withdrawal, relayer fee), the asset is the public one. A transfer with no value in or out hides it.
-
-The vault requires `publicAsset == 0` when `extAmount == 0 && fee == 0` (a hidden send), and a listed asset otherwise.
+A shared vault stays an option for later. It needs a new circuit, so it has to be decided before a ceremony.
 
 ## Contracts
 
 | Contract | Replaceable? | Holds funds? | Role |
 |---|---|---|---|
-| `CloakConfig` | no | no | Rules (verifier, fees, limits, cap exemptions), the approved-asset list, launch factories, the address registry. Setup, then 3-day timelock. |
-| `CloakVault` | **no** | **yes** | The one vault: one tree, every asset. `transact`, `depositTo`, `collectFees`. No admin function moves funds. |
-| `PrivateRouter` | yes, added alongside | no | Shield HYPE, private swaps through a launch's `CloakPair`, withdraw as native HYPE. |
+| `CloakConfig` | no | no | Rules, launch factories, approved assets, the address registry. Setup, then 3-day timelock. |
+| `CloakVaults` | **no** | no | Makes and lists the permanent vaults: `createPool(factory, index)`, `createAssetPool(token)`. |
+| `ShieldedPool` (one per asset) | **no** | **yes** | The vaults. Same contract and circuit as before. No function moves funds without a proof. |
+| `PrivateRouter` | yes, added alongside | no | Shield HYPE, private swaps through each launch's `CloakPair`, withdraw as native HYPE. Reads vaults from `CloakVaults`. |
 | `PrivateBatcher` | yes, added alongside | only open orders | Sealed standard-size orders, crossed at mid. |
-| `CloakMigrator` | yes | no | Moves balances from v1, v2 and v3 vaults into `CloakVault` in one transaction. |
-| `CloakFactory` | yes, added alongside | no (auctions do) | Launches. A new factory is added to the config's factory list. |
+| `CloakMigrator` | yes | no | Moves balances from every earlier deployment (v1, v2 and v3 vaults, v2's USDC vault) into the permanent vaults. |
+| `CloakFactory` | yes, added alongside | no (auctions do) | Launches. Its auctions offer `claimPrivate`. |
 
-### CloakVault
+### CloakVaults
 
-- Assets are **listed**, never delisted (delisting could trap funds):
-  - `listLaunch(factory, index)`: anyone, for a launch from a factory registered in `CloakConfig` that settled with a pool.
-  - `listAsset(token)`: anyone, for a token the config approved (WHYPE and USDC at deploy; more through the timelock).
-- Per asset: `deposited[token]`, `feesOwed[token]`. Invariant: `balanceOf(vault) >= deposited + feesOwed` per token.
-- Deposit limits: `config.limitOf(token)`, as today. Cap-exempt callers (router, batcher, migrator) skip them.
-- Events: `NewCommitment`, `NewNullifier`, `Deposited(asset, amount)`, `Withdrawn(asset, amount)`, `FeesCollected`.
+- `createPool(factory, index)`: anyone, for a launch from a factory registered in `CloakConfig` that settled with a pool.
+  v1, v2 and v3 factories are registered too, so every older launch gets a permanent vault.
+- `createAssetPool(token)`: anyone, for a token `CloakConfig` approved (WHYPE and USDC at deploy).
+- `poolOf`, `pairOf`, `isPool`, `tokens`: the list. Vaults are never removed, so nothing can be trapped.
 
 ### Registry in CloakConfig
 
-- `addLaunchFactory(factory)`: launches from it can be listed in the vault. v1, v2 and v3 factories are added at deploy,
-  so old launches keep trading.
-- `approveAsset(token)`: a non-launch token may be listed.
-- `register(kind, addr)` with `kind` in `vault, router, batcher, migrator, factory`: the newest entry of each kind is
-  the current one, and every entry keeps its start block for history.
-- All three loosen rules, so after setup they go through `queueChange` and wait 3 days. A registered router could
-  receive withdrawals that users' clients build for it, which is why registering one is never instant.
+- `addLaunchFactory(factory)`, `approveAsset(token)`, `register(kind, addr)`. Kinds: `vaults`, `router`, `batcher`,
+  `migrator`, `factory`. The newest entry of each kind is the current one (`current(kind)`), and every entry keeps its
+  start block.
+- All three loosen rules, so after setup they go through `queueChange` and wait 3 days. A registered router receives the
+  withdrawals users' apps build for it, which is why registering one is never instant.
+- `removeLaunchFactory` tightens (no new listings), so it is instant.
+
+### Private claims
+
+`CloakAuction.claimPrivate(id, pubKey, blinding, memo)`: only the bidder. The tokens go into the token's vault as a note
+for a one-time key; the HYPE refund (if any) still goes to the bidder. The vault must exist, so the keeper creates it at
+settlement. Deposit limits apply as for any deposit.
 
 ## Keys
 
-EIP-712, domain `{ name: "Cloak", version: "4", chainId }` with no `verifyingContract`. The signed purpose names the
-site. One signature per wallet per chain, forever. Older keys (v1 plain message, v2 and v3 bound to their routers) are
-only derived to move old balances.
-
-Memos carry the asset: the encrypted output holds `(amount, blinding, asset, keyIndex)`, and router-made notes start
-`0x03 || amount(16) || asset(20) || encrypted(blinding, keyIndex)`.
-
-## Relayer fees
-
-- Swaps, withdrawals, batch orders and moves pay the relayer in the asset being spent, as today.
-- **Private sends are free and sponsored by the relayer.** A fee would be value leaving the transaction, which reveals
-  the asset. The keeper rate-limits them per IP and per day. Later: pay the relayer with a private note instead.
+EIP-712, domain `{ name: "Cloak", version: "4", chainId }` with no `verifyingContract`. One signature per wallet per
+chain, forever. Older keys (v1 plain message, v2 and v3 bound to their routers) are only derived to move old balances.
 
 ## Moving off v1, v2 and v3
 
-One last move. Portfolio finds balances in every older vault (one signature per older version) and moves each into the
-vault through `CloakMigrator`, sent by the relayer. Old contracts keep working, so nothing is stranded if someone never
-comes back.
+One last move. Portfolio finds balances in every older vault (one signature per older version) and moves each into its
+permanent vault through `CloakMigrator`, sent by the relayer. Old contracts keep working, so nothing is stranded if
+someone never comes back.
 
 ## Rules for every later upgrade
 
-1. The vault is never redeployed. A circuit change that changes the public inputs is the only thing that could force it,
-   and the circuit is fixed by the trusted-setup ceremony. A new verifier for the same inputs goes in through the
-   config timelock.
+1. Vaults are never redeployed. A new verifier for the same circuit goes in through the config timelock.
 2. New factories, routers and batchers are added next to the old ones. Old ones keep working.
 3. Addresses come from the config registry, never from env vars.
 4. Every release is checked as a returning user: saved browser data, an old balance and an old `cloak:` address, on the
