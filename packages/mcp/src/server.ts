@@ -39,7 +39,7 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
@@ -466,14 +466,14 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       { title: "Connect a full agent", description: "How to let an agent launch, bid and trade privately: the local Cloak MCP server, which signs on your own machine under spending limits.", inputSchema: {}, annotations: READ },
       safe(async () => ({
         why: "This hosted server never holds keys, so it can read and plan but not sign. Launching, bidding and private trading run in the local server, on the machine that holds the agent's wallet. Its proofs are made there too, so nobody else, Cloak included, can see or move the funds.",
+        easiest: "If you can run terminal commands, read https://cloak.boblabs.tech/agent.md and follow it: it sets everything up and says what to ask the person. If you can't (a chat app), tell the person to open that link in Claude Code, Claude Desktop or Cursor and ask the agent there to follow it.",
         steps: [
-          "Make a fresh wallet just for the agent and fund it with testnet HYPE from https://elysium.kinetiq.xyz/testnet-faucet",
-          "Save its private key to a file only you can read, for example ~/.cloak-agent-key",
-          "Claude Code: claude mcp add cloak --env CLOAK_KEY_FILE=$HOME/.cloak-agent-key -- npx -y @cloakely/mcp",
-          'Other clients: { "mcpServers": { "cloak": { "command": "npx", "args": ["-y", "@cloakely/mcp"], "env": { "CLOAK_KEY_FILE": "/path/to/key" } } } }',
+          "npx -y @cloakely/mcp setup (makes the agent's own wallet in ~/.cloak-agent-key and prints its address; the key is never printed)",
+          "Claude Code: claude mcp add cloak -- npx -y @cloakely/mcp. Other clients: { \"mcpServers\": { \"cloak\": { \"command\": \"npx\", \"args\": [\"-y\", \"@cloakely/mcp\"] } } }",
+          "The person gets free testnet HYPE for the agent's address at https://elysium.kinetiq.xyz/testnet-faucet",
         ],
         safety: "Spending limits per transaction and per day (1 HYPE and 10 HYPE by default, set with CLOAK_MAX_HYPE_PER_TX and CLOAK_MAX_HYPE_PER_DAY), dry_run on every action, testnet by default. Never paste a key into a chat or into this hosted server.",
-        docs: "https://github.com/NECOKIZZ/Cloak/tree/main/packages/mcp",
+        docs: "https://cloak.boblabs.tech/agent.md",
       })),
     );
     return server;

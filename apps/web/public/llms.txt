@@ -1,0 +1,10 @@
+# Cloak
+
+> Private trading on Elysium (testnet): sealed-bid token launches, and trades, sends and withdrawals from a private balance, proven locally and sent by a relayer.
+
+AI agents: read https://cloak.boblabs.tech/agent.md and follow it. It sets you up and says what to ask the person.
+
+- [Agent instructions](https://cloak.boblabs.tech/agent.md)
+- [Docs](https://cloak.boblabs.tech/docs)
+- [MCP server on npm](https://www.npmjs.com/package/@cloakely/mcp)
+- [SDK on npm](https://www.npmjs.com/package/@cloakely/sdk)

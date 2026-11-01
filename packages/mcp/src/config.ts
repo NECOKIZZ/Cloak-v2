@@ -1,8 +1,11 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createPublicClient, defineChain, http, parseEther, parseUnits, type Address, type Chain, type Hex, type PublicClient } from "viem";
 import { deploymentFor, elysiumTestnet, liveDeployment, type CloakDeployment } from "@cloakely/sdk";
+
+/** The agent wallet's key file that `setup` creates and the server uses when no key is configured. */
+export const defaultKeyFile = () => join(homedir(), ".cloak-agent-key");
 
 /** Where the server points, and what it may do. Everything comes from environment variables (see README). */
 export interface Settings {
@@ -78,6 +81,8 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
 
   let key = env.CLOAK_PRIVATE_KEY?.trim();
   if (!key && env.CLOAK_KEY_FILE) key = readFileSync(env.CLOAK_KEY_FILE, "utf8").trim();
+  // the wallet `npx @cloakely/mcp setup` made, when nothing else is configured
+  else if (!key && existsSync(defaultKeyFile())) key = readFileSync(defaultKeyFile(), "utf8").trim();
   if (key && !key.startsWith("0x")) key = `0x${key}`;
   if (key && !/^0x[0-9a-fA-F]{64}$/.test(key)) throw new Error("the private key must be 32 bytes of hex");
 

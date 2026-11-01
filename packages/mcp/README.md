@@ -6,6 +6,12 @@ An agent that trades on chain leaks its strategy with every transaction, and any
 
 **Testnet only for now** (Elysium testnet, chain `99801`). Play money only.
 
+**The easy way:** tell your agent
+
+> Read https://cloak.boblabs.tech/agent.md and set me up to trade privately.
+
+That page is written for agents. The agent sets up its own wallet and the connection, and asks you only for what it can't do itself (free testnet HYPE from the faucet). It never needs your own wallet's key.
+
 There are two ways in:
 
 | | Hosted link | Local server (this package) |
@@ -25,16 +31,18 @@ Its tools: `cloak_info`, `list_launches`, `get_launch`, `quote_bid`, `quote_swap
 
 ## Set up the local server
 
-Create a fresh wallet for the agent, fund it from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet), and put its private key in a file only you can read:
+Make the agent's own wallet. It's saved in `~/.cloak-agent-key`, readable by you only, and the key is never printed:
 
 ```sh
-umask 077 && echo 0xYOUR_AGENT_KEY > ~/.cloak-agent-key
+npx -y @cloakely/mcp setup
 ```
+
+It prints the wallet's address. Fund it with free testnet HYPE from the [Elysium faucet](https://elysium.kinetiq.xyz/testnet-faucet). Running it again keeps the same wallet.
 
 **Claude Code:**
 
 ```sh
-claude mcp add cloak --env CLOAK_KEY_FILE=$HOME/.cloak-agent-key -- npx -y @cloakely/mcp
+claude mcp add cloak -- npx -y @cloakely/mcp
 ```
 
 **Claude Desktop, Cursor and other clients** (`claude_desktop_config.json`, `.cursor/mcp.json`, and so on):
@@ -42,16 +50,14 @@ claude mcp add cloak --env CLOAK_KEY_FILE=$HOME/.cloak-agent-key -- npx -y @cloa
 ```json
 {
   "mcpServers": {
-    "cloak": {
-      "command": "npx",
-      "args": ["-y", "@cloakely/mcp"],
-      "env": { "CLOAK_KEY_FILE": "/Users/you/.cloak-agent-key" }
-    }
+    "cloak": { "command": "npx", "args": ["-y", "@cloakely/mcp"] }
   }
 }
 ```
 
-Without a key, the server is **read only**: the agent can browse launches and quote bids and swaps, but can't sign anything.
+The server uses `~/.cloak-agent-key` when nothing else is set. To use another wallet, set `CLOAK_KEY_FILE` (or `CLOAK_PRIVATE_KEY`) in the server's `env`.
+
+Without a key (no `~/.cloak-agent-key` and nothing set), the server is **read only**: the agent can browse launches and quote bids and swaps, but can't sign anything.
 
 Then ask, for example:
 - "What Cloak launches are open right now?"
@@ -98,7 +104,7 @@ Amounts are in whole units (`"0.5"` HYPE). `private_send`, `withdraw` and a `pri
 
 | Variable | Default | |
 |---|---|---|
-| `CLOAK_KEY_FILE` | | File holding the agent wallet's private key (preferred) |
+| `CLOAK_KEY_FILE` | `~/.cloak-agent-key` if it exists | File holding the agent wallet's private key |
 | `CLOAK_PRIVATE_KEY` | | The key itself, if a file isn't practical |
 | `CLOAK_NETWORK` | `testnet` | `testnet`, or `custom` with `CLOAK_DEPLOYMENT_FILE` |
 | `CLOAK_MAX_HYPE_PER_TX` | `1` | HYPE value per transaction |
