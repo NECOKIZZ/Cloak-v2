@@ -213,7 +213,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>Relayer fee</td><td>The gas the relayer pays, plus a small margin, taken inside your proof from the same balance</td></tr>
             </tbody>
           </table>
-          <p>While Cloak is in beta, deposits are capped: 100 HYPE per deposit and 10,000 HYPE in the HYPE vault, 1% of a token's supply per deposit and 10% in total for launch-token vaults, and 100 HYPE per bid and 10,000 HYPE in total for each new launch. Withdrawals are never capped. Caps lift after the audit and the public trusted-setup ceremony.</p>
+          <p>While Cloak is in beta, deposits are capped: 100 HYPE per deposit and 10,000 HYPE in the HYPE vault, 10% of a token's supply per deposit and 50% in total for launch-token vaults, and 100 HYPE per bid and 10,000 HYPE in total for each new launch. Withdrawals are never capped. Caps lift after the audit and the public trusted-setup ceremony.</p>
           <p>A creator's own share is capped at 20% of the supply and vests over at least 30 days from the end of the auction.</p>
 
           <h2 id="keeper">Keeper & relayer</h2>

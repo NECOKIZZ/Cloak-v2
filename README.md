@@ -44,7 +44,7 @@ All addresses are in [`deployments/elysium-testnet-v4.json`](deployments/elysium
 | Withdrawals, private swaps, batch orders | **0.25%** of the amount, kept in the vault and collected to the treasury (hard cap 1%) |
 | Launch fee | **1.5%** of a successful raise, at settlement. Nothing on a launch that doesn't fill (hard cap 3%) |
 | Relayer fee | the relayer's gas plus a margin, paid inside the proof |
-| Beta caps | HYPE vault 100 per deposit and 10,000 in total; launch-token vaults 1% of supply per deposit and 10% in total; auctions 100 HYPE per bid and 10,000 in total. Withdrawals are never capped |
+| Beta caps | HYPE vault 100 per deposit and 10,000 in total; launch-token vaults 10% of supply per deposit and 50% in total; auctions 100 HYPE per bid and 10,000 in total. Withdrawals are never capped |
 | Creator share | at most 20% of the supply, vesting linearly over at least 30 days |
 
 **Nobody can take funds.** No function in any Cloak contract moves user money: notes leave a vault only with their owner's proof, and auction money only goes to bidders, the creator and the fee recipient. `CloakConfig` holds the rules. While in setup, the owner sets them directly. After `endSetup()`, tightening a rule (lower a fee or a cap, close deposits) is instant, and loosening one, or changing the verifier or fee recipient, is queued on-chain and waits a public **3-day** delay. Ownership moves in two steps. A bug in a contract's code still needs a new version: the old one keeps its exits open, and `CloakMigrator` moves balances across privately in one relayed transaction.
