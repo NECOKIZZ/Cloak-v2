@@ -206,24 +206,35 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
 
 type MyBid = Awaited<ReturnType<Cloak["bidsOf"]>>[number];
 
-/** Whether a settled launch can be claimed straight into the private vault (a v4 launch whose vault is open). */
-function usePrivateClaim(s: AuctionState) {
-  const [ok, setOk] = useState(false);
+/**
+ * Whether this wallet's won bids can be claimed straight into the private vault: a v4 launch whose vault is open, and
+ * each claim within the vault's beta deposit cap (checked by simulating it). "cap" when the cap blocks it.
+ */
+function usePrivateClaim(s: AuctionState, won: MyBid[], account?: Address): "yes" | "no" | "cap" {
+  const [ok, setOk] = useState<"yes" | "no" | "cap">("no");
+  const ids = won.map((b) => b.id.toString()).join(",");
   useEffect(() => {
     let alive = true;
-    (async () => {
-      if (!VAULTS || !FACTORY || !s.settled || s.failed) return false;
+    (async (): Promise<"yes" | "no" | "cap"> => {
+      if (!VAULTS || !FACTORY || !s.settled || s.failed || !account || !won.length) return "no";
       const factory = await publicClient.readContract({ address: s.address, abi: cloakAuctionAbi, functionName: "factory" }).catch(() => undefined);
-      if (factory?.toLowerCase() !== FACTORY.toLowerCase()) return false; // older launches have no private claim
+      if (factory?.toLowerCase() !== FACTORY.toLowerCase()) return "no"; // older launches have no private claim
       const pool = await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [s.token] });
-      return pool !== "0x0000000000000000000000000000000000000000";
+      if (pool === "0x0000000000000000000000000000000000000000") return "no";
+      for (const b of won) {
+        const fits = await publicClient
+          .simulateContract({ address: s.address, abi: cloakAuctionAbi, functionName: "claimPrivate", args: [b.id, 1n, 1n, "0x"], account })
+          .then(() => true, () => false);
+        if (!fits) return "cap";
+      }
+      return "yes";
     })()
       .then((v) => alive && setOk(v))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [s.address, s.settled, s.failed, s.token]);
+  }, [s.address, s.settled, s.failed, s.token, account, ids]);
   return ok;
 }
 
@@ -231,7 +242,10 @@ export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: W
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const { priv, unlock, toast } = useApp();
-  const canPrivate = usePrivateClaim(s);
+  const unclaimed = bids.filter((b) => !b.claimed).map((b) => b.id);
+  const won = bids.filter((b) => !b.claimed && b.tokens > 0n);
+  const privateClaim = usePrivateClaim(s, won, wallet?.account.address);
+  const canPrivate = privateClaim === "yes";
   if (!wallet) return null;
   const secrets = loadSecrets(s.address);
 
@@ -248,8 +262,6 @@ export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: W
     }
   }
 
-  const unclaimed = bids.filter((b) => !b.claimed).map((b) => b.id);
-  const won = bids.filter((b) => !b.claimed && b.tokens > 0n);
   const claimPrivately = () =>
     act("pclaim", async () => {
       const p = priv ?? (await unlock());
@@ -277,6 +289,11 @@ export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: W
       {s.settled && canPrivate && won.length > 0 && (
         <p className="xs mute" style={{ margin: "0 0 10px" }}>
           Claim privately to put your {s.tokenSymbol} straight into your private balance, so your later trades can't be linked to this bid. Any HYPE refund still goes to your wallet. Bids nobody claims are sent to wallets about an hour after bidding closes.
+        </p>
+      )}
+      {s.settled && privateClaim === "cap" && (
+        <p className="xs mute" style={{ margin: "0 0 10px" }}>
+          Your {s.tokenSymbol} is more than the private vault takes in one deposit during the beta, so it can only be claimed to your wallet for now.
         </p>
       )}
       {bids.length === 0 ? (

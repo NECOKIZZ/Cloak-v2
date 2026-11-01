@@ -33,7 +33,9 @@ if (!PK || (!process.env.CONFIG && !process.env.FACTORY)) {
   process.exit(1);
 }
 const transport = http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
-const publicClient = createPublicClient({ chain, transport, pollingInterval: 250 });
+// Elysium's public RPC rate-limits busy callers, so reads made together go out as one multicall and receipts are polled
+// once a second: a relay must never fail because the keeper's own polling used up the limit.
+const publicClient = createPublicClient({ chain, transport, pollingInterval: 1000, batch: { multicall: { wait: 16 } } });
 const reg = process.env.CONFIG ? await readRegistry(publicClient, process.env.CONFIG) : undefined;
 // With CONFIG, the registry is the only source of addresses: stale address variables can't point the keeper elsewhere.
 const OVERRIDES = ["FACTORY", "START_BLOCK", "ROUTER", "BATCHER", "BATCHER_BLOCK", "MIGRATOR", "MIGRATIONS", "LEGACY_ROUTER", "ASSET_POOLS"];
@@ -74,6 +76,7 @@ const cloak = new Cloak(publicClient, walletClient, FACTORY);
 
 const status = { keeper: account.address, chain: chain.id, config: process.env.CONFIG ?? null, version: reg?.version ?? null, factory: FACTORY, ignoredEnv: ignored, launches: {}, lastTick: 0 };
 const done = new Set(); // auctions fully claimed
+const waitUntil = new Map(); // settled auctions with their vault open: nothing to do until public claims start
 const log = (a, m) => console.log(`[${new Date().toISOString()}] ${a.slice(0, 10)} ${m}`);
 
 async function tick() {
@@ -81,7 +84,7 @@ async function tick() {
   status.launchCount = launches.length;
   const now = Number((await publicClient.getBlock()).timestamp);
   for (const { auction, token, factory, index } of launches) {
-    if (done.has(auction)) continue;
+    if (done.has(auction) || now < (waitUntil.get(auction) ?? 0)) continue;
     try {
       const s = await cloak.getAuction(auction);
       status.launches[auction] = { symbol: s.tokenSymbol, phase: s.phase, commits: s.commits, reveals: s.reveals };
@@ -94,7 +97,10 @@ async function tick() {
         if (!(await cloak.getAuction(auction)).failed) await openVault(auction, token, factory, index);
       } else if (s.phase === "settled") {
         if (!s.failed) await openVault(auction, token, factory, index);
-        if (now < s.revealEnd + CLAIM_DELAY) continue; // winners' window to claim privately
+        if (now < s.revealEnd + CLAIM_DELAY) {
+          waitUntil.set(auction, s.revealEnd + CLAIM_DELAY); // winners' window to claim privately
+          continue;
+        }
         const r = await cloak.claimAll(auction, { fromBlock: START_BLOCK });
         if (r.claimed) log(auction, `delivered ${r.claimed} claims`);
         // pull payments: the creator's proceeds and the launch fee (a recipient that can't take HYPE only blocks itself)
