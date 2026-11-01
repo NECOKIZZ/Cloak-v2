@@ -36,6 +36,7 @@ const GROUPS: [string, Item[]][] = [
   ["Private", [
     { to: "/app", label: "Portfolio", I: Icon.wallet, on: (p) => p === "/app" || p.startsWith("/app/portfolio") },
     { to: "/app/trade", label: "Trade", I: Icon.swap, on: (p) => p.startsWith("/app/trade") },
+    { to: "/agents", label: "Agents", I: Icon.users, on: (p) => p === "/agents" },
   ]],
   ["Launch", [
     { to: "/app/launches", label: "Launches", I: Icon.launch, on: (p) => p.startsWith("/app/launch") },
@@ -46,7 +47,6 @@ const GROUPS: [string, Item[]][] = [
 const LEARN: Item[] = [
   { to: "/docs", label: "Docs", I: Icon.book, on: (p) => p === "/docs" },
   { to: "/sdk", label: "SDK", I: Icon.code, on: (p) => p === "/sdk" },
-  { to: "/agents", label: "Agents", I: Icon.users, on: (p) => p === "/agents" },
 ];
 
 const GUIDE: Record<Step, { title: string; text: string; go: string }> = {
