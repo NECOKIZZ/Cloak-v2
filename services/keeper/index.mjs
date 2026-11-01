@@ -19,6 +19,7 @@
 //   Every address comes from CloakConfig's registry. Without CONFIG (tests), FACTORY/START_BLOCK/ROUTER/BATCHER/
 //   BATCHER_BLOCK/MIGRATOR give them directly; with CONFIG those are ignored.
 import { createServer } from "node:http";
+import { startSnapshots } from "./snapshot.mjs";
 import { createPublicClient, createWalletClient, http, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
@@ -50,6 +51,11 @@ const BATCHER_BLOCK = BigInt(env("BATCHER_BLOCK") ?? reg?.batcherBlock ?? START_
 const MIGRATOR = env("MIGRATOR") ?? reg?.migrator; // enables relayed moves from earlier deployments
 // v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
 const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
+
+// public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
+const snapshot = reg && process.env.SNAPSHOT !== "0"
+  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, previous: reg.previous })
+  : null;
 
 const account = privateKeyToAccount(PK);
 const walletClient = createWalletClient({ chain, transport, account });
@@ -416,6 +422,15 @@ createServer((req, res) => {
       .then((fee) => send(req, res, 200, { relayer: account.address, fee: fee.toString() }))
       .catch((e) => send(req, res, e.status ?? 400, { error: e.status ? e.message : "quote failed" }));
     return;
+  }
+  if (req.method === "GET" && path === "/snapshot") {
+    const body = snapshot?.get();
+    if (!body) return send(req, res, 503, { error: "no snapshot yet" });
+    const origin = req.headers.origin;
+    const allow = ORIGINS.includes("*") ? "*" : origin && ORIGINS.includes(origin) ? origin : ORIGINS[0];
+    const gz = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
+    res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, max-age=10", "x-content-type-options": "nosniff", ...(gz ? { "content-encoding": "gzip" } : {}) });
+    return res.end(gz ? snapshot.gz() : body);
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
     return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, claimDelay: CLAIM_DELAY });

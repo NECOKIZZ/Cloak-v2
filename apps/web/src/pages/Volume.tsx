@@ -7,6 +7,7 @@ import { hype } from "../format";
 import { readCloak, publicClient } from "../wallet";
 import { TokenIcon } from "../ui";
 import { loadMarkets } from "./markets";
+import { getSnapshot, save, saved } from "../snapshot";
 
 const WAD = 10n ** 18n;
 
@@ -63,6 +64,13 @@ async function loadSource(router: Address, batcher: Address | undefined, fromBlo
 async function loadStats(): Promise<Stats> {
   if (cache && Date.now() - cache.at < 20_000) return cache.data;
   if (!ROUTER) throw new Error("no router");
+  // the keeper's snapshot has the same totals, built the same way, in one request
+  const snap = await getSnapshot();
+  if (snap?.stats) {
+    cache = { at: Date.now(), data: snap.stats as Stats };
+    save("stats", cache.data);
+    return cache.data;
+  }
   const [markets, launches] = await Promise.all([loadMarkets(true), readCloak.listLaunches()]);
   const prices = new Map(markets.map((m) => [m.token.toLowerCase(), m.price]));
   // the current deployment plus every earlier one, so history carries over
@@ -114,6 +122,7 @@ async function loadStats(): Promise<Stats> {
     recent,
   };
   cache = { at: Date.now(), data };
+  save("stats", data);
   return data;
 }
 
@@ -128,7 +137,7 @@ function Card({ k, v, sub, unit = "HYPE" }: { k: string; v: string; sub?: string
 }
 
 export function Volume() {
-  const [s, setS] = useState<Stats | null>(cache?.data ?? null);
+  const [s, setS] = useState<Stats | null>(cache?.data ?? saved<Stats>("stats") ?? null);
   const [err, setErr] = useState("");
   useEffect(() => {
     let alive = true;

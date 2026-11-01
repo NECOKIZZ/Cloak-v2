@@ -224,42 +224,35 @@ export class Cloak {
    */
   async listLaunches(): Promise<{ auction: Address; token: Address; creator: Address; launchpad: Address; creatorAlloc: bigint; vesting: Address; factory: Address; index: bigint; legacy?: boolean }[]> {
     if (!this.factory) throw new Error("Cloak: factory address required");
-    const legacy = [];
-    for (const f of this.legacyFactories) legacy.push(...(await this.listLegacy(f)));
-    return [...(await this.listCurrent()), ...legacy];
+    // every factory, and every launch in it, read at once (a multicall client folds them into a few requests)
+    const [current, ...legacy] = await Promise.all([this.listCurrent(), ...this.legacyFactories.map((f) => this.listLegacy(f))]);
+    return [...current, ...legacy.flat()];
   }
 
   private async listLegacy(factory: Address) {
     const n = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launchesCount" });
-    const out = [];
-    for (let i = 0n; i < n; i++) {
-      // a factory from v2 on returns a vesting contract too; the first one returns five fields
-      const six = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launches", args: [i] }).catch(() => null);
-      const [auction, token, creator, launchpad, creatorAlloc] =
-        six ?? (await this.publicClient.readContract({ address: factory, abi: LEGACY_LAUNCHES_ABI, functionName: "launches", args: [i] }));
-      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting: (six?.[5] ?? zeroAddress) as Address, factory, index: i, legacy: true });
-    }
-    return out;
+    return Promise.all(
+      Array.from({ length: Number(n) }, async (_, k) => {
+        const i = BigInt(k);
+        // a factory from v2 on returns a vesting contract too; the first one returns five fields
+        const six = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launches", args: [i] }).catch(() => null);
+        const [auction, token, creator, launchpad, creatorAlloc] =
+          six ?? (await this.publicClient.readContract({ address: factory, abi: LEGACY_LAUNCHES_ABI, functionName: "launches", args: [i] }));
+        return { auction, token, creator, launchpad, creatorAlloc, vesting: (six?.[5] ?? zeroAddress) as Address, factory, index: i, legacy: true as const };
+      }),
+    );
   }
 
   private async listCurrent() {
-    if (!this.factory) throw new Error("Cloak: factory address required");
-    const n = await this.publicClient.readContract({
-      address: this.factory,
-      abi: cloakFactoryAbi,
-      functionName: "launchesCount",
-    });
-    const out = [];
-    for (let i = 0n; i < n; i++) {
-      const [auction, token, creator, launchpad, creatorAlloc, vesting] = await this.publicClient.readContract({
-        address: this.factory,
-        abi: cloakFactoryAbi,
-        functionName: "launches",
-        args: [i],
-      });
-      out.push({ auction, token, creator, launchpad, creatorAlloc, vesting, factory: this.factory, index: i });
-    }
-    return out;
+    const factory = this.factory!;
+    const n = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launchesCount" });
+    return Promise.all(
+      Array.from({ length: Number(n) }, async (_, k) => {
+        const index = BigInt(k);
+        const [auction, token, creator, launchpad, creatorAlloc, vesting] = await this.publicClient.readContract({ address: factory, abi: cloakFactoryAbi, functionName: "launches", args: [index] });
+        return { auction, token, creator, launchpad, creatorAlloc, vesting, factory, index };
+      }),
+    );
   }
 
   // ───────────── reads ─────────────

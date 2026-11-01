@@ -4,6 +4,7 @@ import { cloakConfigAbi, cloakPairAbi, cloakTokenAbi, privateRouterAbi } from "@
 import { ROUTER } from "../config";
 import { publicClient } from "../wallet";
 import { friendly } from "../errors";
+import { getSnapshot, save, saved } from "../snapshot";
 
 export interface Market {
   token: Address;
@@ -21,39 +22,60 @@ export interface Market {
 
 let cache: { at: number; data: Market[] } | null = null;
 
-/** Every launch token with a private market (from the PrivateRouter registry), plus live pool prices. */
+/** Every launch token with a private market, read from the chain (all tokens at once). */
+async function marketsFromChain(): Promise<Market[]> {
+  const c = { address: ROUTER!, abi: privateRouterAbi } as const;
+  const [n, whype] = await Promise.all([publicClient.readContract({ ...c, functionName: "tokensCount" }), publicClient.readContract({ ...c, functionName: "whype" })]);
+  const tokens = await Promise.all(Array.from({ length: Number(n) }, (_, i) => publicClient.readContract({ ...c, functionName: "tokens", args: [BigInt(i)] })));
+  const rows = await Promise.all(
+    tokens.map(async (token): Promise<Market | null> => {
+      if (token.toLowerCase() === whype.toLowerCase()) return null;
+      const pair = await publicClient.readContract({ ...c, functionName: "pairOf", args: [token] });
+      // a vault without a launch pair holds an existing token (USDC): an asset, not a market
+      if (pair === "0x0000000000000000000000000000000000000000") return null;
+      const [pool, symbol, name, reserveHype, reserveToken, price, batchable] = await Promise.all([
+        publicClient.readContract({ ...c, functionName: "poolOf", args: [token] }),
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "symbol" }),
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "name" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveHype" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "price" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "lastUpdate" }).then(() => true, () => false),
+      ]);
+      return { token, pool, pair, symbol, name, price, reserveHype, reserveToken, batchable };
+    }),
+  );
+  return rows.filter((x): x is Market => x !== null).reverse(); // newest launches first, so the default market is a recent one
+}
+
+/** The snapshot's markets, if every vault and pair address matches the router on chain (trades use these addresses). */
+async function checked(ms: Market[]): Promise<Market[] | null> {
+  const c = { address: ROUTER!, abi: privateRouterAbi } as const;
+  const ok = await Promise.all(
+    ms.map(async (m) => {
+      const [pool, pair] = await Promise.all([publicClient.readContract({ ...c, functionName: "poolOf", args: [m.token] }), publicClient.readContract({ ...c, functionName: "pairOf", args: [m.token] })]);
+      return pool.toLowerCase() === m.pool.toLowerCase() && pair.toLowerCase() === m.pair.toLowerCase();
+    }),
+  ).catch(() => [false]);
+  return ok.every(Boolean) ? ms : null;
+}
+
+/**
+ * Every launch token with a private market, plus pool prices: from the keeper's snapshot when it's fresh and its
+ * addresses check out on chain, else from the chain. `force` always reads the chain (fresh reserves after a trade).
+ */
 export async function loadMarkets(force = false): Promise<Market[]> {
   if (!ROUTER) return [];
   if (!force && cache && Date.now() - cache.at < 15_000) return cache.data;
-  const c = { address: ROUTER, abi: privateRouterAbi } as const;
-  const [n, whype] = await Promise.all([publicClient.readContract({ ...c, functionName: "tokensCount" }), publicClient.readContract({ ...c, functionName: "whype" })]);
-  const out: Market[] = [];
-  for (let i = 0n; i < n; i++) {
-    const token = await publicClient.readContract({ ...c, functionName: "tokens", args: [i] });
-    if (token.toLowerCase() === whype.toLowerCase()) continue;
-    const pair = await publicClient.readContract({ ...c, functionName: "pairOf", args: [token] });
-    // a vault without a launch pair holds an existing token (USDC): an asset, not a market
-    if (pair === "0x0000000000000000000000000000000000000000") continue;
-    const [pool, symbol, name] = await Promise.all([
-      publicClient.readContract({ ...c, functionName: "poolOf", args: [token] }),
-      publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "symbol" }),
-      publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "name" }),
-    ]);
-    const [reserveHype, reserveToken, price, batchable] = await Promise.all([
-      publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveHype" }),
-      publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
-      publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "price" }),
-      publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "lastUpdate" }).then(() => true, () => false),
-    ]);
-    out.push({ token, pool, pair, symbol, name, price, reserveHype, reserveToken, batchable });
-  }
-  out.reverse(); // newest launches first, so the default market is a recent one
-  cache = { at: Date.now(), data: out };
-  return out;
+  const snap = force ? null : await getSnapshot();
+  const data = (snap && (await checked(snap.markets as Market[]))) || (await marketsFromChain());
+  cache = { at: Date.now(), data };
+  save("markets", data);
+  return data;
 }
 
 export function useMarkets() {
-  const [markets, setMarkets] = useState<Market[] | null>(cache?.data ?? null);
+  const [markets, setMarkets] = useState<Market[] | null>(cache?.data ?? saved<Market[]>("markets") ?? null);
   const [err, setErr] = useState("");
   useEffect(() => {
     let alive = true;

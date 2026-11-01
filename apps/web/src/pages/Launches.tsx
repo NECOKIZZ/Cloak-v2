@@ -7,6 +7,7 @@ import { Link } from "../router";
 import { TokenIcon } from "../ui";
 import { friendly } from "../errors";
 import { readCloak } from "../wallet";
+import { getSnapshot, save, saved } from "../snapshot";
 
 const PHASE: Record<string, [string, string]> = {
   commit: ["Sealed bidding", "ok"],
@@ -16,16 +17,18 @@ const PHASE: Record<string, [string, string]> = {
 };
 
 export function Launches() {
-  const [list, setList] = useState<AuctionState[] | null>(null);
+  // last visit's list at once, then the keeper's snapshot (or the chain)
+  const [list, setList] = useState<AuctionState[] | null>(() => saved<AuctionState[]>("launches") ?? null);
   const [err, setErr] = useState("");
   const [now, setNow] = useState(Date.now() / 1000);
   const [showFailed, setShowFailed] = useState(false);
   useEffect(() => {
     if (!FACTORY) return;
     (async () => {
-      const ls = await readCloak.listLaunches();
-      const states = await Promise.all(ls.map((l) => readCloak.getAuction(l.auction as Address)));
-      setList(states.reverse());
+      const snap = await getSnapshot();
+      const states = (snap?.launches as AuctionState[] | undefined) ?? (await Promise.all((await readCloak.listLaunches()).map((l) => readCloak.getAuction(l.auction as Address)))).reverse();
+      setList(states);
+      save("launches", states);
     })().catch((e) => setErr(friendly(e)));
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
     return () => clearInterval(t);
