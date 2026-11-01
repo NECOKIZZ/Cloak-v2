@@ -5,6 +5,17 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/app/launch/:a",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(Twitterbot|facebookexternalhit|Facebot|Discordbot|TelegramBot|Slackbot|LinkedInBot|WhatsApp|SkypeUriPreview|redditbot|Embedly|Pinterest|Applebot|Iframely|Bluesky|Mastodon).*"
+        }
+      ],
+      "destination": "/api/preview?a=:a"
+    },
+    {
       "source": "/mcp",
       "destination": "/api/mcp"
     },

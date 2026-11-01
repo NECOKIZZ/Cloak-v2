@@ -13,7 +13,7 @@ export function Create() {
         </div>
       </div>
       <div className="grid">
-        <CreateLaunch wallet={wallet} onCreated={(a) => navigate(`/app/launch/${a}`)} />
+        <CreateLaunch wallet={wallet} onCreated={(a) => navigate(`/app/launch/${a}?new=1`)} />
         <div className="col">
           <div className="card flat">
             <h3>How it works</h3>

@@ -4,7 +4,7 @@ import { Cloak, cloakAuctionAbi, cloakVaultsAbi, drandRoundTime, privateRouterAb
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
 import { addrLink, KEEPER_URL, ROUTER, VAULTS } from "../config";
 import { duration, hype, short, tokens } from "../format";
-import { Link } from "../router";
+import { Link, useRoute } from "../router";
 import { useApp } from "../state";
 import { LaunchRecord } from "./LaunchRecord";
 import { friendly } from "../errors";
@@ -21,8 +21,29 @@ const PHASES = [
 ] as const;
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+/** Copy the launch's link, or post it on X. Shared links show the token's name, image and status as a preview. */
+function Share({ s, big }: { s: AuctionState; big?: boolean }) {
+  const { toast } = useApp();
+  const url = `${location.origin}/app/launch/${s.address}`;
+  const text =
+    s.phase === "commit"
+      ? `Bid on $${s.tokenSymbol} on Cloak. Sealed bids nobody can see until bidding closes, and every winner pays one price`
+      : s.settled && !s.failed
+        ? `$${s.tokenSymbol} launched on Cloak with a sealed-bid auction and now trades privately`
+        : `$${s.tokenSymbol} on Cloak`;
+  const size = big ? "" : "btn-sm";
+  return (
+    <span className="row-flex" style={{ gap: 8 }}>
+      <button className={`btn btn-ghost ${size}`} onClick={() => { navigator.clipboard?.writeText(url).catch(() => {}); toast("Launch link copied"); }}><Icon.copy size={14} />Copy link</button>
+      <a className={`btn btn-ghost ${size}`} href={`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">Share on X</a>
+    </span>
+  );
+}
+
 export function Launch({ auction }: { auction: Address }) {
   const { wallet, setError } = useApp();
+  const { query } = useRoute();
+  const [isNew, setIsNew] = useState(query.get("new") === "1");
   const [s, setS] = useState<AuctionState | null>(null);
   const [curve, setCurve] = useState<bigint[]>([]);
   const [mine, setMine] = useState<MyBidsT>([]);
@@ -108,7 +129,20 @@ export function Launch({ auction }: { auction: Address }) {
       <div className="xs mute row-flex" style={{ marginBottom: 14, gap: 12 }}>
         <Link to="/app/launches" className="back-btn" style={{ marginBottom: 0 }}><span aria-hidden>←</span>All launches</Link>
         {addrLink(s.address) ? <a href={addrLink(s.address)} target="_blank" rel="noreferrer" className="mono">{short(s.address)} ↗</a> : <span className="mono">{short(s.address)}</span>}
+        <span className="spacer" />
+        {!isNew && <Share s={s} />}
       </div>
+      {isNew && (
+        <div className="card" style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <Icon.check size={20} />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <h3>Your launch is live</h3>
+            <p className="small mute" style={{ margin: "4px 0 0" }}>Share the link so people can bid. It shows ${s.tokenSymbol}'s name, image and countdown wherever you post it.</p>
+          </div>
+          <Share s={s} big />
+          <button className="btn btn-text xs" onClick={() => setIsNew(false)} aria-label="Dismiss">✕</button>
+        </div>
+      )}
       <div className="launch-hero">
         <div className="launch-title">
           <span className="eyebrow"><span className="dot live" style={{ marginRight: 8 }} />Sealed-bid launch</span>
