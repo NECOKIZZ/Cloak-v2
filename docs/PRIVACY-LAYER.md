@@ -1,6 +1,6 @@
 # Cloak as a privacy layer for tokens (design, for review)
 
-Status: **draft for review, nothing built.** Written Nov 1, 2026. Open questions for the Elysium team are at the end.
+Status: **draft for review, nothing built.** Written Nov 1, 2026. Decided: one vault per token (section 0). Open questions for the Elysium team are at the end.
 
 ## The vision in one paragraph
 
@@ -42,7 +42,16 @@ work exactly this way: a vault for the token, routing through existing Uniswap p
 | Uniswap V4 PoolManager `0x889a96eedb1df35a012d7e48baf7f9c780f1243b` | 51,210 | ~5,157 WHYPE, ~4M tUSDG | WHYPE `0xcd57…f234` |
 | Uniswap V3 factory `0x1186defcaf121da6e773425fec0814608798e792` | 1,807 | ~417,000 USDC, 310 WHYPE | USDC `0x7D29…47b2` (our USDC), WHYPE `0x757a…` |
 | Uniswap V2 factory `0xb2f8ad730e9d05d333c7861184aad0bff1785dd0` | 1,245 | ~640 WHYPE | WHYPE `0xcd57…f234` |
+| V3-style factory `0x520bf060f58cee054f725877279328f5f73a7893` | a few | ~26M USDC | ELYZ, WHYPE, KALOS |
 | ~70 smaller V2/V3/V4/Algebra/Solidly deployments | a few each | small | various |
+
+**Tokenized stocks on testnet.** 1,318 "xStock" tokens trade in the Uniswap V3 pools above, paired with USDC
+`0x7D29…`. Examples: TSLAx `0xfdb7678853f1211bd55bf0e92f88c6f48bdb6de6`, AAPLx
+`0xc7e8fbf4d1d9445d94486375f0ad93ea1596ddbb`, SPYx `0x16a37122344e16047547d98c42bd8fdc1feece28`, MSTRx
+`0x991514e46877247f3aa3816b833d1c533627949f`, CRCLx `0x64eda9fe17520bcb6940a1a22b053b93788ce746`. On testnet they are
+stand-ins: identical code, 1B supply each, no owner, no pause, and contracts can hold them. Mainnet stock tokens may
+add issuer powers (freeze, allowlists), which is question 2 below. StockFlow also runs a mock NVIDIA token (mNVDAx,
+`0x8c8fb72e315a4f72393fdfbf54d5d630b79b2927`) on its own Uniswap V3 fork.
 
 - 33,513 of the V4 pools use one hook (`0xda605da70bff4b32a9b379c614a6d9e4a09baaec`), the fingerprint of a launchpad
   that puts every new token straight into a V4 pool.
@@ -57,6 +66,51 @@ pairs to earn fees (most of the USDC depth). Aggregators hold none, they route. 
 thing (seed and lock their own pool). The difference is only that our pool is a custom design nobody else can route to.
 
 ## Design
+
+### 0. Decision: one vault per token (Nov 1, decided)
+
+Every token keeps its own vault: HYPE, USDC, every Cloak launch, and each stock or outside token once admitted. We
+weighed a shared vault (Gloam's design, one vault for many tokens) and a middle ground (one shared vault for all stock
+tokens, or three vaults: majors, Cloak launches, outside tokens), and chose to stay with one vault per token.
+
+**Privacy is the same where it counts.** The token is public whenever it physically moves, in either design:
+
+- *Deposits* show the token going into Cloak.
+- *Swaps* leave the vault, trade in a public pool and come back, so the pair and size are public. Who traded is hidden.
+- *Withdrawals* show the token leaving. A TSLAx withdrawal can only come from someone who put TSLAx in or bought it
+  privately, so the crowd is the people using that token, whichever vault it sits in. AAPLx holders don't hide a TSLAx
+  withdrawal.
+- *Private sends* are the only difference: a shared vault could hide which token moved. But the relayer is paid in the
+  token being sent and that fee is public, so the token shows anyway. Hiding it would need Cloak to pay every send's
+  fee, or a proof that pays the fee in HYPE while moving another token (much harder maths).
+
+Crowd size depends on how many people use a token, not on how many tokens share a vault.
+
+**A shared vault adds a new kind of bug.** Notes would have to record their token, and one rule in the circuit
+("every note in this proof is the same token, and that token is the public one whenever money enters or leaves")
+would be all that stops a worthless token's notes from being passed off as USDC. A per-token ledger doesn't stop it,
+because the ledger counts everyone's USDC as available. With one vault per token that mix-up can't happen at all: a
+vault only ever holds its own token. Gloam's audit found two critical bugs in exactly this area of its maths (a deposit
+whose note could claim more than was paid in, and amounts wrapping the field); both are fixed, and ours avoids both,
+but it shows how easy the maths is to get wrong.
+
+**It is what we already run.** One vault per token is the proven model (Tornado, Tornado Nova, Privacy Pools), it is
+live and tested end to end, and nothing has to migrate. Gloam's circuits also can't be dropped in: their notes have no
+owner keys (our `cloak:` addresses need them) and spend one note per proof (ours spend two).
+
+**Many vaults are fine.** A vault costs gas once, when it's made. Only launches that settle with their pool get one,
+and outside tokens only after admission (section 1). An empty vault costs nothing. If junk launches ever become a
+problem, a launch can be made to earn its vault (minimum raise or bidders).
+
+**What we take from Gloam: the gatekeeping, which we already have.** A token needs `approveAsset` before it gets a
+vault, every token has its own deposit limits, and after setup mode every addition waits 3 days in public.
+
+**Upgrades.** Every vault reads its rules (proof checker, fees, limits, router registry) from `CloakConfig`, so one
+change reaches all vaults. The vault code itself has no proxy on purpose: nobody, Cloak included, can swap the code
+under people's money. A bug inside the vault code would mean new vaults and a migration.
+
+**If this is ever revisited**, the only time it's cheap is before the public ceremony, since a shared vault needs a new
+circuit, and only together with Cloak paying send fees, without which it hides nothing extra.
 
 ### 1. Token admission: which tokens get a private vault
 

@@ -45,7 +45,7 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 
 ## Decisions to make
 
-- [ ] **Shared vault later?** We chose one vault per asset (v4). A shared vault would hide which token a private send moved, but needs a new circuit, so it can only come with a ceremony. See [VAULT.md](VAULT.md).
+- [x] **Shared vault?** Decided Nov 1: stay with one vault per token. Same privacy for deposits, swaps and withdrawals, no token mix-up risk, nothing to migrate. Reasons in [PRIVACY-LAYER.md](PRIVACY-LAYER.md), section 0.
 - [ ] **USDC swap adapter cap exemption:** instant while `CloakConfig` is in setup, 3 days after `endSetup()`. Decide before setup ends.
 - [ ] **Redeploy again if the circuit review changes the circuit** (only if it finds something that changes the public inputs).
 
