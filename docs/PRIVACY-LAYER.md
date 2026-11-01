@@ -185,14 +185,9 @@ rounds would need a new price reference (Uniswap V3's price history). Not part o
 
 ## Open questions for the Elysium team
 
-1. Is deploying contracts on mainnet open, or limited to approved ecosystem projects? What do we need for day one?
-2. The canonical WHYPE on mainnet, and is `0xcd57f65c2b0e5881cfc2e609f7cd53b746e1f234` canonical on testnet?
-3. Which Uniswap versions go live on mainnet day one, who deploys them, and are the testnet addresses above official?
-4. Mainnet USDC: the same Circle USDC bridged from HyperEVM? Address, and who can freeze or upgrade it?
-5. Which launchpad runs the V4 hook `0xda605da70bff4b32a9b379c614a6d9e4a09baaec`, will it be the main path on mainnet,
-   and does it restrict who can swap?
-6. Stock tokens (xStocks, EQX): plain ERC-20 or restricted (KYC allowlists)? Can a contract like our vault hold them?
-   Where will they trade?
-7. 0x and KyberSwap on mainnet day one with API support? How will contracts reach Hyperliquid's order books?
-8. A higher-limit RPC for ecosystem projects, explorer API access, explorer labels for our vaults, and what's needed for
-   Cloak to show as verified on the ecosystem page.
+Contract deployment on mainnet is open to everyone (confirmed). Three questions remain:
+
+1. The official WHYPE, USDC and Uniswap contracts on mainnet (addresses), so routes use the right pools.
+2. Can a smart contract hold the stock tokens (xStocks, EQX), or are they limited to approved (KYC) wallets?
+3. Does the launchpad behind most V4 pools (hook `0xda605da70bff4b32a9b379c614a6d9e4a09baaec`) let any contract swap
+   through its pools?
