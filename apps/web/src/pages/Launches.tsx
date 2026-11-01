@@ -22,6 +22,11 @@ export function Launches() {
   const [err, setErr] = useState("");
   const [now, setNow] = useState(Date.now() / 1000);
   const [showFailed, setShowFailed] = useState(false);
+  const [q, setQ] = useState("");
+  const term = q.trim().toLowerCase().replace(/^\$/, "");
+  // by name, symbol, token contract or auction address; a search also finds launches that didn't fill
+  const match = (s: AuctionState) => !term || [s.tokenName, s.tokenSymbol, s.token, s.address].some((x) => x.toLowerCase().includes(term));
+  const shown = list?.filter((s) => (term ? match(s) : showFailed || !s.failed));
   useEffect(() => {
     if (!FACTORY) return;
     (async () => {
@@ -46,8 +51,12 @@ export function Launches() {
       {!FACTORY && <div className="empty"><h3>Not configured</h3>Set VITE_FACTORY for this deployment.</div>}
       {list === null && FACTORY && !err && <div className="empty">Loading launches from Elysium…</div>}
       {list?.length === 0 && <div className="empty"><h3>No launches yet</h3>Be the first: create a sealed-bid launch.</div>}
+      {!!list?.length && (
+        <input className="input" style={{ marginBottom: 14 }} placeholder="Search by token name, symbol or contract address" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search launches" />
+      )}
+      {term && shown?.length === 0 && <div className="empty">No launch matches "{q.trim()}".</div>}
       <div className="launches">
-        {list?.filter((s) => showFailed || !s.failed).map((s) => {
+        {shown?.map((s) => {
           const [label, tone] = s.failed ? ["Didn't fill", "warn"] : PHASE[s.phase];
           const t = s.phase === "commit" ? s.commitEnd - now : s.phase === "reveal" ? s.revealEnd - now : 0;
           return (
@@ -65,7 +74,7 @@ export function Launches() {
           );
         })}
       </div>
-      {!!list?.some((s) => s.failed) && (
+      {!term && !!list?.some((s) => s.failed) && (
         <button className="btn btn-text btn-sm" style={{ marginTop: 12 }} onClick={() => setShowFailed(!showFailed)}>
           {showFailed ? "Hide launches that didn't fill" : `Show ${list.filter((s) => s.failed).length} that didn't fill`}
         </button>
