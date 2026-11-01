@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "../router";
-import { Footer, GITHUB, Nav } from "../ui";
+import { GITHUB } from "../ui";
 
 const EX: Record<string, string> = {
   Launchpad: `import { Cloak, elysiumTestnet } from "@cloakely/sdk";
@@ -82,7 +82,6 @@ export function Sdk() {
   const [copied, setCopied] = useState(false);
   return (
     <>
-      <Nav />
       <main>
         <section className="wrap" style={{ paddingTop: 12 }}>
           <div className="deep dev" style={{ alignItems: "start" }}>
@@ -142,7 +141,6 @@ export function Sdk() {
           </div>
         </section>
       </main>
-      <Footer />
     </>
   );
 }

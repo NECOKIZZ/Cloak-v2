@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "../router";
-import { EXPLORER, Footer, GITHUB, Icon, Nav } from "../ui";
+import { EXPLORER, GITHUB, Icon } from "../ui";
 import { DEPLOYMENT, VERSION } from "../config";
 
 // every address from the SDK's deployment record, so this table can't drift from what the app uses
@@ -44,7 +44,6 @@ export function Docs() {
   };
   return (
     <>
-      <Nav />
       <div className="wrap docs">
         <nav className="docs-nav">
           {NAV.map(([g, xs]) => (
@@ -233,7 +232,6 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           {NAV.flatMap(([, xs]) => xs).map(([id, label]) => <a key={id} href={`#${id}`} onClick={go(id)} style={on === id ? { color: "var(--text)" } : undefined}>{label}</a>)}
         </aside>
       </div>
-      <Footer />
     </>
   );
 }

@@ -3,6 +3,7 @@ import type { Address } from "viem";
 import { AppShell } from "./pages/AppShell";
 import { Create } from "./pages/Create";
 import { Docs } from "./pages/Docs";
+import { Agents } from "./pages/Agents";
 import { Landing } from "./pages/Landing";
 import { Pitch } from "./pages/Pitch";
 import { Launch } from "./pages/Launch";
@@ -24,8 +25,9 @@ function Routes() {
   }, [path]);
 
   if (path === "/") return <Landing />;
-  if (path === "/docs") return <Docs />;
-  if (path === "/sdk") return <Sdk />;
+  if (path === "/docs") return <AppShell><Docs /></AppShell>;
+  if (path === "/sdk") return <AppShell><Sdk /></AppShell>;
+  if (path === "/agents") return <AppShell><Agents /></AppShell>;
   if (path === "/pitch") return <Pitch />;
   if (path.startsWith("/app")) {
     const m = path.match(/^\/app\/launch\/(0x[0-9a-fA-F]{40})$/);

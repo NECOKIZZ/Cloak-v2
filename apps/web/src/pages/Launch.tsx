@@ -105,9 +105,8 @@ export function Launch({ auction }: { auction: Address }) {
 
   return (
     <>
-      <div className="xs mute" style={{ marginBottom: 14 }}>
-        <Link to="/app/launches" className="arrow" style={{ display: "inline" }}>All launches</Link>
-        <span style={{ margin: "0 8px" }}>·</span>
+      <div className="xs mute row-flex" style={{ marginBottom: 14, gap: 12 }}>
+        <Link to="/app/launches" className="back-btn" style={{ marginBottom: 0 }}><span aria-hidden>←</span>All launches</Link>
         {addrLink(s.address) ? <a href={addrLink(s.address)} target="_blank" rel="noreferrer" className="mono">{short(s.address)} ↗</a> : <span className="mono">{short(s.address)}</span>}
       </div>
       <div className="launch-hero">

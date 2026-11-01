@@ -314,7 +314,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ───────────── app shell: floating sidebar, no top bar ───────────── */
 .app { min-height: 100vh; }
-.side { position: fixed; top: 12px; bottom: 12px; left: 12px; width: 248px; z-index: 30; display: flex; flex-direction: column; background: var(--raised); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); padding: 12px; overflow-y: auto; }
+.side { position: fixed; top: 12px; bottom: 12px; left: 12px; width: 248px; z-index: 30; display: flex; flex-direction: column; background: var(--raised); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); padding: 12px; overflow: hidden; }
 .side-top { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px 14px 8px; }
 .side-top .icon-btn { width: 34px; height: 34px; }
 .side-net { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: 0; border-radius: 12px; background: var(--card); color: var(--soft); font: 13px var(--font-body); text-align: left; }
@@ -326,7 +326,9 @@ a { color: inherit; text-decoration: none; }
 .side-link:hover { color: var(--text); background: var(--card); }
 .side-link.on { color: var(--text); background: var(--card-2); font-weight: 500; }
 .side-link svg { width: 17px; height: 17px; flex: none; }
-.side-foot { margin-top: auto; display: grid; gap: 2px; padding-top: 16px; }
+.side-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin: 6px -4px 0; padding: 0 4px; scrollbar-width: thin; }
+.side-learn { margin-top: auto; padding-top: 16px; }
+.side-foot { display: grid; gap: 2px; padding-top: 4px; }
 .side-status { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--mute); padding: 8px 12px; margin-top: 6px; border-top: 1px solid var(--line); }
 .side-status > span { display: flex; align-items: center; gap: 6px; }
 .side-status .dot { width: 6px; height: 6px; }
@@ -708,3 +710,11 @@ button.asset-row { cursor: pointer; }
   .wallet-total { font-size: 42px; }
   .wallet-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* docs and SDK inside the app frame */
+.main .docs { grid-template-columns: 200px minmax(0, 1fr); gap: 40px; padding-top: 0; padding-inline: 0; max-width: none; }
+.main .docs .toc { display: none; }
+.main .docs-nav { top: 24px; max-height: calc(100vh - 48px); }
+.main .wrap { padding-inline: 0; max-width: none; }
+.back-btn { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px 0 12px; margin-bottom: 18px; border-radius: 999px; background: var(--card); color: var(--text); font-weight: 600; font-size: 14px; }
+.back-btn:hover { background: var(--card-2); }

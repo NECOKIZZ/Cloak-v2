@@ -103,10 +103,11 @@ function valueUsd(a: Asset, amount: bigint, px: number | null): number | null {
 const dollars = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const amountOf = (a: Asset, x: bigint) => (a.kind === "hype" ? hype(x) : a.kind === "stable" ? usd(x, a.decimals) : tokens(x));
 
-function Locked({ title }: { title: string }) {
+function Locked({ title, back }: { title: string; back?: boolean }) {
   const { wallet, connect, unlock, unlocking } = useApp();
   return (
     <>
+      {back && <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>}
       <div className="page-head"><div><h1>{title}</h1><p>Your private balance, visible only to you.</p></div></div>
       <div className="card wallet-hero">
         <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
@@ -183,7 +184,7 @@ export function Portfolio() {
         </p>
         <div className="wallet-actions">
           <Link to="/app/portfolio/shield" className="btn btn-ink"><Icon.plus size={16} />Shield</Link>
-          <Link to="/app/portfolio/send" className="btn btn-ghost"><Icon.send size={16} />Send</Link>
+          <Link to="/app/portfolio/send" className="btn btn-ghost"><Icon.send size={16} />Send privately</Link>
           <Link to="/app/portfolio/withdraw" className="btn btn-ghost"><Icon.arrowDown size={16} />Withdraw</Link>
           <button className="btn btn-ghost" onClick={copy} title={privAddress}><Icon.copy size={16} />Copy cloak address</button>
         </div>
@@ -328,7 +329,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     ).then((e) => setPub(Object.fromEntries(e))).catch(() => {});
   }, [kind, wallet, shieldable.length, res.tx]);
 
-  if (!wallet || !priv) return <Locked title={TITLES[kind][0]} />;
+  if (!wallet || !priv) return <Locked title={TITLES[kind][0]} back />;
 
   const list: Asset[] = kind === "shield" ? shieldable : assets.filter((a) => (bals[a.key] ?? 0n) > 0n);
   const balOf = (k: Key) => (kind === "shield" ? pub[k] : bals[k]);
@@ -391,7 +392,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   const have = cur ? balOf(cur.key) : undefined;
   return (
     <>
-      <Link to="/app" className="link small" style={{ display: "inline-block", marginBottom: 14 }}>← Portfolio</Link>
+      <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>
       <div className="page-head"><div><h1>{title}</h1><p>{lede}</p></div></div>
       <div className="grid">
         <div className="card">

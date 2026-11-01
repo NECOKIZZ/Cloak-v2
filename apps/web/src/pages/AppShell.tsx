@@ -44,8 +44,9 @@ const GROUPS: [string, Item[]][] = [
   ]],
 ];
 const LEARN: Item[] = [
-  { to: "/docs", label: "Docs", I: Icon.book, on: () => false },
-  { to: "/sdk", label: "SDK", I: Icon.code, on: () => false },
+  { to: "/docs", label: "Docs", I: Icon.book, on: (p) => p === "/docs" },
+  { to: "/sdk", label: "SDK", I: Icon.code, on: (p) => p === "/sdk" },
+  { to: "/agents", label: "Agents", I: Icon.users, on: (p) => p === "/agents" },
 ];
 
 const GUIDE: Record<Step, { title: string; text: string; go: string }> = {
@@ -175,10 +176,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ThemeToggle />
         </div>
         <Network />
-        <nav className="side-nav" aria-label="Product"><NavItems path={path} /></nav>
+        {/* the brand, network and wallet stay put; only the links scroll on a short screen */}
+        <div className="side-scroll">
+          <nav className="side-nav" aria-label="Product"><NavItems path={path} /></nav>
+          <div className="side-group side-learn">
+            <GuideLink onOpen={() => setGuideOpen(true)} />
+            {LEARN.map((x) => <Link key={x.to} to={x.to} className={`side-link ${x.on(path) ? "on" : ""}`}><x.I />{x.label}</Link>)}
+          </div>
+        </div>
         <div className="side-foot">
-          <GuideLink onOpen={() => setGuideOpen(true)} />
-          {LEARN.map((x) => <Link key={x.to} to={x.to} className="side-link"><x.I />{x.label}</Link>)}
           <Status keeper={keeper} />
           <div className="side-wallet"><WalletButton up /></div>
         </div>
@@ -197,7 +203,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="side-group">
               <div className="eyebrow">Learn</div>
               <GuideLink onOpen={() => { setOpen(false); setGuideOpen(true); }} />
-              {LEARN.map((x) => <Link key={x.to} to={x.to} className="side-link"><x.I />{x.label}</Link>)}
+              {LEARN.map((x) => <Link key={x.to} to={x.to} className={`side-link ${x.on(path) ? "on" : ""}`}><x.I />{x.label}</Link>)}
             </div>
             <div className="sheet-row"><span className="small mute">Appearance</span><ThemeSeg /></div>
             <Status keeper={keeper} />
