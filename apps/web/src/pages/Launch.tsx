@@ -96,7 +96,7 @@ export function Launch({ auction }: { auction: Address }) {
       <div className="empty">
         <h3>No launch at this address</h3>
         <p className="mute small"><span className="mono">{short(auction)}</span> isn't a Cloak launch on this network. Check the link, or pick one from the list.</p>
-        <Link to="/app" className="btn btn-ink" style={{ marginTop: 14 }}>See all launches</Link>
+        <Link to="/app/launches" className="btn btn-ink" style={{ marginTop: 14 }}>See all launches</Link>
       </div>
     );
   if (!s) return <div className="empty">Loading launch {short(auction)}…</div>;
@@ -106,7 +106,7 @@ export function Launch({ auction }: { auction: Address }) {
   return (
     <>
       <div className="xs mute" style={{ marginBottom: 14 }}>
-        <Link to="/app" className="arrow" style={{ display: "inline" }}>All launches</Link>
+        <Link to="/app/launches" className="arrow" style={{ display: "inline" }}>All launches</Link>
         <span style={{ margin: "0 8px" }}>·</span>
         {addrLink(s.address) ? <a href={addrLink(s.address)} target="_blank" rel="noreferrer" className="mono">{short(s.address)} ↗</a> : <span className="mono">{short(s.address)}</span>}
       </div>

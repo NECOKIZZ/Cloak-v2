@@ -1,29 +1,137 @@
 import { useEffect, useRef, useState } from "react";
-import { formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
+import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { CloakPrivate, shieldedPoolAbi } from "@cloakely/sdk";
-import { ASSETS, CHAIN_ID, MIGRATOR, PREVIOUS, txLink } from "../config";
+import { ASSETS, CHAIN_ID, CLOAK_TOKEN, MIGRATOR, PREVIOUS, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
 import { getProver, useApp } from "../state";
 import { friendly, Hint } from "../errors";
+import { markDone } from "../guide";
+import { Link, navigate, useRoute } from "../router";
 import { Icon, TokenIcon } from "../ui";
-import { useFeePct, useMarkets } from "./markets";
+import { useFeePct, useMarkets, type Market } from "./markets";
 
-type Tab = "shield" | "send" | "withdraw";
+type Kind = "shield" | "send" | "withdraw";
+type Key = "HYPE" | Address;
 
-export function Portfolio() {
-  const { wallet, connect, priv, privAddress, unlock, unlocking, toast } = useApp();
+/** One asset as the portfolio shows it: HYPE, a dollar stablecoin (USDC) or a launch token. */
+interface Asset {
+  key: Key;
+  symbol: string;
+  name: string;
+  /** For the icon: launch tokens only (HYPE and USDC use built-in marks). */
+  iconToken?: Address;
+  decimals: number;
+  kind: "hype" | "stable" | "launch";
+  market?: Market;
+}
+
+// ───────────── shared data ─────────────
+
+let pxCache: { at: number; px: number } | null = null;
+/** HYPE's dollar price (Hyperliquid's mid, the same price the relayer uses), refreshed every minute. */
+function useHypeUsd(): number | null {
+  const [px, setPx] = useState<number | null>(pxCache?.px ?? null);
+  useEffect(() => {
+    let alive = true;
+    const go = async () => {
+      if (pxCache && Date.now() - pxCache.at < 60_000) return alive && setPx(pxCache.px);
+      try {
+        const r = await fetch("https://api.hyperliquid.xyz/info", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }) });
+        const n = Number((await r.json()).HYPE);
+        if (n > 0) {
+          pxCache = { at: Date.now(), px: n };
+          if (alive) setPx(n);
+        }
+      } catch {}
+    };
+    go();
+    const t = setInterval(go, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
+  return px;
+}
+
+function useAssets(): Asset[] {
+  const { markets } = useMarkets();
+  return [
+    { key: "HYPE", symbol: "HYPE", name: "Hyperliquid", decimals: 18, kind: "hype" },
+    ...ASSETS.map((x): Asset => ({ key: x.token, symbol: x.symbol, name: x.symbol === "USDC" ? "USD Coin" : x.symbol, decimals: x.decimals, kind: "stable" })),
+    ...(markets ?? []).map((m): Asset => ({ key: m.token, symbol: m.symbol, name: m.name, iconToken: m.token, decimals: 18, kind: "launch", market: m })),
+  ];
+}
+
+/** Private balances of every asset, refreshed every 8 seconds while unlocked. Each vault's balance shows as soon as it
+ * has synced, so HYPE appears first even while the launch-token vaults are still scanning. */
+function usePrivateBalances() {
+  const { priv } = useApp();
   const { markets } = useMarkets();
   const [bals, setBals] = useState<Record<string, bigint>>({});
-  const [tab, setTab] = useState<Tab>("shield");
-  const [asset, setAsset] = useState<"HYPE" | Address>("HYPE");
-  const [amt, setAmt] = useState("0.001");
-  const [to, setTo] = useState("");
-  const [busy, setBusy] = useState("");
-  const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
+  const [synced, setSynced] = useState(false);
   const syncing = useRef(false);
-  const feePct = useFeePct();
+  async function refresh() {
+    if (!priv || !markets || syncing.current) return;
+    syncing.current = true;
+    try {
+      // inside the try: right after unlocking, the account may still be loading its markets (hypeMarket throws)
+      const jobs: [string, Address][] = [["HYPE", priv.hypeMarket.pool], ...markets.map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
+      await Promise.all(jobs.map(([k, pool]) => priv.balance(pool).then((b) => setBals((cur) => (cur[k] === b ? cur : { ...cur, [k]: b }))).catch(() => {})));
+      setSynced(true);
+    } catch {
+    } finally {
+      syncing.current = false;
+    }
+  }
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 8000);
+    return () => clearInterval(t);
+  }, [priv, markets]);
+  return { bals, refresh, loaded: bals.HYPE !== undefined, synced };
+}
+
+/** Dollar value of an amount (null when there's no price for it). */
+function valueUsd(a: Asset, amount: bigint, px: number | null): number | null {
+  if (a.kind === "stable") return Number(formatUnits(amount, a.decimals));
+  if (px === null) return null;
+  if (a.kind === "hype") return Number(formatEther(amount)) * px;
+  return a.market ? Number(formatEther(amount)) * Number(formatEther(a.market.price)) * px : null;
+}
+const dollars = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const amountOf = (a: Asset, x: bigint) => (a.kind === "hype" ? hype(x) : a.kind === "stable" ? usd(x, a.decimals) : tokens(x));
+
+function Locked({ title }: { title: string }) {
+  const { wallet, connect, unlock, unlocking } = useApp();
+  return (
+    <>
+      <div className="page-head"><div><h1>{title}</h1><p>Your private balance, visible only to you.</p></div></div>
+      <div className="card wallet-hero">
+        <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
+        <div className="wallet-total mute">$0.00</div>
+        <p className="small mute" style={{ margin: "0 0 18px" }}>{wallet ? "Sign one message (free, no transaction) to unlock your private account on this device." : "Connect a wallet to see your private balance."}</p>
+        <button className="btn btn-ink" disabled={unlocking} onClick={() => (wallet ? unlock() : connect().then((w) => w && unlock()))}>
+          {unlocking ? "Sign in your wallet…" : wallet ? "Unlock private account" : "Connect wallet"}
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ───────────── the portfolio ─────────────
+
+export function Portfolio() {
+  const { wallet, priv, privAddress, toast } = useApp();
+  const assets = useAssets();
+  const { bals, refresh, loaded, synced } = usePrivateBalances();
+  const px = useHypeUsd();
   const [moveMsg, setMoveMsg] = useState<{ busy?: string; ok?: string; err?: string }>({});
+  const anyHeld = Object.values(bals).some((b) => b > 0n);
+  useEffect(() => {
+    if (anyHeld) markDone("shield");
+  }, [anyHeld]);
 
   /** Move private balances from every earlier Cloak deployment (one extra signature each, for that version's keys). */
   async function moveOld() {
@@ -50,76 +158,225 @@ export function Portfolio() {
     }
   }
 
-  async function refresh() {
-    if (!priv || !markets || syncing.current) return;
-    syncing.current = true;
-    try {
-      const entries = await Promise.all([
-        priv.balance(priv.hypeMarket.pool).then((b) => ["HYPE", b] as const),
-        ...markets.map((m) => priv.balance(m.pool).then((b) => [m.token, b] as const)),
-        ...ASSETS.map((x) => priv.balance(x.pool).then((b) => [x.token, b] as const)),
-      ]);
-      setBals(Object.fromEntries(entries));
-    } catch {
-    } finally {
-      syncing.current = false;
-    }
-  }
-  useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 8000);
-    return () => clearInterval(t);
-  }, [priv, markets]);
+  if (!wallet || !priv) return <Locked title="Portfolio" />;
 
-  if (!wallet || !priv) {
-    return (
-      <>
-        <div className="page-head"><div><h1>Portfolio</h1><p>Your private balances: HYPE{ASSETS.length ? ", USDC" : ""} and every launch token you hold privately.</p></div></div>
-        <div className="empty">
-          <Icon.lock size={26} />
-          <h3 style={{ marginTop: 12 }}>Your private account is locked</h3>
-          <p>Sign one message (free, no transaction) to derive your private keys on this device.</p>
-          <button className="btn btn-ink" style={{ marginTop: 18 }} disabled={unlocking} onClick={() => (wallet ? unlock() : connect().then((w) => w && unlock()))}>
-            {unlocking ? "Sign in your wallet…" : wallet ? "Unlock private account" : "Connect wallet"}
-          </button>
+  // only what's held, biggest dollar value first
+  const held = assets
+    .filter((a) => (bals[a.key] ?? 0n) > 0n)
+    .map((a) => ({ a, bal: bals[a.key]!, v: valueUsd(a, bals[a.key]!, px) }))
+    .sort((x, y) => (y.v ?? -1) - (x.v ?? -1));
+  const total = held.reduce((s, h) => s + (h.v ?? 0), 0);
+  const unpriced = held.some((h) => h.v === null);
+  const copy = () => {
+    navigator.clipboard?.writeText(privAddress).catch(() => {});
+    toast("Cloak address copied");
+  };
+
+  return (
+    <>
+      <div className="page-head"><div><h1>Portfolio</h1><p>Only you can see these balances. On-chain they're encrypted notes in shared vaults.</p></div></div>
+      <div className="card wallet-hero">
+        <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
+        <div className="wallet-total">{!loaded ? "…" : px === null && held.some((h) => h.a.kind !== "stable") ? "…" : dollars(total)}</div>
+        <p className="xs mute" style={{ margin: 0 }}>
+          {!synced ? "Syncing your private balance. The first time after unlocking can take a minute." : held.length ? `${held.length} asset${held.length > 1 ? "s" : ""}, valued at HYPE's market price${unpriced ? " (some without a price yet)" : ""}. Testnet balances are play money.` : "Nothing private yet. Shield HYPE, USDC or CLOAK to start."}
+        </p>
+        <div className="wallet-actions">
+          <Link to="/app/portfolio/shield" className="btn btn-ink"><Icon.plus size={16} />Shield</Link>
+          <Link to="/app/portfolio/send" className="btn btn-ghost"><Icon.send size={16} />Send</Link>
+          <Link to="/app/portfolio/withdraw" className="btn btn-ghost"><Icon.arrowDown size={16} />Withdraw</Link>
+          <button className="btn btn-ghost" onClick={copy} title={privAddress}><Icon.copy size={16} />Copy cloak address</button>
         </div>
-      </>
-    );
-  }
+      </div>
 
-  const stable = (a: string) => ASSETS.find((x) => x.token.toLowerCase() === a.toLowerCase());
-  const sym = asset === "HYPE" ? "HYPE" : stable(asset)?.symbol ?? markets?.find((m) => m.token === asset)?.symbol ?? "";
-  const decimalsOf = (a: string) => stable(a)?.decimals ?? 18;
-  const fmt = (x: bigint, a: string) => (a === "HYPE" ? hype(x) : stable(a) ? usd(x, stable(a)!.decimals) : tokens(x));
+      <div className="grid">
+        <div className="card">
+          <div className="card-head"><h3>Assets</h3><span className="xs mute">PRIVATE</span></div>
+          {held.length === 0 ? (
+            <div className="empty" style={{ padding: "36px 20px" }}>
+              <p style={{ margin: "0 0 14px" }}>{synced ? "Shield HYPE, USDC or CLOAK, then swap privately into any launch token." : "Syncing…"}</p>
+              {synced && <Link to="/app/portfolio/shield" className="btn btn-ink btn-sm">Shield</Link>}
+            </div>
+          ) : (
+            <div className="asset-list">
+              {held.map(({ a, bal, v }) => (
+                <div key={a.key} className="asset-row">
+                  <TokenIcon symbol={a.symbol} token={a.iconToken} size={34} />
+                  <div className="nm"><b>{a.symbol}</b><span className="xs mute">{a.name}</span></div>
+                  <div className="amt"><b className="mono">{amountOf(a, bal)}</b><span className="xs mute">{v === null ? a.symbol : dollars(v)}</span></div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="note">Shield HYPE, USDC or CLOAK, then <Link to="/app/trade" className="link">swap privately</Link> into other tokens.</p>
+        </div>
+        <div className="col">
+          {MIGRATOR && PREVIOUS.length > 0 && (
+            <div className="card">
+              <div className="card-head"><h3>Balance in the old vaults?</h3><Icon.lock size={16} /></div>
+              <p className="small mute">Cloak's vaults are now permanent, and your private account stays the same from here on. If you held a private balance in an earlier version, move it here once. It stays private, and nobody can redirect it.</p>
+              <button className="btn btn-ghost btn-sm" disabled={!!moveMsg.busy} onClick={moveOld}>{moveMsg.busy ?? "Move my old balance"}</button>
+              {moveMsg.ok && <div className="okmsg">{moveMsg.ok}</div>}
+              {moveMsg.err && <div className="err">{moveMsg.err}</div>}
+            </div>
+          )}
+          <Tips />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function Tips() {
+  return (
+    <div className="card flat">
+      <h3>Tips for staying private</h3>
+      <ul className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>
+        <li>Wait a bit between shielding and trading.</li>
+        <li>Don't trade the exact amount you just shielded.</li>
+        <li>Use batch mode to hide your size.</li>
+        <li>Withdraw to a fresh address.</li>
+      </ul>
+    </div>
+  );
+}
+
+// ───────────── token picker ─────────────
+
+type Option = { a: Asset; sub: string };
+
+/** A token dropdown with a search box (name, symbol or contract address), shown inline under the field. */
+function TokenPicker({ options, value, onChange }: { options: Option[]; value?: Key; onChange: (k: Key) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const cur = options.find((o) => o.a.key === value);
+  const s = q.trim().toLowerCase();
+  const shown = options.filter((o) => !s || o.a.symbol.toLowerCase().includes(s) || o.a.name.toLowerCase().includes(s) || (o.a.key !== "HYPE" && o.a.key.toLowerCase().includes(s)));
+  return (
+    <div className="picker" ref={box}>
+      <button type="button" className="picker-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {cur ? (
+          <>
+            <TokenIcon symbol={cur.a.symbol} token={cur.a.iconToken} size={28} />
+            <span className="nm"><b>{cur.a.symbol}</b><span className="xs mute">{cur.sub}</span></span>
+          </>
+        ) : (
+          <span className="mute">{options.length ? "Select a token" : "Nothing to pick yet"}</span>
+        )}
+        <span className="spacer" />
+        <Icon.chev size={16} />
+      </button>
+      {open && (
+        <div className="picker-panel">
+          <input className="input" autoFocus placeholder="Search name or contract address" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="picker-list">
+            {shown.length === 0 && <div className="xs mute" style={{ padding: 12 }}>No token matches.</div>}
+            {shown.map((o) => (
+              <button type="button" key={o.a.key} className={`asset-row ${o.a.key === value ? "on" : ""}`} onClick={() => { onChange(o.a.key); setOpen(false); setQ(""); }}>
+                <TokenIcon symbol={o.a.symbol} token={o.a.iconToken} size={30} />
+                <div className="nm"><b>{o.a.symbol}</b><span className="xs mute">{o.a.key === "HYPE" ? o.a.name : `${o.a.name} · ${o.a.key.slice(0, 6)}…${o.a.key.slice(-4)}`}</span></div>
+                <div className="amt"><span className="small mono">{o.sub}</span></div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ───────────── shield, send, withdraw ─────────────
+
+const TITLES: Record<Kind, [string, string]> = {
+  shield: ["Shield", "Move HYPE, USDC or CLOAK from your wallet into your private balance."],
+  send: ["Send privately", "Pay any cloak: address from your private balance. Nobody can see who paid whom, or how much."],
+  withdraw: ["Withdraw", "Move funds from your private balance to a normal wallet address."],
+};
+
+export function PortfolioAction({ kind }: { kind: Kind }) {
+  const { wallet, priv } = useApp();
+  const { query } = useRoute();
+  const assets = useAssets();
+  const { bals, refresh } = usePrivateBalances();
+  const feePct = useFeePct();
+  const [pub, setPub] = useState<Record<string, bigint>>({});
+  const [asset, setAsset] = useState<Key | undefined>((query.get("token") as Key | null) ?? (kind === "shield" ? "HYPE" : undefined));
+  const [amt, setAmt] = useState("");
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState("");
+  const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
+  // send and withdraw start on the first token held, once balances arrive
+  const firstHeld = assets.find((a) => (bals[a.key] ?? 0n) > 0n)?.key;
+  useEffect(() => {
+    if (kind !== "shield" && asset === undefined && firstHeld) setAsset(firstHeld);
+  }, [firstHeld]);
+
+  // shield: HYPE, USDC and CLOAK, with what the wallet holds of each
+  const shieldable = assets.filter((a) => a.kind !== "launch" || (CLOAK_TOKEN && a.key.toLowerCase() === CLOAK_TOKEN.toLowerCase()));
+  useEffect(() => {
+    if (kind !== "shield" || !wallet) return;
+    const me = wallet.account.address;
+    Promise.all(
+      shieldable.map(async (a) => [a.key, a.key === "HYPE" ? await publicClient.getBalance({ address: me }) : await publicClient.readContract({ address: a.key, abi: erc20Abi, functionName: "balanceOf", args: [me] })] as const),
+    ).then((e) => setPub(Object.fromEntries(e))).catch(() => {});
+  }, [kind, wallet, shieldable.length, res.tx]);
+
+  if (!wallet || !priv) return <Locked title={TITLES[kind][0]} />;
+
+  const list: Asset[] = kind === "shield" ? shieldable : assets.filter((a) => (bals[a.key] ?? 0n) > 0n);
+  const balOf = (k: Key) => (kind === "shield" ? pub[k] : bals[k]);
+  const options: Option[] = list.map((a) => ({ a, sub: balOf(a.key) === undefined ? "…" : `${amountOf(a, balOf(a.key)!)} ${kind === "shield" ? "in wallet" : "private"}` }));
+  const cur = list.find((a) => a.key === asset);
+
+  async function useMax() {
+    if (!cur || !priv) return;
+    const have = balOf(cur.key) ?? 0n;
+    if (kind === "shield") {
+      // leave a little HYPE for gas
+      const x = cur.key === "HYPE" ? (have > 2_000_000_000_000_000n ? have - 2_000_000_000_000_000n : 0n) : have;
+      return setAmt(formatUnits(x, cur.decimals));
+    }
+    const pool = cur.key === "HYPE" ? priv.hypeMarket.pool : priv.market(cur.key).pool;
+    const k = kind === "withdraw" && cur.key === "HYPE" ? "unshieldHype" : "transact";
+    setAmt(formatUnits(await priv.maxSpendable(pool, k).catch(() => have), cur.decimals));
+  }
 
   async function act() {
-    if (!priv || !wallet) return;
+    if (!priv || !wallet || !cur) return setRes({ err: "Pick a token first." });
     setRes({});
     let a: bigint;
     try {
-      a = parseUnits(amt.trim() || "0", decimalsOf(asset));
+      a = parseUnits(amt.trim() || "0", cur.decimals);
     } catch {
       return setRes({ err: "Enter an amount, like 0.01." });
     }
     if (a <= 0n) return setRes({ err: "Enter an amount above zero." });
-    const have = bals[asset];
-    if (tab !== "shield" && have !== undefined && a > have) return setRes({ err: `You have ${fmt(have, asset)} private ${sym}. Enter that or less.` });
+    const have = balOf(cur.key);
+    if (have !== undefined && a > have) return setRes({ err: `You have ${amountOf(cur, have)} ${cur.symbol}${kind === "shield" ? " in your wallet" : " private"}. Enter that or less.` });
     try {
-      if (tab === "shield") {
+      if (kind === "shield") {
         setBusy("Depositing into your private balance…");
-        const tx = asset === "HYPE" ? await priv.shieldHype(wallet, a) : await priv.shieldToken(wallet, asset, a, setBusy);
-        setRes({ ok: `${amt} ${sym} is now private.`, tx });
+        const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a) : await priv.shieldToken(wallet, cur.key, a, setBusy);
+        markDone("shield");
+        setRes({ ok: `${amt} ${cur.symbol} is now private.`, tx });
       } else {
         setBusy("Loading the prover…");
         await getProver();
-        if (tab === "send") {
+        if (kind === "send") {
           if (!to.startsWith("cloak:")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
-          const tx = await priv.send(asset === "HYPE" ? priv.hypeMarket.token : asset, to, a, setBusy);
+          const tx = await priv.send(cur.key === "HYPE" ? priv.hypeMarket.token : cur.key, to, a, setBusy);
           setRes({ ok: "Sent privately. The chain can't see who paid whom, or how much.", tx });
         } else {
           if (!isAddress(to)) throw new Hint("Enter the 0x address to withdraw to. A brand-new address keeps you unlinkable.");
-          const tx = asset === "HYPE" ? await priv.unshieldHype(to, a, setBusy) : await priv.unshieldToken(asset, to, a, setBusy);
-          setRes({ ok: `${amt} ${sym} withdrawn to ${to.slice(0, 6)}…${to.slice(-4)}.`, tx });
+          const tx = cur.key === "HYPE" ? await priv.unshieldHype(to, a, setBusy) : await priv.unshieldToken(cur.key, to, a, setBusy);
+          setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${to.slice(0, 6)}…${to.slice(-4)}.`, tx });
         }
       }
       refresh();
@@ -130,105 +387,54 @@ export function Portfolio() {
     }
   }
 
-  const assets: { key: "HYPE" | Address; label: string }[] = [
-    { key: "HYPE", label: "HYPE" },
-    ...ASSETS.map((x) => ({ key: x.token, label: x.symbol })),
-    ...(markets ?? []).map((m) => ({ key: m.token, label: m.symbol })),
-  ];
-  // shielding from a wallet: HYPE, or a stablecoin pool (launch tokens arrive privately by trading)
-  const shieldable = assets.filter((x) => x.key === "HYPE" || stable(x.key));
-  const max = tab === "shield" ? undefined : bals[asset];
-  /** Fill in the whole balance, minus the relayer's fee for this call. */
-  async function useMax() {
-    if (!priv || max === undefined) return;
-    const pool = asset === "HYPE" ? priv.hypeMarket.pool : priv.market(asset).pool;
-    const kind = tab === "withdraw" && asset === "HYPE" ? "unshieldHype" : "transact";
-    setAmt(formatUnits(await priv.maxSpendable(pool, kind).catch(() => max), decimalsOf(asset)));
-  }
-
+  const [title, lede] = TITLES[kind];
+  const have = cur ? balOf(cur.key) : undefined;
   return (
     <>
-      <div className="page-head">
-        <div><h1>Portfolio</h1><p>Only you can see these balances. On-chain they're encrypted notes in shared vaults.</p></div>
-        <span className="pill ok"><Icon.lock size={13} />Private account unlocked</span>
-      </div>
-      <div className="bal-grid" style={{ marginBottom: 20 }}>
-        {assets.map((x) => (
-          <div key={x.key} className="bal">
-            <div className="row-flex" style={{ gap: 10 }}>
-              <TokenIcon symbol={x.label} token={x.key === "HYPE" || stable(x.key) ? undefined : x.key} />
-              <span style={{ fontWeight: 500 }}>{x.label}</span>
-              <span className="spacer" />
-              <span className="xs signal">● only you</span>
-            </div>
-            <div className="v">{bals[x.key] === undefined ? "…" : fmt(bals[x.key], x.key)}</div>
-          </div>
-        ))}
-      </div>
+      <Link to="/app" className="link small" style={{ display: "inline-block", marginBottom: 14 }}>← Portfolio</Link>
+      <div className="page-head"><div><h1>{title}</h1><p>{lede}</p></div></div>
       <div className="grid">
         <div className="card">
-          <div className="tabs">
-            {(["shield", "send", "withdraw"] as Tab[]).map((t) => (
-              <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => { setTab(t); setRes({}); if (t === "shield" && !shieldable.some((x) => x.key === asset)) setAsset("HYPE"); }}>{t[0].toUpperCase() + t.slice(1)}</button>
-            ))}
-          </div>
-          {(tab !== "shield" || shieldable.length > 1) && (
-            <div className="buckets" style={{ marginBottom: 14 }}>
-              {(tab === "shield" ? shieldable : assets).map((x) => <button key={x.key} className={`bucket ${asset === x.key ? "on" : ""}`} onClick={() => setAsset(x.key)}>{x.label}</button>)}
+          {kind !== "shield" && list.length === 0 ? (
+            <div className="empty" style={{ padding: "36px 20px" }}>
+              <p style={{ margin: "0 0 14px" }}>You have no private balance to {kind} yet.</p>
+              <button className="btn btn-ink btn-sm" onClick={() => navigate("/app/portfolio/shield")}>Shield first</button>
             </div>
+          ) : (
+            <>
+              <div className="field">
+                <label><span>Token</span></label>
+                <TokenPicker options={options} value={cur?.key} onChange={(k) => { setAsset(k); setAmt(""); setRes({}); }} />
+              </div>
+              <div className="field">
+                <label>
+                  <span>Amount</span>
+                  {cur && have !== undefined && <span className="link" onClick={useMax}>max {amountOf(cur, have)}</span>}
+                </label>
+                <input className="input" value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder="0.0" />
+              </div>
+              {kind !== "shield" && (
+                <div className="field">
+                  <label><span>{kind === "send" ? "Recipient cloak: address" : "To address"}</span><span>{kind === "send" ? "amount stays hidden" : "use a fresh one"}</span></label>
+                  <input className="input" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder={kind === "send" ? "cloak:…" : "0x…"} />
+                </div>
+              )}
+              <button className="btn btn-ink btn-lg btn-block" disabled={!!busy || !cur} onClick={act}>
+                {busy || (kind === "shield" ? `Shield ${cur?.symbol ?? ""}` : kind === "send" ? "Send privately" : "Withdraw privately")}
+              </button>
+              {res.err && <div className="err">{res.err}</div>}
+              {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
+              <p className="note">
+                {kind === "shield"
+                  ? `Shielding is the one public step: your wallet deposits ${cur?.symbol ?? "it"}. It lands on a one-time key, so it can't be linked to anything you do next.${cur && cur.key !== "HYPE" ? ` ${cur.symbol} needs two confirmations the first time: an approval, then the deposit.` : ""} Then swap privately into other tokens on Trade.`
+                  : kind === "send"
+                    ? "A transfer inside the vault. The chain only sees that a private transaction happened."
+                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and the relayer takes a small fee for gas.`}
+              </p>
+            </>
           )}
-          <div className="field">
-            <label>
-              <span>{tab === "shield" ? `Deposit ${sym} from your wallet` : tab === "send" ? `Send private ${sym}` : `Withdraw private ${sym}`}</span>
-              {max !== undefined && <span className="link" onClick={useMax}>max {fmt(max, asset)}</span>}
-            </label>
-            <input className="input" value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" />
-          </div>
-          {tab !== "shield" && (
-            <div className="field">
-              <label><span>{tab === "send" ? "Recipient cloak: address" : "To address"}</span><span>{tab === "send" ? "amount stays hidden" : "use a fresh one"}</span></label>
-              <input className="input" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder={tab === "send" ? "cloak:…" : "0x…"} />
-            </div>
-          )}
-          <button className="btn btn-ink btn-lg btn-block" disabled={!!busy} onClick={act}>
-            {busy || (tab === "shield" ? `Shield ${sym}` : tab === "send" ? "Send privately" : "Withdraw privately")}
-          </button>
-          {res.err && <div className="err">{res.err}</div>}
-          {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
-          <p className="note">
-            {tab === "shield"
-              ? `Shielding is the one public step: your wallet deposits ${sym}. It lands on a one-time key, so it can't be linked to anything you do next.${stable(asset) ? " USDC needs two confirmations the first time: an approval, then the deposit." : ""}`
-              : tab === "send"
-                ? "A transfer inside the vault. The chain only sees that a private transaction happened."
-                : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and the relayer takes a small fee for gas.`}
-          </p>
         </div>
-        <div className="col">
-          <div className="card">
-            <div className="card-head"><h3>Your cloak address</h3><Icon.send /></div>
-            <p className="small mute">Share it to receive private payments. It doesn't reveal your wallet.</p>
-            <div className="summary mono xs" style={{ wordBreak: "break-all", marginTop: 12 }}>{privAddress}</div>
-            <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(privAddress).catch(() => {}); toast("Cloak address copied"); }}><Icon.copy size={14} />Copy</button>
-          </div>
-          {MIGRATOR && PREVIOUS.length > 0 && (
-            <div className="card">
-              <div className="card-head"><h3>Balance in the old vaults?</h3><Icon.lock size={16} /></div>
-              <p className="small mute">Cloak's vaults are now permanent, and your private account stays the same from here on. If you held a private balance in an earlier version, move it here once. It stays private, and nobody can redirect it.</p>
-              <button className="btn btn-ghost btn-sm" disabled={!!moveMsg.busy} onClick={moveOld}>{moveMsg.busy ?? "Move my old balance"}</button>
-              {moveMsg.ok && <div className="okmsg">{moveMsg.ok}</div>}
-              {moveMsg.err && <div className="err">{moveMsg.err}</div>}
-            </div>
-          )}
-          <div className="card flat">
-            <h3>Tips for staying private</h3>
-            <ul className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>
-              <li>Wait a bit between shielding and trading.</li>
-              <li>Don't trade the exact amount you just shielded.</li>
-              <li>Use batch mode to hide your size.</li>
-              <li>Withdraw to a fresh address.</li>
-            </ul>
-          </div>
-        </div>
+        <div className="col"><Tips /></div>
       </div>
     </>
   );

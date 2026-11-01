@@ -63,3 +63,6 @@ export const PREVIOUS: PreviousDeployment[] = D?.previous ?? [];
 
 /** Vaults for existing tokens (USDC): private sends and withdrawals. The router also lists them; these load faster. */
 export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[] = D?.assets ?? [];
+
+/** $CLOAK, Cloak's own launch token: shieldable from a wallet next to HYPE and USDC. */
+export const CLOAK_TOKEN: Address | undefined = CHAIN_ID === 99801 ? "0x7e65c418e4E3CDdB1C3C8a9bD2dcE336AC7fd17D" : undefined;

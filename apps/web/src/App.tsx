@@ -7,7 +7,7 @@ import { Landing } from "./pages/Landing";
 import { Pitch } from "./pages/Pitch";
 import { Launch } from "./pages/Launch";
 import { Launches } from "./pages/Launches";
-import { Portfolio } from "./pages/Portfolio";
+import { Portfolio, PortfolioAction } from "./pages/Portfolio";
 import { Sdk } from "./pages/Sdk";
 import { Trade } from "./pages/Trade";
 import { Volume } from "./pages/Volume";
@@ -29,12 +29,14 @@ function Routes() {
   if (path === "/pitch") return <Pitch />;
   if (path.startsWith("/app")) {
     const m = path.match(/^\/app\/launch\/(0x[0-9a-fA-F]{40})$/);
+    const act = path.match(/^\/app\/portfolio\/(shield|send|withdraw)$/);
     const page = m ? <Launch key={m[1]} auction={m[1] as Address} />
+      : act ? <PortfolioAction key={act[1]} kind={act[1] as "shield" | "send" | "withdraw"} />
       : path === "/app/trade" ? <Trade />
-      : path === "/app/portfolio" ? <Portfolio />
+      : path === "/app/launches" ? <Launches />
       : path === "/app/create" ? <Create />
       : path === "/app/volume" ? <Volume />
-      : <Launches />;
+      : <Portfolio />;
     return <AppShell>{page}</AppShell>;
   }
   return (

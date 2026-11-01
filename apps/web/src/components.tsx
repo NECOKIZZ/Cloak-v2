@@ -6,6 +6,7 @@ import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
 import { useApp } from "./state";
 import { friendly } from "./errors";
+import { markDone } from "./guide";
 import { compressImage, encodeMeta, loadAllMeta } from "./tokenMeta";
 
 const WAD = 10n ** 18n;
@@ -135,6 +136,7 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
       const secret = await c.bid(s.address, { maxPrice: parseEther(maxPrice), quantity: parseEther(qty), deposit });
       saveSecret(secret);
       setOk(secret.txHash);
+      markDone("bid");
       onDone();
     } catch (e) {
       setErr(errMsg(e));

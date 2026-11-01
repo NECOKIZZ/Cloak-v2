@@ -1,3 +1,4 @@
+import { markDone } from "../guide";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
 import { splitStandard } from "@cloakely/sdk";
@@ -118,9 +119,11 @@ export function Trade() {
       if (mode === "batch") {
         const r = await p.batch(market.token as Address, side, amountIn, { onStatus: setBusy });
         const rounds = [...new Set(r.orders.map((o) => o.round.toString()))];
+        markDone("swap");
         setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles.${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
       } else {
         const r = side === "buy" ? await p.buy(market.token as Address, amountIn, { onStatus: setBusy }) : await p.sell(market.token as Address, amountIn, { onStatus: setBusy });
+        markDone("swap");
         setRes({ ok: `Swapped privately for ~${fmtOut(r.expectedOut)} ${toSym}.`, tx: r.txHash });
       }
       refreshBal();
@@ -136,7 +139,7 @@ export function Trade() {
   else if (!priv) cta = { label: unlocking ? "Sign in your wallet…" : "Unlock private account", act: unlock, disabled: unlocking };
   else if (busy) cta = { label: busy, disabled: true };
   else if (amountIn === 0n) cta = { label: "Enter an amount", disabled: true };
-  else if (short) cta = side === "buy" ? { label: "Shield HYPE first", href: "/app/portfolio" } : { label: `Not enough private ${fromSym}`, disabled: true };
+  else if (short) cta = side === "buy" ? { label: "Shield HYPE first", href: "/app/portfolio/shield" } : { label: `Not enough private ${fromSym}`, disabled: true };
   else if (mode === "batch" && split.sizes.length === 0) cta = { label: "Amount too small", disabled: true };
   else cta = { label: mode === "batch" ? `Place ${split.sizes.length} sealed order${split.sizes.length > 1 ? "s" : ""}` : "Swap privately", act: swap };
 
@@ -149,7 +152,7 @@ export function Trade() {
         </div>
       </div>
       {err && <div className="err">{err}</div>}
-      {markets?.length === 0 && <div className="empty"><h3>No private markets yet</h3>Private trading opens for a launch once it settles. <Link to="/app" className="link">See launches</Link></div>}
+      {markets?.length === 0 && <div className="empty"><h3>No private markets yet</h3>Private trading opens for a launch once it settles. <Link to="/app/launches" className="link">See launches</Link></div>}
       {market && (
         <div className="swap-wrap">
           <div>

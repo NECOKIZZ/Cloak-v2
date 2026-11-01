@@ -121,7 +121,7 @@ export function Announce() {
 }
 
 const LINKS = [
-  { to: "/app", label: "Launches", match: (p: string) => p === "/app" || p.startsWith("/app/launch") },
+  { to: "/app/launches", label: "Launches", match: (p: string) => p.startsWith("/app/launch") },
   { to: "/app/trade", label: "Private trading", match: (p: string) => p.startsWith("/app/trade") },
   { to: "/app/volume", label: "Volume", match: (p: string) => p.startsWith("/app/volume") },
   { to: "/sdk", label: "Developers", match: (p: string) => p.startsWith("/sdk") },
@@ -247,7 +247,7 @@ export function Footer() {
           <div>
             <h4>Product</h4>
             <ul>
-              <li><Link to="/app">Launches</Link></li>
+              <li><Link to="/app/launches">Launches</Link></li>
               <li><Link to="/app/trade">Private trade</Link></li>
               <li><Link to="/app/portfolio">Portfolio</Link></li>
               <li><Link to="/app/create">Create a launch</Link></li>

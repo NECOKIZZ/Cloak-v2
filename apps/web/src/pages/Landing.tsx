@@ -75,7 +75,7 @@ function Demos() {
               <div className="k"><span>{chain ? "On-chain" : "You pay"}</span>{!chain && <span className="signal">uniform price</span>}</div>
               <div className="v" style={{ fontSize: chain ? 15 : 28 }}>{chain ? <span className="mono">hash 0x9f3c…a1 + timelock ciphertext</span> : "the clearing price"}</div>
             </div>
-            <Link to="/app" className="btn btn-ink btn-block">Seal a bid</Link>
+            <Link to="/app/launches" className="btn btn-ink btn-block">Seal a bid</Link>
           </div>
           <div className="demo-cap"><div className="eyebrow">Sealed launch →</div><p>Nobody sees your bid until bidding closes. Everyone who wins pays the same price.</p></div>
         </div>
@@ -204,7 +204,7 @@ export function Landing() {
               <div className="eyebrow">The launch</div>
               <h3>Sealed-bid, one price</h3>
               <p>Bids are hidden, even from Elysium's sequencer. They open themselves when bidding ends, and every winner pays the same clearing price.</p>
-              <Link to="/app" className="arrow">See live launches</Link>
+              <Link to="/app/launches" className="arrow">See live launches</Link>
             </div>
             <div className="pillar">
               <div className="eyebrow">The vault</div>
