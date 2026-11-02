@@ -16,6 +16,10 @@
       "destination": "/api/preview?a=:a"
     },
     {
+      "source": "/tokenlist.json",
+      "destination": "/api/tokenlist"
+    },
+    {
       "source": "/mcp",
       "destination": "/api/mcp"
     },

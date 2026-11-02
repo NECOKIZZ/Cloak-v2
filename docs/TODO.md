@@ -23,7 +23,8 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 - [x] ~~**Uniswap launches**~~ (Nov 2): every new launch opens a Uniswap V2 pool at the clearing price (`CloakSeeder`, `CloakV2Market`), live on testnet, SDK and MCP 0.5.0, 17/17 live checks. All the rules written down in [RULES.md](RULES.md).
 - [ ] **Swap router through outside pools** (USDC, stock tokens, curated tokens), Uniswap V2 and V3 first ([PRIVACY-LAYER.md](PRIVACY-LAYER.md)).
 - [ ] **Uniswap V3 and V4 launch pools** as options per launch, V4 with a Cloak hook ([ROADMAP.md](ROADMAP.md), Launch pools).
-- [ ] **Availability:** a Cloak `tokenlist.json`, explorer source verification, price charts from the keeper's trade record, and asking DexScreener, GeckoTerminal, DefiLlama, 0x and KyberSwap to add Elysium at mainnet.
+- [x] ~~Cloak token list and launch feed~~ (Nov 2): `/tokenlist.json` and `/api/tokenlist?feed=1`, updated as launches settle.
+- [ ] **Availability:** explorer source verification, price charts from the keeper's trade record, and the partner requests in [PARTNERS.md](PARTNERS.md) (DexScreener, GeckoTerminal, DefiLlama PR, 0x, KyberSwap, the Elysium explorer).
 
 - [x] ~~**Intermittent batch-order gas failure**~~ (Oct 30): with a local account, viem estimated gas twice, the second time capped at the first result. When a batch round turned over in between, the order opened a fresh round (about 60k more gas) and the capped estimate ran out of gas. The SDK now estimates once, from the address, and pads that. The keeper had the same bug.
 

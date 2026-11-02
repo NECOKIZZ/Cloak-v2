@@ -202,7 +202,7 @@ Launch pools:
 - **Uniswap V4 with a Cloak hook:** the hook can carry creator fees, anti-sniping right after settlement and a built-in price feed for batch rounds. The private router learns V4 pools first.
 - **Choosing per launch:** the factory takes a pool type and settlement opens that pool. V2 stays the default.
 - **Private swaps through outside pools** (USDC, stock tokens, curated outside tokens): a swap router over approved Uniswap V2 and V3 factories, see [PRIVACY-LAYER.md](PRIVACY-LAYER.md).
-- **Availability:** a Cloak token list (`tokenlist.json`), explorer source verification, price charts on launch pages from the keeper's record of trades, and asking DexScreener, GeckoTerminal, DefiLlama, 0x and KyberSwap to add Elysium once mainnet is live.
+- **Availability** ([PARTNERS.md](PARTNERS.md)): the Cloak token list (`tokenlist.json`, live) and launch feed (live), explorer source verification, price charts on launch pages from the keeper's record of trades, and asking DexScreener, GeckoTerminal, DefiLlama, 0x and KyberSwap to add Elysium once mainnet is live.
 
 New:
 - **Private limit orders:** a resting order that fills inside batch rounds when the price crosses.
