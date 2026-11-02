@@ -77,8 +77,16 @@ const relayUrl = KEEPER;
   const vaultOf = (token) => pub.readContract({ address: v4.vaults, abi: cloakVaultsAbi, functionName: "poolOf", args: [token] });
   const s = await until("settlement and the vault", async () => {
     const st = await creator.getAuction(l.auction);
-    return st.settled && BigInt(await vaultOf(st.token)) !== 0n ? st : undefined;
+    if (!st.settled) return undefined;
+    // since the shared vault went live, the keeper admits new launch tokens there instead of opening a vault per token
+    if (h.shared && (await pub.readContract({ address: h.shared, abi: parseAbi(["function admitted(address) view returns (bool)"]), functionName: "admitted", args: [st.token] }))) return { ...st, shared: true };
+    return BigInt(await vaultOf(st.token)) !== 0n ? st : undefined;
   });
+  if (s.shared) {
+    ok(!s.failed && s.uniPair && BigInt(s.uniPair) !== 0n, `settled into a Uniswap V2 pool ${s.uniPair}, token admitted to the shared vault`);
+    console.log(`\n${checks} checks passed. The token went to the shared vault, whose private claims and trades e2e/shared.mjs covers.`);
+    process.exit(0);
+  }
   ok(!s.failed && s.uniPair && BigInt(s.uniPair) !== 0n, `settled into a Uniswap V2 pool ${s.uniPair}`);
   const [r0, r1] = await pub.readContract({ address: s.uniPair, abi: PAIR, functionName: "getReserves" });
   const tokenIs0 = same(await pub.readContract({ address: s.uniPair, abi: PAIR, functionName: "token0" }), s.token);
