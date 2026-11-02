@@ -1,0 +1,10 @@
+import { writeFileSync } from "node:fs";
+import { createWalletClient, http } from "viem";
+import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { CloakPrivate, formatCloakAddress, elysiumTestnet } from "@cloakely/sdk";
+import { DIR } from "./harness.mjs";
+const pk = generatePrivateKey();
+const w = createWalletClient({ chain: elysiumTestnet, transport: http(), account: privateKeyToAccount(pk) });
+const keys = await CloakPrivate.keysFromWallet(w, { chainId: elysiumTestnet.id });
+const a = formatCloakAddress((await keys.main()).pubKey, keys.encPub);
+writeFileSync(DIR + "friend.key", pk); writeFileSync(DIR + "friend.cloak", a); console.log(a);
