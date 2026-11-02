@@ -20,7 +20,7 @@
 //   BATCHER_BLOCK/MIGRATOR give them directly; with CONFIG those are ignored.
 import { createServer } from "node:http";
 import { startSnapshots } from "./snapshot.mjs";
-import { createPublicClient, createWalletClient, http, zeroAddress } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
 
@@ -77,8 +77,34 @@ const serial = (fn) => {
   queue = run.catch(() => {});
   return run;
 };
+/**
+ * A contract call, signed here first so its hash is known before it goes out. If the node drops the reply, the same
+ * signed bytes are looked up and, if missing, sent again: identical bytes carry the same nonce, so they can land once
+ * at most. Without this, a node that timed out mid-send left the caller with no hash for a transaction that landed.
+ */
+async function broadcast(args) {
+  const gas = args.gas ?? (await publicClient.estimateContractGas({ ...args, account: account.address }));
+  const prepared = await walletClient.prepareTransactionRequest({ account, chain, to: args.address, data: encodeFunctionData(args), value: args.value, gas });
+  const raw = await walletClient.signTransaction(prepared);
+  const hash = keccak256(raw);
+  const seen = () => publicClient.getTransaction({ hash }).then(() => true, () => false);
+  for (let i = 0; ; i++) {
+    try {
+      await publicClient.sendRawTransaction({ serializedTransaction: raw });
+      return hash;
+    } catch (e) {
+      const m = `${e?.shortMessage ?? ""} ${e?.details ?? ""} ${e?.message ?? ""}`;
+      if (/already known|known transaction|already imported/i.test(m)) return hash;
+      if (!isNetworkError(e) && !/nonce too low/i.test(m)) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+      if (await seen()) return hash;
+      if (/nonce too low/i.test(m) || i >= 3) throw e;
+      console.error(`[tx] ${hash} no answer from the node, sending the same bytes again`);
+    }
+  }
+}
 for (const m of ["writeContract", "sendTransaction"]) {
-  const send = walletClient[m].bind(walletClient);
+  const send = m === "writeContract" ? broadcast : walletClient[m].bind(walletClient);
   walletClient[m] = (args) =>
     serial(async () => {
       const hash = await send(args);
