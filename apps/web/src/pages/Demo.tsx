@@ -27,7 +27,7 @@ export function Demo() {
               <Link to="/app" className="btn btn-primary">Open the app</Link>
             </div>
           ) : (
-            <video src={VIDEO} controls playsInline preload="metadata" poster="/og.jpg" onError={() => setMissing(true)} />
+            <video src={VIDEO} controls playsInline preload="metadata" poster="/media/cloak-demo.jpg" onError={() => setMissing(true)} />
           )}
         </div>
         <div className="demo-links">
