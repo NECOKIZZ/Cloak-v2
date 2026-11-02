@@ -22,7 +22,7 @@ export function clients(chain, rpc, pk) {
  * A launch factory (and a config, unless one is given). Each settled launch opens its market through a CloakSeeder: a
  * Uniswap V2 pool when `uniswap` = { factory, weth, feeNum? } is given (or `seeder` names one), else a CloakPair.
  */
-export async function deployFactory(publicClient, walletClient, { verifier, treasury, rules, config, uniswap, seeder, vestingDeployer } = {}) {
+export async function deployFactory(publicClient, walletClient, { verifier, treasury, rules, config, uniswap, seeder, vestingDeployer, feeLocker } = {}) {
   const deploy = async (abi, bytecode, args) => {
     const hash = await walletClient.deployContract({ abi, bytecode, args });
     const r = await publicClient.waitForTransactionReceipt({ hash });
@@ -36,8 +36,10 @@ export async function deployFactory(publicClient, walletClient, { verifier, trea
   const vd = vestingDeployer ?? (await deploy(cloakVestingDeployerAbi, bytecode.CloakVestingDeployer, [])).address;
   const zero = "0x0000000000000000000000000000000000000000";
   seeder ??= (await deploy(cloakSeederAbi, bytecode.CloakSeeder, [uniswap?.factory ?? zero, uniswap?.weth ?? zero, BigInt(uniswap?.feeNum ?? 997)])).address;
-  const f = await deploy(cloakFactoryAbi, bytecode.CloakFactory, [config, vd, seeder]);
-  return { factory: f.address, config, verifier, seeder, txHash: f.txHash, block: f.block };
+  // the creator-fee locker (no owner, no settings): launches can lock their Uniswap LP in it forever
+  feeLocker ??= (await deploy(cloakFeeLockerAbi, bytecode.CloakFeeLocker, [])).address;
+  const f = await deploy(cloakFactoryAbi, bytecode.CloakFactory, [config, vd, seeder, feeLocker]);
+  return { factory: f.address, config, verifier, seeder, feeLocker, txHash: f.txHash, block: f.block };
 }
 
 export async function deployRaw(publicClient, walletClient, data) {
@@ -79,7 +81,7 @@ export async function waitDrand(round) {
 
 export { Cloak, parseEther };
 
-import { cloakConfigAbi, cloakMigratorAbi, cloakSeederAbi, cloakVaultsAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi, whypeAbi } from "@cloakely/sdk";
+import { cloakConfigAbi, cloakFeeLockerAbi, cloakMigratorAbi, cloakSeederAbi, cloakVaultsAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi, whypeAbi } from "@cloakely/sdk";
 import { stringToHex } from "viem";
 
 const send = async (publicClient, p) => {
