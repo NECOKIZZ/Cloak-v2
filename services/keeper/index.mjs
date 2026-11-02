@@ -115,7 +115,7 @@ for (const m of ["writeContract", "sendTransaction"]) {
 }
 const cloak = new Cloak(publicClient, walletClient, FACTORY, EARLIER);
 
-const status = { keeper: account.address, chain: chain.id, config: process.env.CONFIG ?? null, version: reg?.version ?? null, factory: FACTORY, ignoredEnv: ignored, launches: {}, lastTick: 0 };
+const status = { keeper: account.address, commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null, chain: chain.id, config: process.env.CONFIG ?? null, version: reg?.version ?? null, factory: FACTORY, ignoredEnv: ignored, launches: {}, lastTick: 0 };
 const done = new Set(); // auctions fully claimed
 const waitUntil = new Map(); // settled auctions with their vault open: nothing to do until public claims start
 const log = (a, m) => console.log(`[${new Date().toISOString()}] ${a.slice(0, 10)} ${m}`);
