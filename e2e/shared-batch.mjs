@@ -126,7 +126,12 @@ try {
   const rc = await pub.waitForTransactionReceipt({ hash: sell.orders[0].txHash });
   ok(parseEventLogs({ abi: sharedBatcherAbi, logs: rc.logs, eventName: "OrderPlaced" }).length === 1, "each order is one OrderPlaced: token, round, side and a standard size, nothing about the trader");
 
-  // ── 4. nothing left behind ──
+  // ── 4. nothing left behind, once every order's round has settled and paid out ──
+  const ids = [...buy.orders, ...sell.orders].map((o) => o.id);
+  await until("every order to be paid out", async () => {
+    const os = await Promise.all(ids.map((id) => pub.readContract({ address: v4.sharedBatcher, abi: sharedBatcherAbi, functionName: "orders", args: [id] })));
+    return os.every((o) => o[3]) || undefined;
+  }, 300);
   const [held, dep, owed, stuck] = await Promise.all([
     pub.readContract({ address: s.token, abi: ERC20, functionName: "balanceOf", args: [v4.shared] }),
     pub.readContract({ address: v4.shared, abi: sharedVaultAbi, functionName: "deposited", args: [s.token] }),
