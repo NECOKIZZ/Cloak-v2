@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { createPublicClient, createWalletClient, formatEther, http, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { CloakPrivate, buildClaimLink, createProver, elysiumTestnet, linkAddress, linkKeys, newLinkSecret, parseClaimLink, relayerSubmitter } from "@cloakely/sdk";
+import { CloakPrivate, buildClaimLink, linkCheck, openLinkKeys, createProver, elysiumTestnet, linkAddress, linkKeys, newLinkSecret, parseClaimLink, relayerSubmitter } from "@cloakely/sdk";
 
 const root = new URL("../", import.meta.url).pathname;
 const v4 = JSON.parse(readFileSync(`${root}deployments/elysium-testnet-v4.json`, "utf8"));
@@ -46,6 +46,13 @@ const got = await pub.getBalance({ address: fresh });
 ok(got > 0n && got === (await claimer.afterFee(hype.pool, r.amount)), `claimed to that wallet: ${formatEther(got)} HYPE arrived (relayer and withdrawal fees from the link)`);
 ok((await claimer.balance(hype.pool)) === 0n, "the link is empty afterwards");
 await assertRejects(() => claimer.sweep(hype.token, fresh), "claiming the same link again is refused");
+{
+  const h = await claimer.history(hype.pool);
+  ok(h.length === 1 && h[0].spent, "the claimed link's history shows one note, spent: it reads as claimed, not as never funded");
+  const never = client(await linkKeys(newLinkSecret()), BigInt(v4.vaultsBlock));
+  await never.loadMarkets();
+  ok((await never.history(hype.pool)).length === 0, "a link nobody funded has no history at all");
+}
 
 // 2. a locked link: the wrong passcode opens an empty account; the sender takes it back with the right one
 const s2 = newLinkSecret();
@@ -54,7 +61,10 @@ await pub.waitForTransactionReceipt({ hash: tx2 });
 const wrong = client(await linkKeys(s2, "hyperliquid"), BigInt(v4.vaultsBlock));
 await wrong.loadMarkets();
 ok((await wrong.balance(hype.pool)) === 0n, "a wrong passcode finds nothing");
-const right = client(await linkKeys(s2, "  elysium "), BigInt(v4.vaultsBlock));
+// a link with a check refuses the wrong code on the device, and its history says when it was claimed
+const l2 = parseClaimLink(buildClaimLink({ secret: s2, block: 1n, locked: true, hint: "Where?", check: await linkCheck(await linkKeys(s2, "Elysium")) }));
+await assertRejects(() => openLinkKeys(l2, "hyperliquid"), "a wrong passcode is refused as wrong by the link's check, before any network call");
+const right = client(await openLinkKeys(l2, "  elysium "), BigInt(v4.vaultsBlock));
 await right.loadMarkets();
 ok((await right.balance(hype.pool)) === parseEther("0.005"), "the right passcode (any case, extra spaces) finds the 0.005 HYPE");
 const before = await sender.balance(hype.pool);

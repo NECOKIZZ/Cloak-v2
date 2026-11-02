@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { parseClaimLink, type CloakPrivate, type ClaimLink, type LinkToken } from "@cloakely/sdk";
+import { parseClaimLink, WrongPasscodeError, type CloakPrivate, type ClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { friendly, Hint, linkProblem } from "../errors";
-import { linkBalances, openLinkAccount, tokenOf, TOKEN_DECIMALS } from "../links";
+import { linkClaims, linkState, openLinkAccount, tokenOf, TOKEN_DECIMALS, type LinkClaim } from "../links";
 import { txLink } from "../config";
 import { Link } from "../router";
-import { useApp } from "../state";
+import { getProver, useApp } from "../state";
 import { Icon } from "../ui";
 import { publicClient } from "../wallet";
 
@@ -14,6 +14,22 @@ const fmt = (t: LinkToken, v: bigint) => {
   const [i, f = ""] = s.split(".");
   return f ? `${i}.${f.slice(0, t === "USDC" ? 2 : 6).replace(/0+$/, "")}`.replace(/\.$/, "") : i;
 };
+
+/** "3 minutes ago", "2 hours ago", "on 2 Nov". */
+export function ago(ms: number): string {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} minute${s < 120 ? "" : "s"} ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} hour${s < 7200 ? "" : "s"} ago`;
+  return `on ${new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+}
+
+/** Why a link holds nothing, when it holds nothing. */
+type Empty =
+  | { kind: "claimed"; last?: LinkClaim }
+  | { kind: "unfunded" }
+  /** an older locked link (no passcode check): an empty account is all a wrong code looks like */
+  | { kind: "unknown" };
 
 /** Opening a claim link: the money it holds, then one click into your private balance or out to any wallet. */
 export function Claim() {
@@ -25,6 +41,9 @@ export function Claim() {
   const [bals, setBals] = useState<Record<LinkToken, bigint> | null>(null);
   /** A link split into shares: how many are still unclaimed. */
   const [left, setLeft] = useState<number | null>(null);
+  const [empty, setEmpty] = useState<Empty | null>(null);
+  /** the vault couldn't be read: offer a retry instead of guessing */
+  const [netErr, setNetErr] = useState("");
   const [fees, setFees] = useState<Record<string, bigint>>({});
   const [dest, setDest] = useState<"private" | "wallet">("private");
   const [to, setTo] = useState("");
@@ -33,9 +52,12 @@ export function Claim() {
   const going = useRef(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState<{ t: LinkToken; amount: bigint; tx: Hex }[] | null>(null);
+  const pass = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     document.title = "Cloak · You've been sent money";
+    // the proof that claims is made on this device: start the 14 MB download now, while the page reads the link
+    getProver().catch(() => {});
     try {
       const l = parseClaimLink(location.hash);
       setLink(l);
@@ -45,29 +67,65 @@ export function Claim() {
     }
   }, []);
   useEffect(() => { if (wallet && !to) setTo(wallet.account.address); }, [wallet]);
+  // a link whose payment hasn't landed yet: look again every few seconds for two minutes
+  useEffect(() => {
+    if (empty?.kind !== "unfunded" || !link) return;
+    let n = 0;
+    const id = setInterval(() => (++n > 15 ? clearInterval(id) : read(link, acct!, true)), 8000);
+    return () => clearInterval(id);
+  }, [empty, acct]);
 
   async function open(l = link, passcode?: string) {
     if (!l) return;
     setErr("");
-    setBusy(l.locked ? "Checking the passcode…" : "Opening the link…");
+    setNetErr("");
+    setBusy(l.locked ? (l.hint ? "Checking your answer…" : "Checking the passcode…") : "Opening the link…");
+    let a: CloakPrivate;
     try {
-      const a = await openLinkAccount(l.secret, passcode);
-      setBusy("Finding the money in the vault…");
-      const b = await linkBalances(a);
-      if (l.locked && b.HYPE === 0n && b.USDC === 0n) throw new Hint("Nothing opens with that passcode. Check it, or the link was already claimed.");
-      const pool = (t: LinkToken) => a.market(tokenOf(a, t)).pool;
-      const [tr, un, us] = await Promise.all([a.relayFee("transact", pool("HYPE")), a.relayFee("unshieldHype", pool("HYPE")), a.relayFee("transact", pool("USDC")).catch(() => ({ fee: 0n }))]);
-      setFees({ HYPEprivate: tr.fee, HYPEwallet: un.fee, USDCprivate: us.fee, USDCwallet: us.fee });
-      if (l.shares && l.token) {
-        const notes = await a.sync(a.market(tokenOf(a, l.token)).pool);
-        setLeft(notes.length);
-      }
-      setAcct(a);
-      setBals(b);
+      a = await openLinkAccount(l, passcode);
+      pass.current = passcode;
     } catch (e) {
-      setErr(friendly(e));
-    } finally {
       setBusy("");
+      if (e instanceof WrongPasscodeError) return setErr(e.message);
+      if (l.locked && /passcode|answer/i.test(String((e as Error)?.message))) return setErr((e as Error).message);
+      return setNetErr(`${friendly(e)}`);
+    }
+    setAcct(a);
+    await read(l, a);
+  }
+
+  /** Reads what the link holds and why it might hold nothing. */
+  async function read(l: ClaimLink, a: CloakPrivate, quiet = false) {
+    if (!quiet) setBusy("Finding the money in the vault…");
+    try {
+      const st = await linkState(a, l.token);
+      const b = { HYPE: st.HYPE.waiting, USDC: st.USDC.waiting };
+      if (l.shares && l.token) setLeft(st[l.token].open);
+      const any = b.HYPE > 0n || b.USDC > 0n;
+      if (!any) {
+        const spent = st.HYPE.spent + st.USDC.spent;
+        if (spent > 0) {
+          setEmpty({ kind: "claimed" });
+          linkClaims(a, st).then((c) => setEmpty({ kind: "claimed", last: c[0] })).catch(() => {});
+        } else setEmpty(l.locked && !l.check ? { kind: "unknown" } : { kind: "unfunded" });
+      } else {
+        setEmpty(null);
+        const pool = (t: LinkToken) => a.market(tokenOf(a, t)).pool;
+        const fee = (k: Parameters<typeof a.relayFee>[0], t: LinkToken) => a.relayFee(k, pool(t)).then((q) => q.fee).catch(() => undefined);
+        Promise.all([fee("transact", "HYPE"), fee("unshieldHype", "HYPE"), fee("transact", "USDC")]).then(([tr, un, us]) => {
+          const f: Record<string, bigint> = {};
+          if (tr !== undefined) f.HYPEprivate = tr;
+          if (un !== undefined) f.HYPEwallet = un;
+          if (us !== undefined) f.USDCprivate = f.USDCwallet = us;
+          setFees(f);
+        });
+      }
+      setBals(b);
+      setNetErr("");
+    } catch (e) {
+      if (!quiet) setNetErr(friendly(e));
+    } finally {
+      if (!quiet) setBusy("");
     }
   }
 
@@ -136,7 +194,6 @@ export function Claim() {
   } catch {}
   const show = (t: LinkToken) => (meant !== null && t === link.token ? meant : bals![t]);
   const covered = (t: LinkToken) => meant !== null && t === link.token && bals![t] - meant >= (fees[`${t}${dest}`] ?? 0n);
-  const empty = bals && held.length === 0 && !done;
 
   return (
     <div className="claim-wrap">
@@ -160,21 +217,37 @@ export function Claim() {
               <Link to="/app/links" className="btn btn-ghost">Send one back</Link>
             </div>
           </div>
-        ) : link.locked && !acct ? (
+        ) : netErr ? (
+          <div style={{ marginTop: 18 }}>
+            <p className="mute">We couldn't read the vault just now, so we can't tell what this link holds yet. Nothing is lost: the money stays in the link until someone claims it.</p>
+            <p className="xs mute">{netErr}</p>
+            <button className="btn btn-ink btn-block" style={{ marginTop: 10 }} disabled={!!busy} onClick={() => (acct ? read(link, acct) : open(link, pass.current ?? (code || undefined)))}>{busy || "Try again"}</button>
+          </div>
+        ) : link.locked && (!acct || empty?.kind === "unknown") ? (
           <div style={{ marginTop: 18, textAlign: "left" }}>
             {link.hint && <div className="claim-riddle"><span className="eyebrow">Riddle</span><b>{link.hint}</b></div>}
             <div className="field">
-              <label><span>{link.hint ? "Your answer" : "Passcode"}</span><span>case doesn't matter</span></label>
-              <input className="input" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && open(link, code)} placeholder={link.hint ? "Type the answer" : "The code the sender gave you"} autoFocus />
+              <label><span>{link.hint ? "Your answer" : "Passcode"}</span><span>case and spaces don't matter</span></label>
+              <input className="input" value={code} onChange={(e) => { setCode(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && code.trim() && !busy && open(link, code)} placeholder={link.hint ? "Type the answer" : "The code the sender gave you"} autoFocus autoCapitalize="off" autoCorrect="off" spellCheck={false} />
             </div>
             <button className="btn btn-ink btn-lg btn-block" disabled={!!busy || !code.trim()} onClick={() => open(link, code)}>{busy || "Unlock the link"}</button>
+            {empty?.kind === "unknown" && !busy && (
+              <div className="err">That {link.hint ? "answer" : "passcode"} opens an empty link. Either it's not quite what the sender typed (check the spelling with them), the link was already claimed, or the sender's payment hasn't landed yet.</div>
+            )}
           </div>
-        ) : empty ? (
+        ) : empty?.kind === "claimed" ? (
           <div style={{ marginTop: 18 }}>
-            <p className="mute">{link.shares ? `All ${link.shares} shares are gone. Better luck on the next one.` : "This link is empty. Someone already claimed it, or the sender took it back."}</p>
+            <p><b>{link.shares ? `All ${link.shares} shares are gone.` : "This link was already claimed."}</b></p>
+            <p className="mute small">{empty.last ? `The last claim was ${ago(empty.last.at)}${empty.last.to === "private" ? ", into a private balance" : ""}.` : "Someone claimed it, or the sender took it back."} {link.shares ? "Better luck on the next one." : "If that wasn't you, ask the sender."}</p>
             <Link to="/app/links" className="btn btn-ghost" style={{ marginTop: 8 }}>Make your own payment link</Link>
           </div>
-        ) : !acct ? (
+        ) : empty?.kind === "unfunded" ? (
+          <div style={{ marginTop: 18 }}>
+            <p><b>The money hasn't arrived in this link yet.</b></p>
+            <p className="mute small">{link.locked ? "Your answer is right. " : ""}The sender's payment usually lands within a minute. This page checks again by itself every few seconds.</p>
+            <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={!!busy} onClick={() => acct && read(link, acct)}>{busy || "Check now"}</button>
+          </div>
+        ) : !acct || !bals ? (
           <p className="mute" style={{ marginTop: 18 }}>{busy || "Opening…"}</p>
         ) : (
           <div style={{ marginTop: 20, textAlign: "left" }}>

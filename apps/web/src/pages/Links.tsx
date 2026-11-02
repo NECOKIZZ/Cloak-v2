@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, linkAddress, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
+import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, linkAddress, linkCheck, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, parseUnits, type Hex } from "viem";
 import { friendly, Hint, checked } from "../errors";
-import { addLink, linkBalances, loadLinks, newId, saveLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
+import { addLink, linkBalances, linkClaims, linkState, loadLinks, newId, saveLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
 import { QR } from "../qr";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { publicClient } from "../wallet";
+import { txLink } from "../config";
+import { ago } from "./Claim";
 import { useApp } from "../state";
 import { Icon } from "../ui";
 
@@ -132,12 +134,15 @@ export function Links() {
       if (have < total + sendFee * BigInt(n)) throw new Hint(`You have ${formatUnits(have, dec)} ${sf.token} private. This link needs ${formatUnits(total + sendFee * BigInt(n), dec)} with fees. Shield more first.`);
       setBusy("Making the link's account…");
       const secret = newLinkSecret();
-      const addr = await linkAddress(await linkKeys(secret, sf.lock ? sf.code : undefined));
+      const linkKeysNow = await linkKeys(secret, sf.lock ? sf.code : undefined);
+      const addr = await linkAddress(linkKeysNow);
+      // a locked link carries a short check, so a wrong passcode is caught on the claimer's phone straight away
+      const check = sf.lock ? await linkCheck(linkKeysNow) : undefined;
       const shareStr = formatUnits(share, dec);
-      const linkAt = (block: bigint) => buildClaimLink({ secret, block, token: sf.token, amount: n > 1 ? shareStr : amtStr, message: sf.message, from: sf.from, locked: sf.lock, hint: sf.hint, shares: n }, location.origin);
+      const linkAt = (block: bigint) => buildClaimLink({ secret, block, token: sf.token, amount: n > 1 ? shareStr : amtStr, message: sf.message, from: sf.from, locked: sf.lock, hint: sf.hint, shares: n, check }, location.origin);
       // saved before any money moves: if a send fails or the tab closes halfway, the link (and whatever reached it)
       // is still under Your links, to share or take back
-      const rec: SentLink = { id: newId(), kind: "claim", url: linkAt(await publicClient.getBlockNumber()), token: sf.token, amount: amtStr, message: sf.message || undefined, passcode: sf.lock ? sf.code.trim() : undefined, hint: sf.hint || undefined, created: Date.now(), status: "open" };
+      const rec: SentLink = { id: newId(), kind: "claim", url: linkAt(await publicClient.getBlockNumber()), token: sf.token, amount: amtStr, message: sf.message || undefined, passcode: sf.lock ? sf.code.trim() : undefined, hint: sf.hint || undefined, created: Date.now(), status: "funding" };
       await addLink(p.keys, rec);
       let rc;
       for (let i = 0; i < n; i++) {
@@ -159,7 +164,7 @@ export function Links() {
       }
       if (!rc) return;
       const url = linkAt(rc.blockNumber);
-      await updateLink(p.keys, rec.id, { url });
+      await updateLink(p.keys, rec.id, { url, status: "open" });
       setMade({ url, title: n > 1 ? `${amtStr} ${sf.token} in ${n} shares of ${shareStr}` : `${amtStr} ${sf.token} in a link`, passcode: rec.passcode, share: sf.lock ? (sf.hint ? `Solve this to claim ${amtStr} ${sf.token}: ${sf.hint}` : `A locked gift of ${amtStr} ${sf.token}`) : n > 1 ? `Red envelope: ${n} shares of ${shareStr} ${sf.token}. First ${n} to open it each get one` : `${amtStr} ${sf.token} for you, sent privately with Cloak` });
     } catch (e) {
       setErr(friendly(e));
@@ -328,36 +333,75 @@ function LinkTokenPicker({ value, onChange, bals }: { value: LinkToken; onChange
 const TOKEN_NAMES: Record<LinkToken, string> = { HYPE: "Hyperliquid", USDC: "USD Coin" };
 const trim = (s: string) => (s.includes(".") ? s.replace(/(\.\d{0,6})\d*$/, "$1").replace(/\.?0+$/, "") : s);
 
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+function linkPill(l: SentLink, shares: number) {
+  const n = l.claims?.length ?? 0;
+  switch (l.status) {
+    case "funding": return <span className="pill">Funding…</span>;
+    case "unfunded": return <span className="pill warn">Not funded</span>;
+    case "back": return <span className="pill">Taken back</span>;
+    case "claimed": return <span className="pill">{shares > 1 ? `All ${shares} claimed` : "Claimed"}</span>;
+    case "partly": return <span className="pill ok">{n} of {shares} claimed</span>;
+    default: return <span className="pill ok">Waiting</span>;
+  }
+}
+
 function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => void }) {
   const { priv, toast } = useApp();
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, string>>({});
+  const auto = useRef(new Set<string>());
 
-  async function check(l: SentLink, takeBack = false) {
+  /** Reads a link from the chain: what's still waiting, and every claim so far. */
+  async function refresh(l: SentLink, quiet = false) {
     if (!priv) return;
-    setBusy((b) => ({ ...b, [l.id]: takeBack ? "Taking it back…" : "Checking…" }));
+    if (!quiet) setBusy((b) => ({ ...b, [l.id]: "Checking…" }));
     setMsg((m) => ({ ...m, [l.id]: "" }));
     try {
       const parsed = parseClaimLink(l.url);
-      const acct = await openLinkAccount(parsed.secret, l.passcode);
+      const acct = await openLinkAccount(parsed, l.passcode);
+      const st = await linkState(acct);
+      const notes = st.HYPE.notes.length + st.USDC.notes.length;
+      const waiting = st.HYPE.waiting > 0n || st.USDC.waiting > 0n;
+      const all = await linkClaims(acct, st);
+      const back = new Set((l.backTx ?? []).map((h) => h.toLowerCase()));
+      const claims = all.filter((c) => !back.has(c.tx.toLowerCase()));
+      const status: SentLink["status"] =
+        notes === 0 ? (l.status === "funding" && Date.now() - l.created < 5 * 60_000 ? "funding" : "unfunded")
+        : waiting ? (claims.length ? "partly" : "open")
+        : claims.length ? "claimed" : "back";
+      await updateLink(priv.keys, l.id, { status, claims, checked: Date.now() });
+      onChange();
+    } catch (e) {
+      if (!quiet) setMsg((m) => ({ ...m, [l.id]: friendly(e) }));
+    } finally {
+      if (!quiet) setBusy((b) => ({ ...b, [l.id]: "" }));
+    }
+  }
+
+  async function takeBack(l: SentLink) {
+    if (!priv) return;
+    setBusy((b) => ({ ...b, [l.id]: "Taking it back…" }));
+    setMsg((m) => ({ ...m, [l.id]: "" }));
+    try {
+      const acct = await openLinkAccount(parseClaimLink(l.url), l.passcode);
       const bals = await linkBalances(acct);
-      const held = bals.HYPE > 0n || bals.USDC > 0n;
-      if (!takeBack) {
-        await updateLink(priv.keys, l.id, { status: held ? "open" : l.status === "back" ? "back" : "claimed" });
-      } else {
-        if (!held) throw new Hint("This link is already empty.");
-        const me = await priv.address();
-        for (const t of ["HYPE", "USDC"] as LinkToken[]) {
-          if (bals[t] === 0n) continue;
-          for (let round = 0; round < 12; round++) {
-            const r = await acct.sweep(tokenOf(acct, t), me, (s) => setBusy((b) => ({ ...b, [l.id]: s })));
-            await publicClient.waitForTransactionReceipt({ hash: r.txHash });
-            if (r.left === 0n) break;
-          }
+      if (bals.HYPE === 0n && bals.USDC === 0n) throw new Hint("This link is already empty.");
+      const me = await priv.address();
+      const txs: Hex[] = [...(l.backTx ?? [])];
+      for (const t of ["HYPE", "USDC"] as LinkToken[]) {
+        if (bals[t] === 0n) continue;
+        for (let round = 0; round < 12; round++) {
+          const r = await acct.sweep(tokenOf(acct, t), me, (s) => setBusy((b) => ({ ...b, [l.id]: s })));
+          txs.push(r.txHash);
+          await updateLink(priv.keys, l.id, { backTx: txs });
+          await publicClient.waitForTransactionReceipt({ hash: r.txHash });
+          if (r.left === 0n) break;
         }
-        await updateLink(priv.keys, l.id, { status: "back" });
-        toast("Taken back into your private balance");
       }
+      await updateLink(priv.keys, l.id, { status: "back", backTx: txs });
+      toast("Taken back into your private balance");
       onChange();
     } catch (e) {
       setMsg((m) => ({ ...m, [l.id]: friendly(e) }));
@@ -366,6 +410,23 @@ function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => voi
     }
   }
 
+  // links that may have changed are checked by themselves, one at a time, newest first
+  useEffect(() => {
+    if (!priv) return;
+    let stop = false;
+    (async () => {
+      const due = list.filter((l): l is SentLink => l.kind === "claim" && ["funding", "open", "partly", undefined].includes(l.status) && !auto.current.has(l.id)).slice(0, 6);
+      for (const l of due) {
+        if (stop) return;
+        auto.current.add(l.id);
+        setBusy((b) => ({ ...b, [l.id]: "Checking…" }));
+        await refresh(l, true);
+        setBusy((b) => ({ ...b, [l.id]: "" }));
+      }
+    })();
+    return () => { stop = true; };
+  }, [priv, list]);
+
   const copy = (s: string) => { navigator.clipboard?.writeText(s).catch(() => {}); toast("Link copied"); };
   return (
     <div className="card">
@@ -373,32 +434,49 @@ function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => voi
       {!priv ? (
         <p className="small mute">Unlock your private account to see the links you made here. They're stored encrypted in this browser.</p>
       ) : list.length === 0 ? (
-        <p className="small mute">Links you make show up here, so you can copy them again or take back one nobody claimed.</p>
+        <p className="small mute">Links you make show up here, so you can copy them again, see who claimed them, or take back one nobody claimed.</p>
       ) : (
         <div className="link-list">
-          {list.map((l) => (
-            <div key={l.id} className="link-row">
-              <div className="row-flex" style={{ justifyContent: "space-between", gap: 8 }}>
-                <b>{l.kind === "claim" ? `${l.amount} ${l.token} link` : l.amount ? `Request · ${l.amount} ${l.token}` : `Tip jar · ${l.token}`}</b>
-                {l.kind === "claim" && <span className={`pill ${l.status === "open" ? "ok" : ""}`}>{l.status === "claimed" ? "Claimed" : l.status === "back" ? "Taken back" : "Waiting"}</span>}
-              </div>
-              <span className="xs mute">{new Date(l.created).toLocaleString()}{l.kind === "claim" && l.passcode ? " · locked" : ""}{l.kind === "claim" && l.message ? ` · “${l.message}”` : l.kind === "request" && l.note ? ` · ${l.note}` : ""}</span>
-              <div className="row-flex" style={{ gap: 6 }}>
-                <button className="btn btn-text btn-sm" onClick={() => copy(l.url)}>Copy</button>
-                {l.kind === "claim" && l.status !== "back" && l.status !== "claimed" && (
-                  <>
-                    <button className="btn btn-text btn-sm" disabled={!!busy[l.id]} onClick={() => check(l)}>Check</button>
-                    <button className="btn btn-text btn-sm" disabled={!!busy[l.id]} onClick={() => check(l, true)}>Take back</button>
-                  </>
+          {list.map((l) => {
+            const shares = l.kind === "claim" ? (() => { try { return parseClaimLink(l.url).shares ?? 1; } catch { return 1; } })() : 1;
+            const live = l.kind === "claim" && !["back", "claimed"].includes(l.status ?? "");
+            return (
+              <div key={l.id} className="link-row">
+                <div className="row-flex" style={{ justifyContent: "space-between", gap: 8 }}>
+                  <b>{l.kind === "claim" ? `${l.amount} ${l.token} ${shares > 1 ? `envelope · ${shares} shares` : "link"}` : l.amount ? `Request · ${l.amount} ${l.token}` : `Tip jar · ${l.token}`}</b>
+                  {l.kind === "claim" && linkPill(l, shares)}
+                </div>
+                <span className="xs mute">{new Date(l.created).toLocaleString()}{l.kind === "claim" && l.passcode ? ` · passcode “${l.passcode}”` : ""}{l.kind === "claim" && l.message ? ` · “${l.message}”` : l.kind === "request" && l.note ? ` · ${l.note}` : ""}</span>
+                {l.kind === "claim" && !!l.claims?.length && (
+                  <ul className="claims">
+                    {l.claims.slice(0, 6).map((c) => (
+                      <li key={c.tx} className="xs">
+                        <span className="mono">{c.amount} {c.token}</span>
+                        <span className="mute"> {c.to === "private" ? "into a private balance" : <>to <span className="mono">{short(c.to)}</span></>} · {ago(c.at)}</span>
+                        {txLink(c.tx) && <a className="link" href={txLink(c.tx)} target="_blank" rel="noreferrer"> ↗</a>}
+                      </li>
+                    ))}
+                    {l.claims.length > 6 && <li className="xs mute">and {l.claims.length - 6} more</li>}
+                  </ul>
                 )}
-                {busy[l.id] && <span className="xs mute">{busy[l.id]}</span>}
+                {l.kind === "claim" && l.status === "unfunded" && <span className="xs mute">No money reached this link (the send didn't go through). Nothing to take back.</span>}
+                <div className="row-flex" style={{ gap: 6 }}>
+                  <button className="btn btn-text btn-sm" onClick={() => copy(l.url)}>Copy</button>
+                  {l.kind === "claim" && (
+                    <button className="btn btn-text btn-sm" disabled={!!busy[l.id]} onClick={() => refresh(l)}>Refresh</button>
+                  )}
+                  {l.kind === "claim" && live && l.status !== "unfunded" && (
+                    <button className="btn btn-text btn-sm" disabled={!!busy[l.id]} onClick={() => takeBack(l)}>Take back</button>
+                  )}
+                  {busy[l.id] && <span className="xs mute">{busy[l.id]}</span>}
+                </div>
+                {msg[l.id] && <div className="err" style={{ marginTop: 2 }}>{msg[l.id]}</div>}
               </div>
-              {msg[l.id] && <div className="err" style={{ marginTop: 2 }}>{msg[l.id]}</div>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-      <p className="note">Checking or taking back a link scans the vault for it, which takes a few seconds.</p>
+      <p className="note">Claims into a private balance show only when they happened. Claims to a wallet show the wallet, like any withdrawal.</p>
     </div>
   );
 }

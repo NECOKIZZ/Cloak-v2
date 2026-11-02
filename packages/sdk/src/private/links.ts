@@ -21,7 +21,7 @@
  */
 import { scryptAsync } from "@noble/hashes/scrypt";
 import { randomBytes } from "@noble/hashes/utils";
-import { concat, isAddress, keccak256, toBytes, type Hex } from "viem";
+import { concat, isAddress, keccak256, toBytes, toHex, type Hex } from "viem";
 import { CloakKeys, formatCloakAddress, parseCloakAddress } from "./crypto.js";
 
 export const LINK_ORIGIN = "https://cloak.boblabs.tech";
@@ -70,6 +70,42 @@ export async function linkAddress(keys: CloakKeys): Promise<string> {
   return formatCloakAddress((await keys.main()).pubKey, keys.encPub);
 }
 
+/** The 8-hex-digit check a locked link carries: the first 4 bytes of a hash of the account the passcode opens. */
+export async function linkCheck(keys: CloakKeys): Promise<string> {
+  return keccak256(concat([toBytes("cloak-link-check-v1"), toBytes(await linkAddress(keys))])).slice(2, 10);
+}
+
+/** Thrown when a link's check says the passcode is wrong. */
+export class WrongPasscodeError extends Error {
+  constructor(riddle: boolean) {
+    super(riddle ? "That's not the answer. Check the spelling and try again." : "That's not the passcode. Check it with the sender and try again.");
+    this.name = "WrongPasscodeError";
+  }
+}
+
+/** Ways a phone may have typed the same code: curly quotes and long dashes from autocorrect, a trailing full stop. */
+function passcodeVariants(code: string): string[] {
+  const base = normalizePasscode(code);
+  const straight = base.replace(/[\u2018\u2019\u201b\u2032]/g, "'").replace(/[\u201c\u201d\u2033]/g, '"').replace(/[\u2013\u2014\u2212]/g, "-");
+  return [...new Set([base, straight, straight.replace(/[.!?]+$/, "")])].filter(Boolean);
+}
+
+/**
+ * Opens a link's account. A locked link with a check tries the code (and the ways a phone may have mangled it) and
+ * throws WrongPasscodeError if none matches, without touching the network. A link without a check (made before
+ * checks existed) opens with the code as typed; an empty account is then all a wrong code looks like.
+ */
+export async function openLinkKeys(l: ClaimLink, passcode?: string): Promise<CloakKeys> {
+  if (!l.locked) return linkKeys(l.secret);
+  if (!passcode || !normalizePasscode(passcode)) throw new Error(l.hint ? "Type the answer." : "Enter the passcode.");
+  if (!l.check) return linkKeys(l.secret, passcode);
+  for (const v of passcodeVariants(passcode)) {
+    const k = await linkKeys(l.secret, v);
+    if ((await linkCheck(k)) === l.check) return k;
+  }
+  throw new WrongPasscodeError(!!l.hint);
+}
+
 export interface ClaimLink {
   secret: Uint8Array;
   /** Block the link was funded in. Shown to the claimer; scanning still starts at the vaults' first block, because
@@ -88,11 +124,15 @@ export interface ClaimLink {
   hint?: string;
   /** Split into this many equal shares: each person who opens the link claims one (a red envelope). */
   shares?: number;
+  /** A short check of the account a passcode opens, so a wrong passcode is caught on the device, before any
+   *  network call. It tells a guesser nothing a copy of the link didn't already: each guess still costs a full scrypt. */
+  check?: string;
 }
 
-export function buildClaimLink(l: ClaimLink, origin = LINK_ORIGIN): string {
+/** The fields of a claim link as query parameters (the secret in hex). */
+function claimParams(l: ClaimLink): URLSearchParams {
   const p = new URLSearchParams();
-  p.set("k", b64url(l.secret));
+  p.set("k", toHex(l.secret).slice(2));
   p.set("b", l.block.toString());
   if (l.token) p.set("t", l.token);
   if (l.amount) p.set("a", l.amount);
@@ -104,22 +144,64 @@ export function buildClaimLink(l: ClaimLink, origin = LINK_ORIGIN): string {
   const q = cleanLinkText(l.hint, LINK_HINT_MAX);
   if (l.locked && q) p.set("q", q);
   if (l.shares && l.shares > 1) p.set("n", String(Math.min(Math.floor(l.shares), LINK_SHARES_MAX)));
-  return `${origin.replace(/\/+$/, "")}/claim#${p.toString()}`;
+  if (l.check && /^[0-9a-f]{8}$/.test(l.check)) p.set("c", l.check);
+  return p;
+}
+
+/**
+ * A claim link: https://cloak.boblabs.tech/claim#c<letters and digits>. Everything after the # is one run of letters
+ * and digits (base 62), because chat apps end a link at characters like "-", "_", "." or "%" (WhatsApp and Telegram
+ * both cut links that way) and a cut link loses the money's key.
+ */
+export function buildClaimLink(l: ClaimLink, origin = LINK_ORIGIN): string {
+  return `${origin.replace(/\/+$/, "")}/claim#c${toBase62(new TextEncoder().encode(claimParams(l).toString()))}`;
+}
+
+const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+function toBase62(bytes: Uint8Array): string {
+  // a leading 1 byte keeps leading zero bytes; the payload is a few hundred bytes, so plain bigint math is fine
+  let n = BigInt(toHex(concat([new Uint8Array([1]), bytes])));
+  let out = "";
+  while (n > 0n) {
+    out = B62[Number(n % 62n)] + out;
+    n /= 62n;
+  }
+  return out;
+}
+function fromBase62(s: string): Uint8Array {
+  let n = 0n;
+  for (const ch of s) {
+    const v = B62.indexOf(ch);
+    if (v < 0) throw new Error("bad link");
+    n = n * 62n + BigInt(v);
+  }
+  let hex = n.toString(16);
+  if (hex.length % 2) hex = "0" + hex;
+  const b = toBytes(`0x${hex}`);
+  if (b[0] !== 1) throw new Error("bad link");
+  return b.slice(1);
 }
 
 /** Reads a claim link (the whole URL or just its fragment). Throws on anything that isn't one. */
 export function parseClaimLink(link: string): ClaimLink {
-  const frag = link.includes("#") ? link.slice(link.indexOf("#") + 1) : link;
+  let frag = (link.includes("#") ? link.slice(link.indexOf("#") + 1) : link).trim();
+  if (/^c[0-9A-Za-z]+$/.test(frag)) {
+    try {
+      frag = new TextDecoder("utf-8", { fatal: true }).decode(fromBase62(frag.slice(1)));
+    } catch {
+      throw new Error("This claim link is cut short or damaged. Ask the sender to copy the whole link again.");
+    }
+  }
   const p = new URLSearchParams(frag);
   const k = p.get("k");
   if (!k) throw new Error("This isn't a Cloak claim link.");
   let secret: Uint8Array;
   try {
-    secret = unb64url(k);
+    secret = /^[0-9a-fA-F]{64}$/.test(k) ? toBytes(`0x${k}`) : unb64url(k);
   } catch {
     throw new Error("This claim link is damaged. Ask the sender to copy it again.");
   }
-  if (secret.length !== 32) throw new Error("This claim link is cut short. Ask the sender to copy it again.");
+  if (secret.length !== 32) throw new Error("This claim link is cut short. Ask the sender to copy the whole link again.");
   const b = p.get("b") ?? "0";
   const t = p.get("t");
   const a = p.get("a");
@@ -133,6 +215,7 @@ export function parseClaimLink(link: string): ClaimLink {
     locked: p.get("p") === "1",
     hint: cleanLinkText(p.get("q"), LINK_HINT_MAX) || undefined,
     shares: /^\d{1,2}$/.test(p.get("n") ?? "") && Number(p.get("n")) > 1 ? Math.min(Number(p.get("n")), LINK_SHARES_MAX) : undefined,
+    check: /^[0-9a-f]{8}$/.test(p.get("c") ?? "") ? (p.get("c") as string) : undefined,
   };
 }
 

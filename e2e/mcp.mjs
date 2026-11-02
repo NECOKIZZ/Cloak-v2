@@ -204,15 +204,17 @@ try {
 
   // ── payment links ──
   const gift = await A.call("create_payment_link", { asset: "HYPE", amount: "0.3", message: "for bob", passcode: "Ember", hint: "Our token?" });
-  ok(gift.link?.includes("/claim#k=") && gift.passcode === "Ember", `create_payment_link: a locked 0.3 HYPE link ${JSON.stringify(gift).slice(0, 200)}`);
+  ok(/\/claim#c[0-9A-Za-z]+$/.test(gift.link ?? "") && gift.passcode === "Ember", `create_payment_link: a locked 0.3 HYPE link ${JSON.stringify(gift).slice(0, 200)}`);
   ok(/locked/.test((await B.call("check_payment_link", { link: gift.link })).error), "the locked link asks for its passcode");
+  ok(/not the answer/.test((await B.call("check_payment_link", { link: gift.link, passcode: "flame" })).error ?? ""), "a wrong passcode is refused as wrong, before anything is read");
   const peek = await B.call("check_payment_link", { link: gift.link, passcode: " ember " });
   ok(!peek.empty && num(peek.holds.HYPE) >= 0.3 && peek.message === "for bob", `check_payment_link: it holds ${peek.holds.HYPE} (the claim fee covered)`);
   const fresh2 = privateKeyToAccount(generatePrivateKey()).address;
   const got = await B.call("claim_payment_link", { link: gift.link, passcode: "EMBER", to: fresh2 });
   const fb = await d.publicClient.getBalance({ address: fresh2 });
   ok(fb > parseEther("0.299") && fb < parseEther("0.3"), `claim_payment_link: ${got.claimed?.[0]?.claimed} landed at a brand-new wallet with no gas (0.25% kept)`);
-  ok(/empty|already claimed/.test((await A.call("claim_payment_link", { link: gift.link, passcode: "ember" })).error), "the claimed link is empty afterwards");
+  ok(/already claimed/.test((await A.call("claim_payment_link", { link: gift.link, passcode: "ember" })).error), "the claimed link says it was already claimed");
+  ok((await A.call("check_payment_link", { link: gift.link, passcode: "ember" })).status === "claimed", "check_payment_link reports it claimed");
   const env = await A.call("create_payment_link", { asset: "USDC", amount: "6", shares: 3, message: "lucky" });
   ok(/3 shares of 2 USDC/.test(env.holds), `a USDC red envelope: ${env.holds}`);
   const usdcB = num((await B.call("private_balance", { include_zero: true })).balances.USDC);

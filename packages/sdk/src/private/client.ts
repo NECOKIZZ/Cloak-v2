@@ -318,6 +318,12 @@ export class CloakPrivate {
     return s.notes.filter((x) => !x.spent);
   }
 
+  /** Every note this account has received in `pool`, spent ones included (each with `spent` and its nullifier). */
+  async history(pool: Address): Promise<OwnedNote[]> {
+    await this.sync(pool);
+    return [...this.state(pool).notes];
+  }
+
   async balance(pool: Address): Promise<bigint> {
     return (await this.sync(pool)).reduce((a, x) => a + x.amount, 0n);
   }

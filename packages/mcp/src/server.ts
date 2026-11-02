@@ -38,7 +38,9 @@ import {
   buildClaimLink,
   buildRequestLink,
   linkAddress,
+  linkCheck,
   linkKeys,
+  openLinkKeys,
   newLinkSecret,
   parseClaimLink,
   parseRequestLink,
@@ -909,7 +911,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   async function linkClient(url: string, passcode?: string) {
     const l = parseClaimLink(url);
     if (l.locked && passcode === undefined) throw new Error(`This link is locked. Pass its passcode${l.hint ? ` (the answer to: "${l.hint}")` : ""}.`);
-    const c = new CloakPrivate(pub, d.router, await linkKeys(l.secret, l.locked ? passcode : undefined), prover, submit, d.vaultsBlock ?? d.routerBlock, d.batcher, d.migrator);
+    // a locked link with a check refuses a wrong passcode here, before anything touches the network
+    const c = new CloakPrivate(pub, d.router, await openLinkKeys(l, passcode), prover, submit, d.vaultsBlock ?? d.routerBlock, d.batcher, d.migrator);
     for (const a of d.assets ?? []) c.addAsset(a);
     await c.loadMarkets();
     return { l, c };
@@ -954,7 +957,9 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       if (isDry(x.dry_run)) return { dryRun: true, wouldLock: `${fmtAmt(a, total)} in ${n} share${n > 1 ? "s" : ""} of ${fmtAmt(a, each)}`, claimFeeCovered: fmtAmt(a, claimFee * BigInt(n)), locked: !!x.passcode };
       return exclusive(async () => {
         const secret = newLinkSecret();
-        const to = await linkAddress(await linkKeys(secret, x.passcode));
+        const keys = await linkKeys(secret, x.passcode);
+        const to = await linkAddress(keys);
+        const check = x.passcode ? await linkCheck(keys) : undefined;
         let block = 0n;
         const txs: string[] = [];
         for (let i = 0; i < n; i++) {
@@ -963,7 +968,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
           txs.push(link(h));
         }
         spending.record(c.budget, c.value);
-        const url = buildClaimLink({ secret, block, token: a.symbol as "HYPE" | "USDC", amount: formatUnits(n > 1 ? share : whole, a.decimals), message: x.message, from: x.from, locked: !!x.passcode, hint: x.hint, shares: n });
+        const url = buildClaimLink({ secret, block, token: a.symbol as "HYPE" | "USDC", amount: formatUnits(n > 1 ? share : whole, a.decimals), message: x.message, from: x.from, locked: !!x.passcode, hint: x.hint, shares: n, check });
         return {
           link: url,
           holds: `${fmtAmt(a, whole)}${n > 1 ? ` in ${n} shares of ${fmtAmt(a, share)}` : ""}`,
@@ -980,21 +985,25 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     {
       title: "Check a payment link",
       description: "What a claim link still holds (and how many shares are left), without claiming it.",
-      inputSchema: { link: z.string().describe("The claim link (https://…/claim#k=…)"), passcode: z.string().optional() },
+      inputSchema: { link: z.string().describe("The claim link (https://…/claim#…)"), passcode: z.string().optional() },
       annotations: READ,
     },
     safe(async ({ link: url, passcode }: { link: string; passcode?: string }) => {
       const { l, c } = await linkClient(url, passcode);
       const out: Record<string, string> = {};
       let notes = 0;
+      let spent = 0;
       for (const sym of ["HYPE", "USDC"]) {
         const a = await linkAsset(sym).catch(() => null);
         if (!a) continue;
-        const live = await c.sync(a.pool);
+        const all = await c.history(a.pool);
+        const live = all.filter((x) => !x.spent);
         notes += live.length;
+        spent += all.length - live.length;
         out[sym] = fmtAmt(a, live.reduce((s, x) => s + x.amount, 0n));
       }
-      return { holds: out, ...(l.shares ? { sharesLeft: `${notes} of ${l.shares}` } : {}), ...(l.message ? { message: l.message } : {}), ...(l.from ? { from: l.from } : {}), empty: notes === 0 };
+      const status = notes > 0 ? (spent > 0 ? "partly claimed" : "waiting") : spent > 0 ? "claimed" : l.locked && !l.check ? "empty (a wrong passcode, already claimed, or not funded yet)" : "not funded yet";
+      return { holds: out, status, claimed: spent, ...(l.shares ? { sharesLeft: `${notes} of ${l.shares}` } : {}), ...(l.message ? { message: l.message } : {}), ...(l.from ? { from: l.from } : {}), empty: notes === 0 };
     }),
   );
 
@@ -1011,11 +1020,20 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const out = to && to !== "private";
       if (out && !isAddress(to)) throw new Error('`to` must be "private" or a 0x address.');
       const held: Asset[] = [];
+      let spent = 0;
       for (const sym of ["HYPE", "USDC"]) {
         const a = await linkAsset(sym).catch(() => null);
-        if (a && (await c.balance(a.pool)) > 0n) held.push(a);
+        if (!a) continue;
+        const all = await c.history(a.pool);
+        spent += all.filter((x) => x.spent).length;
+        if (all.some((x) => !x.spent)) held.push(a);
       }
-      if (!held.length) throw new Error(l.locked ? "Nothing opens with that passcode, or the link was already claimed." : "This link is empty: someone already claimed it, or the sender took it back.");
+      if (!held.length)
+        throw new Error(
+          spent > 0 ? "This link is empty: it was already claimed, or the sender took it back."
+          : l.locked && !l.check ? "Nothing opens with that passcode: it's wrong, the link was already claimed, or its payment hasn't landed yet."
+          : "This link holds nothing yet: the sender's payment hasn't landed. Try again in a minute.",
+        );
       if (isDry(dry_run)) return { dryRun: true, holds: await Promise.all(held.map(async (a) => fmtAmt(a, await c.balance(a.pool)))), wouldClaimTo: out ? to : "this account's private balance", ...(l.shares ? { oneShareOf: l.shares } : {}) };
       return exclusive(async () => {
         const dest = out ? (to as string) : await (await priv()).address();

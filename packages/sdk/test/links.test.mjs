@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildClaimLink, parseClaimLink, buildRequestLink, parseRequestLink, linkKeys, linkAddress, newLinkSecret, normalizeLinkAmount, checkPayee } from "../dist/index.js";
+import { buildClaimLink, parseClaimLink, buildRequestLink, parseRequestLink, linkKeys, linkAddress, linkCheck, openLinkKeys, WrongPasscodeError, newLinkSecret, normalizeLinkAmount, checkPayee } from "../dist/index.js";
 
 test("claim link round-trips every field", () => {
   const secret = newLinkSecret();
   const url = buildClaimLink({ secret, block: 21500000n, token: "USDC", amount: "25", message: "Happy birthday 🎉", from: "Robin", locked: true, hint: "Our chain?", shares: 5 });
-  assert.ok(url.startsWith("https://cloak.boblabs.tech/claim#k="));
+  assert.match(url, /^https:\/\/cloak\.boblabs\.tech\/claim#c[0-9A-Za-z]+$/, "only letters and digits after the #, so chat apps keep the whole link");
   const l = parseClaimLink(url);
   assert.deepEqual([...l.secret], [...secret]);
   assert.equal(l.block, 21500000n);
@@ -20,8 +20,9 @@ test("claim link round-trips every field", () => {
 });
 
 test("a damaged or cut link is refused", () => {
-  const url = buildClaimLink({ secret: newLinkSecret(), block: 1n });
-  assert.throws(() => parseClaimLink(url.slice(0, url.indexOf("&") - 5)), /cut short|damaged/);
+  const url = buildClaimLink({ secret: newLinkSecret(), block: 1n, message: "gm" });
+  for (const cut of [10, 25, 60]) assert.throws(() => parseClaimLink(url.slice(0, -cut)), /cut short|damaged/);
+  assert.throws(() => parseClaimLink(url.slice(0, url.indexOf("#") + 30)), /cut short|damaged/);
   assert.throws(() => parseClaimLink("https://cloak.boblabs.tech/claim#x=1"), /isn't a Cloak claim link/);
 });
 
@@ -46,4 +47,31 @@ test("request link round-trips and checks the payee and amount", () => {
   assert.throws(() => normalizeLinkAmount("1.1234567", 6), /6 decimal/);
   assert.equal(normalizeLinkAmount("", 18), "");
   assert.equal(checkPayee(to), "wallet");
+});
+
+test("links made before the compact format still open", () => {
+  const secret = newLinkSecret();
+  const b64 = Buffer.from(secret).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const l = parseClaimLink(`https://cloak.boblabs.tech/claim#k=${b64}&b=7&t=HYPE&a=0.01&m=gm&p=1&q=my+name`);
+  assert.deepEqual([...l.secret], [...secret]);
+  assert.equal(l.amount, "0.01");
+  assert.equal(l.hint, "my name");
+  assert.equal(l.check, undefined);
+});
+
+test("a passcode check catches a wrong code before any network call, and forgives what phones do to a code", async () => {
+  const secret = newLinkSecret();
+  const keys = await linkKeys(secret, "it’s sage");
+  const l = parseClaimLink(buildClaimLink({ secret, block: 1n, locked: true, hint: "my name", check: await linkCheck(keys) }));
+  assert.match(l.check, /^[0-9a-f]{8}$/);
+  const addr = await linkAddress(keys);
+  assert.equal(await linkAddress(await openLinkKeys(l, "  IT’S   Sage ")), addr);
+  await assert.rejects(openLinkKeys(l, "sage"), WrongPasscodeError);
+  await assert.rejects(openLinkKeys(l, "sage"), /not the answer/);
+  // typed with a straight quote, or a full stop from autocorrect, by a sender whose phone made it curly
+  const k2 = await linkKeys(secret, "it's sage");
+  const l2 = parseClaimLink(buildClaimLink({ secret, block: 1n, locked: true, check: await linkCheck(k2) }));
+  assert.equal(await linkAddress(await openLinkKeys(l2, "it’s sage.")), await linkAddress(k2));
+  // an unlocked link needs no code
+  assert.equal(await linkAddress(await openLinkKeys(parseClaimLink(buildClaimLink({ secret, block: 1n })))), await linkAddress(await linkKeys(secret)));
 });
