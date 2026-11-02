@@ -277,4 +277,4 @@ The product roadmap (token pages, SDK on npm, an MCP server for agents, holder p
 
 ## License
 
-[MIT](LICENSE) © 2026 Bob Labs. Third-party code keeps its own license: the generated Groth16 verifier (`contracts/src/shielded/Verifier.sol`, from snarkjs) is GPL-3.0, and the circuits build on circomlib (GPL-3.0).
+[MIT](LICENSE) © 2026 Bob Labs. Third-party code keeps its own license: the generated Groth16 verifiers (`contracts/src/shielded/Verifier.sol` and `VerifierMA.sol`, from snarkjs) are GPL-3.0, and the circuits build on circomlib (GPL-3.0).

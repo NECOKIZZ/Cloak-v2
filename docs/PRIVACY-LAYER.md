@@ -213,6 +213,25 @@ tradable and visible everywhere (DexScreener, aggregators, any wallet) and liqui
 "tokens must be able to leave Cloak and be traceable on other platforms". It changes the launch contracts, and batch
 rounds would need a new price reference (Uniswap V3's price history). Not part of the first step.
 
+### 6. Experiment: one shared vault for new launch tokens (Nov 2, live on testnet)
+
+Section 0 still holds for HYPE, USDC and every earlier launch. On testnet we are also trying the other design for new
+launches, the way Gloam keeps many assets in one pool, built on our own circuit rather than theirs:
+
+- **Circuit** `transactionMA2x2`: our 2-in/2-out circuit with the token inside each note,
+  `Poseidon(amount, pubKey, blinding, token)`. One token per proof, so value can't move between tokens. A public
+  `publicAsset` names the token whenever money enters or leaves; a send that moves nothing in or out can leave it at 0.
+- **What it adds:** a private send inside the vault no longer shows which token moved. The relayer is paid from the
+  sender's HYPE vault in the same transaction (`SharedRouter.send`), so the fee doesn't give the token away either.
+- **What it doesn't change:** deposits, withdrawals and swaps still name their token. Those are the moves that
+  section 0's reasoning was about.
+- **Why the risk stays small:** only Cloak's own fixed-supply launch tokens get in, HYPE and USDC are never in it, and
+  the contract keeps a separate total for each token on top of the circuit's rule.
+- **Tested:** 27 contract tests (fuzzed per-token solvency, cross-token withdrawals refused even with a verifier that
+  accepts anything) and an end-to-end run with real proofs, a real launch and the keeper (17/17).
+
+If it works well, the question for mainnet is whether to keep it, and the same audit and ceremony would cover it.
+
 ## What stays private, honestly
 
 - **Hidden:** who traded, who holds what, who paid whom, and (for sends) the amount.

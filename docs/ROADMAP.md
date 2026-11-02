@@ -180,7 +180,7 @@ Selective disclosure, applied to tokens.
 - **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
 - **Source verification** on the explorer for every contract.
 - **Rehearse the mainnet deploy** on a fork, then deploy, verify and publish the addresses.
-- **Vault model: decided (one vault per asset, v4).** A shared vault would hide which token a private send moved, but it needs a new circuit, and a worthless new token could endanger every asset if that circuit had a bug. Kept as a later option ([VAULT.md](VAULT.md)).
+- **Vault model: one vault per asset (v4), plus a testnet experiment (Nov 2).** New Uniswap launches now share one launch-token vault with its own circuit, so a private send hides which token moved. HYPE and USDC are never in it, and the contract keeps a separate total per token. Whether mainnet keeps it is decided after the experiment ([PRIVACY-LAYER.md](PRIVACY-LAYER.md), section 6).
 - **Private USDC on mainnet:** a vault for mainnet USDC, with the same caps until the audit.
 
 At launch:

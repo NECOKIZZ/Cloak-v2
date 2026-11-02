@@ -103,6 +103,22 @@ Elysium testnet (chain `99801`) as of Nov 2, 2026, read from the contracts and f
 | Cap exemptions | Cloak's own router, batcher and migrator (they only move money already inside Cloak). Public HYPE shielded through the router is capped there | Config |
 | Caps lift | After the external audit and the public trusted-setup ceremony | Plan |
 
+## The shared launch-token vault (testnet experiment, from Nov 2)
+
+Every Uniswap launch created after Nov 2 keeps its private balances in one shared vault instead of a vault of its own.
+HYPE, USDC and every earlier launch keep their own vaults.
+
+| Rule | Value | Where |
+|---|---|---|
+| Who gets in | A settled Uniswap launch from a registered factory, with no vault of its own. The keeper lets new launches in at settlement; anyone can | Contract (fixed) |
+| Notes | Each note holds one token, and every proof spends and creates notes of one token only. A different circuit from the single-token vaults (`transactionMA2x2`) | Contract + circuit (fixed) |
+| Per-token balances | The vault also tracks each token's total, so a withdrawal of a token can never take more than was put in as that token | Contract (fixed) |
+| Hidden sends | A private send that pays no fee in the vault names no token. Its relayer is paid from the sender's private HYPE in the same transaction | Contract (fixed) |
+| Deposits, withdrawals, swaps | Name their token, as they must (the vault has to know what to pay out) | Contract (fixed) |
+| Fees and caps | The same as a launch-token vault: free deposits and sends, 0.25% on withdrawals and sells, 10% of supply per deposit and 50% in total during the beta | Config |
+| Trading | Instant private buys and sells through the launch's Uniswap pool (`SharedRouter`). Batch rounds aren't available for these tokens yet | Contract |
+| Trusted setup | A development setup, like the other circuit. The public ceremony covers both | Plan |
+
 ## Private swaps
 
 | Rule | Value | Where |
