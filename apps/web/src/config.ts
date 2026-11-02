@@ -1,4 +1,4 @@
-import { anvilLocal, deployments, elysiumTestnet, type CloakDeployment } from "@cloakely/sdk";
+import { anvilLocal, deployments, elysiumTestnet, legacyFactories, type CloakDeployment } from "@cloakely/sdk";
 import type { Address } from "viem";
 
 const env = import.meta.env;
@@ -60,6 +60,8 @@ export const RELAYER_URL: string | undefined = env.VITE_RELAYER_URL || KEEPER_UR
  */
 export type PreviousDeployment = NonNullable<CloakDeployment["previous"]>[number];
 export const PREVIOUS: PreviousDeployment[] = D?.previous ?? [];
+/** Every factory before the current one, newest first (this deployment's earlier factory, then earlier deployments'). */
+export const LEGACY_FACTORIES: Address[] = D ? legacyFactories(D) : [];
 
 /** Vaults for existing tokens (USDC): private sends and withdrawals. The router also lists them; these load faster. */
 export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[] = D?.assets ?? [];

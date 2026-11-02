@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {CloakSeeder} from "../src/CloakSeeder.sol";
+import {IUniswapV2Factory, IWETH} from "../src/uniswap/IUniswapV2.sol";
 import {Test} from "forge-std/Test.sol";
 import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
@@ -18,6 +20,10 @@ import {MockVerifier} from "./mocks/MockVerifier.sol";
 
 /// Router logic with a mock verifier (proof validity itself is covered by the JS e2e with real Groth16 proofs).
 contract PrivateRouterTest is Test {
+    function _pairSeeder() internal returns (CloakSeeder) {
+        return new CloakSeeder(IUniswapV2Factory(address(0)), IWETH(address(0)), 997);
+    }
+
     CloakConfig config;
     CloakFactory factory;
     CloakAuction auction;
@@ -43,7 +49,7 @@ contract PrivateRouterTest is Test {
 
     function setUp() public {
         config = new CloakConfig(address(new MockVerifier()), address(0));
-        factory = new CloakFactory(config, new CloakVestingDeployer());
+        factory = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
         CloakAuction.Params memory p = CloakAuction.Params({
             creator: address(this),
             saleSupply: 1_000_000e18,

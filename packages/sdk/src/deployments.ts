@@ -29,6 +29,10 @@ export interface CloakDeployment {
   factory: Address;
   /** Block the factory was deployed in: scan launch events from here. */
   factoryBlock: bigint;
+  /** Earlier factories of this same deployment (newest first): their launches still list, settle and trade. */
+  earlierFactories?: Address[];
+  /** Block of this deployment's first factory: scan its launches' bids from here (defaults to `factoryBlock`). */
+  firstFactoryBlock?: bigint;
   router: Address;
   /** Block the router was deployed in: scan private-pool events from here. */
   routerBlock: bigint;
@@ -48,7 +52,7 @@ export interface CloakDeployment {
 }
 
 export const deployments: Record<number, CloakDeployment> = {
-  // Cloak v4 (Oct 31), the permanent vaults: deployments/elysium-testnet-v4.json. CloakConfig's registry lists all of it;
+  // Cloak v4 (Oct 31), the permanent vaults, plus the Uniswap launch factory (Nov 2): deployments/elysium-testnet-v4.json. CloakConfig's registry lists all of it;
   // liveDeployment() reads the current contracts from there.
   99801: {
     chainId: 99801,
@@ -56,8 +60,11 @@ export const deployments: Record<number, CloakDeployment> = {
     config: "0x9fdf166f0671166148ea98cdd3ef0118d256167f",
     vaults: "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
     vaultsBlock: 19485039n,
-    factory: "0xa88df63d7d44acc66052e5cbe5ba9503bf940993",
-    factoryBlock: 19484794n,
+    // the Uniswap launch factory (Nov 2): every launch opens a Uniswap V2 pool at its clearing price
+    factory: "0xeac84944f5a8343edf49cde8ef74d71f4908a656",
+    factoryBlock: 21221250n,
+    earlierFactories: ["0xa88df63d7d44acc66052e5cbe5ba9503bf940993"],
+    firstFactoryBlock: 19484794n,
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",
@@ -102,6 +109,11 @@ export const deployments: Record<number, CloakDeployment> = {
   },
 };
 
+/** Every factory before `d.factory` whose launches should still list, newest first: this deployment's, then earlier ones'. */
+export function legacyFactories(d: CloakDeployment): Address[] {
+  return [...(d.earlierFactories ?? []), ...(d.previous ?? []).map((p) => p.factory)].filter((f) => f && !/^0x0{40}$/i.test(f));
+}
+
 /** The Cloak deployment on `chainId`, or an error naming the chains Cloak is on. */
 export function deploymentFor(chainId: number): CloakDeployment {
   const d = deployments[chainId];
@@ -128,6 +140,7 @@ export async function liveDeployment(publicClient: PublicClient, base: CloakDepl
     vaultsBlock: reg.vaultsBlock ?? base.vaultsBlock,
     factory: reg.factory,
     factoryBlock: reg.factoryBlock,
+    earlierFactories: reg.earlierFactories.length ? reg.earlierFactories : base.earlierFactories,
     router: reg.router,
     routerBlock: reg.routerBlock,
     batcher: reg.batcher ?? base.batcher,

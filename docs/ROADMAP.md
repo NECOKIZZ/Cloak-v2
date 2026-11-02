@@ -10,6 +10,7 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 - **Hidden bid size.** Deposits round up to 1, 2 or 5 × 10ⁿ, so a deposit only shows the order of magnitude.
 - **One clearing price for everyone**, found across up to 256 price ticks. Bids at the clearing tick fill pro rata, and lower bids get a full refund.
 - **Liquidity seeded at that price and locked.** The pool starts at exactly the clearing price, the LP is burned or time-locked, and unsold tokens are burned.
+- **Every launch opens a standard Uniswap V2 pool** (token / WHYPE, from Nov 2). The token trades on Uniswap, aggregators and any wallet, and trackers can chart it, while private buys, sells and batch rounds trade the same pool through the vaults. Launches before Nov 2 keep their Cloak pool.
 - **Creator share** of at most 20% of supply, vesting over at least 30 days.
 - **A fair-launch record on chain** that any launchpad can read.
 - **Penalties for hiding bids.** A bid that is never revealed loses at least 10% of its deposit, and that money is burned.
@@ -195,6 +196,13 @@ Already planned:
 - **Timelock-sealed batch orders** that hide side and size until the round clears.
 - **A security audit and a public trusted-setup ceremony.** Mainnet caps lift once both are done.
 - **A minimum raise for launches.** The creator sets a floor, and if revealed demand doesn't reach it, every bidder gets a full refund. Today a launch settles with any demand above zero.
+
+Launch pools:
+- **Uniswap V3 as an option per launch:** a full-range position (a new token's price moves too much for a narrow one), with the creator picking the fee tier. The LP position NFT is locked or burned like today's LP.
+- **Uniswap V4 with a Cloak hook:** the hook can carry creator fees, anti-sniping right after settlement and a built-in price feed for batch rounds. The private router learns V4 pools first.
+- **Choosing per launch:** the factory takes a pool type and settlement opens that pool. V2 stays the default.
+- **Private swaps through outside pools** (USDC, stock tokens, curated outside tokens): a swap router over approved Uniswap V2 and V3 factories, see [PRIVACY-LAYER.md](PRIVACY-LAYER.md).
+- **Availability:** a Cloak token list (`tokenlist.json`), explorer source verification, price charts on launch pages from the keeper's record of trades, and asking DexScreener, GeckoTerminal, DefiLlama, 0x and KyberSwap to add Elysium once mainnet is live.
 
 New:
 - **Private limit orders:** a resting order that fills inside batch rounds when the price crosses.

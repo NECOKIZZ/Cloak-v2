@@ -7,8 +7,8 @@
   "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
   "vaults": "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
   "vaultsBlock": "19485039",
-  "factory": "0xa88df63d7d44acc66052e5cbe5ba9503bf940993",
-  "factoryBlock": "19484794",
+  "factory": "0xeac84944f5a8343edf49cde8ef74d71f4908a656",
+  "factoryBlock": "21221250",
   "router": "0x343ab9a7aac93cee28321410510ea24417cc6386",
   "routerBlock": "19485063",
   "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
@@ -108,5 +108,16 @@
       "tx": "0x1aa344cda0d8941b6fa672e1a68a1a221bdf3454bfe0db109b82b94d40b13498"
     }
   ],
-  "deployCost": "0.0036757640369 HYPE"
+  "deployCost": "0.0036757640369 HYPE",
+  "earlierFactories": [
+    "0xA88DF63D7D44acc66052e5CBE5ba9503bF940993"
+  ],
+  "firstFactoryBlock": "19484794",
+  "seeder": "0x633aa82b806dafc0ae4c84418d23f3726139a88d",
+  "uniswap": {
+    "v2Factory": "0xb2f8ad730e9d05d333c7861184aad0bff1785dd0",
+    "whype": "0xcd57f65c2b0e5881cfc2e609f7cd53b746e1f234",
+    "fee": "0.3%"
+  },
+  "uniswapDeployCost": "0.00073316345572 HYPE"
 }

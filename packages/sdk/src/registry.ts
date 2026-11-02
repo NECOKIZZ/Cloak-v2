@@ -40,6 +40,8 @@ export interface CloakRegistry {
   migrator?: Address;
   factory: Address;
   factoryBlock: bigint;
+  /** Earlier factories of the current version (a factory added next to the first), newest first. */
+  earlierFactories: Address[];
   /** Earlier deployments, newest first. */
   previous: RegistryVersion[];
 }
@@ -78,6 +80,7 @@ export async function readRegistry(publicClient: PublicClient, config: Address):
     migrator: newest("migrator", router.version)?.addr,
     factory: factory.addr,
     factoryBlock: factory.startBlock,
+    earlierFactories: entries.filter((e) => e.kind === "factory" && e.version === factory.version && e.addr !== factory.addr).reverse().map((e) => e.addr),
     previous: versions.map((v) => {
       const r = newest("router", v);
       const b = newest("batcher", v);

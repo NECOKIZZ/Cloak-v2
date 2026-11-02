@@ -18,7 +18,11 @@ export function clients(chain, rpc, pk) {
  * Deploy CloakConfig (setup mode: rules set directly), the vesting deployer and the factory. `rules` turns fees and
  * caps on in the same run; `endSetup` locks every later change behind the 3-day timelock.
  */
-export async function deployFactory(publicClient, walletClient, { verifier, treasury, rules, config } = {}) {
+/**
+ * A launch factory (and a config, unless one is given). Each settled launch opens its market through a CloakSeeder: a
+ * Uniswap V2 pool when `uniswap` = { factory, weth, feeNum? } is given (or `seeder` names one), else a CloakPair.
+ */
+export async function deployFactory(publicClient, walletClient, { verifier, treasury, rules, config, uniswap, seeder, vestingDeployer } = {}) {
   const deploy = async (abi, bytecode, args) => {
     const hash = await walletClient.deployContract({ abi, bytecode, args });
     const r = await publicClient.waitForTransactionReceipt({ hash });
@@ -29,9 +33,11 @@ export async function deployFactory(publicClient, walletClient, { verifier, trea
     config = (await deploy(cloakConfigAbi, bytecode.CloakConfig, [verifier, treasury ?? walletClient.account.address])).address;
     if (rules) await applyRules(publicClient, walletClient, config, rules);
   }
-  const vd = await deploy(cloakVestingDeployerAbi, bytecode.CloakVestingDeployer, []);
-  const f = await deploy(cloakFactoryAbi, bytecode.CloakFactory, [config, vd.address]);
-  return { factory: f.address, config, verifier, txHash: f.txHash, block: f.block };
+  const vd = vestingDeployer ?? (await deploy(cloakVestingDeployerAbi, bytecode.CloakVestingDeployer, [])).address;
+  const zero = "0x0000000000000000000000000000000000000000";
+  seeder ??= (await deploy(cloakSeederAbi, bytecode.CloakSeeder, [uniswap?.factory ?? zero, uniswap?.weth ?? zero, BigInt(uniswap?.feeNum ?? 997)])).address;
+  const f = await deploy(cloakFactoryAbi, bytecode.CloakFactory, [config, vd, seeder]);
+  return { factory: f.address, config, verifier, seeder, txHash: f.txHash, block: f.block };
 }
 
 export async function deployRaw(publicClient, walletClient, data) {
@@ -73,7 +79,7 @@ export async function waitDrand(round) {
 
 export { Cloak, parseEther };
 
-import { cloakConfigAbi, cloakMigratorAbi, cloakVaultsAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi, whypeAbi } from "@cloakely/sdk";
+import { cloakConfigAbi, cloakMigratorAbi, cloakSeederAbi, cloakVaultsAbi, cloakVestingDeployerAbi, privateRouterAbi, privateBatcherAbi, whypeAbi } from "@cloakely/sdk";
 import { stringToHex } from "viem";
 
 const send = async (publicClient, p) => {

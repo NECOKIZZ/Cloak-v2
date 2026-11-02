@@ -202,7 +202,11 @@ aggregator's calldata. The same safety rules apply (spend at most what came in, 
 aggregator contracts only). It reaches every venue including order books, at the cost of depending on the aggregator's
 online service.
 
-### 5. To decide separately: Cloak launches into Uniswap pools
+### 5. Cloak launches into Uniswap pools (decided Nov 2, live on testnet)
+
+**Done:** from Nov 2 every launch opens a standard Uniswap V2 pool at its clearing price (`CloakSeeder`, LP burned or
+locked as before), and a `CloakV2Market` lets the private router and batcher trade it, using the pool's own price
+accumulator for batch rounds. V3 and V4 pools are on the roadmap. The original reasoning:
 
 Today a Cloak launch seeds a `CloakPair`. If launches seeded a standard Uniswap pool instead, Cloak tokens would be
 tradable and visible everywhere (DexScreener, aggregators, any wallet) and liquidity wouldn't be split. This answers

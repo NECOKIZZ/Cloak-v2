@@ -24,6 +24,7 @@ import {
   cloakAuctionAbi,
   cloakPairAbi,
   cloakVaultsAbi,
+  legacyFactories,
   createProver,
   loadProver,
   privateRouterAbi,
@@ -39,7 +40,7 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
@@ -111,11 +112,12 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   const account = settings.privateKey ? privateKeyToAccount(settings.privateKey) : undefined;
   const wallet = account ? (createWalletClient({ chain: settings.chain, transport: http(settings.rpcUrl), account }) as Wallet) : undefined;
   // earlier deployments' launches still list, settle and pay out
-  const cloak = new Cloak(pub, wallet, d.factory, (d.previous ?? []).map((p) => p.factory));
-  /** Where to start scanning a launch's bids: the current factory's deploy block, or the start for an older launch. */
+  const cloak = new Cloak(pub, wallet, d.factory, legacyFactories(d));
+  /** Where to start scanning a launch's bids: this deployment's first factory block, or the start for an older launch. */
+  const ours = new Set([d.factory, ...(d.earlierFactories ?? [])].map((f) => f.toLowerCase()));
   const bidsFrom = async (auction: Address) =>
-    (await pub.readContract({ address: auction, abi: [{ type: "function", name: "factory", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }], functionName: "factory" }).catch(() => zeroAddress)).toLowerCase() === d.factory.toLowerCase()
-      ? settings.launchesFromBlock
+    ours.has((await pub.readContract({ address: auction, abi: [{ type: "function", name: "factory", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }], functionName: "factory" }).catch(() => zeroAddress)).toLowerCase())
+      ? (d.firstFactoryBlock !== undefined && d.firstFactoryBlock < settings.launchesFromBlock ? d.firstFactoryBlock : settings.launchesFromBlock)
       : 0n;
   const spending = account ? new Spending(settings.limits, settings.stateDir, account.address) : undefined;
   const submit = relayerSubmitter(d.relayerUrl);

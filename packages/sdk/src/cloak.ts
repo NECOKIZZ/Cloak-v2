@@ -72,7 +72,10 @@ export interface AuctionState {
   clearingPrice: bigint;
   sold: bigint;
   raised: bigint;
+  /** The market Cloak trades: a CloakV2Market in front of a Uniswap V2 pool, or (earlier launches) a CloakPair. */
   pair: Address;
+  /** The launch's Uniswap V2 pool (token / WHYPE), tradable and tracked everywhere. Zero for a CloakPair market. */
+  uniPair: Address;
   tokenName: string;
   tokenSymbol: string;
   /** Launch fee on a successful raise, fixed when the auction was created. */
@@ -260,7 +263,7 @@ export class Cloak {
   async getAuction(auction: Address): Promise<AuctionState> {
     const c = { address: auction, abi: cloakAuctionAbi } as const;
     const r = this.publicClient;
-    const [params, token, phase, commits, reveals, totalDeposits, totalDemand, settled, failed, clearingTick, clearingPrice, sold, raised, pair, launchFeeBps, bidCap, depositCap, creatorOwed, feesOwed] =
+    const [params, token, phase, commits, reveals, totalDeposits, totalDemand, settled, failed, clearingTick, clearingPrice, sold, raised, pair, launchFeeBps, bidCap, depositCap, creatorOwed, feesOwed, uniPair] =
       await Promise.all([
         r.readContract({ ...c, functionName: "params" }),
         r.readContract({ ...c, functionName: "token" }),
@@ -282,6 +285,8 @@ export class Cloak {
         r.readContract({ ...c, functionName: "depositCap" }).catch(() => 0n),
         r.readContract({ ...c, functionName: "creatorOwed" }).catch(() => 0n),
         r.readContract({ ...c, functionName: "feesOwed" }).catch(() => 0n),
+        // launches from the Uniswap factory on
+        r.readContract({ ...c, functionName: "uniPair" }).catch(() => zeroAddress),
       ]);
     const [creator, saleSupply, lpReserve, minPrice, tickSize, numTicks, commitEnd, revealEnd, lpBps, noRevealPenaltyBps, lpLockUntil, tlockRound] =
       params;
@@ -316,6 +321,7 @@ export class Cloak {
       sold,
       raised,
       pair,
+      uniPair,
       tokenName,
       tokenSymbol,
       launchFeeBps,

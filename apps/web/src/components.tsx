@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
 import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, type AuctionState, type Wallet, Cloak } from "@cloakely/sdk";
-import { FACTORY, txLink, VAULTS } from "./config";
+import { addrLink, FACTORY, txLink, VAULTS } from "./config";
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
 import { useApp } from "./state";
@@ -358,7 +358,9 @@ export function FairLaunchCard({ s }: { s: AuctionState }) {
           publicClient.readContract({ address: s.pair, abi: cloakPairAbi, functionName: "totalShares" }),
         ]);
         setPoolPrice(price);
-        setLp({ hype: rH, tok: rT, burned: dead === total });
+        // a Uniswap pool keeps its own 1000 minimum LP at address(0); everything else at 0x…dEaD means burned
+        const uni = BigInt(s.uniPair ?? zero) !== 0n;
+        setLp({ hype: rH, tok: rT, burned: dead + (uni ? 1000n : 0n) === total });
       }
       const logs = await publicClient.getContractEvents({ address: s.address, abi: cloakAuctionAbi, eventName: "Revealed", fromBlock: 0n, strict: true });
       const [mRem, mDem] = await Promise.all([
@@ -383,13 +385,21 @@ export function FairLaunchCard({ s }: { s: AuctionState }) {
     <div className="card">
       <div className="badge">
         <span style={{ fontSize: 22 }}>✓</span>
-        <div className="small"><b>Fair launch verified on-chain.</b> One clearing price for every winner, pool seeded at that price, liquidity {lockLabel}.</div>
+        <div className="small"><b>Fair launch verified on-chain.</b> One clearing price for every winner, {BigInt(s.uniPair ?? 0) !== 0n ? "Uniswap pool" : "pool"} seeded at that price, liquidity {lockLabel}.</div>
       </div>
       <div className="fl">
         <div className="row"><span className="mute">Clearing price</span><span className="mono">{hype(s.clearingPrice)} HYPE</span></div>
         <div className="row"><span className="mute">Pool price now</span><span className="mono">{poolPrice ? `${hype(poolPrice)} HYPE` : "—"}</span></div>
         <div className="row"><span className="mute">Sold</span><span className="mono">{tokens(s.sold)} {s.tokenSymbol}</span></div>
         <div className="row"><span className="mute">Raised</span><span className="mono">{hype(s.raised)} HYPE</span></div>
+        <div className="row">
+          <span className="mute">Market</span>
+          {BigInt(s.uniPair ?? 0) !== 0n ? (
+            <a className="link mono" href={addrLink(s.uniPair)} target="_blank" rel="noreferrer">Uniswap V2 pool ↗</a>
+          ) : (
+            <span className="mono">Cloak pool</span>
+          )}
+        </div>
         <div className="row"><span className="mute">Liquidity</span><span className="mono">{lp ? `${hype(lp.hype)} HYPE + ${tokens(lp.tok)}` : "—"}</span></div>
         <div className="row"><span className="mute">LP shares</span><span>{lp?.burned ? <span className="pill ok">burned</span> : <span className="pill warn">{lockLabel}</span>}</span></div>
         <div className="row"><span className="mute">Bidders</span><span className="mono">{top?.bidders ?? s.reveals}</span></div>

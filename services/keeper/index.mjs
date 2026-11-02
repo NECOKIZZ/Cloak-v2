@@ -44,7 +44,10 @@ const ignored = reg ? OVERRIDES.filter((k) => process.env[k]) : [];
 if (ignored.length) console.error(`CONFIG is set, so these are ignored (addresses come from the registry): ${ignored.join(", ")}`);
 const env = (k) => (reg ? undefined : process.env[k]);
 const FACTORY = env("FACTORY") ?? reg?.factory;
-const START_BLOCK = BigInt(env("START_BLOCK") ?? reg?.factoryBlock ?? 0);
+// every factory of this deployment still has launches to reveal, settle and claim: scan from the earliest one
+const EARLIER = reg?.earlierFactories ?? [];
+const firstFactoryBlock = reg ? reg.entries.filter((e) => e.kind === "factory" && e.version === reg.version).reduce((m, e) => (e.startBlock < m ? e.startBlock : m), reg.factoryBlock) : undefined;
+const START_BLOCK = BigInt(env("START_BLOCK") ?? firstFactoryBlock ?? 0);
 const ROUTER = env("ROUTER") ?? reg?.router; // enables POST /relay for private trades
 const BATCHER = env("BATCHER") ?? reg?.batcher; // enables batch-auction orders + settles/claims rounds
 const BATCHER_BLOCK = BigInt(env("BATCHER_BLOCK") ?? reg?.batcherBlock ?? START_BLOCK);
@@ -54,7 +57,7 @@ const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: 
 
 // public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
 const snapshot = reg && process.env.SNAPSHOT !== "0"
-  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, previous: reg.previous })
+  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, previous: reg.previous })
   : null;
 
 const account = privateKeyToAccount(PK);
@@ -78,7 +81,7 @@ for (const m of ["writeContract", "sendTransaction"]) {
       return hash;
     });
 }
-const cloak = new Cloak(publicClient, walletClient, FACTORY);
+const cloak = new Cloak(publicClient, walletClient, FACTORY, EARLIER);
 
 const status = { keeper: account.address, chain: chain.id, config: process.env.CONFIG ?? null, version: reg?.version ?? null, factory: FACTORY, ignoredEnv: ignored, launches: {}, lastTick: 0 };
 const done = new Set(); // auctions fully claimed

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {CloakSeeder} from "../src/CloakSeeder.sol";
+import {IUniswapV2Factory, IWETH} from "../src/uniswap/IUniswapV2.sol";
 import {Test} from "forge-std/Test.sol";
 import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
@@ -18,6 +20,10 @@ import {IVerifier} from "../src/shielded/interfaces/IVerifier.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
 
 contract PrivateBatcherTest is Test {
+    function _pairSeeder() internal returns (CloakSeeder) {
+        return new CloakSeeder(IUniswapV2Factory(address(0)), IWETH(address(0)), 997);
+    }
+
     CloakConfig config;
     CloakAuction auction;
     CloakToken token;
@@ -40,7 +46,7 @@ contract PrivateBatcherTest is Test {
     function setUp() public virtual {
         vm.warp(1_000_000);
         config = new CloakConfig(address(new MockVerifier()), address(0));
-        CloakFactory factory = new CloakFactory(config, new CloakVestingDeployer());
+        CloakFactory factory = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
         CloakAuction.Params memory p = CloakAuction.Params(
             address(this), 1_000_000e18, 1_000_000e18, 0.001 ether, 0.001 ether, 10,
             uint64(block.timestamp + 1 hours), uint64(block.timestamp + 2 hours), 5000, 1000, 0, 0

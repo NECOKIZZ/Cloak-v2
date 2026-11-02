@@ -51,7 +51,7 @@ On a normal exchange, every trade is stamped with your wallet address forever. A
 | Piece | What it does |
 |---|---|
 | `CloakAuction` + `CloakFactory` | the sealed-bid launch, the clearing price and the locked liquidity |
-| `CloakPair` | the trading pool every launch opens with |
+| `CloakSeeder` + `CloakV2Market` | at settlement, opens a standard Uniswap V2 pool (token / WHYPE) at the clearing price and burns or locks the LP; the adapter lets the private router and batcher trade that pool. Launches before Nov 2 opened a `CloakPair` instead |
 | `ShieldedPool` | the private vault, one per token |
 | `PrivateRouter` | does private buys and sells between vaults, through the launch's pool |
 | `PrivateBatcher` | batch rounds: standard-size orders, buys and sells crossed at the round's time-weighted average price, only the net hits the pool |

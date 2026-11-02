@@ -17,12 +17,13 @@ export const toJson = (x) => JSON.stringify(x, (_k, v) => (typeof v === "bigint"
 
 /**
  * @param pub   a multicall-batched public client
- * @param d     { router, routerBlock, batcher, factory, previous: [{ router, routerBlock, batcher, factory }] }
+ * @param d     { router, routerBlock, batcher, factory, earlierFactories?, previous: [{ router, routerBlock, batcher, factory }] }
  */
 export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error } = {}) {
   const prev = (d.previous ?? []).filter((p) => p.router);
-  const reader = new Cloak(pub, undefined, d.factory, prev.map((p) => p.factory).filter(Boolean));
-  const factories = [d.factory, ...prev.map((p) => p.factory)].filter(Boolean);
+  const older = [...(d.earlierFactories ?? []), ...prev.map((p) => p.factory)].filter(Boolean);
+  const reader = new Cloak(pub, undefined, d.factory, older);
+  const factories = [d.factory, ...older];
   let body = null; // the last snapshot, serialized once
   let zipped = null;
 

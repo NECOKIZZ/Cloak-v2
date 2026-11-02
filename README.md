@@ -74,7 +74,7 @@ Private balances usually stop at stablecoins. Cloak extends them to **trading la
 ```
 
 - **ShieldedPool**: one per asset (WHYPE plus each launch token). A balance is a set of encrypted notes. Spending one needs a Groth16 proof (2-in/2-out circuit, Poseidon Merkle tree) generated **on your device** in about 3–4 s.
-- **PrivateRouter**: a private buy spends a WHYPE note, swaps through the launch's own `CloakPair`, and deposits the tokens as a new note for you. A private sell does the reverse. The swap instructions (pair, output pool, min out, your output note) are inside `ExtData.data`, which **the proof commits to**, so the relayer can submit your trade but cannot change it.
+- **PrivateRouter**: a private buy spends a WHYPE note, swaps through the launch's market (its Uniswap V2 pool, through a `CloakV2Market`; a `CloakPair` for launches before Nov 2), and deposits the tokens as a new note for you. A private sell does the reverse. The swap instructions (pair, output pool, min out, your output note) are inside `ExtData.data`, which **the proof commits to**, so the relayer can submit your trade but cannot change it.
 - **One-time keys**: every note that enters a pool publicly (your shield deposit, every swap output) goes to a fresh key derived from your account, so those entries can't be linked to each other or to your main key.
 - **Your account** comes from one EIP-712 signature (free, no transaction) bound to Elysium and the router, so a signature any other site asks for can't recreate it. The first unlock signs twice and refuses wallets that sign differently each time. Nothing is stored on a server.
 - **Relayer** (`services/keeper`, `POST /relay`): quotes a fee (`GET /quote`), refuses calls that don't pay it or that spend a note already in flight, dry-runs the rest, then submits and pays gas. It is the on-chain sender of every private trade.
@@ -117,7 +117,7 @@ Cloak makes a launch **indifferent to who orders it**:
 | **Bids reveal themselves** | Each bid is encrypted with [tlock](https://github.com/drand/tlock-js) to the drand quicknet round that fires when bidding ends. After that, **anyone** (the keeper, another bidder, the page) can decrypt it and call `reveal`. The contract only checks the hash, so a decryptor can open a bid but never change it. There is no "come back and reveal" step. |
 | **Hidden bid size** | Deposits are rounded up to 1/2/5 × 10ⁿ buckets at any price scale. Your real bid can be anything below your deposit, and the excess is refunded, so a deposit only reveals the order of magnitude. |
 | **One clearing price** | `settle()` walks up to 256 price ticks from high to low. The first tick where demand covers supply sets the price for **everyone**. Bids at that tick fill pro rata, and lower bids are refunded in full. Gas is O(ticks), not O(bids). |
-| **Liquidity at the discovered price** | Part of the raise (`lpBps`), plus matching tokens, seeds a `CloakPair` **at exactly the clearing price**, so there is no first-block arbitrage. LP shares are **burned** or **time-locked** in the auction contract. Unsold tokens are burned. |
+| **Liquidity at the discovered price** | Part of the raise (`lpBps`), plus matching tokens, opens a standard **Uniswap V2 pool** (token / WHYPE) **at exactly the clearing price** (launches before Nov 2 used a `CloakPair`), so there is no first-block arbitrage. LP shares are **burned** or **time-locked** in the auction contract. Unsold tokens are burned. |
 | **Fair-launch record** | `FairLaunch` event: clearing price, sold, raised, LP amounts and lock, bidder count. The page renders it as a verified badge, and a launchpad on Elysium (for example Ascend, for its HyperCore graduation criteria) can read it straight from chain. |
 | **Censorship-tolerant reveals** | Anyone can reveal anyone's bid, and `revealBatch` skips bad entries. Bids whose ciphertext is garbage can't be withheld strategically: unrevealed deposits lose `noRevealPenaltyBps`, at least 10% (burned, never paid to the creator). The contract also checks that the drand round opens after bidding closes and before reveals end. |
 | **Money can't get stuck** | Settlement credits the creator's proceeds and the launch fee instead of sending them, so a recipient that can't take HYPE never blocks settlement or anyone's refund. |
@@ -126,7 +126,7 @@ Cloak makes a launch **indifferent to who orders it**:
 
 ```
 contracts/         Foundry: CloakConfig (fees, caps, timelock), CloakAuction, CloakFactory, CloakToken (fixed supply,
-                   no owner), CloakVesting (creator share), CloakPair (HYPE/token AMM with a time-weighted price)
+                   no owner), CloakVesting (creator share), CloakSeeder + CloakV2Market (open each launch's Uniswap V2 pool and trade it with a time-weighted price), CloakPair (earlier launches' pool)
 contracts/src/shielded/  ShieldedPool, PrivateRouter, PrivateBatcher, CloakMigrator, WHYPE, Groth16 verifier,
                    Merkle trees (a new tree starts when one fills, so exits never stop)
 circuits/          transaction2x2.circom (2-in/2-out notes); built artifacts in apps/web/public/circuits

@@ -2,7 +2,7 @@ import { getSnapshot } from "./snapshot";
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { cloakFactoryAbi } from "@cloakely/sdk";
-import { FACTORY, PREVIOUS } from "./config";
+import { FACTORY, LEGACY_FACTORIES } from "./config";
 import { Hint } from "./errors";
 import { publicClient } from "./wallet";
 
@@ -85,7 +85,7 @@ export async function launchCreatedLogs(auction?: Address): Promise<LaunchCreate
   // every launch's metadata comes with the keeper's snapshot; one launch (or no snapshot) reads the chain
   const snap = auction ? null : await getSnapshot();
   if (snap) return snap.meta.map((m) => ({ args: { auction: m.auction, token: m.token, creator: "0x0000000000000000000000000000000000000000", metadataURI: m.metadataURI }, blockNumber: 0n, transactionHash: "0x", logIndex: 0 }));
-  const factories = [FACTORY, ...PREVIOUS.map((p) => p.factory)].filter(Boolean) as Address[];
+  const factories = [FACTORY, ...LEGACY_FACTORIES].filter(Boolean) as Address[];
   if (!factories.length) return [];
   const q = { address: factories, eventName: "LaunchCreated", args: auction ? { auction } : undefined, fromBlock: 0n, toBlock: "latest", strict: true } as const;
   const [now, v1] = await Promise.all([

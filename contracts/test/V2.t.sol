@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {CloakSeeder} from "../src/CloakSeeder.sol";
+import {IUniswapV2Factory, IWETH} from "../src/uniswap/IUniswapV2.sol";
 import {PrivateBatcherTest} from "./PrivateBatcher.t.sol";
 import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
@@ -53,7 +55,7 @@ contract V2Test is PrivateBatcherTest {
     }
 
     function _factory() internal returns (CloakFactory) {
-        return new CloakFactory(config, new CloakVestingDeployer());
+        return new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
     }
 
     function _unshield(address to, uint256 amount) internal returns (ShieldedPool.Proof memory pr, ShieldedPool.ExtData memory ext) {

@@ -4,6 +4,18 @@ pragma solidity ^0.8.24;
 import {CloakPair, IERC20Min} from "./CloakPair.sol";
 import {CloakConfig} from "./CloakConfig.sol";
 
+/// Opens a settled launch's market (CloakSeeder): a Uniswap V2 pool behind a CloakV2Market, or a CloakPair.
+interface IMarketSeeder {
+    function seed(address token, uint256 tokenAmount, uint256 price, address lpTo)
+        external
+        payable
+        returns (address market, address uniPair, uint256 shares, uint256 hypeUsed, uint256 tokensUsed);
+}
+
+interface ILPToken {
+    function transfer(address to, uint256 value) external returns (bool);
+}
+
 /// The permanent private vault of one asset (ShieldedPool) and the list of them (CloakVaults), as far as a claim needs.
 interface IPrivateVault {
     function depositTo(uint256 pubKey, uint256 amount, uint256 blinding, bytes calldata encryptedOutput)
@@ -26,8 +38,8 @@ interface IERC20Approve is IERC20Min {
 ///  COMMIT  — `commit(hash, sealedBid)` with an over-collateralised HYPE deposit. Only a hash (and a drand-timelocked
 ///            ciphertext of the bid, opaque to the chain) is visible, so ordering and priority fees buy nothing.
 ///  REVEAL  — anyone can open any bid with its preimage (the keeper decrypts the timelock once the drand round passes).
-///  SETTLE  — walks price ticks high→low to find the single clearing price; seeds a CloakPair at exactly that price
-///            and locks (or burns) the LP shares.
+///  SETTLE  — walks price ticks high→low to find the single clearing price; opens the market at exactly that price
+///            (a Uniswap V2 pool where the chain has one, else a CloakPair, see CloakSeeder) and locks (or burns) the LP.
 ///  CLAIM   — every winner pays the same price; the rest of the deposit is refunded.
 ///
 ///  Money out is pull-based: the creator's proceeds and the launch fee are credited at settlement and withdrawn
@@ -79,6 +91,7 @@ contract CloakAuction {
     uint16 public immutable launchFeeBps;
     uint256 public immutable bidCap; // 0 = no cap
     uint256 public immutable depositCap; // 0 = no cap
+    IMarketSeeder public immutable seeder;
     IERC20Approve public token;
     Params public params;
 
@@ -96,7 +109,10 @@ contract CloakAuction {
     uint256 public marginalRemaining; // tokens available to the clearing tick
     uint256 public marginalDemand; // tokens demanded at the clearing tick
     uint256 public raised;
+    /// @notice The market, as Cloak's contracts trade it: a CloakV2Market (Uniswap V2 pool) or a CloakPair.
     CloakPair public pair;
+    /// @notice The Uniswap V2 pool behind `pair`, 0 if the market is a CloakPair. Its LP token is what's locked or burned.
+    address public uniPair;
     uint256 public lpShares;
     bool public lpReleased;
     uint256 public creatorOwed; // proceeds waiting for withdrawProceeds()
@@ -130,13 +146,15 @@ contract CloakAuction {
     event RefundHeld(address indexed bidder, uint256 amount);
     event ClaimedPrivately(uint256 indexed id);
     event RefundWithdrawn(address indexed bidder, address to, uint256 amount);
+    event UniswapMarket(address indexed uniPair, address market, uint256 lpShares);
 
     modifier onlyFactory() {
         require(msg.sender == factory, "factory");
         _;
     }
 
-    constructor(Params memory p, CloakConfig config_) {
+    constructor(Params memory p, CloakConfig config_, IMarketSeeder seeder_) {
+        require(address(seeder_) != address(0), "seeder");
         require(p.creator != address(0), "creator");
         require(p.saleSupply > 0 && p.minPrice > 0, "supply/price");
         require(p.numTicks > 0 && p.numTicks <= MAX_TICKS, "ticks");
@@ -151,6 +169,7 @@ contract CloakAuction {
             require(at >= p.commitEnd && at + REVEAL_MARGIN <= p.revealEnd, "tlock round");
         }
         factory = msg.sender;
+        seeder = seeder_;
         params = p;
         config = config_;
         launchFeeBps = config_.launchFeeBps();
@@ -159,6 +178,11 @@ contract CloakAuction {
         bidCap = capped ? perBid : 0;
         depositCap = capped ? total : 0;
         if (capped) require(perBid > 0 && total > 0, "auctions closed");
+    }
+
+    /// @notice Only the seeder sends HYPE back (the part of the LP budget the market didn't need).
+    receive() external payable {
+        require(msg.sender == address(seeder), "direct HYPE");
     }
 
     function init(address token_) external onlyFactory {
@@ -339,9 +363,15 @@ contract CloakAuction {
             lpHype = (lpTokens * price) / 1e18;
         }
         if (lpHype > 1e6 && lpTokens > 1e6) {
-            pair = new CloakPair(address(token));
-            require(token.approve(address(pair), lpTokens), "approve");
-            lpShares = pair.addLiquidity{value: lpHype}(lpTokens, 0, p.lpLockUntil == 0 ? DEAD : address(this));
+            // what the market doesn't use comes back: HYPE to the creator's proceeds, tokens to the burn below
+            require(token.approve(address(seeder), lpTokens), "approve");
+            (address m, address u, uint256 sh, uint256 hUsed, uint256 tUsed) =
+                seeder.seed{value: lpHype}(address(token), lpTokens, price, p.lpLockUntil == 0 ? DEAD : address(this));
+            pair = CloakPair(payable(m));
+            uniPair = u;
+            lpShares = sh;
+            (lpHype, lpTokens) = (hUsed, tUsed);
+            if (u != address(0)) emit UniswapMarket(u, m, sh);
         } else {
             lpHype = 0;
             lpTokens = 0;
@@ -462,7 +492,8 @@ contract CloakAuction {
         require(params.lpLockUntil != 0 && block.timestamp >= params.lpLockUntil, "locked");
         require(!lpReleased, "released");
         lpReleased = true;
-        pair.transferShares(params.creator, lpShares);
+        if (uniPair != address(0)) require(ILPToken(uniPair).transfer(params.creator, lpShares), "lp");
+        else pair.transferShares(params.creator, lpShares);
         emit LPReleased(params.creator, lpShares);
     }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {CloakSeeder} from "../src/CloakSeeder.sol";
+import {IUniswapV2Factory, IWETH} from "../src/uniswap/IUniswapV2.sol";
 import {Test} from "forge-std/Test.sol";
 import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
@@ -36,6 +38,10 @@ contract FiveFieldFactory {
 /// Launches from every Cloak factory get permanent vaults: CloakConfig lists the factories (v4), and CloakFactoryList
 /// (v3) still reads earlier factories as one list.
 contract FactoryListTest is Test {
+    function _pairSeeder() internal returns (CloakSeeder) {
+        return new CloakSeeder(IUniswapV2Factory(address(0)), IWETH(address(0)), 997);
+    }
+
     CloakConfig config;
     IPoseidon2 p2;
     IPoseidon3 p3;
@@ -85,14 +91,14 @@ contract FactoryListTest is Test {
 
     function test_vaults_openForEveryRegisteredFactory() public {
         // v1: a five-field factory; v2: today's factory with two launches; v3: the new factory
-        CloakFactory v2 = new CloakFactory(config, new CloakVestingDeployer());
-        CloakFactory scratch = new CloakFactory(config, new CloakVestingDeployer());
+        CloakFactory v2 = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
+        CloakFactory scratch = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
         (address a1, address t1) = _settled(scratch, "OLD");
         FiveFieldFactory v1 = new FiveFieldFactory();
         v1.add(a1, t1);
         (, address t2) = _settled(v2, "SHADE");
         (, address t3) = _settled(v2, "AYS");
-        CloakFactory v3 = new CloakFactory(config, new CloakVestingDeployer());
+        CloakFactory v3 = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
 
         ICloakFactoryRead[] memory list = new ICloakFactoryRead[](2);
         list[0] = ICloakFactoryRead(address(v1));
