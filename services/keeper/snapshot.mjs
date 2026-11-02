@@ -4,7 +4,7 @@
 //   GET /snapshot → { at, block, markets, launches, meta, stats } (bigints as {"$n":"…"})
 import { gzipSync } from "node:zlib";
 import { zeroAddress } from "viem";
-import { Cloak, cloakFactoryAbi, cloakPairAbi, cloakTokenAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, whypeAbi } from "@cloakely/sdk";
+import { Cloak, cloakFactoryAbi, cloakPairAbi, cloakTokenAbi, privateBatcherAbi, privateRouterAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, whypeAbi } from "@cloakely/sdk";
 
 const WAD = 10n ** 18n;
 const LAUNCH_CREATED_V1 = [{ type: "event", name: "LaunchCreated", inputs: [
@@ -17,7 +17,8 @@ export const toJson = (x) => JSON.stringify(x, (_k, v) => (typeof v === "bigint"
 
 /**
  * @param pub   a multicall-batched public client
- * @param d     { router, routerBlock, batcher, factory, earlierFactories?, previous: [{ router, routerBlock, batcher, factory }] }
+ * @param d     { router, routerBlock, batcher, factory, earlierFactories?, shared?, sharedBlock?, sharedRouter?,
+ *                previous: [{ router, routerBlock, batcher, factory }] }
  */
 export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error } = {}) {
   const prev = (d.previous ?? []).filter((p) => p.router);
@@ -70,6 +71,29 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
     return [...now, ...v1].map((l) => ({ auction: l.args.auction, token: l.args.token, metadataURI: l.args.metadataURI ?? "" }));
   }
 
+  /** The shared launch-token vault: what it holds (valued at each token's pool price), its trades and its spends. */
+  async function sharedPart(head) {
+    if (!d.shared || !d.sharedRouter) return null;
+    const v = { address: d.shared, abi: sharedVaultAbi };
+    const n = Number(await pub.readContract({ ...v, functionName: "tokensCount" }));
+    const tokens = await Promise.all(Array.from({ length: n }, (_, i) => pub.readContract({ ...v, functionName: "tokens", args: [BigInt(i)] })));
+    const value = await Promise.all(
+      tokens.map(async (t) => {
+        const [bal, market] = await Promise.all([pub.readContract({ address: t, abi: cloakTokenAbi, functionName: "balanceOf", args: [d.shared] }), pub.readContract({ ...v, functionName: "marketOf", args: [t] })]);
+        const price = await pub.readContract({ address: market, abi: cloakPairAbi, functionName: "price" });
+        return (bal * price) / WAD;
+      }),
+    );
+    const from = d.sharedBlock ?? 0n;
+    const [buys, sells, sends, nullifiers] = await Promise.all([
+      since(`${d.sharedRouter}:PrivateBuy`, from, head, { address: d.sharedRouter, abi: sharedRouterAbi, eventName: "PrivateBuy" }),
+      since(`${d.sharedRouter}:PrivateSell`, from, head, { address: d.sharedRouter, abi: sharedRouterAbi, eventName: "PrivateSell" }),
+      since(`${d.sharedRouter}:PrivateSend`, from, head, { address: d.sharedRouter, abi: sharedRouterAbi, eventName: "PrivateSend" }),
+      since(`${d.shared}:NewNullifier`, from, head, { address: d.shared, abi: sharedVaultAbi, eventName: "NewNullifier" }),
+    ]);
+    return { value: value.reduce((a, b) => a + b, 0n), buys, sells, sends, nullifiers };
+  }
+
   /** The Volume page's totals, from the current deployment and every earlier one (same rules as the site). */
   async function stats(head, mkts, auctions) {
     const prices = new Map(mkts.map((m) => [m.token.toLowerCase(), m.price]));
@@ -93,6 +117,7 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
         return { hypePool, shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVault: tokenVaults.reduce((a, b) => a + b, 0n) };
       }),
     );
+    const sh = await sharedPart(head).catch((e) => (log(`[snapshot] shared vault skipped: ${e.shortMessage ?? e.message}`), null));
     const all = (k) => sources.flatMap((x) => x[k]);
     const [shields, unshields, swaps, settles, orders, nullifiers] = ["shields", "unshields", "swaps", "settles", "orders", "nullifiers"].map(all);
     const hypePools = new Set(sources.map((x) => x.hypePool.toLowerCase()));
@@ -100,7 +125,9 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
     const swapHype = swaps.map((e) => (hypePools.has(e.args.poolIn.toLowerCase()) ? e.args.amountIn : e.args.amountOut));
     const batchHype = settles.map((e) => e.args.buyHype + e.args.hypeForSellers);
     const shielded = sum(shields.map((e) => e.args.amount));
-    const swapVolume = sum(swapHype);
+    // the shared vault's trades: HYPE in for buys, HYPE out for sells
+    const sharedHype = sh ? [...sh.buys.map((e) => e.args.hypeIn), ...sh.sells.map((e) => e.args.hypeOut)] : [];
+    const swapVolume = sum(swapHype) + sum(sharedHype);
     const batchVolume = sum(batchHype);
     const bidDeposits = sum(auctions.map((a) => a.totalDeposits));
     const vaultHype = sum(sources.map((x) => x.vaultHype));
@@ -109,15 +136,16 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
       ...swaps.map((e, i) => ({ kind: hypePools.has(e.args.poolIn.toLowerCase()) ? "Private buy" : "Private sell", amount: swapHype[i], block: e.blockNumber, tx: e.transactionHash })),
       ...settles.map((e, i) => ({ kind: "Batch round", amount: batchHype[i], block: e.blockNumber, tx: e.transactionHash })),
       ...unshields.map((e) => ({ kind: "Withdrawn", amount: e.args.amount, block: e.blockNumber, tx: e.transactionHash })),
+      ...(sh ? [...sh.buys.map((e) => ({ kind: "Private buy", amount: e.args.hypeIn, block: e.blockNumber, tx: e.transactionHash })), ...sh.sells.map((e) => ({ kind: "Private sell", amount: e.args.hypeOut, block: e.blockNumber, tx: e.transactionHash }))] : []),
     ].sort((a, b) => Number(b.block - a.block)).slice(0, 12);
     return {
       total: shielded + swapVolume + batchVolume + bidDeposits,
-      vault: vaultHype + sum(sources.map((x) => x.tokenVault)),
+      vault: vaultHype + sum(sources.map((x) => x.tokenVault)) + (sh?.value ?? 0n),
       vaultHype,
       shielded,
       withdrawn: sum(unshields.map((e) => e.args.amount)),
       swapVolume,
-      swaps: swaps.length,
+      swaps: swaps.length + (sh ? sh.buys.length + sh.sells.length : 0),
       batchVolume,
       batchRounds: settles.length,
       batchOrders: orders.length,
@@ -125,7 +153,7 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
       bids: auctions.reduce((a, s) => a + s.commits, 0),
       raised: sum(auctions.filter((a) => a.settled && !a.failed).map((a) => a.raised)),
       launches: auctions.length,
-      privateTxs: Math.floor(nullifiers.length / 2),
+      privateTxs: Math.floor((nullifiers.length + (sh?.nullifiers.length ?? 0)) / 2),
       recent,
     };
   }

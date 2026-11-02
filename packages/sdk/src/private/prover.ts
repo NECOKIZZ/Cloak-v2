@@ -101,3 +101,29 @@ export async function loadProver(baseUrl: string = CIRCUITS_URL, opts: { hashes?
   }
   return createProver(wasm, zkey);
 }
+
+/** SHA-256 of the shared-vault circuit artifacts this SDK version was built and tested against. */
+export const SHARED_CIRCUIT_HASHES = {
+  wasm: "55712f66e67fd9345daac5c881c2e73c546864dbd1e23481463b603b47aa53ed",
+  zkey: "86ecee336f022ac1d2dbcc4db7e85ef838aee34c4d75fe8bc7446db86f3b97b3",
+} as const;
+
+/**
+ * Fetch the shared launch-token vault's circuit (`transactionMA2x2`, 15 MB, once) and build its prover. Checked against
+ * `SHARED_CIRCUIT_HASHES` like `loadProver`; pass `hashes: null` to skip that when serving your own build.
+ */
+export async function loadSharedProver(baseUrl: string = CIRCUITS_URL, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<Prover> {
+  const base = baseUrl.replace(/\/$/, "");
+  const get = async (name: string) => {
+    const res = await fetch(`${base}/${name}`);
+    if (!res.ok) throw new Error(`could not download ${name} from ${base} (${res.status})`);
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const [wasm, zkey] = await Promise.all([get("transactionMA2x2.wasm"), get("transactionMA2x2_final.zkey")]);
+  const want = opts.hashes === undefined ? SHARED_CIRCUIT_HASHES : opts.hashes;
+  if (want) {
+    const [hw, hz] = await Promise.all([sha256(wasm), sha256(zkey)]);
+    if (hw !== want.wasm || hz !== want.zkey) throw new Error("shared-vault circuit files don't match this SDK version's hashes; refusing to prove with them");
+  }
+  return createSharedProver(wasm, zkey);
+}

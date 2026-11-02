@@ -223,6 +223,14 @@ export function Trade() {
                 <div className="row"><span className="mute">Liquidity</span><span className="mono">{hype(market.reserveHype)} HYPE</span></div>
               </div>
             </div>
+            {market.shared ? (
+              <div className="card flat">
+                <h3>In the shared vault</h3>
+                <p className="small soft" style={{ margin: "10px 0 0" }}>
+                  ${market.symbol} is a new launch, so its private balance lives in one vault with every other new launch token. When you send it privately, nobody can tell which token moved, only that something did. Batch mode isn't available for these tokens yet. Instant trades are.
+                </p>
+              </div>
+            ) : (
             <div className="card flat">
               <h3>How batch mode works</h3>
               <ol className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>
@@ -232,6 +240,7 @@ export function Trade() {
                 <li>Everyone in the round gets the same price, paid back into private balances.</li>
               </ol>
             </div>
+            )}
           </div>
         </div>
       )}

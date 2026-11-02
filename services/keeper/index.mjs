@@ -62,7 +62,7 @@ const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: 
 
 // public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
 const snapshot = reg && process.env.SNAPSHOT !== "0"
-  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, previous: reg.previous })
+  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, shared: reg.shared, sharedBlock: reg.sharedBlock, sharedRouter: reg.sharedRouter, previous: reg.previous })
   : null;
 
 const account = privateKeyToAccount(PK);

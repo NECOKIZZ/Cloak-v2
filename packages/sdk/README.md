@@ -87,6 +87,22 @@ await priv.send(usdc.token, "cloak:…", parseUnits("20", 6));             // am
 await priv.unshieldToken(usdc.token, freshAddress, parseUnits("10", 6)); // 0.25% fee kept
 ```
 
+Launches from Nov 2 on keep their private balances in one shared launch-token vault (a testnet experiment). There a
+private send doesn't even show which token moved: its relayer is paid from your private HYPE in the same transaction.
+
+```ts
+const shared = new SharedVaultClient(
+  priv, d.shared!, d.sharedRouter!,
+  () => loadSharedProver(d.circuitsUrl),  // its own circuit (the token is inside each note), hash-checked
+  sharedRelayerSubmitter(d.relayerUrl), d.sharedBlock,
+);
+await shared.buy(token, parseEther("0.25"));          // private HYPE → private token, through the Uniswap pool
+await shared.send(token, parseEther("100"), "cloak:…"); // amount, parties and the token itself hidden
+await shared.sell(token, parseEther("50"));           // back to private HYPE
+await shared.unshield(token, parseEther("10"), freshAddress);
+console.log(await shared.balances());                 // every token this account holds there
+```
+
 The private account comes from one EIP-712 signature bound to the chain only (never to a contract), so it and the `cloak:` address never change. The same wallet always restores it, and nothing is stored on a server. In Node, read the circuit files yourself and pass them to `createProver(wasm, zkey)`.
 
 ## Fees (testnet beta)

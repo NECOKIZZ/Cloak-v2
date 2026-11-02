@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { CloakPrivate, SharedVaultClient, createSharedProver, loadProver, relayerSubmitter, sharedRelayerSubmitter, sharedWalletSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
+import { CloakPrivate, SharedVaultClient, loadProver, loadSharedProver, relayerSubmitter, sharedRelayerSubmitter, sharedWalletSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
 import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, ASSETS, SHARED, SHARED_BLOCK, SHARED_ROUTER } from "./config";
 import { chain, IS_LOCAL } from "./config";
 import { friendly, Hint } from "./errors";
@@ -8,16 +8,9 @@ import { connectBurner, connectProvider, ensureElysium, installedWallets, public
 
 let proverPromise: Promise<Prover> | null = null;
 export const getProver = () => (proverPromise ??= loadProver("/circuits"));
-// the shared vault's circuit (12 MB), fetched the first time a shared-vault token is moved
+// the shared vault's circuit (15 MB, checked against the SDK's hashes), fetched the first time a shared-vault token moves
 let sharedProverPromise: Promise<Prover> | null = null;
-export const getSharedProver = () =>
-  (sharedProverPromise ??= Promise.all(
-    ["transactionMA2x2.wasm", "transactionMA2x2_final.zkey"].map(async (f) => {
-      const r = await fetch(`/circuits/${f}`);
-      if (!r.ok) throw new Error(`could not download ${f}`);
-      return new Uint8Array(await r.arrayBuffer());
-    }),
-  ).then(([w, z]) => createSharedProver(w, z)).catch((e) => ((sharedProverPromise = null), Promise.reject(e))));
+export const getSharedProver = () => (sharedProverPromise ??= loadSharedProver("/circuits").catch((e) => ((sharedProverPromise = null), Promise.reject(e))));
 
 /** The shared launch-token vault client for a private account (null when the deployment has none). */
 export function sharedFor(p: CloakPrivate, w?: Wallet | null): SharedVaultClient | null {

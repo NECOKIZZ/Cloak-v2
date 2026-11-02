@@ -1,4 +1,4 @@
-import { encodeAbiParameters, keccak256, zeroAddress, type Address, type Hex } from "viem";
+import { encodeAbiParameters, formatEther, keccak256, zeroAddress, type Address, type Hex } from "viem";
 import { cloakAuctionAbi, cloakPairAbi, sharedRouterAbi, sharedVaultAbi } from "../abis.js";
 import { Cloak, type Wallet } from "../cloak.js";
 import { MAIN_KEY, encryptFullMemo, encryptRouterMemo, noteCommitment, nullifierOf, parseCloakAddress, randomField, randomKeyIndex, readMemo } from "./crypto.js";
@@ -405,6 +405,10 @@ export class SharedVaultClient {
     const dest = parseCloakAddress(to);
     const hypePool = this.priv.hypeMarket.pool;
     const q = await this.quote("sharedSend", zeroAddress); // the relayer is never told which token a hidden send moves
+    const hypeHeld = await this.priv.balance(hypePool);
+    if (hypeHeld < q.fee) {
+      throw new Error(`a hidden send pays its relayer from your private HYPE, so you need about ${formatEther(q.fee)} HYPE in your private balance (you have ${formatEther(hypeHeld)})`);
+    }
     const inputs = await this.inputsFor(token, amount, onStatus);
     const feeInputs = await this.priv.inputsFor(hypePool, q.fee, onStatus);
     const change = inputs.reduce((a, x) => a + x.amount, 0n) - amount;

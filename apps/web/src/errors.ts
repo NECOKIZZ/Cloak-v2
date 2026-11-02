@@ -9,6 +9,10 @@ const FAUCET = "the Elysium faucet";
 
 // custom errors from the contracts, by name. Reverts relayed as raw selectors are mapped below.
 const CONTRACT: Record<string, string> = {
+  NotAdmitted: "This token isn't in the shared private vault yet. Its launch has to settle first, then it's added automatically.",
+  HasOwnVault: "This token already has a private vault of its own.",
+  NotFree: "A hidden send can't carry a fee in the token. Try again.",
+  BadFeeProof: "The relayer fee for this send didn't match. Try again.",
   NullifierAlreadySpent: "Part of your private balance was already spent, maybe in another tab. Refresh the page and try again.",
   UnknownRoot: "Your private balance was a moment out of date. It has refreshed, so try again.",
   InvalidProof: "The privacy proof didn't check out. Refresh the page and try again.",
@@ -59,6 +63,7 @@ const RULES: [RegExp, string][] = [
   // funds and gas
   [/insufficient funds|exceeds (the )?balance|not enough balance|gas required exceeds allowance/, `Not enough testnet HYPE in your wallet to cover this and the gas. Get some from ${FAUCET}.`],
   [/insufficient token balance in wallet/, "Your wallet doesn't hold that much USDC. Shield a smaller amount, or bridge more USDC to Elysium first."],
+  [/a hidden send pays its relayer from your private hype/, "A private send of this token pays its relayer from your private HYPE, so nobody can tell which token moved. Shield a little HYPE first (a few thousandths is enough on testnet), then send again."],
   [/insufficient private balance/, "Not enough private balance for this, counting the small relayer fee. Try a slightly smaller amount, or shield more HYPE on the Portfolio page."],
   [/network didn't answer\. nothing was sent/, "The network didn't answer. Nothing was sent, so try again in a moment."],
   [/network didn't answer while sending/, "The network didn't answer while sending. Check your balance in a minute before trying again."],
