@@ -41,7 +41,18 @@ const until = async (what, fn, secs = 360) => {
 
 const funder = clients(chain, RPC, local ? "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" : process.env.DEPLOYER_PK);
 const pub = funder.publicClient;
-const fund = async (to, v) => pub.waitForTransactionReceipt({ hash: await funder.walletClient.sendTransaction({ to, value: parseEther(v) * S }) });
+// live, the funder is also the hosted keeper's key, so a send can race the keeper's own: retry with a fresh nonce
+const fund = async (to, v) => {
+  for (let i = 0; ; i++) {
+    try {
+      const nonce = await pub.getTransactionCount({ address: funder.account.address, blockTag: "pending" });
+      return await pub.waitForTransactionReceipt({ hash: await funder.walletClient.sendTransaction({ to, value: parseEther(v) * S, nonce }) });
+    } catch (e) {
+      if (i >= 5 || !/nonce|replacement/i.test(String(e?.message))) throw e;
+      await sleep(2000);
+    }
+  }
+};
 const prover = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
 
 let keeper;
