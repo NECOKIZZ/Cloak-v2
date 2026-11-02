@@ -38,6 +38,18 @@ await priv.buy(token, parseEther("0.25"));                 // instant, wallet ne
 await priv.batch(token, "buy", parseEther("0.37"));        // batch: size hidden too
 await priv.send(token, "cloak:…", parseEther("100"));      // private transfer
 await priv.unshieldHype(freshAddress, parseEther("0.5"));  // back to a wallet`,
+  "Payment links": `import { CloakPrivate, buildClaimLink, linkAddress, linkKeys, newLinkSecret, parseClaimLink } from "@cloakely/sdk";
+
+// send: fund a throwaway private account and put its secret in the link
+const secret = newLinkSecret();
+const tx = await priv.send(WHYPE, await linkAddress(await linkKeys(secret, "elysium")), parseEther("0.1"));
+const url = buildClaimLink({ secret, block, token: "HYPE", amount: "0.1", locked: true, hint: "Our chain?" });
+
+// claim: open the link's account and move everything out, no gas needed
+const l = parseClaimLink(url);
+const link = new CloakPrivate(publicClient, ROUTER, await linkKeys(l.secret, "Elysium"), prover, relayerSubmitter(KEEPER_URL), VAULTS_BLOCK);
+await link.loadMarkets();
+await link.sweep(WHYPE, "0xFreshWallet…");                 // or a cloak: address to stay private`,
   Contracts: `// From Solidity: launch through the factory, with the project as creator
 CloakAuction.Params memory p = CloakAuction.Params({
   creator: project, saleSupply: 1_000_000e18, lpReserve: 1_000_000e18,
@@ -68,6 +80,12 @@ const API: [string, [string, string][]][] = [
     ["send(token, cloakAddress, amount)", "Private transfer inside the vault. No sender, recipient or amount on-chain."],
     ["unshieldHype · unshieldToken(…, to, amount)", "Withdraw to any address."],
     ["balance(pool) · address() · roundInfo()", "Your private balance, your cloak: address, and the batch round clock."],
+  ]],
+  ["Payment links", [
+    ["newLinkSecret() · linkKeys(secret, passcode?) · linkAddress(keys)", "A link's throwaway private account: send to linkAddress, and whoever has the secret (and passcode) controls it."],
+    ["buildClaimLink({ secret, block, token, amount, message, locked, hint, shares }) · parseClaimLink(url)", "The claim link and back. Everything sits after the #, so servers never see it."],
+    ["priv.sweep(token, to, onStatus?, { one? })", "Empty a balance in one relayed call to a cloak: or 0x address (no gas needed). `one` takes a single share of a split link."],
+    ["buildRequestLink({ to, token, amount?, note?, name? }) · parseRequestLink(url)", "A link that asks to be paid HYPE or USDC, to a cloak: or 0x address."],
   ]],
   ["Helpers", [
     ["createProver(wasm, zkey) · loadProver(url)", "Groth16 prover for the 2-in/2-out circuit, running on the user's device."],
