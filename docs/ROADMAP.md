@@ -192,14 +192,16 @@ At launch:
 ## Later · protocol (around and after mainnet)
 
 Already planned:
-- **Bid funding from a private balance,** so a deposit can't be linked to the bidder.
+- ~~Bid funding from a private balance~~: live (Nov 2), through one-time bid wallets.
+- **A minimum raise** and a **live price on the demand meter after bidding closes** are next for launches.
 - **Timelock-sealed batch orders** that hide side and size until the round clears.
 - **A security audit and a public trusted-setup ceremony.** Mainnet caps lift once both are done.
 - **A minimum raise for launches.** The creator sets a floor, and if revealed demand doesn't reach it, every bidder gets a full refund. Today a launch settles with any demand above zero.
 
 Launch pools:
 - **Uniswap V3 as an option per launch:** a full-range position (a new token's price moves too much for a narrow one), with the creator picking the fee tier. The LP position NFT is locked or burned like today's LP.
-- **Uniswap V4 with a Cloak hook:** the hook can carry creator fees, anti-sniping right after settlement and a built-in price feed for batch rounds. The private router learns V4 pools first.
+- **Creator fees: live (Nov 2)** through `CloakFeeLocker` on V2 pools (the LP locked forever, the 0.3% trading fee to the creator).
+- **Uniswap V4 with a Cloak hook:** the hook can carry a separate creator fee, anti-sniping right after settlement and a built-in price feed for batch rounds. The private router learns V4 pools first.
 - **Choosing per launch:** the factory takes a pool type and settlement opens that pool. V2 stays the default.
 - **Private swaps through outside pools** (USDC, stock tokens, curated outside tokens): a swap router over approved Uniswap V2 and V3 factories, see [PRIVACY-LAYER.md](PRIVACY-LAYER.md).
 - **Availability** ([PARTNERS.md](PARTNERS.md)): the Cloak token list (`tokenlist.json`, live) and launch feed (live), explorer source verification, price charts on launch pages from the keeper's record of trades, and asking DexScreener, GeckoTerminal, DefiLlama, 0x and KyberSwap to add Elysium once mainnet is live.

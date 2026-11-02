@@ -48,6 +48,7 @@ Elysium testnet (chain `99801`) as of Nov 2, 2026, read from the contracts and f
 | Getting paid | Pull-based: the creator's proceeds and the fee are withdrawn separately, so a recipient that can't take HYPE can't block anyone. A refund a bidder's address can't take is held for them to withdraw to any address | Contract (fixed) |
 | Private claim | Only the bidder, straight into the token's vault as a note for a one-time key. Needs the vault (the keeper opens it at settlement) and fits under the vault's deposit caps | Contract (fixed) |
 | Public claims | The keeper pushes tokens and refunds to every unclaimed bidder **1 hour** after the reveal window, so winners can claim privately first. Anyone can push claims at any time | Keeper |
+| Presets in the app | Quick (15 min of bidding), Standard (6 hours), Extended (24 hours); every setting can also be set by hand | App |
 
 ## The launch's market (from Nov 2: a Uniswap V2 pool)
 
@@ -59,10 +60,32 @@ Elysium testnet (chain `99801`) as of Nov 2, 2026, read from the contracts and f
 | Sent to the pool early | The pool's address is known in advance. Tokens or WHYPE sent there before it has reserves are swept to `0x…dEaD`. Reserves someone synced in are topped up so the pool still opens at the clearing price; whoever sent them loses them | Contract (fixed) |
 | Someone else's LP already in the pool | That pool is left alone and the launch opens a Cloak pool (`CloakPair`) instead, so nobody else's position can set the price | Contract (fixed) |
 | Forcing that fallback | Impossible by starving gas: the Uniswap attempt always gets **6,000,000** gas, and settlement refuses to run with too little for it | Contract (fixed) |
-| LP | **Burned** to `0x…dEaD` (Uniswap keeps its own 1,000 at address 0), or **locked** in the auction until a date the creator set, then released to the creator | Contract (fixed) |
+| LP | The creator picks one: **locked forever with the trading fees to the creator** (the app's default), **burned** to `0x…dEaD` (Uniswap keeps its own 1,000 at address 0), or **locked** in the auction until a date, then released to the creator | Contract (fixed) |
 | What the pool didn't use | HYPE goes to the creator's proceeds, tokens are burned | Contract (fixed) |
 | Who can trade it | Anyone, on Uniswap, through aggregators or from any wallet. Private trades go through the same pool | — |
 | Launches before Nov 2 | Their market is a `CloakPair` (same constant-product maths, 0.3%, LP burned or locked). It stays as it is | Contract (fixed) |
+
+## Creator fees (LP locked forever)
+
+| Rule | Value | Where |
+|---|---|---|
+| Where the LP goes | `CloakFeeLocker`, at settlement, for good. It has no owner, no unlock and no setting | Contract (fixed) |
+| What the creator earns | The growth of the pool's √(reserve × reserve) per LP token since the lock: the pool's **0.3%** fee on every trade, public or private (plus anything someone donates to the pool) | Contract (fixed) |
+| What the creator can never take | The liquidity locked at settlement. The locker stores its value and always keeps enough LP to cover it, rounded in the pool's favour | Contract (fixed) |
+| Collecting | Anyone can trigger a claim; the fees always go to the beneficiary, as WHYPE and tokens | Contract (fixed) |
+| Beneficiary | The creator; only the current beneficiary can hand it to another address | Contract (fixed) |
+| If the launch falls back to a Cloak pool | Its LP stays in the auction forever and earns no fees for anyone | Contract (fixed) |
+| Tested | Fee maths, repeated claims, flash price moves, donations, outside LPs and 256 fuzzed trade-and-claim sequences against the real testnet Uniswap: the locked value never fell | — |
+
+## Bidding from a private balance
+
+| Rule | Value | Where |
+|---|---|---|
+| How | A relayed private withdrawal funds a fresh one-time wallet with the deposit, the vault fee and a little gas (about 6M gas worth), and that wallet seals the bid | App + SDK |
+| Linkability | The bid comes from an address nobody can tie to your wallet. The withdrawal shows its amount, like any withdrawal | — |
+| Recovery | One-time wallets derive from your private account's seed, so the same wallet signature finds them again on any device | SDK |
+| After the launch | One action claims won tokens straight into the private balance (or to the one-time wallet, then in, if a cap blocks it), collects the refund and moves the HYPE back in | App + SDK |
+| A bid that didn't go through | Its funding can be moved back in at any time, before or after settlement | App + SDK |
 
 ## Private vaults
 
@@ -119,3 +142,5 @@ Elysium testnet (chain `99801`) as of Nov 2, 2026, read from the contracts and f
 - Every contract and its start block: `readRegistry(publicClient, config)` in `@cloakely/sdk`.
 - Batch settings: `PrivateBatcher` at `0xc69e…3203` (`roundSecs`, `maxSlippageBps`, `refundAfter`, `minOrder`).
 - The Uniswap settings: `CloakSeeder` at `0x633a…a88d` (`uniFactory`, `weth`, `feeNum`).
+- Creator fees: `CloakFeeLocker` at `0x3b74…01d8` (`positions(id)`, `claimable(id)`, `claimableAmounts(id)`); a launch's
+  `feePosition()` is its id there.

@@ -25,13 +25,17 @@ Cloak **v4** (Oct 31): **permanent vaults**. Every asset has one vault, made onc
 
 **Uniswap launches** (Nov 2): every new launch opens a standard **Uniswap V2 pool** (token / WHYPE) at its clearing price, with the LP burned or locked, so the token trades on Uniswap, aggregators and any wallet. Private buys, sells and batch rounds trade the same pool through a `CloakV2Market`. Tested live end to end (`e2e/live-uniswap.mjs`, 17/17).
 
+**Creator fees and private bids** (Nov 2): a launch's LP can be locked forever in `CloakFeeLocker`, with the pool's 0.3% trading fees going to the creator and the liquidity never coming out; bidders can pay from their private balance through one-time wallets. The create page has Quick, Standard and Extended presets plus every technical setting, and launch pages show a live demand meter. Tested live end to end (`e2e/launch-fees.mjs`).
+
 **Every rule, with its number and who can change it: [`docs/RULES.md`](docs/RULES.md).**
 
 | Contract | Address |
 |---|---|
 | **CloakConfig** (rules, and the list of every Cloak contract; changes behind a 3-day timelock) | [`0x9fdf166f0671166148ea98cdd3ef0118d256167f`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9fdf166f0671166148ea98cdd3ef0118d256167f) |
 | **CloakVaults** (the permanent vaults, one per asset) | [`0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43) |
-| **CloakFactory** (launches open a Uniswap V2 pool; private claims) | [`0xeac84944f5a8343edf49cde8ef74d71f4908a656`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xeac84944f5a8343edf49cde8ef74d71f4908a656) |
+| **CloakFactory** (Uniswap V2 pools, creator fees, private claims) | [`0xd179bad69715f4bd4796dd7a4103be143fba02ad`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xd179bad69715f4bd4796dd7a4103be143fba02ad) |
+| **CloakFeeLocker** (LP locked forever, trading fees to the creator) | [`0x3b74062a72b16f9a221d63515518a635414501d8`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3b74062a72b16f9a221d63515518a635414501d8) |
+| **CloakFactory**, Uniswap launches without creator fees (Nov 2; still lists) | [`0xeac84944f5a8343edf49cde8ef74d71f4908a656`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xeac84944f5a8343edf49cde8ef74d71f4908a656) |
 | **CloakSeeder** (opens each launch's pool at the clearing price) | [`0x633aa82b806dafc0ae4c84418d23f3726139a88d`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x633aa82b806dafc0ae4c84418d23f3726139a88d) |
 | **CloakFactory**, v4's first (launches until Nov 2, Cloak pools; still lists) | [`0xa88df63d7d44acc66052e5cbe5ba9503bf940993`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa88df63d7d44acc66052e5cbe5ba9503bf940993) |
 | **PrivateRouter** (private swaps) | [`0x343ab9a7aac93cee28321410510ea24417cc6386`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x343ab9a7aac93cee28321410510ea24417cc6386) |

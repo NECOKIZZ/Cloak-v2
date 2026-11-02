@@ -110,6 +110,7 @@ export function Docs() {
               <tr><td>Settle</td><td>One clearing price is computed, and the pool is seeded at that price.</td><td>The demand curve and the clearing price</td></tr>
             </tbody>
           </table>
+          <p><b>Bid from your private balance.</b> On the bid card, pick "Private balance". Your private HYPE pays a fresh one-time wallet through the relayer, and that wallet places the bid, so nobody can tie the bid to your own wallet. After the launch, one click claims your tokens into your private balance and moves any refund back. The one-time wallets come from your private account, so the same wallet signature finds them again on any device.</p>
           <p>The contract only checks that a revealed bid matches its hash. A keeper can open a bid but never change it. Bids that aren't revealed get refunded minus a small burned penalty, so nobody can strategically withhold.</p>
 
           <h2 id="clearing-price">The clearing price</h2>
@@ -117,7 +118,7 @@ export function Docs() {
           <p>Because the price doesn't depend on order, bidding early, fast or with more gas earns nothing. That's the whole point on a fee-ordered chain.</p>
 
           <h2 id="liquidity">Locked liquidity</h2>
-          <p>A share of the raise (default 50%) plus matching tokens opens the token's pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The LP is burned, or locked in the auction contract until a date the creator picked. Unsold tokens, and any tokens the pool didn't need, are burned. Whatever HYPE the pool didn't need goes to the creator.</p>
+          <p>A share of the raise (default 50%) plus matching tokens opens the token's pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The creator picks what happens to the LP: <b>locked forever with the trading fees going to the creator</b> (the default), burned, or locked until a date. Unsold tokens, and any tokens the pool didn't need, are burned. Whatever HYPE the pool didn't need goes to the creator.</p>
           <p>A pool's address is known before it exists, so someone could try to send it tokens or WHYPE early and make the launch open at a silly price. Settlement handles every case:</p>
           <ul>
             <li>Anything sent to the pool's address before it has reserves is swept to the burn address.</li>
@@ -125,6 +126,9 @@ export function Docs() {
             <li>If someone already put their own liquidity in the pool (which needs launch tokens before settlement), that pool is ignored and the launch opens a Cloak pool instead, so nobody else's position sets the price.</li>
             <li>The Uniswap step always gets a fixed 6,000,000 gas, and settlement refuses to run with less, so nobody can force the fallback by sending too little gas.</li>
           </ul>
+
+          <h3>Creator fees</h3>
+          <p>With "locked forever", the pool's LP goes into <code>CloakFeeLocker</code> at settlement and never comes out. Every trade on the pool, public or private, pays Uniswap's 0.3% fee into the pool. The locker remembers what the liquidity was worth when it was locked and lets the creator collect only the growth since, so the creator earns from trading but can never take the liquidity itself. Anyone can trigger a collection; the fees always go to the creator. Fees come from trading only: bidding pays the creator through the raise.</p>
 
           <h2 id="uniswap">Trading on Uniswap</h2>
           <p>Since Nov 2, every launch's pool is a standard <b>Uniswap V2 pool</b> (token / WHYPE, 0.3% fee) from Elysium's Uniswap V2 factory. That means the token is a normal token everywhere: anyone can trade it on Uniswap, aggregators can route to it, wallets can price it, and trackers like DexScreener can chart it once they support Elysium. The launch page links to the pool.</p>
@@ -206,9 +210,10 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <tbody>
               <tr><td>CloakConfig (rules and the list of every Cloak contract)</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
               <tr><td>CloakVaults (the permanent vaults)</td><td><a href={A(ADDR.vaults)} target="_blank" rel="noreferrer"><code>{ADDR.vaults}</code></a></td></tr>
+              {DEPLOYMENT?.feeLocker && <tr><td>CloakFeeLocker (LP locked forever, trading fees to creators)</td><td><a href={A(DEPLOYMENT.feeLocker)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.feeLocker}</code></a></td></tr>}
               <tr><td>CloakFactory (launches open a Uniswap V2 pool)</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
               {ADDR.seeder && <tr><td>CloakSeeder (opens each pool at the clearing price)</td><td><a href={A(ADDR.seeder)} target="_blank" rel="noreferrer"><code>{ADDR.seeder}</code></a></td></tr>}
-              {ADDR.earlierFactory && <tr><td>CloakFactory (v4's first, launches until Nov 2, Cloak pools)</td><td><a href={A(ADDR.earlierFactory)} target="_blank" rel="noreferrer"><code>{ADDR.earlierFactory}</code></a></td></tr>}
+              {(DEPLOYMENT?.earlierFactories ?? []).map((f, i, all) => <tr key={f}><td>CloakFactory, earlier ({i === all.length - 1 ? "v4's first, Cloak pools" : "Uniswap pools, no creator fees"}; still lists)</td><td><a href={A(f)} target="_blank" rel="noreferrer"><code>{f}</code></a></td></tr>)}
               <tr><td>PrivateRouter</td><td><a href={A(ADDR.router)} target="_blank" rel="noreferrer"><code>{ADDR.router}</code></a></td></tr>
               <tr><td>PrivateBatcher</td><td><a href={A(ADDR.batcher)} target="_blank" rel="noreferrer"><code>{ADDR.batcher}</code></a></td></tr>
               <tr><td>HYPE vault</td><td><a href={A(ADDR.hypePool)} target="_blank" rel="noreferrer"><code>{ADDR.hypePool}</code></a></td></tr>
@@ -243,7 +248,8 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>Creator's own share</td><td>At most 20% of supply, vesting over at least 30 days</td><td>Contract</td></tr>
               <tr><td>Launch token</td><td>Fixed supply, no owner, no mint, no tax, no blacklist</td><td>Contract</td></tr>
               <tr><td>Pool opening price</td><td>Exactly the clearing price, Uniswap V2, 0.3% fee</td><td>Contract</td></tr>
-              <tr><td>LP</td><td>Burned, or locked until the creator's date</td><td>Contract</td></tr>
+              <tr><td>LP</td><td>Locked forever with trading fees to the creator, burned, or locked until a date</td><td>Contract</td></tr>
+              <tr><td>Creator fees</td><td>Uniswap's 0.3% on every trade; the locked liquidity can never be taken</td><td>Contract</td></tr>
               <tr><td>Winners' window to claim privately</td><td>1 hour after reveals end, then the keeper pushes public claims</td><td>Keeper</td></tr>
               <tr><td>Private swap slippage and deadline</td><td>1% and 10 minutes by default</td><td>App</td></tr>
               <tr><td>Batch round</td><td>30 s, 2% price guard, 5% impact guard, refunds after 10 min</td><td>Contract</td></tr>
