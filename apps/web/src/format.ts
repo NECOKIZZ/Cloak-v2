@@ -35,3 +35,11 @@ export function duration(s: number): string {
   const p = (x: number) => String(x).padStart(2, "0");
   return d > 0 ? `${d}d ${p(h)}:${p(m)}:${p(sec)}` : h > 0 ? `${p(h)}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
 }
+
+/** A price move since launch: "+12%", "-3.4%", or "×1,234" once it's past +1000%. Null below 0.05% either way. */
+export function pctChange(pct: number | null): { text: string; dir: "up" | "down" | "flat" } | null {
+  if (pct === null || !isFinite(pct)) return null;
+  if (Math.abs(pct) < 0.05) return { text: "0%", dir: "flat" };
+  if (pct >= 1000) return { text: `${Math.round(pct / 100 + 1).toLocaleString()}×`, dir: "up" };
+  return { text: `${pct > 0 ? "+" : ""}${pct.toFixed(Math.abs(pct) >= 10 ? 0 : 1)}%`, dir: pct > 0 ? "up" : "down" };
+}

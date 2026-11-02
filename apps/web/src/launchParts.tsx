@@ -53,30 +53,33 @@ export function DemandMeter({ s, now }: { s: AuctionState; now: number }) {
   return (
     <div className="card">
       <div className="card-head">
-        <h3>Live demand</h3>
-        <span className={`pill ${open ? "ok" : ""}`}>{open ? "bidding open" : "bidding closed"}</span>
+        <h3>{open ? "Bidding closes in" : "Bidding closed"}</h3>
+        <span className={`pill ${open ? "ok" : ""}`}>{open ? <><span className="dot live" />live</> : lastAt ? `last bid ${duration(now - lastAt)} ago` : "closed"}</span>
       </div>
+      {open && <div className="countdown" style={{ marginBottom: 18 }}>{duration(s.commitEnd - now)}</div>}
       <div className="meter">
         <div><div className="k">Sealed bids</div><div className="v">{s.commits}</div></div>
-        <div><div className="k">HYPE locked behind them</div><div className="v">{hype(s.totalDeposits, 4)}</div></div>
-        <div><div className="k">{open ? "Closes in" : "Last bid"}</div><div className="v">{open ? duration(s.commitEnd - now) : lastAt ? `${duration(now - lastAt)} ago` : "—"}</div></div>
+        <div><div className="k">HYPE committed</div><div className="v">{hype(s.totalDeposits, 4)}</div></div>
+        <div><div className="k">Starting price</div><div className="v">{hype(s.minPrice)}</div></div>
       </div>
-      <div className="buckets-chart" aria-label="Deposits by size">
-        {BANDS.map(([, label], i) =>
-          counts[i] || i < 4 ? (
-            <div className="b" key={label}>
-              <span className="mute">{label} HYPE</span>
-              <span className="bar-h"><i style={{ width: `${(counts[i] / most) * 100}%` }} /></span>
-              <span className="mono">{counts[i]}</span>
-            </div>
-          ) : null,
-        )}
-      </div>
+      {s.commits > 0 && (
+        <div className="buckets-chart" aria-label="Deposits by size">
+          {BANDS.map(([, label], i) =>
+            counts[i] || i < 4 ? (
+              <div className="b" key={label}>
+                <span className="mute">{label} HYPE</span>
+                <span className="bar-h"><i style={{ width: `${(counts[i] / most) * 100}%` }} /></span>
+                <span className="mono">{counts[i]}</span>
+              </div>
+            ) : null,
+          )}
+        </div>
+      )}
       <p className="xs mute" style={{ margin: "14px 0 0" }}>
-        {startCost > 0n && s.commits > 0 && (
-          <>Locked HYPE is <b>{cover >= 10 ? Math.round(cover) : cover}×</b> what the whole sale costs at the starting price. </>
+        {startCost > 0n && s.commits > 0 && cover >= 1 && (
+          <>Enough HYPE is committed to buy the whole sale <b>{cover >= 10 ? Math.round(cover) : cover}×</b> over at the starting price. </>
         )}
-        Deposits round up to 1, 2 or 5 × 10ⁿ HYPE, so these bands show size, never a price or quantity. Every bid stays sealed until bidding closes.
+        {s.commits > 0 ? "Sizes are shown in rough bands only. No price or amount is visible until bidding closes." : "No bids yet. Prices and amounts stay hidden until bidding closes."}
       </p>
     </div>
   );
@@ -121,11 +124,9 @@ export function CreatorFeesCard({ s, wallet }: { s: AuctionState; wallet: Wallet
   return (
     <div className="card">
       <div className="card-head"><h3>Creator fees</h3><span className="pill ok">liquidity locked forever</span></div>
-      <p className="small soft" style={{ marginTop: 0 }}>
-        This launch's pool can never be emptied. Every trade on it, public or private, pays Uniswap's 0.3% fee into the pool, and the creator can collect that share whenever they like. The locked liquidity itself never comes out.
-      </p>
+      <p className="small soft" style={{ marginTop: 0 }}>The pool can never be emptied. The creator earns its 0.3% trading fee instead.</p>
       <div className="summary">
-        <div className="row"><span className="mute">Earned so far</span><span className="mono">{earned ? `${amt(f.whype, (v) => hype(v))} WHYPE + ${amt(f.tokens, tokens)} ${s.tokenSymbol}` : "nothing yet"}</span></div>
+        <div className="row"><span className="mute">Earned so far</span><span className="mono">{earned ? [f.whype > 0n && `${amt(f.whype, (v) => hype(v))} HYPE`, f.tokens > 0n && `${amt(f.tokens, tokens)} ${s.tokenSymbol}`].filter(Boolean).join(" + ") : "nothing yet"}</span></div>
         <div className="row"><span className="mute">Paid to</span><span className="mono">{mine ? "you" : short(f.beneficiary)}</span></div>
       </div>
       {earned && (

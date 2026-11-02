@@ -37,6 +37,16 @@ const PRESETS: { id: string; name: string; blurb: string; f: Partial<Form> }[] =
 const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "3", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "10", creatorPct: "0", vestDays: "90" };
 const LAUNCH_FEE_BPS = 150n;
 
+function Field({ label, unit, help, value, onChange, mode, disabled }: { label: string; unit?: string; help: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; mode: "decimal" | "numeric"; disabled?: boolean }) {
+  return (
+    <div className="field">
+      <label><span>{label}</span>{unit && <span>{unit}</span>}</label>
+      <input className="input" value={value} onChange={onChange} inputMode={mode} disabled={disabled} />
+      <span className="field-help">{help}</span>
+    </div>
+  );
+}
+
 const num = (v: string) => /^\s*\d*\.?\d+\s*$/.test(v) && Number(v) >= 0;
 const pos = (v: string) => num(v) && Number(v) > 0;
 const wei = (v: string) => {
@@ -206,21 +216,20 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
           </button>
           {advanced && (
             <div className="advanced">
-              <div className="fl" style={{ gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-                <div className="field"><label><span>Tokens for sale</span></label><input className="input" value={f.sale} onChange={set("sale")} inputMode="decimal" /></div>
-                <div className="field"><label><span>Price levels</span><span>1 to 256</span></label><input className="input" value={f.levels} onChange={set("levels")} inputMode="numeric" /></div>
-                <div className="field"><label><span>Starting price</span><span>HYPE per token</span></label><input className="input" value={f.start} onChange={set("start")} inputMode="decimal" /></div>
-                <div className="field"><label><span>Top price</span><span>HYPE per token</span></label><input className="input" value={f.ceiling} onChange={set("ceiling")} inputMode="decimal" disabled={f.levels.trim() === "1"} /></div>
-                <div className="field"><label><span>Bidding</span><span>minutes</span></label><input className="input" value={f.commitMin} onChange={set("commitMin")} inputMode="numeric" /></div>
-                <div className="field"><label><span>Reveal window</span><span>minutes</span></label><input className="input" value={f.revealMin} onChange={set("revealMin")} inputMode="numeric" /></div>
-                <div className="field"><label><span>Pool's share of the raise</span><span>%</span></label><input className="input" value={f.lpPct} onChange={set("lpPct")} inputMode="decimal" /></div>
-                <div className="field"><label><span>Penalty for unrevealed bids</span><span>10 to 50%</span></label><input className="input" value={f.penaltyPct} onChange={set("penaltyPct")} inputMode="decimal" /></div>
-                <div className="field"><label><span>Your own share</span><span>0 to 20% of supply</span></label><input className="input" value={f.creatorPct} onChange={set("creatorPct")} inputMode="decimal" /></div>
-                <div className="field"><label><span>Your share vests over</span><span>days, at least 30</span></label><input className="input" value={f.vestDays} onChange={set("vestDays")} inputMode="numeric" disabled={!Number(f.creatorPct)} /></div>
+              <div className="fl adv-fields" style={{ gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                <Field label="Tokens for sale" help="How many tokens bidders can buy. The same amount again is set aside for the trading pool." value={f.sale} onChange={set("sale")} mode="decimal" />
+                <Field label="Price levels" unit="1 to 256" help="The steps a bidder can choose between. More levels means finer prices." value={f.levels} onChange={set("levels")} mode="numeric" />
+                <Field label="Starting price" unit="HYPE per token" help="The lowest price anyone can bid. If bids don't cover the whole sale, everyone who bid is filled and the unsold tokens are burned." value={f.start} onChange={set("start")} mode="decimal" />
+                <Field label="Top price" unit="HYPE per token" help="The highest price anyone can bid. It caps how much the launch can raise." value={f.ceiling} onChange={set("ceiling")} mode="decimal" disabled={f.levels.trim() === "1"} />
+                <Field label="Bidding" unit="minutes" help="How long people can place sealed bids. Longer gives more people a chance to join." value={f.commitMin} onChange={set("commitMin")} mode="numeric" />
+                <Field label="Reveal window" unit="minutes" help="The pause after bidding while sealed bids open themselves. A few minutes is plenty." value={f.revealMin} onChange={set("revealMin")} mode="numeric" />
+                <Field label="Pool's share of the raise" unit="%" help="How much of the HYPE raised goes into the trading pool. More means a deeper pool and steadier price, less means more for you." value={f.lpPct} onChange={set("lpPct")} mode="decimal" />
+                <Field label="Penalty for unrevealed bids" unit="10 to 50%" help="Taken from a bid that never opens, so nobody can place fake bids to make demand look bigger." value={f.penaltyPct} onChange={set("penaltyPct")} mode="decimal" />
+                <Field label="Your own share" unit="0 to 20% of supply" help="Tokens kept for you on top of the sale. Bidders see this before they bid." value={f.creatorPct} onChange={set("creatorPct")} mode="decimal" />
+                <Field label="Your share unlocks over" unit="days, at least 30" help="Your tokens unlock a little each day, so you can't dump them all at once." value={f.vestDays} onChange={set("vestDays")} mode="numeric" disabled={!Number(f.creatorPct)} />
               </div>
               <p className="xs mute" style={{ margin: 0 }}>
-                Bids pick a price level between the starting and top price ({plan.ok ? `${hype(plan.tick)} HYPE apart` : "…"}). Everyone who wins pays the one level where demand covers the sale.
-                The reveal window is when sealed bids open themselves. Your share vests linearly from the end of the auction.
+                Price levels sit {plan.ok ? `${hype(plan.tick)} HYPE` : "…"} apart. When bidding ends, the launch finds the highest level where bids cover every token for sale, and every winner pays that one price. If bids never cover it, the lowest bid sets the price.
               </p>
             </div>
           )}

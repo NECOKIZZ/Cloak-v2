@@ -180,7 +180,7 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     <div className="card">
       <div className="card-head">
         <h3>Place a sealed bid</h3>
-        <span className="pill">uniform price</span>
+        <span className="pill">one price for all</span>
       </div>
       <div className="field">
         <label><span>Pay from</span><span>{from === "private" ? (priv ? (privBal === null ? "checking…" : `${hype(privBal)} HYPE private`) : "locked") : walletBal !== null ? `${hype(walletBal)} HYPE in wallet` : ""}</span></label>
@@ -200,22 +200,22 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
       )}
       <div className="field">
         <label>
-          <span>Max price per token</span>
-          <span>min {hype(s.minPrice)} HYPE</span>
+          <span>Highest price you'd pay per token</span>
+          <span>from {hype(s.minPrice)} HYPE</span>
         </label>
         <input className="input" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} inputMode="decimal" />
       </div>
       <div className="field">
         <label>
-          <span>Quantity</span>
-          <span>{tokens(s.saleSupply)} {s.tokenSymbol} for sale</span>
+          <span>How many {s.tokenSymbol}</span>
+          <span>{tokens(s.saleSupply)} for sale</span>
         </label>
         <input className="input" value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" />
       </div>
       <div className="field">
         <label>
-          <span>Deposit (hides your bid size)</span>
-          <span>excess refunded</span>
+          <span>Amount to lock</span>
+          <span>extra comes back</span>
         </label>
         <div className="buckets">
           {(quote ? budgetBuckets(quote.cost, 6) : []).map((b) => (
@@ -232,20 +232,17 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
         </div>
       </div>
       <div className="summary">
-        <div className="row"><span className="mute">Price level</span><span className="mono">{quote ? `${hype(quote.price)} HYPE (tick ${quote.tick})` : "—"}</span></div>
-        <div className="row"><span className="mute">Max cost</span><span className="mono">{quote ? `${hype(quote.cost)} HYPE` : "—"}</span></div>
-        <div className="row"><span className="mute">You lock</span><span className="mono">{quote ? `${hype(deposit)} HYPE` : "—"}</span></div>
-        <div className="row"><span className="mute">Visible on-chain</span><span>a hash + <span className="sealed" style={{ width: 54, height: 12 }} /></span></div>
+        <div className="row"><span className="mute">If you win, you pay at most</span><span className="mono">{quote ? `${hype(quote.cost)} HYPE` : "—"}</span></div>
+        <div className="row"><span className="mute">You lock now</span><span className="mono">{quote ? `${hype(deposit)} HYPE` : "—"}</span></div>
       </div>
       {problem && <div className="hint">{problem}</div>}
       <button className="btn btn-ink btn-block" disabled={!!wallet && (!!problem || busy)} onClick={wallet ? submit : () => connect()}>
-        {!wallet ? "Connect a wallet to bid" : busy ? status || "Sealing & committing…" : from === "private" ? "Seal bid from private balance" : "Seal bid"}
+        {!wallet ? "Connect a wallet to bid" : busy ? status || "Sealing your bid…" : from === "private" ? "Seal bid from private balance" : "Seal bid"}
       </button>
       {err && <div className="err">{err}</div>}
-      {ok && <div className="okmsg">Bid sealed. You can close this tab; it reveals itself. <Tx hash={ok} /></div>}
+      {ok && <div className="okmsg">Bid sealed. You can close this tab, it opens by itself. <Tx hash={ok} /></div>}
       <p className="note">
-        Your bid is encrypted to drand round <span className="mono">#{s.tlockRound}</span>, which is published right after bidding closes. Then any keeper can open it.
-        Everyone who wins pays the same clearing price, so there is nothing to gain from bidding early, fast or with a higher gas fee.
+        Nobody sees your price or amount until bidding closes. Every winner pays the same final price, which can be lower than your max, and whatever you locked beyond that comes back to you.
       </p>
     </div>
   );
@@ -438,18 +435,8 @@ export function FairLaunchCard({ s }: { s: AuctionState }) {
       </div>
       <div className="fl">
         <div className="row"><span className="mute">Clearing price</span><span className="mono">{hype(s.clearingPrice)} HYPE</span></div>
-        <div className="row"><span className="mute">Pool price now</span><span className="mono">{poolPrice ? `${hype(poolPrice)} HYPE` : "—"}</span></div>
         <div className="row"><span className="mute">Sold</span><span className="mono">{tokens(s.sold)} {s.tokenSymbol}</span></div>
         <div className="row"><span className="mute">Raised</span><span className="mono">{hype(s.raised)} HYPE</span></div>
-        <div className="row">
-          <span className="mute">Market</span>
-          {BigInt(s.uniPair ?? 0) !== 0n ? (
-            <a className="link mono" href={addrLink(s.uniPair)} target="_blank" rel="noreferrer">Uniswap V2 pool ↗</a>
-          ) : (
-            <span className="mono">Cloak pool</span>
-          )}
-        </div>
-        <div className="row"><span className="mute">Liquidity</span><span className="mono">{lp ? `${hype(lp.hype)} HYPE + ${tokens(lp.tok)}` : "—"}</span></div>
         <div className="row"><span className="mute">LP shares</span><span>{lp?.burned ? <span className="pill ok">burned</span> : forever ? <span className="pill ok">locked forever</span> : <span className="pill warn">{lockLabel}</span>}</span></div>
         <div className="row"><span className="mute">Bidders</span><span className="mono">{top?.bidders ?? s.reveals}</span></div>
         <div className="row"><span className="mute">Largest single fill</span><span className="mono">{top ? `${top.topShare}%` : "—"}</span></div>
@@ -514,7 +501,7 @@ export function TradeCard({ s, wallet }: { s: AuctionState; wallet: Wallet | nul
 
   return (
     <div className="card">
-      <div className="card-head"><h3>Public trade</h3><span className="pill ok">live</span></div>
+      <div className="card-head"><h3>Trade from your wallet</h3><span className="pill">public</span></div>
       <div className="tabs">
         <button className={`tab ${side === "buy" ? "on" : ""}`} onClick={() => setSide("buy")}>Buy</button>
         <button className={`tab ${side === "sell" ? "on" : ""}`} onClick={() => setSide("sell")}>Sell</button>

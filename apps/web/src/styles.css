@@ -747,3 +747,74 @@ button.asset-row { cursor: pointer; }
 .buckets-chart .bar-h { height: 10px; border-radius: 999px; background: var(--card-2); overflow: hidden; }
 .buckets-chart .bar-h > i { display: block; height: 100%; background: var(--sealed); border-radius: 999px; }
 @media (max-width: 720px) { .meter { grid-template-columns: 1fr 1fr; } .buckets-chart .b { grid-template-columns: 90px 1fr 30px; } }
+
+/* ── launches list: one section per stage, token cards ── */
+.tsearch { margin-bottom: 8px; }
+.tsection { margin-top: 28px; }
+.tsection-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.tsection-head h2 { font: 400 20px/1.2 var(--font-display); letter-spacing: -0.02em; }
+.tsection-head h2 .mute { font-size: 15px; margin-left: 4px; }
+.tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.tcard { display: grid; grid-template-columns: 48px 1fr; grid-template-areas: "icon id" "price price" "foot foot"; gap: 14px 12px; align-items: center; padding: 16px; border-radius: var(--r-md); background: var(--raised); border: 1px solid var(--line); transition: border-color 0.2s, transform 0.2s var(--ease); min-width: 0; color: inherit; }
+.tcard:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.tcard > .token-icon { grid-area: icon; border-radius: 14px; }
+.tcard-id { grid-area: id; min-width: 0; display: flex; flex-direction: column; }
+.tcard-id b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcard-id .mute { font-size: 13px; }
+.tcard-price { grid-area: price; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.tcard-price .mono { font-size: 16px; }
+.tcard-foot { grid-area: foot; padding-top: 10px; border-top: 1px solid var(--line); display: flex; align-items: center; }
+.up { color: var(--signal); }
+.down { color: var(--danger); }
+
+/* ── launch page: the token card ── */
+.token-card { display: grid; grid-template-columns: 64px 1fr auto; gap: 18px; align-items: start; margin-bottom: 20px; }
+.token-card > .token-icon { border-radius: 18px; }
+.token-card-main { min-width: 0; }
+.token-card-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.token-card-title h1 { font: 400 30px/1.15 var(--font-display); letter-spacing: -0.03em; margin: 0; }
+.tc-ticker { font: 500 15px var(--font-mono); color: var(--mute); }
+.token-card-ca { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; margin-top: 10px; }
+.ca-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; }
+.ca-btn:hover { border-color: var(--mute); }
+.token-card-desc { margin: 12px 0 0; max-width: 620px; color: var(--soft); font-size: 14.5px; }
+@media (max-width: 720px) {
+  .token-card { grid-template-columns: 52px 1fr; }
+  .token-card > .token-icon { width: 52px; height: 52px; }
+  .token-card-share { grid-column: 1 / -1; }
+  .token-card-title h1 { font-size: 24px; }
+}
+
+/* ── launch page: market, chart, details ── */
+.market-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px 24px; flex-wrap: wrap; margin-bottom: 16px; }
+.market-price { font: 300 34px/1.15 var(--font-display); letter-spacing: -0.03em; margin-top: 2px; }
+.market-stats { display: flex; gap: 22px; flex-wrap: wrap; }
+.market-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.market-stats .mono { font-size: 14px; }
+.pchart { position: relative; padding-left: 0; }
+.pchart svg { width: 100%; height: 220px; display: block; overflow: visible; touch-action: pan-y; }
+.pchart-line { fill: none; stroke: var(--signal); stroke-width: 2; stroke-linejoin: round; }
+.pchart-ref { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 4 4; }
+.pchart-cross { stroke: var(--mute); stroke-width: 1; }
+.pchart-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 2px var(--raised); pointer-events: none; }
+.pchart-tip { position: absolute; top: -6px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 10px; padding: 6px 10px; display: flex; flex-direction: column; align-items: center; pointer-events: none; box-shadow: var(--shadow); white-space: nowrap; font-size: 13px; }
+.pchart-y { position: absolute; right: 0; top: 4px; bottom: 26px; display: flex; flex-direction: column; justify-content: space-between; font: 11px var(--font-mono); color: var(--mute); pointer-events: none; text-align: right; }
+.pchart-legend { display: inline-flex; align-items: center; gap: 6px; }
+.pchart-legend i { width: 14px; border-top: 1px dashed var(--mute); display: inline-block; }
+.chart-empty { height: 160px; display: grid; place-items: center; border: 1px dashed var(--line-strong); border-radius: var(--r-md); text-align: center; padding: 16px; }
+.progress { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--signal); border-radius: 999px; transition: width 0.4s var(--ease); }
+.details { display: flex; flex-direction: column; gap: 12px; }
+.details-tabs { margin-bottom: 0; width: fit-content; max-width: 100%; flex-wrap: wrap; border-radius: 18px; }
+.details-tabs .tab { flex: none; padding: 0 14px; }
+.field-help { display: block; font-size: 11.5px; line-height: 1.4; color: var(--mute); margin-top: 6px; }
+@media (max-width: 560px) {
+  .tgrid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tcard { grid-template-columns: 36px 1fr; padding: 12px; gap: 10px 10px; }
+  .tcard > .token-icon { width: 36px !important; height: 36px !important; font-size: 13px !important; border-radius: 11px; }
+  .tcard-id b { font-size: 14px; }
+  .tcard-id .mute { font-size: 12px; }
+  .tcard-price { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .tcard-price .mono { font-size: 14px; }
+  .tcard-foot { padding-top: 8px; font-size: 11.5px; }
+}
