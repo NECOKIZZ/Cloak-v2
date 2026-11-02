@@ -12,7 +12,10 @@ import {
   parseEventLogs,
   toHex,
 } from "viem";
-import { cloakAuctionAbi, cloakFactoryAbi, cloakPairAbi, cloakTokenAbi } from "./abis.js";
+import { cloakAuctionAbi, cloakFactoryAbi, cloakFeeLockerAbi, cloakPairAbi, cloakTokenAbi } from "./abis.js";
+
+/** `lpLockUntil` for "locked forever, the creator earns the pool's trading fees". */
+export const LOCK_FOREVER_FEES = 2n ** 64n - 1n;
 import { type BidPreimage, drandRoundAt, sealBid, unsealBid } from "./seal.js";
 
 const WAD = 10n ** 18n;
@@ -39,8 +42,11 @@ export interface LaunchParams {
   revealEnd: number;
   /** Share of the raise that seeds the pool, in bps (default 5000). */
   lpBps?: number;
-  /** Unix seconds until LP shares can be released to the creator; 0 / "burn" burns them (default). */
-  lpLockUntil?: number | "burn";
+  /**
+   * What happens to the pool's LP: "burn" (default) burns it; "fees" locks it forever and pays the creator the pool's
+   * 0.3% trading fees (CloakFeeLocker); a unix time locks it until then, when the creator can take it.
+   */
+  lpLockUntil?: number | "burn" | "fees";
   noRevealPenaltyBps?: number;
   creator?: Address;
   metadataURI?: string;
@@ -76,6 +82,8 @@ export interface AuctionState {
   pair: Address;
   /** The launch's Uniswap V2 pool (token / WHYPE), tradable and tracked everywhere. Zero for a CloakPair market. */
   uniPair: Address;
+  /** The LP is locked forever and the creator earns its trading fees (see `creatorFees`). */
+  creatorFees: boolean;
   tokenName: string;
   tokenSymbol: string;
   /** Launch fee on a successful raise, fixed when the auction was created. */
@@ -195,7 +203,7 @@ export class Cloak {
   async createLaunch(p: LaunchParams): Promise<{ auction: Address; token: Address; txHash: Hex; block: bigint }> {
     if (!this.factory) throw new Error("Cloak: factory address required");
     const w = this.wallet();
-    const lock = p.lpLockUntil === undefined || p.lpLockUntil === "burn" ? 0 : p.lpLockUntil;
+    const lock = p.lpLockUntil === undefined || p.lpLockUntil === "burn" ? 0n : p.lpLockUntil === "fees" ? LOCK_FOREVER_FEES : BigInt(p.lpLockUntil);
     const params = {
       creator: p.creator ?? w.account.address,
       saleSupply: p.saleSupply,
@@ -207,7 +215,7 @@ export class Cloak {
       revealEnd: BigInt(p.revealEnd),
       lpBps: p.lpBps ?? 5000,
       noRevealPenaltyBps: p.noRevealPenaltyBps ?? 1000,
-      lpLockUntil: BigInt(lock),
+      lpLockUntil: lock,
       tlockRound: BigInt(drandRoundAt(p.commitEnd)),
     };
     const txHash = await w.writeContract({
@@ -263,7 +271,7 @@ export class Cloak {
   async getAuction(auction: Address): Promise<AuctionState> {
     const c = { address: auction, abi: cloakAuctionAbi } as const;
     const r = this.publicClient;
-    const [params, token, phase, commits, reveals, totalDeposits, totalDemand, settled, failed, clearingTick, clearingPrice, sold, raised, pair, launchFeeBps, bidCap, depositCap, creatorOwed, feesOwed, uniPair] =
+    const [params, token, phase, commits, reveals, totalDeposits, totalDemand, settled, failed, clearingTick, clearingPrice, sold, raised, pair, launchFeeBps, bidCap, depositCap, creatorOwed, feesOwed, uniPair, creatorFees] =
       await Promise.all([
         r.readContract({ ...c, functionName: "params" }),
         r.readContract({ ...c, functionName: "token" }),
@@ -287,6 +295,7 @@ export class Cloak {
         r.readContract({ ...c, functionName: "feesOwed" }).catch(() => 0n),
         // launches from the Uniswap factory on
         r.readContract({ ...c, functionName: "uniPair" }).catch(() => zeroAddress),
+        r.readContract({ ...c, functionName: "creatorFees" }).catch(() => false),
       ]);
     const [creator, saleSupply, lpReserve, minPrice, tickSize, numTicks, commitEnd, revealEnd, lpBps, noRevealPenaltyBps, lpLockUntil, tlockRound] =
       params;
@@ -322,6 +331,7 @@ export class Cloak {
       raised,
       pair,
       uniPair,
+      creatorFees,
       tokenName,
       tokenSymbol,
       launchFeeBps,
@@ -330,6 +340,39 @@ export class Cloak {
       creatorOwed,
       feesOwed,
     };
+  }
+
+  /**
+   * The creator's trading fees for a launch whose LP is locked forever: what can be claimed now (in tokens and WHYPE),
+   * who receives it, and the locker position. `null` for launches without creator fees.
+   */
+  async creatorFees(auction: Address): Promise<{ locker: Address; position: bigint; beneficiary: Address; claimableLp: bigint; tokens: bigint; whype: bigint } | null> {
+    const c = { address: auction, abi: cloakAuctionAbi } as const;
+    const on = await this.publicClient.readContract({ ...c, functionName: "creatorFees" }).catch(() => false);
+    if (!on) return null;
+    const [locker, position, token, uniPair] = await Promise.all([
+      this.publicClient.readContract({ ...c, functionName: "feeLocker" }),
+      this.publicClient.readContract({ ...c, functionName: "feePosition" }),
+      this.publicClient.readContract({ ...c, functionName: "token" }),
+      this.publicClient.readContract({ ...c, functionName: "uniPair" }),
+    ]);
+    const l = { address: locker, abi: cloakFeeLockerAbi } as const;
+    const [pos, claimableLp, [a0, a1], token0] = await Promise.all([
+      this.publicClient.readContract({ ...l, functionName: "positions", args: [position] }),
+      this.publicClient.readContract({ ...l, functionName: "claimable", args: [position] }),
+      this.publicClient.readContract({ ...l, functionName: "claimableAmounts", args: [position] }),
+      this.publicClient.readContract({ address: uniPair, abi: [{ type: "function", name: "token0", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }] as const, functionName: "token0" }),
+    ]);
+    const tokenIs0 = token0.toLowerCase() === token.toLowerCase();
+    return { locker, position, beneficiary: pos.beneficiary, claimableLp, tokens: tokenIs0 ? a0 : a1, whype: tokenIs0 ? a1 : a0 };
+  }
+
+  /** Pay a launch's earned trading fees to its creator (anyone can send this; the fees always go to the creator). */
+  async claimCreatorFees(auction: Address): Promise<Hex> {
+    const f = await this.creatorFees(auction);
+    if (!f) throw new Error("this launch has no creator fees");
+    if (f.claimableLp === 0n) throw new Error("no fees earned yet");
+    return this.send(await this.wallet().writeContract({ address: f.locker, abi: cloakFeeLockerAbi, functionName: "claim", args: [f.position] })).then((r) => r.transactionHash);
   }
 
   /** Revealed demand per tick (empty until the reveal phase — that is the point). */

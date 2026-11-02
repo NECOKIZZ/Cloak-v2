@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
 import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, type AuctionState, type Wallet, Cloak } from "@cloakely/sdk";
-import { addrLink, FACTORY, txLink, VAULTS } from "./config";
+import { addrLink, DEPLOYMENT, FACTORY, txLink, VAULTS } from "./config";
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
 import { useApp } from "./state";
@@ -83,7 +83,11 @@ export function DemandChart({ s, curve }: { s: AuctionState; curve: bigint[] }) 
 // ───────────────────────────── bid ─────────────────────────────
 
 export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet | null; onDone: () => void }) {
-  const { connect } = useApp();
+  const { connect, priv, unlock, unlocking, toast } = useApp();
+  const [from, setFrom] = useState<"wallet" | "private">("wallet");
+  const [privBal, setPrivBal] = useState<bigint | null>(null);
+  const [privNeed, setPrivNeed] = useState<bigint>(0n);
+  const [status, setStatus] = useState("");
   const defaultPrice = formatEther(s.minPrice + BigInt(Math.floor(s.numTicks / 4)) * s.tickSize);
   const [maxPrice, setMaxPrice] = useState(defaultPrice);
   const [qty, setQty] = useState("10000");
@@ -108,6 +112,21 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     if (!wallet) return;
     publicClient.getBalance({ address: wallet.account.address }).then(setWalletBal).catch(() => {});
   }, [wallet, ok]);
+  // paying from the private balance: what it holds, and what the deposit costs on top (gas for the one-time wallet,
+  // the relayer's fee and the 0.25% withdrawal fee)
+  useEffect(() => {
+    if (from !== "private" || !priv) return;
+    let alive = true;
+    (async () => {
+      const [spend, gas, q] = await Promise.all([priv.maxSpendable(priv.hypeMarket.pool, "unshieldHype"), priv.bidGasReserve(), priv.relayFee("unshieldHype", priv.hypeMarket.pool)]);
+      if (!alive) return;
+      setPrivBal(spend);
+      setPrivNeed(gas + q.fee);
+    })().catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [from, priv, ok]);
   // explain why the bid can't be placed yet, instead of a silent disabled button
   const problem = (() => {
     const num = (v: string) => /^\s*\d*\.?\d+\s*$/.test(v);
@@ -122,7 +141,9 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     if (q === 0n) return "Enter how many tokens you want.";
     if (p < s.minPrice) return `Your max price is below this launch's minimum of ${hype(s.minPrice)} HYPE.`;
     if (!quote) return "Those amounts don't work for this launch. Try a different price or quantity.";
-    if (wallet && walletBal !== null && deposit > walletBal) return `Your wallet has ${hype(walletBal)} HYPE, which isn't enough for this deposit. Pick a smaller one or get testnet HYPE from the faucet.`;
+    if (from === "wallet" && wallet && walletBal !== null && deposit > walletBal) return `Your wallet has ${hype(walletBal)} HYPE, which isn't enough for this deposit. Pick a smaller one or get testnet HYPE from the faucet.`;
+    if (from === "private" && priv && privBal !== null && (deposit * 10_025n) / 10_000n + privNeed > privBal)
+      return `Your private balance can spend ${hype(privBal)} HYPE. This deposit needs about ${hype((deposit * 10_025n) / 10_000n + privNeed)} with fees and gas. Shield more HYPE on Portfolio or pick a smaller deposit.`;
     return "";
   })();
 
@@ -132,16 +153,26 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     setErr("");
     setOk(undefined);
     try {
-      const c = new Cloak(publicClient, wallet);
-      const secret = await c.bid(s.address, { maxPrice: parseEther(maxPrice), quantity: parseEther(qty), deposit });
-      saveSecret(secret);
-      setOk(secret.txHash);
+      if (from === "private") {
+        const p = priv ?? (await unlock());
+        if (!p) throw new Error("Unlock your private account to bid from it.");
+        const r = await p.bidPrivately(s.address, { maxPrice: parseEther(maxPrice), quantity: parseEther(qty), deposit }, setStatus);
+        saveSecret(r.secret);
+        setOk(r.secret.txHash);
+        toast("Bid sealed from a one-time wallet");
+      } else {
+        const c = new Cloak(publicClient, wallet);
+        const secret = await c.bid(s.address, { maxPrice: parseEther(maxPrice), quantity: parseEther(qty), deposit });
+        saveSecret(secret);
+        setOk(secret.txHash);
+      }
       markDone("bid");
       onDone();
     } catch (e) {
       setErr(errMsg(e));
     } finally {
       setBusy(false);
+      setStatus("");
     }
   }
 
@@ -151,6 +182,22 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
         <h3>Place a sealed bid</h3>
         <span className="pill">uniform price</span>
       </div>
+      <div className="field">
+        <label><span>Pay from</span><span>{from === "private" ? (priv ? (privBal === null ? "checking…" : `${hype(privBal)} HYPE private`) : "locked") : walletBal !== null ? `${hype(walletBal)} HYPE in wallet` : ""}</span></label>
+        <div className="tabs" style={{ marginBottom: 0 }}>
+          <button className={`tab ${from === "wallet" ? "on" : ""}`} onClick={() => setFrom("wallet")}>Wallet</button>
+          <button className={`tab ${from === "private" ? "on" : ""}`} onClick={() => setFrom("private")}>Private balance</button>
+        </div>
+      </div>
+      {from === "private" && (
+        <p className="xs mute" style={{ margin: "-4px 0 14px" }}>
+          Your private balance pays a fresh one-time wallet, and that wallet places the bid, so nobody can tie the bid to you.
+          After the launch, one click claims your tokens into your private balance and moves any refund back.
+          {!priv && (
+            <> <button className="btn btn-text btn-sm" style={{ padding: 0 }} disabled={unlocking} onClick={() => unlock()}>{unlocking ? "Unlocking…" : "Unlock your private account"}</button></>
+          )}
+        </p>
+      )}
       <div className="field">
         <label>
           <span>Max price per token</span>
@@ -192,7 +239,7 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
       </div>
       {problem && <div className="hint">{problem}</div>}
       <button className="btn btn-ink btn-block" disabled={!!wallet && (!!problem || busy)} onClick={wallet ? submit : () => connect()}>
-        {!wallet ? "Connect a wallet to bid" : busy ? "Sealing & committing…" : "Seal bid"}
+        {!wallet ? "Connect a wallet to bid" : busy ? status || "Sealing & committing…" : from === "private" ? "Seal bid from private balance" : "Seal bid"}
       </button>
       {err && <div className="err">{err}</div>}
       {ok && <div className="okmsg">Bid sealed. You can close this tab; it reveals itself. <Tx hash={ok} /></div>}
@@ -220,7 +267,8 @@ function usePrivateClaim(s: AuctionState, won: MyBid[], account?: Address): "yes
     (async (): Promise<"yes" | "no" | "cap"> => {
       if (!VAULTS || !FACTORY || !s.settled || s.failed || !account || !won.length) return "no";
       const factory = await publicClient.readContract({ address: s.address, abi: cloakAuctionAbi, functionName: "factory" }).catch(() => undefined);
-      if (factory?.toLowerCase() !== FACTORY.toLowerCase()) return "no"; // older launches have no private claim
+      const ours = [FACTORY, ...(DEPLOYMENT?.earlierFactories ?? [])].map((x) => x.toLowerCase());
+      if (!factory || !ours.includes(factory.toLowerCase())) return "no"; // launches before v4 have no private claim
       const pool = await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [s.token] });
       if (pool === "0x0000000000000000000000000000000000000000") return "no";
       for (const b of won) {
@@ -380,7 +428,8 @@ export function FairLaunchCard({ s }: { s: AuctionState }) {
 
   if (!s.settled) return null;
   if (s.failed) return <div className="card"><h3>Launch failed</h3><p className="mute">No valid bids were revealed. Every deposit is refundable in full and tokens went back to the creator.</p></div>;
-  const lockLabel = s.lpLockUntil === 0 ? "burned forever" : `locked until ${new Date(s.lpLockUntil * 1000).toLocaleDateString()}`;
+  const forever = s.creatorFees || s.lpLockUntil >= 2 ** 63;
+  const lockLabel = s.lpLockUntil === 0 ? "burned forever" : forever ? "locked forever, trading fees to the creator" : `locked until ${new Date(s.lpLockUntil * 1000).toLocaleDateString()}`;
   return (
     <div className="card">
       <div className="badge">
@@ -401,7 +450,7 @@ export function FairLaunchCard({ s }: { s: AuctionState }) {
           )}
         </div>
         <div className="row"><span className="mute">Liquidity</span><span className="mono">{lp ? `${hype(lp.hype)} HYPE + ${tokens(lp.tok)}` : "—"}</span></div>
-        <div className="row"><span className="mute">LP shares</span><span>{lp?.burned ? <span className="pill ok">burned</span> : <span className="pill warn">{lockLabel}</span>}</span></div>
+        <div className="row"><span className="mute">LP shares</span><span>{lp?.burned ? <span className="pill ok">burned</span> : forever ? <span className="pill ok">locked forever</span> : <span className="pill warn">{lockLabel}</span>}</span></div>
         <div className="row"><span className="mute">Bidders</span><span className="mono">{top?.bidders ?? s.reveals}</span></div>
         <div className="row"><span className="mute">Largest single fill</span><span className="mono">{top ? `${top.topShare}%` : "—"}</span></div>
       </div>

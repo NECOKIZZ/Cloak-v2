@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IFeeLocker} from "../src/CloakAuction.sol";
 import {CloakSeeder} from "../src/CloakSeeder.sol";
 import {IUniswapV2Factory, IWETH} from "../src/uniswap/IUniswapV2.sol";
 import {Test} from "forge-std/Test.sol";
@@ -91,14 +92,14 @@ contract FactoryListTest is Test {
 
     function test_vaults_openForEveryRegisteredFactory() public {
         // v1: a five-field factory; v2: today's factory with two launches; v3: the new factory
-        CloakFactory v2 = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
-        CloakFactory scratch = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
+        CloakFactory v2 = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder(), IFeeLocker(address(0)));
+        CloakFactory scratch = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder(), IFeeLocker(address(0)));
         (address a1, address t1) = _settled(scratch, "OLD");
         FiveFieldFactory v1 = new FiveFieldFactory();
         v1.add(a1, t1);
         (, address t2) = _settled(v2, "SHADE");
         (, address t3) = _settled(v2, "AYS");
-        CloakFactory v3 = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
+        CloakFactory v3 = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder(), IFeeLocker(address(0)));
 
         ICloakFactoryRead[] memory list = new ICloakFactoryRead[](2);
         list[0] = ICloakFactoryRead(address(v1));

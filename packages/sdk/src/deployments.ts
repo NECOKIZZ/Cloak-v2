@@ -35,6 +35,8 @@ export interface CloakDeployment {
   firstFactoryBlock?: bigint;
   /** CloakSeeder: opens each settled launch's market (a Uniswap V2 pool where the chain has one). */
   seeder?: Address;
+  /** CloakFeeLocker: holds "locked forever" LP and pays its trading fees to the creator. */
+  feeLocker?: Address;
   router: Address;
   /** Block the router was deployed in: scan private-pool events from here. */
   routerBlock: bigint;
@@ -62,12 +64,14 @@ export const deployments: Record<number, CloakDeployment> = {
     config: "0x9fdf166f0671166148ea98cdd3ef0118d256167f",
     vaults: "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
     vaultsBlock: 19485039n,
-    // the Uniswap launch factory (Nov 2): every launch opens a Uniswap V2 pool at its clearing price
-    factory: "0xeac84944f5a8343edf49cde8ef74d71f4908a656",
-    factoryBlock: 21221250n,
-    earlierFactories: ["0xa88df63d7d44acc66052e5cbe5ba9503bf940993"],
+    // the creator-fee launch factory (Nov 2): every launch opens a Uniswap V2 pool at its clearing price, and its LP can
+    // be locked forever with the trading fees going to the creator
+    factory: "0xd179bad69715f4bd4796dd7a4103be143fba02ad",
+    factoryBlock: 21312271n,
+    earlierFactories: ["0xeac84944f5a8343edf49cde8ef74d71f4908a656", "0xa88df63d7d44acc66052e5cbe5ba9503bf940993"],
     firstFactoryBlock: 19484794n,
     seeder: "0x633aa82b806dafc0ae4c84418d23f3726139a88d",
+    feeLocker: "0x3b74062a72b16f9a221d63515518a635414501d8",
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",

@@ -50,7 +50,7 @@ async function loadRecord(s: AuctionState): Promise<Step[]> {
   for (const g of byTx(reveals))
     steps.push({ key: `${g[0].transactionHash}r`, group: "reveal", label: g.length > 1 ? `${g.length} bids opened` : `Bid #${g[0].args.id} opened`, seen: "Decrypted with the public drand beacon and checked against each bid's hash. Anyone can do this, nobody can change a bid.", tx: g[0].transactionHash, block: g[0].blockNumber });
   for (const l of settles)
-    steps.push({ key: `${l.transactionHash}s`, group: "settle", label: "Settled at one price", seen: `Cleared at ${hype(l.args.clearingPrice as bigint)} HYPE per token. ${tokens(l.args.sold as bigint)} sold for ${hype(l.args.raised as bigint)} HYPE. The pool was seeded at that price and the LP ${s.lpLockUntil === 0 ? "burned" : `locked until ${new Date(s.lpLockUntil * 1000).toLocaleDateString()}`}.`, tx: l.transactionHash, block: l.blockNumber });
+    steps.push({ key: `${l.transactionHash}s`, group: "settle", label: "Settled at one price", seen: `Cleared at ${hype(l.args.clearingPrice as bigint)} HYPE per token. ${tokens(l.args.sold as bigint)} sold for ${hype(l.args.raised as bigint)} HYPE. The pool was seeded at that price and the LP ${s.lpLockUntil === 0 ? "burned" : s.creatorFees || s.lpLockUntil >= 2 ** 63 ? "locked forever, its trading fees going to the creator" : `locked until ${new Date(s.lpLockUntil * 1000).toLocaleDateString()}`}.`, tx: l.transactionHash, block: l.blockNumber });
   for (const l of fails)
     steps.push({ key: `${l.transactionHash}f`, group: "settle", label: "Launch failed", seen: "Demand didn't reach the minimum, so every deposit is refundable and the tokens went back to the creator.", tx: l.transactionHash, block: l.blockNumber });
   for (const g of byTx(claims)) {

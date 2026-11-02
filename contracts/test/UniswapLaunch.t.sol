@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IFeeLocker} from "../src/CloakAuction.sol";
 import {Test} from "forge-std/Test.sol";
 import {CloakFactory} from "../src/CloakFactory.sol";
 import {CloakAuction} from "../src/CloakAuction.sol";
@@ -35,11 +36,11 @@ contract UniswapLaunchTest is Test {
     uint256 constant MIN_PRICE = 0.0001 ether;
     uint256 constant TICK = 0.0001 ether;
 
-    function setUp() public {
+    function setUp() public virtual {
         vm.createSelectFork(vm.envOr("RPC_URL", string("https://testnet-rpc.elysium.kinetiq.xyz")));
         config = new CloakConfig(address(1), address(0));
         seeder = new CloakSeeder(UNI, WHYPE, 997);
-        factory = new CloakFactory(config, new CloakVestingDeployer(), seeder);
+        factory = new CloakFactory(config, new CloakVestingDeployer(), seeder, IFeeLocker(address(0)));
         vm.deal(alice, 10_000 ether);
         vm.deal(bob, 10_000 ether);
         vm.deal(trader, 10_000 ether);

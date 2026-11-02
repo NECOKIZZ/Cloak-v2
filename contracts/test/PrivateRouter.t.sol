@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IFeeLocker} from "../src/CloakAuction.sol";
 import {CloakSeeder} from "../src/CloakSeeder.sol";
 import {IUniswapV2Factory, IWETH} from "../src/uniswap/IUniswapV2.sol";
 import {Test} from "forge-std/Test.sol";
@@ -49,7 +50,7 @@ contract PrivateRouterTest is Test {
 
     function setUp() public {
         config = new CloakConfig(address(new MockVerifier()), address(0));
-        factory = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
+        factory = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder(), IFeeLocker(address(0)));
         CloakAuction.Params memory p = CloakAuction.Params({
             creator: address(this),
             saleSupply: 1_000_000e18,

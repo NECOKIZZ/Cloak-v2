@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Address } from "viem";
 import { Cloak, cloakAuctionAbi, cloakVaultsAbi, drandRoundTime, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
+import { CreatorFeesCard, DemandMeter, PrivateBids } from "../launchParts";
 import { addrLink, KEEPER_URL, ROUTER, VAULTS } from "../config";
 import { duration, hype, short, tokens } from "../format";
 import { Link, useRoute } from "../router";
@@ -149,7 +150,7 @@ export function Launch({ auction }: { auction: Address }) {
           <h1 style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 16 }}><TokenIcon symbol={s.tokenSymbol} token={s.token} size={52} /><span style={{ color: "inherit" }}>{s.tokenName} <span>${s.tokenSymbol}</span></span></h1>
           {meta?.description && <p className="small soft" style={{ marginTop: 12, maxWidth: 560 }}>{meta.description}</p>}
           <p className="mute small" style={{ marginTop: 12, maxWidth: 520 }}>
-            Bids stay sealed until bidding closes, hidden even from the sequencer. Every winner pays one clearing price, and liquidity is locked at that price.
+            Bids stay sealed until bidding closes, hidden even from the sequencer and from bots. Every winner pays one clearing price, and the token opens on Uniswap at that price with its liquidity locked.
           </p>
         </div>
         <div className="phase-card">
@@ -191,9 +192,11 @@ export function Launch({ auction }: { auction: Address }) {
 
       <div className="grid">
         <div className="col">
+          {!s.settled && <DemandMeter s={s} now={now} />}
           <DemandChart s={s} curve={curve} />
           <FairLaunchCard s={s} />
           <MyBids s={s} wallet={wallet} bids={mine} onDone={refresh} />
+          <PrivateBids s={s} onDone={refresh} />
           <LaunchRecord s={s} />
         </div>
         <div className="col">
@@ -223,6 +226,7 @@ export function Launch({ auction }: { auction: Address }) {
               )}
             </div>
           )}
+          <CreatorFeesCard s={s} wallet={wallet} />
           <TradeCard s={s} wallet={wallet} />
         </div>
       </div>

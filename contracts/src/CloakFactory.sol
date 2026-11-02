@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {CloakAuction, IMarketSeeder} from "./CloakAuction.sol";
+import {CloakAuction, IMarketSeeder, IFeeLocker} from "./CloakAuction.sol";
 import {CloakToken} from "./CloakToken.sol";
 import {CloakVesting, CloakVestingDeployer} from "./CloakVesting.sol";
 import {CloakConfig} from "./CloakConfig.sol";
@@ -19,6 +19,8 @@ contract CloakFactory {
     CloakVestingDeployer public immutable vestingDeployer;
     /// @notice Opens each settled launch's market: a Uniswap V2 pool where the chain has one (CloakSeeder).
     IMarketSeeder public immutable seeder;
+    /// @notice Holds "locked forever" LP and pays its trading fees to the creator (CloakFeeLocker; 0 = none).
+    IFeeLocker public immutable feeLocker;
 
     struct Launch {
         address auction;
@@ -45,11 +47,12 @@ contract CloakFactory {
         uint64 vestEnd
     );
 
-    constructor(CloakConfig config_, CloakVestingDeployer vestingDeployer_, IMarketSeeder seeder_) {
+    constructor(CloakConfig config_, CloakVestingDeployer vestingDeployer_, IMarketSeeder seeder_, IFeeLocker feeLocker_) {
         require(address(seeder_) != address(0), "seeder");
         config = config_;
         vestingDeployer = vestingDeployer_;
         seeder = seeder_;
+        feeLocker = feeLocker_;
     }
 
     function createLaunch(
@@ -63,7 +66,7 @@ contract CloakFactory {
         if (params.creator == address(0)) params.creator = msg.sender;
         uint256 sale = params.saleSupply + params.lpReserve;
         require(creatorAlloc * 10_000 <= (sale + creatorAlloc) * MAX_CREATOR_BPS, "creator share");
-        CloakAuction a = new CloakAuction(params, config, seeder);
+        CloakAuction a = new CloakAuction(params, config, seeder, feeLocker);
 
         CloakVesting v;
         uint64 vestEnd;

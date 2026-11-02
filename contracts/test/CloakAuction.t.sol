@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IFeeLocker} from "../src/CloakAuction.sol";
 import {CloakSeeder} from "../src/CloakSeeder.sol";
 import {IUniswapV2Factory, IWETH} from "../src/uniswap/IUniswapV2.sol";
 import {Test} from "forge-std/Test.sol";
@@ -36,7 +37,7 @@ contract CloakAuctionTest is Test {
 
     function setUp() public {
         config = new CloakConfig(address(1), address(0));
-        factory = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder());
+        factory = new CloakFactory(config, new CloakVestingDeployer(), _pairSeeder(), IFeeLocker(address(0)));
         for (uint256 i; i < 3; ++i) {
             vm.deal([alice, bob, carol][i], 10_000 ether);
         }

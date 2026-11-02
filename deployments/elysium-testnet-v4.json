@@ -7,8 +7,8 @@
   "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
   "vaults": "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
   "vaultsBlock": "19485039",
-  "factory": "0xeac84944f5a8343edf49cde8ef74d71f4908a656",
-  "factoryBlock": "21221250",
+  "factory": "0xd179bad69715f4bd4796dd7a4103be143fba02ad",
+  "factoryBlock": "21312271",
   "router": "0x343ab9a7aac93cee28321410510ea24417cc6386",
   "routerBlock": "19485063",
   "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
@@ -110,6 +110,7 @@
   ],
   "deployCost": "0.0036757640369 HYPE",
   "earlierFactories": [
+    "0xeAC84944F5A8343EDf49Cde8EF74d71f4908A656",
     "0xA88DF63D7D44acc66052e5CBE5ba9503bF940993"
   ],
   "firstFactoryBlock": "19484794",
@@ -119,5 +120,7 @@
     "whype": "0xcd57f65c2b0e5881cfc2e609f7cd53b746e1f234",
     "fee": "0.3%"
   },
-  "uniswapDeployCost": "0.00073316345572 HYPE"
+  "uniswapDeployCost": "0.00073316345572 HYPE",
+  "feeLocker": "0x3b74062a72b16f9a221d63515518a635414501d8",
+  "feesDeployCost": "0.00053075318596 HYPE"
 }

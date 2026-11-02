@@ -93,6 +93,15 @@ export class CloakKeys {
   main() {
     return this.key(MAIN_KEY);
   }
+
+  /**
+   * The private key of one-time bid wallet `n` for `auction`: a fresh address that bids from the private balance, so the
+   * bid can't be linked to the account's wallet. Derived from this account's seed, so the same signature always finds
+   * it again (on any device).
+   */
+  bidWalletKey(auction: Hex, n: number): Hex {
+    return keccak256(concat([toBytes("cloak-bidwallet-v1"), this.seed, toBytes(auction.toLowerCase() as Hex), toBytes(toHex(n, { size: 4 }))]));
+  }
 }
 
 export interface Note {

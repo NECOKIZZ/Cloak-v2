@@ -14,6 +14,12 @@ interface IMarketSeeder {
 
 interface ILPToken {
     function transfer(address to, uint256 value) external returns (bool);
+    function approve(address spender, uint256 value) external returns (bool);
+}
+
+/// Holds a launch's Uniswap LP forever and pays its trading fees to the creator (CloakFeeLocker).
+interface IFeeLocker {
+    function lockFor(address pair, uint256 shares, address beneficiary) external returns (uint256 id);
 }
 
 /// The permanent private vault of one asset (ShieldedPool) and the list of them (CloakVaults), as far as a claim needs.
@@ -65,7 +71,7 @@ contract CloakAuction {
         uint64 revealEnd;
         uint16 lpBps; // share of the raise that goes into the pool
         uint16 noRevealPenaltyBps; // burned from deposits that never get revealed
-        uint64 lpLockUntil; // 0 = LP shares are burned forever
+        uint64 lpLockUntil; // 0 = LP burned forever; type(uint64).max = locked forever, the creator earns its trading fees
         uint64 tlockRound; // drand round the sealed bids are encrypted to (metadata for clients/keepers)
     }
 
@@ -92,6 +98,10 @@ contract CloakAuction {
     uint256 public immutable bidCap; // 0 = no cap
     uint256 public immutable depositCap; // 0 = no cap
     IMarketSeeder public immutable seeder;
+    /// @notice Where "locked forever, creator earns fees" LP goes (0 on chains without one: the LP then stays here forever).
+    IFeeLocker public immutable feeLocker;
+    /// @notice lpLockUntil value for "locked forever, the creator earns the pool's trading fees".
+    uint64 public constant LOCK_FOREVER_FEES = type(uint64).max;
     IERC20Approve public token;
     Params public params;
 
@@ -114,6 +124,9 @@ contract CloakAuction {
     /// @notice The Uniswap V2 pool behind `pair`, 0 if the market is a CloakPair. Its LP token is what's locked or burned.
     address public uniPair;
     uint256 public lpShares;
+    /// @notice True once the LP sits in the fee locker; `feePosition` is its id there.
+    bool public creatorFees;
+    uint256 public feePosition;
     bool public lpReleased;
     uint256 public creatorOwed; // proceeds waiting for withdrawProceeds()
     uint256 public feesOwed; // launch fee waiting for collectFees()
@@ -147,13 +160,14 @@ contract CloakAuction {
     event ClaimedPrivately(uint256 indexed id);
     event RefundWithdrawn(address indexed bidder, address to, uint256 amount);
     event UniswapMarket(address indexed uniPair, address market, uint256 lpShares);
+    event CreatorFeesOn(address locker, uint256 position);
 
     modifier onlyFactory() {
         require(msg.sender == factory, "factory");
         _;
     }
 
-    constructor(Params memory p, CloakConfig config_, IMarketSeeder seeder_) {
+    constructor(Params memory p, CloakConfig config_, IMarketSeeder seeder_, IFeeLocker feeLocker_) {
         require(address(seeder_) != address(0), "seeder");
         require(p.creator != address(0), "creator");
         require(p.saleSupply > 0 && p.minPrice > 0, "supply/price");
@@ -170,6 +184,7 @@ contract CloakAuction {
         }
         factory = msg.sender;
         seeder = seeder_;
+        feeLocker = feeLocker_;
         params = p;
         config = config_;
         launchFeeBps = config_.launchFeeBps();
@@ -372,6 +387,13 @@ contract CloakAuction {
             lpShares = sh;
             (lpHype, lpTokens) = (hUsed, tUsed);
             if (u != address(0)) emit UniswapMarket(u, m, sh);
+            // forever with fees: the Uniswap LP goes to the locker for the creator (a CloakPair's shares stay here forever)
+            if (p.lpLockUntil == LOCK_FOREVER_FEES && u != address(0) && address(feeLocker) != address(0)) {
+                require(ILPToken(u).approve(address(feeLocker), sh), "approve lp");
+                feePosition = feeLocker.lockFor(u, sh, p.creator);
+                creatorFees = true;
+                emit CreatorFeesOn(address(feeLocker), feePosition);
+            }
         } else {
             lpHype = 0;
             lpTokens = 0;
@@ -489,7 +511,7 @@ contract CloakAuction {
 
     function releaseLP() external {
         require(settled && address(pair) != address(0), "no lp");
-        require(params.lpLockUntil != 0 && block.timestamp >= params.lpLockUntil, "locked");
+        require(params.lpLockUntil != 0 && params.lpLockUntil != LOCK_FOREVER_FEES && block.timestamp >= params.lpLockUntil, "locked");
         require(!lpReleased, "released");
         lpReleased = true;
         if (uniPair != address(0)) require(ILPToken(uniPair).transfer(params.creator, lpShares), "lp");

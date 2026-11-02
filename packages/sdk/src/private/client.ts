@@ -1,6 +1,7 @@
-import { encodeAbiParameters, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient } from "viem";
-import { cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi } from "../abis.js";
-import type { Wallet } from "../cloak.js";
+import { createWalletClient, custom, encodeAbiParameters, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { cloakAuctionAbi, cloakConfigAbi, cloakMigratorAbi, cloakPairAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi } from "../abis.js";
+import { Cloak, type Wallet } from "../cloak.js";
 import {
   ACCOUNT_MESSAGE,
   ACCOUNT_TYPED_DATA,
@@ -475,6 +476,126 @@ export class CloakPrivate {
     const r = await this.publicClient.waitForTransactionReceipt({ hash });
     if (r.status !== "success") throw new Error("private claim reverted");
     return { txHash: hash, tokens };
+  }
+
+  // ───────────── sealed bids paid from the private balance ─────────────
+
+  /**
+   * One-time bid wallet `n` for `auction`. The private balance pays its deposit and a little gas through a relayed
+   * withdrawal, so on-chain the bid comes from a fresh address nobody can tie to this account's wallet.
+   */
+  bidWallet(auction: Address, n: number): { n: number; address: Address; wallet: Wallet } {
+    const account = privateKeyToAccount(this.keys.bidWalletKey(auction, n));
+    const chain = this.publicClient.chain;
+    if (!chain) throw new Error("the public client needs a chain");
+    const wallet = createWalletClient({ account, chain, transport: custom({ request: (a) => this.publicClient.request(a as never) }) }) as Wallet;
+    return { n, address: account.address, wallet };
+  }
+
+  /** Gas a bid wallet keeps for its own transactions: the bid, a private claim, and moving what's left back in. */
+  async bidGasReserve(): Promise<bigint> {
+    const gp = await this.publicClient.getGasPrice();
+    return (gp < 100_000_000n ? 100_000_000n : gp) * 6_000_000n;
+  }
+
+  /** This account's bid wallets for `auction` that have been used (newest last), found from the seed alone. */
+  async bidWallets(auction: Address): Promise<{ n: number; address: Address; wallet: Wallet }[]> {
+    const out: { n: number; address: Address; wallet: Wallet }[] = [];
+    for (let n = 0; n < 64; n++) {
+      const w = this.bidWallet(auction, n);
+      const [nonce, bal] = await Promise.all([this.publicClient.getTransactionCount({ address: w.address }), this.publicClient.getBalance({ address: w.address })]);
+      if (nonce === 0 && bal === 0n) break;
+      out.push(w);
+    }
+    return out;
+  }
+
+  /**
+   * Place a sealed bid paid from the private HYPE balance: a relayed private withdrawal funds a fresh one-time wallet
+   * with the deposit plus gas, and that wallet seals the bid. Keep the returned secret like any bid's (auto-reveal makes
+   * losing it harmless). After settlement, `finishPrivateBids` claims the tokens privately and moves the refund back.
+   */
+  async bidPrivately(auction: Address, opts: { maxPrice: bigint; quantity: bigint; deposit?: bigint }, onStatus: Status = () => {}) {
+    const reader = new Cloak(this.publicClient);
+    const s = await reader.getAuction(auction);
+    if (s.phase !== "commit") throw new Error("commit phase is over");
+    const q = reader.quoteBid(s, opts.maxPrice, opts.quantity);
+    const deposit = opts.deposit ?? q.deposit;
+    if (deposit < q.cost) throw new Error("deposit is below the bid's cost");
+    const used = await this.bidWallets(auction);
+    const bw = this.bidWallet(auction, used.length);
+    const gas = await this.bidGasReserve();
+    // the vault keeps its withdrawal fee from what arrives, so send enough that deposit + gas land in full
+    const config = await this.publicClient.readContract({ address: this.router, abi: privateRouterAbi, functionName: "config" });
+    const feeBps = BigInt(await this.publicClient.readContract({ address: config, abi: cloakConfigAbi, functionName: "withdrawFeeBps" }));
+    const want = deposit + gas;
+    const send = (want * 10_000n + (10_000n - feeBps) - 1n) / (10_000n - feeBps);
+    onStatus("Paying the deposit from your private balance…");
+    const fund = await this.unshieldHype(bw.address, send, onStatus);
+    const r = await this.publicClient.waitForTransactionReceipt({ hash: fund });
+    if (r.status !== "success") throw new Error("funding the bid wallet reverted");
+    for (let i = 0; i < 30 && (await this.publicClient.getBalance({ address: bw.address })) < want; i++) await new Promise((x) => setTimeout(x, 1000));
+    if ((await this.publicClient.getBalance({ address: bw.address })) < deposit) throw new Error("the bid wallet wasn't funded; nothing was bid, and the HYPE is in the one-time wallet (finishPrivateBids moves it back)");
+    onStatus("Sealing the bid from a one-time wallet…");
+    const secret = await new Cloak(this.publicClient, bw.wallet).bid(auction, { maxPrice: opts.maxPrice, quantity: opts.quantity, deposit });
+    return { secret, bidWallet: bw.address, n: bw.n, fundTx: fund };
+  }
+
+  /**
+   * After a launch settles: for every bid this account placed from its private balance, claim won tokens straight into
+   * the private vault (or, if a cap blocks that, to the bid wallet and then in), collect refunds, and move the bid
+   * wallet's HYPE back into the private balance. Before settlement it only moves back HYPE from a one-time wallet whose
+   * bid never went through. Safe to call again; it only does what's left.
+   */
+  async finishPrivateBids(auction: Address, onStatus: Status = () => {}): Promise<{ claimed: number; movedHype: bigint; movedTokens: bigint }> {
+    const reader = new Cloak(this.publicClient);
+    const s = await reader.getAuction(auction);
+    let claimed = 0;
+    let movedHype = 0n;
+    let movedTokens = 0n;
+    const vaultOpen = !s.failed && this.markets.some((m) => m.token.toLowerCase() === s.token.toLowerCase());
+    for (const bw of await this.bidWallets(auction)) {
+      const c = new Cloak(this.publicClient, bw.wallet);
+      const bids = await reader.bidsOf(auction, bw.address);
+      // before settlement only a wallet whose bid never went through has anything to move back
+      if (!s.settled && bids.length > 0) continue;
+      for (const b of bids) {
+        if (b.claimed) continue;
+        onStatus(`Claiming bid #${b.id}…`);
+        if (b.tokens > 0n && vaultOpen) {
+          try {
+            await this.claimPrivately(bw.wallet, auction, b.id);
+            claimed++;
+            continue;
+          } catch {} // over the vault's deposit cap: claim to the bid wallet instead
+        }
+        await c.claim(auction, [b.id]);
+        claimed++;
+      }
+      const owed = await this.publicClient.readContract({ address: auction, abi: cloakAuctionAbi, functionName: "refundOwed", args: [bw.address] }).catch(() => 0n);
+      if (owed > 0n) {
+        const h = await bw.wallet.writeContract({ address: auction, abi: cloakAuctionAbi, functionName: "withdrawRefund", args: [bw.address] });
+        await this.publicClient.waitForTransactionReceipt({ hash: h });
+      }
+      if (vaultOpen) {
+        const t = await this.publicClient.readContract({ address: s.token, abi: ERC20_ABI, functionName: "balanceOf", args: [bw.address] });
+        if (t > 0n) {
+          onStatus("Moving tokens into your private balance…");
+          try {
+            await this.shieldToken(bw.wallet, s.token, t);
+            movedTokens += t;
+          } catch {} // a cap may block it; the tokens stay in the one-time wallet, which nobody can tie to you
+        }
+      }
+      const bal = await this.publicClient.getBalance({ address: bw.address });
+      const keep = (await this.bidGasReserve()) / 3n; // gas for this last shield
+      if (bal > keep * 2n) {
+        onStatus("Moving the refund back into your private balance…");
+        await this.shieldHype(bw.wallet, bal - keep);
+        movedHype += bal - keep;
+      }
+    }
+    return { claimed, movedHype, movedTokens };
   }
 
   // ───────────── batch auctions (hide trade size) ─────────────

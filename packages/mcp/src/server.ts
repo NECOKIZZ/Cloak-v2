@@ -40,7 +40,7 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
@@ -261,7 +261,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       ...(s.settled
         ? { clearingPrice: `${formatEther(s.clearingPrice)} HYPE per token`, sold: formatEther(s.sold), raised: hype(s.raised), pool: s.pair }
         : {}),
-      liquidity: `${s.lpBps / 100}% of the raise seeds the pool at the clearing price; LP ${s.lpLockUntil === 0 ? "burned" : `locked until ${iso(s.lpLockUntil)}`}`,
+      liquidity: `${s.lpBps / 100}% of the raise seeds the pool at the clearing price; LP ${s.lpLockUntil === 0 ? "burned" : s.creatorFees || s.lpLockUntil >= 2 ** 63 ? "locked forever, trading fees to the creator" : `locked until ${iso(s.lpLockUntil)}`}`,
       noRevealPenalty: `${s.noRevealPenaltyBps / 100}%`,
       launchFee: `${s.launchFeeBps / 100}% of a successful raise`,
       caps: { perBid: s.bidCap ? hype(s.bidCap) : "none", total: s.depositCap ? hype(s.depositCap) : "none" },
@@ -455,7 +455,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
           ifCreatedNow: { biddingEnds: iso(commitEnd), revealsEnd: iso(revealEnd) },
           priceRange: `${formatEther(min)} to ${formatEther(top)} HYPE per token, ${ticks} ticks`,
           raiseIfFullySold: { atLowestPrice: hype(raise(min)), atHighestPrice: hype(raise(top)) },
-          toPool: `${lp}% of the raise, paired with tokens at the clearing price; the LP is burned unless you lock it`,
+          toPool: `${lp}% of the raise, paired with tokens at the clearing price in a Uniswap V2 pool; the LP is locked forever and its 0.3% trading fees go to you (or burned, or locked for a set time)`,
           launchFee: "1.5% of a successful raise; nothing if the launch doesn't fill",
           caps: "During the beta a bid can be at most 100 HYPE and an auction can take at most 10,000 HYPE.",
           create: { onTheSite: "https://cloak.boblabs.tech/app/create", withAnAgent: "the local server's create_launch tool (see connect_full_agent)" },
@@ -499,7 +499,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         reveal_minutes: z.number().min(1).max(60 * 24).optional().describe("Time for bids to open after bidding closes (default 10)"),
         lp_percent: z.number().min(0).max(100).optional().describe("Share of the raise that seeds the pool (default 50)"),
         lp_tokens: amt("Tokens paired with that HYPE (default: same as sale_supply)").optional(),
-        lp_lock_days: z.number().min(0).optional().describe("Lock the LP for this many days instead of burning it (default: burn)"),
+        lp_lock_days: z.number().min(0).optional().describe("Lock the LP for this many days, after which the creator can take it (overrides creator_fees)"),
+        creator_fees: z.boolean().optional().describe("Lock the LP forever and pay the pool's 0.3% trading fees to the creator (default true; false burns the LP)"),
         creator_share: amt("Tokens for the creator, at most 20% of supply, vesting linearly").optional(),
         vest_days: z.number().min(30).optional().describe("Vesting length for the creator share (default 90)"),
         metadata_uri: z.string().optional(),
@@ -507,7 +508,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       },
       annotations: WRITE,
     },
-    safe(async (p: { name: string; symbol: string; sale_supply: string; min_price: string; tick_size?: string; price_ticks?: number; bidding_minutes?: number; reveal_minutes?: number; lp_percent?: number; lp_tokens?: string; lp_lock_days?: number; creator_share?: string; vest_days?: number; metadata_uri?: string; dry_run?: boolean }) => {
+    safe(async (p: { name: string; symbol: string; sale_supply: string; min_price: string; tick_size?: string; price_ticks?: number; bidding_minutes?: number; reveal_minutes?: number; lp_percent?: number; lp_tokens?: string; lp_lock_days?: number; creator_fees?: boolean; creator_share?: string; vest_days?: number; metadata_uri?: string; dry_run?: boolean }) => {
       const { account, spending } = needWallet();
       const now = Number((await pub.getBlock()).timestamp);
       const commitEnd = now + Math.round((p.bidding_minutes ?? 60) * 60);
@@ -525,7 +526,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         commitEnd,
         revealEnd,
         lpBps: Math.round((p.lp_percent ?? 50) * 100),
-        lpLockUntil: p.lp_lock_days ? now + Math.round(p.lp_lock_days * 86400) : ("burn" as const),
+        lpLockUntil: p.lp_lock_days ? revealEnd + Math.round(p.lp_lock_days * 86400) : p.creator_fees === false ? ("burn" as const) : ("fees" as const),
         metadataURI: p.metadata_uri,
       };
       spending.check("launches", 1n);
