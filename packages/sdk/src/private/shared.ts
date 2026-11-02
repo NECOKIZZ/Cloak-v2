@@ -57,13 +57,15 @@ const json = (v: unknown) => JSON.stringify(v, (_, x) => (typeof x === "bigint" 
 export function sharedRelayerSubmitter(url: string): SharedSubmitter {
   const base = url.replace(/\/$/, "");
   const submit: SharedSubmitter = async (call) => {
-    const res = await fetch(`${base}/relay-shared`, { method: "POST", headers: { "content-type": "application/json" }, body: json(call) });
+    const res = await fetch(`${base}/relay-shared`, { method: "POST", headers: { "content-type": "application/json" }, body: json(call), signal: AbortSignal.timeout(120_000) }).catch((e) => {
+      throw new Error(e?.name === "TimeoutError" ? "The relayer didn't answer. Check your balance in a minute before trying again." : `Couldn't reach the relayer: ${e?.message ?? e}`);
+    });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error ?? `relay failed (${res.status})`);
     return out.txHash as Hex;
   };
   submit.quote = async (kind, token) => {
-    const res = await fetch(`${base}/quote-shared?kind=${kind}&token=${token}`);
+    const res = await fetch(`${base}/quote-shared?kind=${kind}&token=${token}`, { signal: AbortSignal.timeout(30_000) });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error ?? `relayer quote failed (${res.status})`);
     return { relayer: out.relayer as Address, fee: BigInt(out.fee) };

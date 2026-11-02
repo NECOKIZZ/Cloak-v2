@@ -87,13 +87,16 @@ const json = (v: unknown) => JSON.stringify(v, (_, x) => (typeof x === "bigint" 
 export function relayerSubmitter(url: string): Submitter {
   const base = url.replace(/\/$/, "");
   const submit: Submitter = async (call) => {
-    const res = await fetch(`${base}/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: json(call) });
+    // a relay normally answers in seconds; past two minutes the connection is dead, and saying so beats waiting forever
+    const res = await fetch(`${base}/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: json(call), signal: AbortSignal.timeout(120_000) }).catch((e) => {
+      throw new Error(e?.name === "TimeoutError" ? "The relayer didn't answer. Check your balance in a minute before trying again." : `Couldn't reach the relayer: ${e?.message ?? e}`);
+    });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error ?? `relay failed (${res.status})`);
     return out.txHash as Hex;
   };
   submit.quote = async (kind, pool) => {
-    const res = await fetch(`${base}/quote?kind=${kind}&pool=${pool}`);
+    const res = await fetch(`${base}/quote?kind=${kind}&pool=${pool}`, { signal: AbortSignal.timeout(30_000) });
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error ?? `relayer quote failed (${res.status})`);
     return { relayer: out.relayer as Address, fee: BigInt(out.fee) };
