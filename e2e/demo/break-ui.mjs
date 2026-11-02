@@ -55,7 +55,7 @@ await page.locator('input[placeholder="Happy birthday!"]').fill("break test <b>b
 await create.dblclick();
 await create.click();
 await page.locator("text=Copy link").first().waitFor({ timeout: 240000 });
-const url = await page.evaluate(() => [...document.querySelectorAll("main input, main code, main .mono")].map((e) => e.value || e.textContent).find((t) => /\/claim#k=/.test(t ?? "")));
+const url = await page.evaluate(() => [...document.querySelectorAll("main input, main code, main .mono")].map((e) => e.value || e.textContent).find((t) => /\/claim#c/.test(t ?? "")));
 ok(!!url, `link made ${url?.slice(0, 50)}…`);
 await page.waitForTimeout(1500);
 const saved = await page.locator("text=break test").count();
