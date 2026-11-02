@@ -113,16 +113,17 @@ export function Links() {
       if (sf.lock && !sf.code.trim()) throw new Hint("Pick a passcode, or turn the lock off.");
       const token = tokenOf(p, sf.token);
       const pool = p.market(token).pool;
-      let claimFee = 0n;
-      if (sf.cover) {
-        const [a, b] = await Promise.all([p.relayFee("transact", pool), sf.token === "HYPE" ? p.relayFee("unshieldHype", pool) : Promise.resolve({ fee: 0n })]);
-        claimFee = a.fee > b.fee ? a.fee : b.fee;
-      }
+      // everything that needs no network first, so a typo never waits on (or trips over) a fee lookup
       const n = Math.floor(Number(sf.shares || "1"));
       if (!(n >= 1 && n <= LINK_SHARES_MAX)) throw new Hint(`Split into 1 to ${LINK_SHARES_MAX} shares.`);
       const whole = parseUnits(amtStr, dec);
       const share = whole / BigInt(n);
       if (share === 0n) throw new Hint("That's too little to split that many ways.");
+      let claimFee = 0n;
+      if (sf.cover) {
+        const [a, b] = await Promise.all([p.relayFee("transact", pool), sf.token === "HYPE" ? p.relayFee("unshieldHype", pool) : Promise.resolve({ fee: 0n })]);
+        claimFee = a.fee > b.fee ? a.fee : b.fee;
+      }
       // every share is its own note, and each person claiming pays the relayer from theirs, so each share carries the fee
       const each = share + claimFee;
       const total = each * BigInt(n);

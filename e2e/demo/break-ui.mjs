@@ -77,6 +77,8 @@ await c.reload({ waitUntil: "networkidle" }); await c.waitForTimeout(8000);
 ok(/empty|claimed/i.test(await c.locator("main").innerText()), "reopened link says it's empty");
 // request link to my private balance, then pay it with a double-click
 await page.locator("button.tab", { hasText: "Request a payment" }).click();
+await page.locator("#link-form .picker-btn, #link-form [aria-haspopup]").first().click();
+await page.locator(".picker-list button, .picker-list [role=option]", { hasText: "HYPE" }).first().click();
 await page.locator('input[placeholder="25"]').fill("0.001");
 await page.locator("main button.btn-ink.btn-lg").first().click();
 await page.locator("text=Copy link").first().waitFor({ timeout: 60000 });
@@ -97,11 +99,11 @@ const p2 = await ctx.newPage();
 await p2.goto(reqUrl, { waitUntil: "networkidle" }); await p2.waitForTimeout(3000);
 const ub = p2.locator("main button.btn-ink.btn-lg").first();
 if (/Unlock|Connect/.test(await ub.innerText())) { await ub.click(); const w = p2.locator(".wm-item", { hasText: "Browser wallet" }); if (await w.isVisible({ timeout: 5000 }).catch(() => false)) await w.click(); }
-await p2.waitForFunction(() => /Pay/.test(document.querySelector("main button.btn-ink.btn-lg")?.textContent ?? "") && !/Unlock|Connect|Sign/.test(document.querySelector("main button.btn-ink.btn-lg")?.textContent ?? ""), null, { timeout: 180000 });
+await p2.waitForFunction(() => /^Pay (privately|from private balance)$/.test(document.querySelector("main button.btn-ink.btn-lg")?.textContent?.trim() ?? ""), null, { timeout: 180000 });
 const relays = [];
 p2.on("request", (r) => r.url().includes("/relay") && r.method() === "POST" && relays.push(r.url()));
 await p2.locator("main button.btn-ink.btn-lg").first().dblclick();
-await p2.locator("text=/Paid|sent|done/i").first().waitFor({ timeout: 240000 });
+await p2.waitForFunction(() => !document.querySelector("main button.btn-ink.btn-lg") || /Paid/i.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 240000 });
 await p2.waitForTimeout(3000);
 ok(relays.length === 1, `double-clicked pay sent ${relays.length} relay request(s)`);
 log("pay page:", (await p2.locator("main").innerText()).slice(0, 200).replace(/\s+/g, " "));

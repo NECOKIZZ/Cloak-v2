@@ -39,7 +39,7 @@ const [on, per, total] = await d.publicClient.readContract({ address: f.config, 
 ok(on && per === 1_000_000_000n && total === 50_000_000_000n, "USDC caps: 1,000 per deposit, 50,000 in the pool");
 
 const keeper = spawn(process.execPath, [`${root}services/keeper/index.mjs`], {
-  env: { ...process.env, RPC_URL: RPC, KEEPER_PK, CONFIG: f.config, HYPE_USD: String(HYPE_USD), HYPE_PRICE_URL: "http://127.0.0.1:9/", PORT: "3998", RELAY_PER_MIN: "1000" },
+  env: { ...process.env, RPC_URL: process.env.KEEPER_RPC ?? RPC, KEEPER_PK, CONFIG: f.config, HYPE_USD: String(HYPE_USD), HYPE_PRICE_URL: "http://127.0.0.1:9/", PORT: "3998", RELAY_PER_MIN: "1000" },
   stdio: ["ignore", "inherit", "inherit"],
 });
 const KEEPER = "http://127.0.0.1:3998";
