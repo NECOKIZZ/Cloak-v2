@@ -75,8 +75,47 @@ ok(!/<b>/.test(await c.locator(".claim-msg").innerText()) || true, "message show
 // reopen: empty
 await c.reload({ waitUntil: "networkidle" }); await c.waitForTimeout(8000);
 ok(/empty|claimed/i.test(await c.locator("main").innerText()), "reopened link says it's empty");
+// a riddle link, the case from the field: wrong answer, right answer, then reopened after it's claimed
+await page.locator("button.tab", { hasText: "Send as a link" }).click();
+await amt.fill("0.001"); await shares.fill("1");
+await page.locator('input[placeholder="Happy birthday!"]').fill("riddle test");
+await page.locator("label.check", { hasText: "passcode" }).locator("input").check();
+await page.locator('input[placeholder="a word or phrase"]').fill("Sage");
+await page.locator('input[placeholder="What chain does Cloak live on?"]').fill("my name");
+await create.click();
+await page.locator("text=Copy link").first().waitFor({ timeout: 240000 });
+const rurl = await page.evaluate(() => [...document.querySelectorAll("main input, main code, main .mono")].map((e) => e.value || e.textContent).find((t) => /\/claim#c/.test(t ?? "")));
+ok(/\/claim#c[0-9A-Za-z]+$/.test(rurl ?? ""), "the riddle link uses the chat-safe format");
+const r = await ctx.newPage();
+await r.goto(rurl, { waitUntil: "networkidle" });
+const ans = r.locator('input[placeholder="Type the answer"]');
+await ans.fill("bob");
+const t0 = Date.now();
+await r.locator("button", { hasText: "Unlock the link" }).click();
+await r.locator(".err").waitFor({ timeout: 30000 });
+ok(/not the answer/i.test(await r.locator(".err").innerText()), `a wrong answer says so (${((Date.now() - t0) / 1000).toFixed(1)}s): ${await r.locator(".err").innerText()}`);
+await ans.fill("  SAGE ");
+await r.locator("button", { hasText: "Unlock the link" }).click();
+await r.locator("text=Claim to a wallet").waitFor({ timeout: 120000 });
+await r.locator("text=Claim to a wallet").click();
+await r.locator('input[placeholder="0x…"]').fill(privateKeyToAccount(generatePrivateKey()).address);
+await r.locator("main button.btn-ink.btn-lg").first().click();
+await r.locator("text=Claimed. It's yours now.").waitFor({ timeout: 240000 });
+ok(true, "the right answer (any case, spaces) claims it");
+await r.reload({ waitUntil: "networkidle" });
+await r.locator('input[placeholder="Type the answer"]').fill("sage");
+await r.locator("button", { hasText: "Unlock the link" }).click();
+await r.locator("text=already claimed").waitFor({ timeout: 120000 });
+await r.waitForTimeout(6000);
+ok(true, "reopened, it says: " + (await r.locator("main .claim-card").innerText()).split("\n").filter((x) => /claimed|claim was/i.test(x)).join(" / "));
+// the sender sees the claim, with the wallet it went to
+const row = page.locator(".link-row", { hasText: "riddle test" }).first();
+await row.locator("button", { hasText: "Refresh" }).click();
+await row.locator(".claims li").first().waitFor({ timeout: 180000 });
+ok(/to 0x/.test(await row.innerText()) && /Claimed/.test(await row.innerText()), "Your links shows it claimed, and the wallet it went to: " + (await row.locator(".claims").innerText()).replace(/\s+/g, " "));
+
 // request link to my private balance, then pay it with a double-click
-await page.locator("button.tab", { hasText: "Request a payment" }).click();
+await page.locator("button.tab", { hasText: "Request payment" }).click();
 await page.locator("#link-form .picker-btn, #link-form [aria-haspopup]").first().click();
 await page.locator(".picker-list button, .picker-list [role=option]", { hasText: "HYPE" }).first().click();
 await page.locator('input[placeholder="25"]').fill("0.001");

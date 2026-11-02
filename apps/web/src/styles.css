@@ -80,8 +80,10 @@ a { color: inherit; text-decoration: none; }
 /* ───────────── buttons & pills ───────────── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  height: 44px; padding: 0 22px; border-radius: 999px; border: 1px solid transparent;
-  font: 500 14px/1 var(--font-body); cursor: pointer; white-space: nowrap; color: var(--text); background: transparent;
+  min-height: 44px; padding: 8px 22px; border-radius: 999px; border: 1px solid transparent;
+  font: 500 14px/1.25 var(--font-body); cursor: pointer; color: var(--text); background: transparent;
+  /* a label or a progress message longer than the button wraps inside it instead of spilling out */
+  white-space: normal; text-align: center; overflow-wrap: anywhere; max-width: 100%;
   transition: background 0.2s var(--ease), border-color 0.2s, color 0.2s, transform 0.15s, opacity 0.2s;
 }
 .btn:active { transform: scale(0.98); }
@@ -93,16 +95,16 @@ a { color: inherit; text-decoration: none; }
 .btn-solid-signal { background: var(--signal); color: #fff; }
 .btn-ghost { border-color: var(--line-strong); }
 .btn-ghost:hover:not(:disabled) { border-color: var(--mute); }
-.btn-text { padding: 0 4px; height: auto; }
+.btn-text { padding: 0 4px; min-height: 0; }
 .btn-text:hover { color: var(--signal); }
-.btn-sm { height: 36px; padding: 0 16px; font-size: 13px; }
-.btn-lg { height: 52px; padding: 0 28px; font-size: 15px; }
+.btn-sm { min-height: 36px; padding: 6px 16px; font-size: 13px; }
+.btn-lg { min-height: 52px; padding: 10px 28px; font-size: 15px; }
 .btn-block { width: 100%; }
 .on-deep .btn-primary, .deep .btn-primary { background: var(--on-deep); color: var(--deep); }
 .arrow::after { content: "→"; margin-left: 2px; transition: transform 0.2s var(--ease); display: inline-block; }
 .arrow:hover::after { transform: translateX(3px); }
 
-.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--soft); white-space: nowrap; background: var(--raised); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--soft); white-space: nowrap; background: var(--raised); max-width: 100%; }
 .pill.ok { color: var(--signal); border-color: var(--signal-line); background: var(--signal-soft); }
 .pill.warn { color: var(--seal); border-color: color-mix(in srgb, var(--seal) 40%, var(--bg)); background: var(--seal-soft); }
 .pill.bad { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
@@ -418,7 +420,7 @@ select.input { font-family: var(--font-body); font-size: 14px; }
 .badge { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--r-sm); background: var(--signal-soft); margin-bottom: 16px; }
 .badge b { color: var(--signal); font-weight: 600; }
 .tabs { display: flex; gap: 4px; background: var(--card); padding: 4px; border-radius: 999px; margin-bottom: 16px; }
-.tab { flex: 1; height: 34px; border: 0; border-radius: 999px; background: transparent; color: var(--mute); font: 500 13px var(--font-body); cursor: pointer; }
+.tab { flex: 1; min-width: 0; min-height: 34px; padding: 6px 10px; line-height: 1.25; overflow-wrap: anywhere; border: 0; border-radius: 999px; background: transparent; color: var(--mute); font: 500 13px var(--font-body); cursor: pointer; }
 .tab.on { background: var(--raised); color: var(--text); box-shadow: var(--shadow); }
 
 .launches { display: grid; gap: 10px; }

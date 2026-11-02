@@ -95,6 +95,7 @@ await late.loadMarkets();
 ok((await late.balance(hype.pool)) === 0n, "a fourth person finds the envelope empty");
 
 console.log(`\n${n} checks passed`);
+process.exit(0); // the prover keeps worker threads alive
 
 async function assertRejects(f, msg) {
   try { await f(); } catch { return ok(true, msg); }

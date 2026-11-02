@@ -209,8 +209,8 @@ export function Links() {
       <div className="grid links-grid" id="link-form">
         <div className="card">
           <div className="tabs">
-            <button className={`tab ${tab === "send" ? "on" : ""}`} onClick={() => { setTab("send"); setPicked(""); setMade(null); setErr(""); }}>Send money as a link</button>
-            <button className={`tab ${tab === "request" ? "on" : ""}`} onClick={() => { setTab("request"); setPicked(""); setMade(null); setErr(""); }}>Request a payment</button>
+            <button className={`tab ${tab === "send" ? "on" : ""}`} onClick={() => { setTab("send"); setPicked(""); setMade(null); setErr(""); }}>Send as a link</button>
+            <button className={`tab ${tab === "request" ? "on" : ""}`} onClick={() => { setTab("request"); setPicked(""); setMade(null); setErr(""); }}>Request payment</button>
           </div>
 
           {tab === "send" ? (
