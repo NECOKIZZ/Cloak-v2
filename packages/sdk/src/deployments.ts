@@ -33,6 +33,8 @@ export interface CloakDeployment {
   earlierFactories?: Address[];
   /** Block of this deployment's first factory: scan its launches' bids from here (defaults to `factoryBlock`). */
   firstFactoryBlock?: bigint;
+  /** CloakSeeder: opens each settled launch's market (a Uniswap V2 pool where the chain has one). */
+  seeder?: Address;
   router: Address;
   /** Block the router was deployed in: scan private-pool events from here. */
   routerBlock: bigint;
@@ -65,6 +67,7 @@ export const deployments: Record<number, CloakDeployment> = {
     factoryBlock: 21221250n,
     earlierFactories: ["0xa88df63d7d44acc66052e5cbe5ba9503bf940993"],
     firstFactoryBlock: 19484794n,
+    seeder: "0x633aa82b806dafc0ae4c84418d23f3726139a88d",
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",

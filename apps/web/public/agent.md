@@ -5,7 +5,10 @@ yourself. Ask the person only for what you can't do, in plain words, one thing a
 
 **What Cloak is:** private trading on Elysium (Kinetiq's chain). Tokens launch with sealed bids, and trades, sends and
 withdrawals run from a private balance: each one is proven on this machine and sent by a relayer, so the wallet never
-appears on it. **It is on testnet only. Everything uses free play money (testnet HYPE). Never use real funds.**
+appears on it. New launches open a normal Uniswap V2 pool at their clearing price, so their tokens trade anywhere, and
+private trades use that same pool. **It is on testnet only. Everything uses free play money (testnet HYPE). Never use
+real funds.** Every protocol rule (caps, fees, penalties, batch guards) with its number:
+https://github.com/NECOKIZZ/Cloak/blob/main/docs/RULES.md
 
 ## Rules
 

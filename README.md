@@ -23,11 +23,17 @@ A **[Bob Labs](https://github.com/NECOKIZZ)** product, live on Kinetiq's **Elysi
 
 Cloak **v4** (Oct 31): **permanent vaults**. Every asset has one vault, made once by `CloakVaults` and never replaced; routers, batchers and factories are helpers around them, so an upgrade adds a helper and nobody's balance moves again. Your private account is signed for the chain only, never for a contract, so it and your `cloak:` address stay the same from here on. Sealed-bid winners can **claim privately**, straight into the vault. `CloakConfig` lists every Cloak contract with the block it started, so apps need only its address. The rules for later upgrades are in [`docs/VAULT.md`](docs/VAULT.md).
 
+**Uniswap launches** (Nov 2): every new launch opens a standard **Uniswap V2 pool** (token / WHYPE) at its clearing price, with the LP burned or locked, so the token trades on Uniswap, aggregators and any wallet. Private buys, sells and batch rounds trade the same pool through a `CloakV2Market`. Tested live end to end (`e2e/live-uniswap.mjs`, 17/17).
+
+**Every rule, with its number and who can change it: [`docs/RULES.md`](docs/RULES.md).**
+
 | Contract | Address |
 |---|---|
 | **CloakConfig** (rules, and the list of every Cloak contract; changes behind a 3-day timelock) | [`0x9fdf166f0671166148ea98cdd3ef0118d256167f`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x9fdf166f0671166148ea98cdd3ef0118d256167f) |
 | **CloakVaults** (the permanent vaults, one per asset) | [`0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43) |
-| **CloakFactory** (auctions with private claims) | [`0xa88df63d7d44acc66052e5cbe5ba9503bf940993`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa88df63d7d44acc66052e5cbe5ba9503bf940993) |
+| **CloakFactory** (launches open a Uniswap V2 pool; private claims) | [`0xeac84944f5a8343edf49cde8ef74d71f4908a656`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xeac84944f5a8343edf49cde8ef74d71f4908a656) |
+| **CloakSeeder** (opens each launch's pool at the clearing price) | [`0x633aa82b806dafc0ae4c84418d23f3726139a88d`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x633aa82b806dafc0ae4c84418d23f3726139a88d) |
+| **CloakFactory**, v4's first (launches until Nov 2, Cloak pools; still lists) | [`0xa88df63d7d44acc66052e5cbe5ba9503bf940993`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa88df63d7d44acc66052e5cbe5ba9503bf940993) |
 | **PrivateRouter** (private swaps) | [`0x343ab9a7aac93cee28321410510ea24417cc6386`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x343ab9a7aac93cee28321410510ea24417cc6386) |
 | **PrivateBatcher** (batch auctions) | [`0xc69e4bca18020ae93bc9f17093985bfb139a3203`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc69e4bca18020ae93bc9f17093985bfb139a3203) |
 | **CloakMigrator** (moves v1, v2 and v3 private balances into the vaults) | [`0x86c5d8035224493f10938aaa07b179be316dadf4`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x86c5d8035224493f10938aaa07b179be316dadf4) |
@@ -44,10 +50,14 @@ All addresses are in [`deployments/elysium-testnet-v4.json`](deployments/elysium
 | Withdrawals, private swaps, batch orders | **0.25%** of the amount, kept in the vault and collected to the treasury (hard cap 1%) |
 | Launch fee | **1.5%** of a successful raise, at settlement. Nothing on a launch that doesn't fill (hard cap 3%) |
 | Relayer fee | the relayer's gas plus a margin, paid inside the proof |
-| Beta caps | HYPE vault 100 per deposit and 10,000 in total; launch-token vaults 10% of supply per deposit and 50% in total; auctions 100 HYPE per bid and 10,000 in total. Withdrawals are never capped |
+| Beta caps | HYPE vault 100 per deposit and 10,000 in total; USDC vault 1,000 per deposit and 50,000 in total; launch-token vaults 10% of supply per deposit and 50% in total; auctions 100 HYPE per bid and 10,000 in total. Withdrawals are never capped |
 | Creator share | at most 20% of the supply, vesting linearly over at least 30 days |
+| Batch rounds | 30 s; a round won't settle if the pool is more than 2% off its average price or the net trade would lose more than 5% to impact; refundable after 10 minutes |
+| Keeper | pushes public claims 1 hour after reveals end (winners can claim privately first); relay fee = its gas × 1.25 |
 
-**Nobody can take funds.** No function in any Cloak contract moves user money: notes leave a vault only with their owner's proof, and auction money only goes to bidders, the creator and the fee recipient. `CloakConfig` holds the rules. While in setup, the owner sets them directly. After `endSetup()`, tightening a rule (lower a fee or a cap, close deposits) is instant, and loosening one, or changing the verifier or fee recipient, is queued on-chain and waits a public **3-day** delay. Ownership moves in two steps. A bug in a contract's code still needs a new version: the old one keeps its exits open, and `CloakMigrator` moves balances across privately in one relayed transaction.
+The full list, including which rules are fixed in code and which live in `CloakConfig`: [`docs/RULES.md`](docs/RULES.md).
+
+**Nobody can take funds.** No function in any Cloak contract moves user money: notes leave a vault only with their owner's proof, and auction money only goes to bidders, the creator and the fee recipient. `CloakConfig` holds the rules. **Testnet is still in setup**, so today the owner (one wallet) sets them directly. After `endSetup()`, tightening a rule (lower a fee or a cap, close deposits) is instant, and loosening one, or changing the verifier or fee recipient, is queued on-chain and waits a public **3-day** delay. Ownership moves in two steps. A bug in a contract's code still needs a new version: the old one keeps its exits open, and `CloakMigrator` moves balances across privately in one relayed transaction.
 
 **A full real run on testnet** (`pnpm e2e`, 13/13 checks): 5 fresh bidders, sealed bids, keeper auto-reveal from the drand beacon, one clearing price, pool seeded at that price with the LP burned, then the first trade:
 
@@ -235,7 +245,8 @@ cd apps/web && pnpm build                   # static site; addresses from packag
 - **Governance:** on testnet the config owner is a single wallet and setup is still open. Before mainnet it moves to a multisig and setup ends, so every loosening change waits 3 days.
 - **USDC can be frozen at the source.** Circle can freeze the USDC the bridge holds on HyperEVM, and the bridge operator can upgrade the Elysium USDC contract. Either would affect every holder of Elysium USDC, including the vault. That is the same trust anyone holding USDC on Elysium takes on; the vault's caps keep the exposure small during beta.
 - **Trusted setup:** the Groth16 keys come from a development setup. Production needs a public multi-party ceremony, which is planned alongside mainnet (Nov 9). Caps stay on until it is done.
-- **Not hidden from front-running:** trades hit the public AMM with a 1% slippage limit. Sealed batch trading (roadmap) would also hide trades until they clear.
+- **Not hidden from front-running:** trades hit the public pool (a Uniswap V2 pool for launches from Nov 2) with a 1% slippage limit by default.
+- **Trading on Uniswap from your own wallet is public**, like any trade. Trade from your private balance to stay hidden. Sealed batch trading (roadmap) would also hide trades until they clear.
 
 **Launch auction**
 

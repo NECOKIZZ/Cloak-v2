@@ -22,14 +22,16 @@ npm install @cloakely/sdk viem
 
 ```ts
 import { createPublicClient, createWalletClient, custom, http, parseEther } from "viem";
-import { Cloak, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
+import { Cloak, deploymentFor, elysiumTestnet, legacyFactories } from "@cloakely/sdk";
 
 const d = deploymentFor(elysiumTestnet.id);
 const publicClient = createPublicClient({ chain: elysiumTestnet, transport: http() });
 const walletClient = createWalletClient({ chain: elysiumTestnet, transport: custom(window.ethereum) });
-const cloak = new Cloak(publicClient, walletClient, d.factory, d.legacy?.factory);
+// earlier factories too, so every launch lists, settles and pays out
+const cloak = new Cloak(publicClient, walletClient, d.factory, legacyFactories(d));
 
-// a project or launchpad: a sealed-bid launch, with liquidity seeded at the clearing price
+// a project or launchpad: a sealed-bid launch. At settlement it opens a Uniswap V2 pool (token / WHYPE) at the
+// clearing price, with the LP burned ("burn") or locked until a date
 const now = Math.floor(Date.now() / 1000);
 const { auction } = await cloak.createLaunch({
   name: "Shade", symbol: "SHADE",
@@ -47,6 +49,10 @@ await cloak.revealAll(auction);
 await cloak.settle(auction);
 await cloak.claimAll(auction);
 await cloak.payOut(auction); // the creator's proceeds, and the launch fee to the treasury
+
+const s = await cloak.getAuction(auction);
+s.uniPair; // the Uniswap V2 pool, tradable and trackable anywhere (zero for launches before Nov 2, which use a CloakPair)
+s.pair;    // the market Cloak's private router and batcher trade: a CloakV2Market in front of that pool
 ```
 
 ## Private trading
@@ -55,17 +61,17 @@ await cloak.payOut(auction); // the creator's proceeds, and the launch fee to th
 import { CloakPrivate, deploymentFor, elysiumTestnet, loadProver, relayerSubmitter } from "@cloakely/sdk";
 
 const d = deploymentFor(elysiumTestnet.id);
-const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: d.chainId, router: d.router, verify: true });
+const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: d.chainId, verify: true });
 const priv = new CloakPrivate(
   publicClient, d.router, keys,
   () => loadProver(d.circuitsUrl),     // 12 MB of circuit files, fetched once and hash-checked
   relayerSubmitter(d.relayerUrl),      // the relayer submits, so the wallet never appears
-  d.routerBlock, d.batcher, d.migrator,
+  d.vaultsBlock!, d.batcher, d.migrator, // notes are scanned from the permanent vaults' first block
 );
 await priv.loadMarkets();
 
 await priv.shieldHype(walletClient, parseEther("1"));     // the one public step
-await priv.buy(token, parseEther("0.25"));                // private buy through the launch's pool
+await priv.buy(token, parseEther("0.25"));                // private buy through the launch's Uniswap pool
 await priv.batch(token, "buy", parseEther("0.37"));       // batch round: trade size hidden too
 await priv.send(token, "cloak:…", parseEther("100"));     // private transfer: amount hidden
 await priv.unshieldHype(freshAddress, parseEther("0.5")); // back to any wallet
@@ -81,7 +87,7 @@ await priv.send(usdc.token, "cloak:…", parseUnits("20", 6));             // am
 await priv.unshieldToken(usdc.token, freshAddress, parseUnits("10", 6)); // 0.25% fee kept
 ```
 
-The private account comes from one EIP-712 signature bound to the chain and the router. The same wallet always restores it, and nothing is stored on a server. In Node, read the circuit files yourself and pass them to `createProver(wasm, zkey)`.
+The private account comes from one EIP-712 signature bound to the chain only (never to a contract), so it and the `cloak:` address never change. The same wallet always restores it, and nothing is stored on a server. In Node, read the circuit files yourself and pass them to `createProver(wasm, zkey)`.
 
 ## Fees (testnet beta)
 
@@ -92,7 +98,7 @@ The private account comes from one EIP-712 signature bound to the chain and the 
 | Successful launch | 1.5% of the raise |
 | Relayer | the relayer's gas plus a margin, paid inside the proof |
 
-Rules live in the on-chain `CloakConfig`. Raising a fee or a cap waits a public 3-day delay, and no function in any Cloak contract can move user funds.
+Rules live in the on-chain `CloakConfig`, and no function in any Cloak contract can move user funds. Testnet is still in setup, so the owner can change fees and caps at once (within hard ceilings of 1% and 3%); once setup ends, before mainnet, raising a fee or a cap waits a public 3-day delay. Every rule with its number: [docs/RULES.md](https://github.com/NECOKIZZ/Cloak/blob/main/docs/RULES.md).
 
 ## Exports
 

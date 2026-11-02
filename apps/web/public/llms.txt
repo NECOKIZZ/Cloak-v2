@@ -6,5 +6,6 @@ AI agents: read https://cloak.boblabs.tech/agent.md and follow it. It sets you u
 
 - [Agent instructions](https://cloak.boblabs.tech/agent.md)
 - [Docs](https://cloak.boblabs.tech/docs)
+- [Every rule, with its number](https://github.com/NECOKIZZ/Cloak/blob/main/docs/RULES.md)
 - [MCP server on npm](https://www.npmjs.com/package/@cloakely/mcp)
 - [SDK on npm](https://www.npmjs.com/package/@cloakely/sdk)

@@ -14,7 +14,7 @@ Think of an auction where everyone hands in a **sealed envelope**.
 - **You bid.** You write "I'll buy up to 10,000 tokens, at up to X HYPE each," seal it and drop it in the box. The blockchain only stores a fingerprint of your envelope plus a locked copy of it. Bots, other bidders and even Elysium's sequencer (the single computer that puts transactions in order) can't read it.
 - **The lock opens itself.** The locked copy is tied to **drand**, a public clock run by many independent organisations that releases a new key every 3 seconds. The key for your envelope only comes out when bidding ends. After that, anyone can open every envelope, so you don't have to come back.
 - **Everyone pays the same price.** The envelopes are sorted from the highest price down until the tokens run out. The last price that fits is what **everyone** pays, including people who bid much higher. So rushing, bidding first or paying extra gas gets you nothing.
-- **Liquidity is locked in.** Part of the money raised, plus matching tokens, goes into a trading pool at exactly that fair price, and the pool's ownership shares are burned. Trading opens at the fair price, and nobody can pull the liquidity out.
+- **Liquidity is locked in.** Part of the money raised, plus matching tokens, goes into a **Uniswap pool** at exactly that fair price, and the pool's ownership shares are burned (or locked until a date the creator picked). Trading opens at the fair price, nobody can pull the liquidity out, and because it's a normal Uniswap pool, the token can be traded and tracked anywhere. Private trades use the same pool.
 - **Everyone gets settled.** Winners get their tokens plus a refund of anything they over-deposited. People who bid too low get all their money back.
 
 ## Part 2: private trading is a private vault with a go-between
@@ -57,3 +57,5 @@ On a normal exchange, every trade is stamped with your wallet address forever. A
 | `PrivateBatcher` | batch rounds: standard-size orders, buys and sells crossed at the round's time-weighted average price, only the net hits the pool |
 | `@cloakely/sdk` | what the page (or any launchpad) uses for all of the above |
 | keeper / relayer | opens sealed bids, settles launches, and submits private trades |
+
+Every rule with its exact number (caps, fees, penalties, batch guards, who can change what) is in [RULES.md](RULES.md).

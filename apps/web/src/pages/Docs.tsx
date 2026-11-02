@@ -8,6 +8,8 @@ const ADDR = {
   config: DEPLOYMENT?.config ?? "",
   vaults: DEPLOYMENT?.vaults ?? "",
   factory: DEPLOYMENT?.factory ?? "",
+  earlierFactory: DEPLOYMENT?.earlierFactories?.[0] ?? "",
+  seeder: DEPLOYMENT?.seeder ?? "",
   router: DEPLOYMENT?.router ?? "",
   batcher: DEPLOYMENT?.batcher ?? "",
   migrator: DEPLOYMENT?.migrator ?? "",
@@ -17,9 +19,9 @@ const ADDR = {
 
 const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
-  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"]]],
+  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"]]],
   ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
-  ["Build", [["sdk", "SDK"], ["agents", "AI agents (MCP)"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
+  ["Build", [["sdk", "SDK"], ["agents", "AI agents (MCP)"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["rules", "All the rules"], ["governance", "Who can change what"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
 
 const A = (a: string) => `${EXPLORER}/address/${a}`;
@@ -90,6 +92,7 @@ export function Docs() {
           <h2 id="what-works">What works today</h2>
           <ul>
             <li>Sealed-bid launches with auto-reveal, a uniform clearing price, and liquidity locked at that price.</li>
+            <li>Every new launch opens a standard <b>Uniswap V2 pool</b>, so the token trades on Uniswap and anywhere else, while private trades use the same pool.</li>
             <li>Private balances for HYPE and every settled launch token.</li>
             <li>Private instant swaps, private batch swaps (hidden size), private sends, and withdrawals.</li>
             <li>A hosted keeper that reveals bids, settles launches and batch rounds, and relays private transactions.</li>
@@ -114,7 +117,18 @@ export function Docs() {
           <p>Because the price doesn't depend on order, bidding early, fast or with more gas earns nothing. That's the whole point on a fee-ordered chain.</p>
 
           <h2 id="liquidity">Locked liquidity</h2>
-          <p>A share of the raise (default 50%) plus matching tokens seeds a HYPE/token pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The LP shares are burned, or time-locked in the auction contract. Unsold tokens are burned.</p>
+          <p>A share of the raise (default 50%) plus matching tokens opens the token's pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The LP is burned, or locked in the auction contract until a date the creator picked. Unsold tokens, and any tokens the pool didn't need, are burned. Whatever HYPE the pool didn't need goes to the creator.</p>
+          <p>A pool's address is known before it exists, so someone could try to send it tokens or WHYPE early and make the launch open at a silly price. Settlement handles every case:</p>
+          <ul>
+            <li>Anything sent to the pool's address before it has reserves is swept to the burn address.</li>
+            <li>If someone synced reserves into it, the launch tops up the other side so the pool still opens at the clearing price. Whoever sent them just loses them.</li>
+            <li>If someone already put their own liquidity in the pool (which needs launch tokens before settlement), that pool is ignored and the launch opens a Cloak pool instead, so nobody else's position sets the price.</li>
+            <li>The Uniswap step always gets a fixed 6,000,000 gas, and settlement refuses to run with less, so nobody can force the fallback by sending too little gas.</li>
+          </ul>
+
+          <h2 id="uniswap">Trading on Uniswap</h2>
+          <p>Since Nov 2, every launch's pool is a standard <b>Uniswap V2 pool</b> (token / WHYPE, 0.3% fee) from Elysium's Uniswap V2 factory. That means the token is a normal token everywhere: anyone can trade it on Uniswap, aggregators can route to it, wallets can price it, and trackers like DexScreener can chart it once they support Elysium. The launch page links to the pool.</p>
+          <p>Private trades use <b>the same pool</b>. A small adapter (<code>CloakV2Market</code>) lets Cloak's private router and batch rounds trade it, so liquidity is never split between a "public" and a "private" market. Batch rounds price against the pool's own time-weighted price. Launches from before Nov 2 keep their Cloak pool, which works the same way.</p>
 
           <div className="crumb" style={{ marginTop: 60 }}>Privacy</div>
           <h2 id="private-trading">Private trading</h2>
@@ -133,7 +147,7 @@ export function Docs() {
             <li>When it ends, buys and sells <b>cross at the pool's average price over the round</b> (no pool fee, no impact), and only the net trades on the pool.</li>
             <li>Everyone on one side of a round gets the <b>same price</b>, and outputs return as private notes.</li>
           </ul>
-          <p>A price guard stops a settler from moving the pool before settling. If a round can't settle, every order is refunded after 10 minutes.</p>
+          <p>The rules: orders are standard sizes of at least 0.000001 HYPE. A round won't settle if the pool's price is more than <b>2%</b> away from the round's average (so a settler can't move the pool first), or if its net trade would lose more than <b>5%</b> to price impact (on a very thin pool, a big round simply can't settle). If a round can't settle, every order is refundable as a private note <b>10 minutes</b> after the round ends.</p>
 
           <h2 id="private-send">Private send</h2>
           <p>Every account has a <code>cloak:</code> address (shown in Portfolio). Sending to it is a transfer inside the vault. The chain sees that a private transaction happened, but not who paid whom or how much.</p>
@@ -152,6 +166,7 @@ export function Docs() {
               <tr><td>Batch trade</td><td>Who traded; your total size</td><td>Each round's order counts and net</td></tr>
               <tr><td>Send</td><td>Sender, recipient, amount</td><td>That a private transaction happened</td></tr>
               <tr><td>Shield / withdraw</td><td>Which notes are involved</td><td>The amount entering or leaving</td></tr>
+              <tr><td>Trading on Uniswap from your wallet</td><td>Nothing</td><td>Everything, like any public trade. Trade from your private balance to stay hidden</td></tr>
             </tbody>
           </table>
           <div className="callout"><b>Tip:</b> don't shield 1 HYPE and immediately buy with exactly 1 HYPE. Wait, vary amounts, and use batch mode. Privacy grows with the number of people using the vault.</div>
@@ -191,7 +206,9 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <tbody>
               <tr><td>CloakConfig (rules and the list of every Cloak contract)</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
               <tr><td>CloakVaults (the permanent vaults)</td><td><a href={A(ADDR.vaults)} target="_blank" rel="noreferrer"><code>{ADDR.vaults}</code></a></td></tr>
-              <tr><td>CloakFactory</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
+              <tr><td>CloakFactory (launches open a Uniswap V2 pool)</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
+              {ADDR.seeder && <tr><td>CloakSeeder (opens each pool at the clearing price)</td><td><a href={A(ADDR.seeder)} target="_blank" rel="noreferrer"><code>{ADDR.seeder}</code></a></td></tr>}
+              {ADDR.earlierFactory && <tr><td>CloakFactory (v4's first, launches until Nov 2, Cloak pools)</td><td><a href={A(ADDR.earlierFactory)} target="_blank" rel="noreferrer"><code>{ADDR.earlierFactory}</code></a></td></tr>}
               <tr><td>PrivateRouter</td><td><a href={A(ADDR.router)} target="_blank" rel="noreferrer"><code>{ADDR.router}</code></a></td></tr>
               <tr><td>PrivateBatcher</td><td><a href={A(ADDR.batcher)} target="_blank" rel="noreferrer"><code>{ADDR.batcher}</code></a></td></tr>
               <tr><td>HYPE vault</td><td><a href={A(ADDR.hypePool)} target="_blank" rel="noreferrer"><code>{ADDR.hypePool}</code></a></td></tr>
@@ -199,8 +216,8 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>CloakMigrator (from v1, v2 and v3)</td><td><a href={A(ADDR.migrator)} target="_blank" rel="noreferrer"><code>{ADDR.migrator}</code></a></td></tr>
             </tbody>
           </table>
-          <p>No function in any of these contracts lets anyone, including us, move funds out of an auction or a vault. Money leaves a vault only with its owner's proof. <code>CloakConfig</code> holds the rules every contract reads: the fees, the deposit caps and the proof verifier. Tightening a rule (a lower fee, a lower cap, closing deposits) takes effect at once. Loosening one, or changing the verifier, is queued on-chain and waits a public 3-day delay, so anyone who disagrees can leave first. Fees have hard ceilings in the contract. Source, tests and real testnet runs are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
-          <p><b>The vaults are permanent.</b> Every asset has one vault, made once by <code>CloakVaults</code> and never replaced. Routers, batchers and factories are helpers around the vaults: a better one is added next to the old one and nobody's balance moves. Your private account is signed for this chain only, never for a contract, so it and your <code>cloak:</code> address stay the same from now on. <code>CloakConfig</code> keeps the list of every Cloak contract with the block it started, and adding one waits the same public 3-day delay as any other loosening change. The rules for later upgrades are in <a href={`${GITHUB}/blob/main/docs/VAULT.md`} target="_blank" rel="noreferrer">docs/VAULT.md</a>.</p>
+          <p>No function in any of these contracts lets anyone, including us, move funds out of an auction or a vault. Money leaves a vault only with its owner's proof. <code>CloakConfig</code> holds the rules every contract reads: the fees, the deposit caps and the proof verifier, within hard ceilings in the code. Who can change them, and how fast, is under <a href="#governance" onClick={go("governance")}>Who can change what</a>. Source, tests and real testnet runs are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
+          <p><b>The vaults are permanent.</b> Every asset has one vault, made once by <code>CloakVaults</code> and never replaced. Routers, batchers and factories are helpers around the vaults: a better one is added next to the old one and nobody's balance moves. Your private account is signed for this chain only, never for a contract, so it and your <code>cloak:</code> address stay the same from now on. <code>CloakConfig</code> keeps the list of every Cloak contract with the block it started. The rules for later upgrades are in <a href={`${GITHUB}/blob/main/docs/VAULT.md`} target="_blank" rel="noreferrer">docs/VAULT.md</a>.</p>
           <p>Cloak's earlier contracts (v1, v2 and v3) are still on-chain. Their launches still show here, their tokens have permanent vaults, and a private balance held in them moves across once from the Portfolio page through <code>CloakMigrator</code>. It stays private, and the relayer can't redirect it.</p>
 
           <h2 id="fees">Fees & caps</h2>
@@ -212,11 +229,40 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>Relayer fee</td><td>The gas the relayer pays, plus a small margin, taken inside your proof from the same balance</td></tr>
             </tbody>
           </table>
-          <p>While Cloak is in beta, deposits are capped: 100 HYPE per deposit and 10,000 HYPE in the HYPE vault, 10% of a token's supply per deposit and 50% in total for launch-token vaults, and 100 HYPE per bid and 10,000 HYPE in total for each new launch. Withdrawals are never capped. Caps lift after the audit and the public trusted-setup ceremony.</p>
+          <p>While Cloak is in beta, deposits are capped: 100 HYPE per deposit and 10,000 HYPE in the HYPE vault, 1,000 USDC per deposit and 50,000 USDC in the USDC vault, 10% of a token's supply per deposit and 50% in total for launch-token vaults, and 100 HYPE per bid and 10,000 HYPE in total for each new launch. Withdrawals are never capped. Caps lift after the audit and the public trusted-setup ceremony.</p>
           <p>A creator's own share is capped at 20% of the supply and vests over at least 30 days from the end of the auction.</p>
 
+          <h2 id="rules">All the rules</h2>
+          <p>Every rule with its number, where it's enforced and who can change it is in <a href={`${GITHUB}/blob/main/docs/RULES.md`} target="_blank" rel="noreferrer">docs/RULES.md</a>. The ones people ask about most:</p>
+          <table>
+            <thead><tr><th>Rule</th><th>Value</th><th>Set by</th></tr></thead>
+            <tbody>
+              <tr><td>Price levels per launch</td><td>Up to 256</td><td>Contract</td></tr>
+              <tr><td>Penalty for a bid that's never revealed</td><td>10% to 50% of the deposit (the creator picks), burned</td><td>Contract</td></tr>
+              <tr><td>When a launch fails</td><td>Only if no bid was revealed: full refunds, tokens back to the creator</td><td>Contract</td></tr>
+              <tr><td>Creator's own share</td><td>At most 20% of supply, vesting over at least 30 days</td><td>Contract</td></tr>
+              <tr><td>Launch token</td><td>Fixed supply, no owner, no mint, no tax, no blacklist</td><td>Contract</td></tr>
+              <tr><td>Pool opening price</td><td>Exactly the clearing price, Uniswap V2, 0.3% fee</td><td>Contract</td></tr>
+              <tr><td>LP</td><td>Burned, or locked until the creator's date</td><td>Contract</td></tr>
+              <tr><td>Winners' window to claim privately</td><td>1 hour after reveals end, then the keeper pushes public claims</td><td>Keeper</td></tr>
+              <tr><td>Private swap slippage and deadline</td><td>1% and 10 minutes by default</td><td>App</td></tr>
+              <tr><td>Batch round</td><td>30 s, 2% price guard, 5% impact guard, refunds after 10 min</td><td>Contract</td></tr>
+              <tr><td>Fees</td><td>0.25% on withdrawals, swaps and batch orders (cap 1%), 1.5% of a successful raise (cap 3%), deposits and sends free</td><td>Config</td></tr>
+              <tr><td>Beta caps</td><td>See Fees & caps. Withdrawals never capped</td><td>Config</td></tr>
+              <tr><td>Relay fee</td><td>Its gas × 1.25, at least 0.1 gwei gas price</td><td>Keeper</td></tr>
+            </tbody>
+          </table>
+
+          <h2 id="governance">Who can change what</h2>
+          <ul>
+            <li><b>Nobody can move your money.</b> No function in any Cloak contract does it, for us or anyone else.</li>
+            <li><b>Rules in the code</b> (the auction, the pool opening, batch guards, fee ceilings, vaults that are never replaced) can't be changed by anyone. A new version can only be added next to the old one, and the old one keeps working.</li>
+            <li><b>Rules in <code>CloakConfig</code></b> (fees under their ceilings, caps, the verifier, which assets and factories are allowed): <b>today, on testnet, Cloak is still in setup</b>, so the owner (one wallet) can change them at once. Before mainnet, ownership moves to a multisig and setup ends for good. From then on, tightening a rule is instant, and loosening one is queued on-chain, waits a public <b>3 days</b>, and lapses if it isn't carried out within 14 days after that. Anyone who disagrees has 3 days to leave.</li>
+            <li><b>Keeper and app settings</b> (the claim window, relay fee, default slippage) are how our hosted services behave. Anyone can run their own.</li>
+          </ul>
+
           <h2 id="keeper">Keeper & relayer</h2>
-          <p>The keeper is a small Node service. It reveals bids once the drand round passes, settles launches and batch rounds, pays out orders, and relays private transactions (<code>POST /relay</code>). It pays gas, so it's the on-chain sender of every private trade, and takes a fee for that inside the proof (<code>GET /quote</code>). A call that doesn't pay it is refused before it costs anything. It can delay or refuse a transaction, but it can't change or steal one, because the proof binds every field. Anyone can run one: <code>node services/keeper/index.mjs</code>.</p>
+          <p>The keeper is a small Node service. It reveals bids once the drand round passes, settles launches and batch rounds, pays out orders, and relays private transactions (<code>POST /relay</code>). It pays gas, so it's the on-chain sender of every private trade, and takes a fee for that inside the proof (<code>GET /quote</code>): the gas it pays × 1.25, at a gas price of at least 0.1 gwei. A call that doesn't pay it is refused before it costs anything, and each IP can send 20 relay requests a minute. It pushes public claims 1 hour after a launch's reveals end, so winners can claim privately first, and it opens each launch's private vault at settlement. It can delay or refuse a transaction, but it can't change or steal one, because the proof binds every field. Anyone can run one: <code>node services/keeper/index.mjs</code>.</p>
 
           <h2 id="limits">Limits & threat model</h2>
           <ul>

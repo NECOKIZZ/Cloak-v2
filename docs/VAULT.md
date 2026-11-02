@@ -43,7 +43,8 @@ A shared vault stays an option for later. It needs a new circuit, so it has to b
 | `PrivateRouter` | yes, added alongside | no | Shield HYPE, private swaps through each launch's `CloakPair`, withdraw as native HYPE. Reads vaults from `CloakVaults`. |
 | `PrivateBatcher` | yes, added alongside | only open orders | Sealed standard-size orders, crossed at mid. |
 | `CloakMigrator` | yes | no | Moves balances from every earlier deployment (v1, v2 and v3 vaults, v2's USDC vault) into the permanent vaults. |
-| `CloakFactory` | yes, added alongside | no (auctions do) | Launches. Its auctions offer `claimPrivate`. |
+| `CloakFactory` | yes, added alongside | no (auctions do) | Launches. Its auctions offer `claimPrivate`. A second v4 factory (Nov 2) opens each launch's market as a Uniswap V2 pool; the first keeps listing (`earlierFactories` in the registry). |
+| `CloakSeeder` | yes, with a new factory | no | Opens a settled launch's market at the clearing price: a Uniswap V2 pool behind a `CloakV2Market` (an adapter with `CloakPair`'s interface, so the router and batcher are unchanged), or a `CloakPair` as the fallback. |
 
 ### CloakVaults
 
