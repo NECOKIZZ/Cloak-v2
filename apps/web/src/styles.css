@@ -818,3 +818,4 @@ button.asset-row { cursor: pointer; }
   .tcard-price .mono { font-size: 14px; }
   .tcard-foot { padding-top: 8px; font-size: 11.5px; }
 }
+.rec-all { max-height: 560px; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }

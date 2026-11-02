@@ -273,13 +273,14 @@ function Details({ s, curve }: { s: AuctionState; curve: bigint[] }) {
     ...(s.phase !== "commit" ? [["demand", "Bids by price"]] : []),
     ["record", "On-chain record"],
   ] as [string, string][];
-  const [tab, setTab] = useState<string | null>(null);
-  const open = tab && tabs.some((t) => t[0] === tab) ? tab : null;
+  // always open, on the record unless someone picks another tab
+  const [tab, setTab] = useState("record");
+  const open = tabs.some((t) => t[0] === tab) ? tab : "record";
   return (
     <div className="details" style={{ marginTop: 20 }}>
       <div className="tabs details-tabs" role="tablist">
         {tabs.map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={open === k} className={`tab ${open === k ? "on" : ""}`} onClick={() => setTab(open === k ? null : k)}>{label}</button>
+          <button key={k} role="tab" aria-selected={open === k} className={`tab ${open === k ? "on" : ""}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
       {open === "results" && <FairLaunchCard s={s} />}

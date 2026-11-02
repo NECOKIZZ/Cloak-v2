@@ -112,7 +112,7 @@ export function LaunchRecord({ s }: { s: AuctionState }) {
       {!steps && !err && <p className="small mute">Reading the launch's transactions…</p>}
       {steps && steps.length === 0 && <p className="small mute">No transactions yet.</p>}
       {shown && shown.length > 0 && (
-        <ol className="rec">
+        <ol className={`rec ${all ? "rec-all" : ""}`}>
           {shown.map((st) => (
             <li key={st.key} className={`rec-${st.group}`}>
               <span className="rec-dot" />
