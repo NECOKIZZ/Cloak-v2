@@ -159,3 +159,9 @@ export function friendly(e: unknown): string {
   for (const [re, msg] of RULES) if (re.test(low)) return msg;
   return "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.";
 }
+
+/** A link that can't be read: the parser's own words say what's wrong with it, so show those. */
+export function linkProblem(e: unknown): string {
+  const f = friendly(e);
+  return f.startsWith("Something went wrong") && e instanceof Error && e.message ? e.message : f;
+}

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { parseClaimLink, type CloakPrivate, type ClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
-import { friendly, Hint } from "../errors";
+import { friendly, Hint, linkProblem } from "../errors";
 import { linkBalances, openLinkAccount, tokenOf, TOKEN_DECIMALS } from "../links";
 import { txLink } from "../config";
 import { Link } from "../router";
@@ -29,6 +29,8 @@ export function Claim() {
   const [dest, setDest] = useState<"private" | "wallet">("private");
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState("");
+  /** a quick second click must not pay or claim twice */
+  const going = useRef(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState<{ t: LinkToken; amount: bigint; tx: Hex }[] | null>(null);
 
@@ -39,7 +41,7 @@ export function Claim() {
       setLink(l);
       if (!l.locked) open(l);
     } catch (e) {
-      setBad(friendly(e));
+      setBad(linkProblem(e));
     }
   }, []);
   useEffect(() => { if (wallet && !to) setTo(wallet.account.address); }, [wallet]);
@@ -71,8 +73,10 @@ export function Claim() {
 
   async function claim() {
     if (!acct || !bals) return;
+    if (going.current) return;
     setErr("");
     try {
+      going.current = true;
       let dst: string;
       if (dest === "private") {
         const p = priv ?? (await unlock());
@@ -106,6 +110,7 @@ export function Claim() {
     } catch (e) {
       setErr(/already|spent|nullifier/i.test(String(e)) ? (link?.shares ? "Every share was taken a moment before you." : "Someone claimed this link a moment before you.") : friendly(e));
     } finally {
+      going.current = false;
       setBusy("");
     }
   }

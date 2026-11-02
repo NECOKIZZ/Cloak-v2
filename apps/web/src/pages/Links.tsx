@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, linkAddress, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
-import { formatUnits, parseUnits } from "viem";
+import { formatUnits, parseUnits, type Hex } from "viem";
 import { friendly, Hint } from "../errors";
-import { addLink, linkBalances, loadLinks, newId, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
+import { addLink, linkBalances, loadLinks, newId, saveLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
 import { QR } from "../qr";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { publicClient } from "../wallet";
@@ -60,6 +60,7 @@ export function Links() {
   const [sf, setSf] = useState<SendForm>({ token: "HYPE", amt: "", message: "", from: "", cover: true, lock: false, code: "", hint: "", shares: "1" });
   const [rf, setRf] = useState<ReqForm>({ token: "USDC", amt: "", note: "", name: "", payTo: "me", wallet: "" });
   const [busy, setBusy] = useState("");
+  const making = useRef(false);
   const [err, setErr] = useState("");
   const [made, setMade] = useState<{ url: string; title: string; passcode?: string; share: string } | null>(null);
   const [list, setList] = useState<LinkRecord[]>([]);
@@ -96,11 +97,15 @@ export function Links() {
   }
 
   async function createClaim() {
+    // one link at a time: a quick second click must not start a second set of sends
+    if (making.current) return;
     setErr("");
     setMade(null);
     try {
+      making.current = true;
       // the first click only connects and unlocks, so the sender sees the fee and checks the form before money moves
       if (!priv) return void (await unlock());
+      setBusy("Checking your balance…");
       const p = priv;
       const dec = TOKEN_DECIMALS[sf.token];
       const amtStr = normalizeLinkAmount(sf.amt, dec);
@@ -127,22 +132,38 @@ export function Links() {
       setBusy("Making the link's account…");
       const secret = newLinkSecret();
       const addr = await linkAddress(await linkKeys(secret, sf.lock ? sf.code : undefined));
+      const shareStr = formatUnits(share, dec);
+      const linkAt = (block: bigint) => buildClaimLink({ secret, block, token: sf.token, amount: n > 1 ? shareStr : amtStr, message: sf.message, from: sf.from, locked: sf.lock, hint: sf.hint, shares: n }, location.origin);
+      // saved before any money moves: if a send fails or the tab closes halfway, the link (and whatever reached it)
+      // is still under Your links, to share or take back
+      const rec: SentLink = { id: newId(), kind: "claim", url: linkAt(await publicClient.getBlockNumber()), token: sf.token, amount: amtStr, message: sf.message || undefined, passcode: sf.lock ? sf.code.trim() : undefined, hint: sf.hint || undefined, created: Date.now(), status: "open" };
+      await addLink(p.keys, rec);
       let rc;
       for (let i = 0; i < n; i++) {
         const tag = n > 1 ? `Share ${i + 1} of ${n}: ` : "";
-        const tx = await p.send(token, addr, each, (s) => setBusy(tag + s));
-        setBusy(`${tag}waiting for it to land…`);
-        rc = await publicClient.waitForTransactionReceipt({ hash: tx });
+        let tx: Hex | undefined;
+        try {
+          tx = await p.send(token, addr, each, (s) => setBusy(tag + s));
+          setBusy(`${tag}waiting for it to land…`);
+          rc = await publicClient.waitForTransactionReceipt({ hash: tx });
+        } catch (e) {
+          // the very first send never went out: nothing reached the link, so forget it
+          if (i === 0 && !tx) {
+            await saveLinks(p.keys, (await loadLinks(p.keys)).filter((x) => x.id !== rec.id));
+            throw e;
+          }
+          setList(await loadLinks(p.keys));
+          throw new Hint(n > 1 ? `${friendly(e)} Up to ${tx ? i + 1 : i} of ${n} shares reached the link. It's saved under Your links, where you can check it, share it or take the money back.` : `${friendly(e)} The link is saved under Your links: check it there before sending again.`);
+        }
       }
       if (!rc) return;
-      const shareStr = formatUnits(share, dec);
-      const url = buildClaimLink({ secret, block: rc.blockNumber, token: sf.token, amount: n > 1 ? shareStr : amtStr, message: sf.message, from: sf.from, locked: sf.lock, hint: sf.hint, shares: n }, location.origin);
-      const rec: SentLink = { id: newId(), kind: "claim", url, token: sf.token, amount: amtStr, message: sf.message || undefined, passcode: sf.lock ? sf.code.trim() : undefined, hint: sf.hint || undefined, created: Date.now(), status: "open" };
-      await addLink(p.keys, rec);
+      const url = linkAt(rc.blockNumber);
+      await updateLink(p.keys, rec.id, { url });
       setMade({ url, title: n > 1 ? `${amtStr} ${sf.token} in ${n} shares of ${shareStr}` : `${amtStr} ${sf.token} in a link`, passcode: rec.passcode, share: sf.lock ? (sf.hint ? `Solve this to claim ${amtStr} ${sf.token}: ${sf.hint}` : `A locked gift of ${amtStr} ${sf.token}`) : n > 1 ? `Red envelope: ${n} shares of ${shareStr} ${sf.token}. First ${n} to open it each get one` : `${amtStr} ${sf.token} for you, sent privately with Cloak` });
     } catch (e) {
       setErr(friendly(e));
     } finally {
+      making.current = false;
       setBusy("");
     }
   }

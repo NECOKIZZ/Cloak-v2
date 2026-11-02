@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { normalizeLinkAmount, parseRequestLink, type LinkToken, type PaymentRequest } from "@cloakely/sdk";
 import { erc20Abi, formatUnits, parseUnits, type Address, type Hex } from "viem";
-import { friendly, Hint } from "../errors";
+import { friendly, Hint, linkProblem } from "../errors";
 import { tokenOf, TOKEN_DECIMALS } from "../links";
 import { ASSETS, txLink } from "../config";
 import { Link } from "../router";
@@ -17,6 +17,8 @@ export function Pay() {
   const [amt, setAmt] = useState("");
   const [have, setHave] = useState<bigint | null>(null);
   const [busy, setBusy] = useState("");
+  /** a quick second click must not pay or claim twice */
+  const going = useRef(false);
   const [err, setErr] = useState("");
   const [paid, setPaid] = useState<{ tx: Hex; how: string } | null>(null);
 
@@ -27,7 +29,7 @@ export function Pay() {
       setReq(r);
       setAmt(r.amount ?? "");
     } catch (e) {
-      setBad(friendly(e));
+      setBad(linkProblem(e));
     }
   }, []);
   useEffect(() => {
@@ -72,8 +74,10 @@ export function Pay() {
   }
 
   async function pay(shieldFirst = false) {
+    if (going.current) return;
     setErr("");
     try {
+      going.current = true;
       const x = await plan();
       if (!x) return;
       const { p, token, pool, gross, need, a } = x;
@@ -95,14 +99,17 @@ export function Pay() {
     } catch (e) {
       setErr(friendly(e));
     } finally {
+      going.current = false;
       setBusy("");
     }
   }
 
   /** A plain public transfer from the wallet, for payees with a 0x address. */
   async function payPublic() {
+    if (going.current) return;
     setErr("");
     try {
+      going.current = true;
       const w = wallet ?? (await connect());
       if (!w) return;
       const a = normalizeLinkAmount(amt, dec);
@@ -122,6 +129,7 @@ export function Pay() {
     } catch (e) {
       setErr(friendly(e));
     } finally {
+      going.current = false;
       setBusy("");
     }
   }
