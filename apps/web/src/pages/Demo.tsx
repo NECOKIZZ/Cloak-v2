@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "../router";
 import { Nav } from "../ui";
 
-const VIDEO = "/media/cloak-demo.mp4";
+const VIDEO = "/media/cloak-demo";
 
 /** The walkthrough video: the real site, step by step, with a voice over. Shows a placeholder until the file is uploaded. */
 export function Demo() {
@@ -27,7 +27,11 @@ export function Demo() {
               <Link to="/app" className="btn btn-primary">Open the app</Link>
             </div>
           ) : (
-            <video src={VIDEO} controls playsInline preload="metadata" poster="/media/cloak-demo.jpg" onError={() => setMissing(true)} />
+            <video controls playsInline preload="metadata" poster={`${VIDEO}.jpg`}>
+              <source src={`${VIDEO}.mp4`} type="video/mp4" />
+              {/* for browsers without H.264; if neither plays, show the placeholder */}
+              <source src={`${VIDEO}.webm`} type="video/webm" onError={() => setMissing(true)} />
+            </video>
           )}
         </div>
         <div className="demo-links">
