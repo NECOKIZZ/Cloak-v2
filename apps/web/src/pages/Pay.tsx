@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeLinkAmount, parseRequestLink, type LinkToken, type PaymentRequest } from "@cloakely/sdk";
 import { erc20Abi, formatUnits, parseUnits, type Address, type Hex } from "viem";
-import { friendly, Hint, linkProblem } from "../errors";
+import { friendly, Hint, linkProblem, checked } from "../errors";
 import { tokenOf, TOKEN_DECIMALS } from "../links";
 import { ASSETS, txLink } from "../config";
 import { Link } from "../router";
@@ -56,7 +56,7 @@ export function Pay() {
   async function plan() {
     const p = priv ?? (await unlock());
     if (!p) return null;
-    const a = normalizeLinkAmount(amt, dec);
+    const a = checked(() => normalizeLinkAmount(amt, dec));
     if (!a) throw new Hint("Enter how much to pay.");
     const units = parseUnits(a, dec);
     const token = tokenOf(p, t);
@@ -112,7 +112,7 @@ export function Pay() {
       going.current = true;
       const w = wallet ?? (await connect());
       if (!w) return;
-      const a = normalizeLinkAmount(amt, dec);
+      const a = checked(() => normalizeLinkAmount(amt, dec));
       if (!a) throw new Hint("Enter how much to pay.");
       const units = parseUnits(a, dec);
       setBusy("Confirm in your wallet…");

@@ -165,3 +165,12 @@ export function linkProblem(e: unknown): string {
   const f = friendly(e);
   return f.startsWith("Something went wrong") && e instanceof Error && e.message ? e.message : f;
 }
+
+/** Runs an input check whose errors are already written for people (an amount, an address), and shows them as is. */
+export function checked<T>(f: () => T): T {
+  try {
+    return f();
+  } catch (e) {
+    throw new Hint(e instanceof Error ? e.message : String(e));
+  }
+}

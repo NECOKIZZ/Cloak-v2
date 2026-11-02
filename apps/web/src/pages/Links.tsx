@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, linkAddress, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, parseUnits, type Hex } from "viem";
-import { friendly, Hint } from "../errors";
+import { friendly, Hint, checked } from "../errors";
 import { addLink, linkBalances, loadLinks, newId, saveLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
 import { QR } from "../qr";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
@@ -108,7 +108,7 @@ export function Links() {
       setBusy("Checking your balance…");
       const p = priv;
       const dec = TOKEN_DECIMALS[sf.token];
-      const amtStr = normalizeLinkAmount(sf.amt, dec);
+      const amtStr = checked(() => normalizeLinkAmount(sf.amt, dec));
       if (!amtStr) throw new Hint("Enter how much the link holds.");
       if (sf.lock && !sf.code.trim()) throw new Hint("Pick a passcode, or turn the lock off.");
       const token = tokenOf(p, sf.token);
@@ -177,8 +177,8 @@ export function Links() {
         const p = priv ?? (await unlock());
         if (!p) return;
         to = await p.address();
-      } else checkPayee(to);
-      const amount = rf.amt.trim() ? normalizeLinkAmount(rf.amt, TOKEN_DECIMALS[rf.token]) : undefined;
+      } else checked(() => checkPayee(to));
+      const amount = rf.amt.trim() ? checked(() => normalizeLinkAmount(rf.amt, TOKEN_DECIMALS[rf.token])) : undefined;
       const url = buildRequestLink({ to, token: rf.token, amount, note: rf.note, name: rf.name }, location.origin);
       if (priv) await addLink(priv.keys, { id: newId(), kind: "request", url, token: rf.token, amount, note: rf.note || undefined, to, created: Date.now() });
       setMade({ url, title: amount ? `Request for ${amount} ${rf.token}` : `${rf.token} tip jar`, share: `${rf.name ? rf.name + " requests" : "Pay me"} ${amount ? amount + " " : ""}${rf.token} privately${rf.note ? ` · ${rf.note}` : ""}` });
