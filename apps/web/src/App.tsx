@@ -6,6 +6,7 @@ import { Docs } from "./pages/Docs";
 import { Agents } from "./pages/Agents";
 import { Landing } from "./pages/Landing";
 import { Pitch } from "./pages/Pitch";
+import { Demo } from "./pages/Demo";
 import { Launch } from "./pages/Launch";
 import { Launches } from "./pages/Launches";
 import { Portfolio, PortfolioAction } from "./pages/Portfolio";
@@ -29,6 +30,7 @@ function Routes() {
   if (path === "/sdk") return <AppShell><Sdk /></AppShell>;
   if (path === "/agents") return <AppShell><Agents /></AppShell>;
   if (path === "/pitch") return <Pitch />;
+  if (path === "/demo") return <Demo />;
   if (path.startsWith("/app")) {
     const m = path.match(/^\/app\/launch\/(0x[0-9a-fA-F]{40})$/);
     const act = path.match(/^\/app\/portfolio\/(shield|send|withdraw)$/);

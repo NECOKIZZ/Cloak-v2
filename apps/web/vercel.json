@@ -24,7 +24,7 @@
       "destination": "/api/mcp"
     },
     {
-      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|api/).*)",
+      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/).*)",
       "destination": "/index.html"
     }
   ],
