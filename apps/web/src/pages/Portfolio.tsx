@@ -9,6 +9,7 @@ import { friendly, Hint } from "../errors";
 import { markDone } from "../guide";
 import { Link, navigate, useRoute } from "../router";
 import { Icon, TokenIcon } from "../ui";
+import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { useFeePct, useMarkets, type Market } from "./markets";
 
 type Kind = "shield" | "send" | "withdraw";
@@ -250,54 +251,8 @@ function Tips() {
 
 // ───────────── token picker ─────────────
 
-type Option = { a: Asset; sub: string };
+type Option = PickerOption<Key>;
 
-/** A token dropdown with a search box (name, symbol or contract address), shown inline under the field. */
-function TokenPicker({ options, value, onChange }: { options: Option[]; value?: Key; onChange: (k: Key) => void }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-  const cur = options.find((o) => o.a.key === value);
-  const s = q.trim().toLowerCase();
-  const shown = options.filter((o) => !s || o.a.symbol.toLowerCase().includes(s) || o.a.name.toLowerCase().includes(s) || (o.a.key !== "HYPE" && o.a.key.toLowerCase().includes(s)));
-  return (
-    <div className="picker" ref={box}>
-      <button type="button" className="picker-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
-        {cur ? (
-          <>
-            <TokenIcon symbol={cur.a.symbol} token={cur.a.iconToken} size={28} />
-            <span className="nm"><b>{cur.a.symbol}</b><span className="xs mute">{cur.sub}</span></span>
-          </>
-        ) : (
-          <span className="mute">{options.length ? "Select a token" : "Nothing to pick yet"}</span>
-        )}
-        <span className="spacer" />
-        <Icon.chev size={16} />
-      </button>
-      {open && (
-        <div className="picker-panel">
-          <input className="input" autoFocus placeholder="Search name or contract address" value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="picker-list">
-            {shown.length === 0 && <div className="xs mute" style={{ padding: 12 }}>No token matches.</div>}
-            {shown.map((o) => (
-              <button type="button" key={o.a.key} className={`asset-row ${o.a.key === value ? "on" : ""}`} onClick={() => { onChange(o.a.key); setOpen(false); setQ(""); }}>
-                <TokenIcon symbol={o.a.symbol} token={o.a.iconToken} size={30} />
-                <div className="nm"><b>{o.a.symbol}</b><span className="xs mute">{o.a.key === "HYPE" ? o.a.name : `${o.a.name} · ${o.a.key.slice(0, 6)}…${o.a.key.slice(-4)}`}</span></div>
-                <div className="amt"><span className="small mono">{o.sub}</span></div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ───────────── shield, send, withdraw ─────────────
 

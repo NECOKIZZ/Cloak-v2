@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, linkAddress, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
+import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, linkAddress, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, parseUnits } from "viem";
 import { friendly, Hint } from "../errors";
 import { addLink, linkBalances, loadLinks, newId, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
 import { QR } from "../qr";
+import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { publicClient } from "../wallet";
 import { useApp } from "../state";
 import { Icon } from "../ui";
@@ -63,6 +64,12 @@ export function Links() {
   const [made, setMade] = useState<{ url: string; title: string; passcode?: string; share: string } | null>(null);
   const [list, setList] = useState<LinkRecord[]>([]);
   const [fee, setFee] = useState<bigint | null>(null);
+  const [bals, setBals] = useState<Partial<Record<LinkToken, bigint>>>({});
+  useEffect(() => {
+    if (!priv) return setBals({});
+    Promise.all(LINK_TOKENS.map(async (t) => [t, await priv.balance(priv.market(tokenOf(priv, t)).pool).catch(() => undefined)] as const))
+      .then((r) => setBals(Object.fromEntries(r.filter(([, v]) => v !== undefined)) as Partial<Record<LinkToken, bigint>>));
+  }, [priv, made]);
 
   useEffect(() => { document.title = "Cloak · Payment links"; }, []);
   useEffect(() => { if (priv) loadLinks(priv.keys).then(setList); }, [priv, made]);
@@ -181,7 +188,7 @@ export function Links() {
 
           {tab === "send" ? (
             <>
-              <TokenTabs value={sf.token} onChange={(t) => setS("token", t)} />
+              <LinkTokenPicker value={sf.token} onChange={(t) => setS("token", t)} bals={bals} />
               <div className="field">
                 <label><span>Amount the link holds</span><span>from your private balance</span></label>
                 <input className="input" value={sf.amt} onChange={(e) => setS("amt", e.target.value)} inputMode="decimal" placeholder={sf.token === "HYPE" ? "0.05" : "10"} />
@@ -222,7 +229,7 @@ export function Links() {
             </>
           ) : (
             <>
-              <TokenTabs value={rf.token} onChange={(t) => setR("token", t)} />
+              <LinkTokenPicker value={rf.token} onChange={(t) => setR("token", t)} bals={bals} />
               <div className="field">
                 <label><span>Amount</span><span>leave empty to let them choose</span></label>
                 <input className="input" value={rf.amt} onChange={(e) => setR("amt", e.target.value)} inputMode="decimal" placeholder="25" />
@@ -282,16 +289,22 @@ export function Links() {
   );
 }
 
-function TokenTabs({ value, onChange }: { value: LinkToken; onChange: (t: LinkToken) => void }) {
+/** The tokens a link can carry, as a dropdown with logos. Shows the private balance of each once unlocked. */
+function LinkTokenPicker({ value, onChange, bals }: { value: LinkToken; onChange: (t: LinkToken) => void; bals: Partial<Record<LinkToken, bigint>> }) {
+  const options: PickerOption<LinkToken>[] = LINK_TOKENS.map((t) => ({
+    a: { key: t, symbol: t, name: TOKEN_NAMES[t] },
+    sub: bals[t] === undefined ? "" : `${trim(formatUnits(bals[t]!, TOKEN_DECIMALS[t]))} private`,
+  }));
   return (
     <div className="field">
       <label><span>Token</span></label>
-      <div className="tabs" style={{ marginBottom: 0 }}>
-        {(["HYPE", "USDC"] as LinkToken[]).map((t) => <button key={t} className={`tab ${value === t ? "on" : ""}`} onClick={() => onChange(t)}>{t}</button>)}
-      </div>
+      <TokenPicker options={options} value={value} onChange={onChange} />
     </div>
   );
 }
+
+const TOKEN_NAMES: Record<LinkToken, string> = { HYPE: "Hyperliquid", USDC: "USD Coin" };
+const trim = (s: string) => (s.includes(".") ? s.replace(/(\.\d{0,6})\d*$/, "$1").replace(/\.?0+$/, "") : s);
 
 function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => void }) {
   const { priv, toast } = useApp();
