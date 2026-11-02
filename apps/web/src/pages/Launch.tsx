@@ -16,6 +16,7 @@ import { publicClient, readCloak } from "../wallet";
 
 type MyBidsT = Awaited<ReturnType<typeof readCloak.bidsOf>>;
 const ZERO = "0x0000000000000000000000000000000000000000";
+const DEAD = "0x000000000000000000000000000000000000dEaD";
 
 /** Copy the launch's link, or post it on X. Shared links show the token's name, image and status as a preview. */
 function Share({ s, big }: { s: AuctionState; big?: boolean }) {
@@ -231,8 +232,10 @@ function Market({ s }: { s: AuctionState }) {
     const load = () =>
       Promise.all([
         publicClient.readContract({ address: s.token, abi: cloakTokenAbi, functionName: "totalSupply" }),
+        // unsold and unused tokens are burned to the dead address: they still count in totalSupply, never in the market cap
+        publicClient.readContract({ address: s.token, abi: cloakTokenAbi, functionName: "balanceOf", args: [DEAD] }),
         publicClient.readContract({ address: s.pair, abi: cloakPairAbi, functionName: "reserveHype" }),
-      ]).then(([supply, reserve]) => alive && setInfo({ supply, reserve }), () => {});
+      ]).then(([total, burned, reserve]) => alive && setInfo({ supply: total - burned, reserve }), () => {});
     load();
     const t = setInterval(load, 20_000);
     return () => {
