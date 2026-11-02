@@ -88,15 +88,20 @@ export function Links() {
     setErr("");
     setMade(null);
     try {
-      const p = priv ?? (await unlock());
-      if (!p) return;
+      // the first click only connects and unlocks, so the sender sees the fee and checks the form before money moves
+      if (!priv) return void (await unlock());
+      const p = priv;
       const dec = TOKEN_DECIMALS[sf.token];
       const amtStr = normalizeLinkAmount(sf.amt, dec);
       if (!amtStr) throw new Hint("Enter how much the link holds.");
       if (sf.lock && !sf.code.trim()) throw new Hint("Pick a passcode, or turn the lock off.");
       const token = tokenOf(p, sf.token);
       const pool = p.market(token).pool;
-      const claimFee = sf.cover ? (fee ?? 0n) : 0n;
+      let claimFee = 0n;
+      if (sf.cover) {
+        const [a, b] = await Promise.all([p.relayFee("transact", pool), sf.token === "HYPE" ? p.relayFee("unshieldHype", pool) : Promise.resolve({ fee: 0n })]);
+        claimFee = a.fee > b.fee ? a.fee : b.fee;
+      }
       const total = parseUnits(amtStr, dec) + claimFee;
       const have = await p.balance(pool);
       const sendFee = (await p.relayFee("transact", pool)).fee;
@@ -198,7 +203,7 @@ export function Links() {
                 </div>
               )}
               <button className="btn btn-ink btn-lg btn-block" style={{ marginTop: 14 }} disabled={!!busy || unlocking} onClick={createClaim}>
-                {busy || (!wallet ? "Connect wallet" : !priv ? "Unlock private account" : "Create link")}
+                {busy || (unlocking ? "Sign in your wallet…" : !wallet ? "Connect wallet" : !priv ? "Unlock private account" : "Create link")}
               </button>
               <p className="note">The link holds its own private account. Anyone who opens it can claim the money into their private balance, or straight to any wallet with no gas. Until someone does, you can take it back below. Treat it like cash.</p>
             </>

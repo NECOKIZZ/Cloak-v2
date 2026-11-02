@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { parseClaimLink, type CloakPrivate, type ClaimLink, type LinkToken } from "@cloakely/sdk";
-import { formatUnits, isAddress, type Address, type Hex } from "viem";
+import { formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { friendly, Hint } from "../errors";
 import { linkBalances, openLinkAccount, tokenOf, TOKEN_DECIMALS } from "../links";
 import { txLink } from "../config";
@@ -104,6 +104,16 @@ export function Claim() {
   }
   if (!link) return null;
   const held = bals ? (["HYPE", "USDC"] as LinkToken[]).filter((t) => bals[t] > 0n) : [];
+  // the sender's stated amount, when the link holds at least that (the rest is the claim fee they covered)
+  let meant: bigint | null = null;
+  try {
+    if (bals && link.amount && link.token && held.length === 1 && held[0] === link.token) {
+      const m = parseUnits(link.amount, TOKEN_DECIMALS[link.token]);
+      if (bals[link.token] >= m) meant = m;
+    }
+  } catch {}
+  const show = (t: LinkToken) => (meant !== null && t === link.token ? meant : bals![t]);
+  const covered = (t: LinkToken) => meant !== null && t === link.token && bals![t] - meant >= (fees[`${t}${dest}`] ?? 0n);
   const empty = bals && held.length === 0 && !done;
 
   return (
@@ -113,7 +123,7 @@ export function Claim() {
         <p className="mute" style={{ margin: "18px 0 4px" }}>{link.from ? `${link.from} sent you` : "Someone sent you"}</p>
         <div className="claim-amount">
           {done ? done.map((d) => <div key={d.t}>{fmt(d.t, d.amount)} <span>{d.t}</span></div>)
-            : bals && held.length ? held.map((t) => <div key={t}>{fmt(t, bals[t])} <span>{t}</span></div>)
+            : bals && held.length ? held.map((t) => <div key={t}>{fmt(t, show(t))} <span>{t}</span></div>)
             : <div>{link.amount ?? "?"} <span>{link.token ?? ""}</span></div>}
         </div>
         {link.message && <blockquote className="claim-msg">“{link.message}”</blockquote>}
@@ -163,7 +173,7 @@ export function Claim() {
             )}
             <div className="summary" style={{ marginTop: 12 }}>
               {held.map((t) => (
-                <div key={t} className="row"><span className="mute">Relayer fee</span><span className="mono">{fmt(t, fees[`${t}${dest}`] ?? 0n)} {t}</span></div>
+                <div key={t} className="row"><span className="mute">Relayer fee</span><span className="mono">{covered(t) ? "covered by the sender" : `${fmt(t, fees[`${t}${dest}`] ?? 0n)} ${t}`}</span></div>
               ))}
               {dest === "wallet" && <div className="row"><span className="mute">Cloak's withdrawal fee</span><span className="mono">applies</span></div>}
             </div>
