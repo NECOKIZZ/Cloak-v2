@@ -38,6 +38,9 @@ importers:
       buffer:
         specifier: 6.0.3
         version: 6.0.3
+      qrcode-generator:
+        specifier: 1.4.4
+        version: 1.4.4
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -1604,6 +1607,9 @@ packages:
 
   proxy-compare@2.5.1:
     resolution: {integrity: sha512-oyfc0Tx87Cpwva5ZXezSp5V9vht1c7dZBhvuV/y3ctkgMVUmiAGDVeeB0dKhGSyT0v1ZTEQYpe/RXlBVBNuCLA==}
+
+  qrcode-generator@1.4.4:
+    resolution: {integrity: sha512-HM7yY8O2ilqhmULxGMpcHSF1EhJJ9yBj8gvDEuZ6M+KGJ0YY2hKpnXvRD+hZPLrDVck3ExIGhmPtSdcjC+guuw==}
 
   qrcode@1.5.3:
     resolution: {integrity: sha512-puyri6ApkEHYiVl4CFzo1tDkAZ+ATcnbJrJ6RiBM1Fhctdn/ix9MTE3hRph33omisEbC/2fcfemsseiKgBPKZg==}
@@ -3961,6 +3967,8 @@ snapshots:
       ipaddr.js: 1.9.1
 
   proxy-compare@2.5.1: {}
+
+  qrcode-generator@1.4.4: {}
 
   qrcode@1.5.3:
     dependencies:

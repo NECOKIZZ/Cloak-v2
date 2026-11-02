@@ -7,6 +7,9 @@ import { Agents } from "./pages/Agents";
 import { Landing } from "./pages/Landing";
 import { Pitch } from "./pages/Pitch";
 import { Demo } from "./pages/Demo";
+import { Claim } from "./pages/Claim";
+import { Links } from "./pages/Links";
+import { Pay } from "./pages/Pay";
 import { Launch } from "./pages/Launch";
 import { Launches } from "./pages/Launches";
 import { Portfolio, PortfolioAction } from "./pages/Portfolio";
@@ -31,6 +34,8 @@ function Routes() {
   if (path === "/agents") return <AppShell><Agents /></AppShell>;
   if (path === "/pitch") return <Pitch />;
   if (path === "/demo") return <Demo />;
+  if (path === "/claim") return <AppShell><Claim /></AppShell>;
+  if (path === "/pay") return <AppShell><Pay /></AppShell>;
   if (path.startsWith("/app")) {
     const m = path.match(/^\/app\/launch\/(0x[0-9a-fA-F]{40})$/);
     const act = path.match(/^\/app\/portfolio\/(shield|send|withdraw)$/);
@@ -40,6 +45,7 @@ function Routes() {
       : path === "/app/launches" ? <Launches />
       : path === "/app/create" ? <Create />
       : path === "/app/volume" ? <Volume />
+      : path === "/app/links" ? <Links />
       : <Portfolio />;
     return <AppShell>{page}</AppShell>;
   }

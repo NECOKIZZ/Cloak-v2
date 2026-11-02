@@ -192,6 +192,7 @@ export function Portfolio() {
           <Link to="/app/portfolio/shield" className="btn btn-ink"><Icon.plus size={16} />Shield</Link>
           <Link to="/app/portfolio/send" className="btn btn-ghost"><Icon.send size={16} />Send privately</Link>
           <Link to="/app/portfolio/withdraw" className="btn btn-ghost"><Icon.arrowDown size={16} />Withdraw</Link>
+          <Link to="/app/links" className="btn btn-ghost"><Icon.link size={16} />Payment links</Link>
           <button className="btn btn-ghost" onClick={copy} title={privAddress}><Icon.copy size={16} />Copy cloak address</button>
         </div>
       </div>
@@ -442,7 +443,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                 {kind === "shield"
                   ? `Shielding is the one public step: your wallet deposits ${cur?.symbol ?? "it"}. It lands on a one-time key, so it can't be linked to anything you do next.${cur && cur.key !== "HYPE" ? ` ${cur.symbol} needs two confirmations the first time: an approval, then the deposit.` : ""} Then swap privately into other tokens on Trade.`
                   : kind === "send"
-                    ? "A transfer inside the vault. The chain only sees that a private transaction happened."
+                    ? <>A transfer inside the vault. The chain only sees that a private transaction happened. No cloak: address to send to? <Link to="/app/links" className="link">Send it as a link</Link> they can claim to any wallet.</>
                     : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and the relayer takes a small fee for gas.`}
               </p>
             </>

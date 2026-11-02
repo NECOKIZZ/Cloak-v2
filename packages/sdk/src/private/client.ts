@@ -827,6 +827,57 @@ export class CloakPrivate {
     return this.submit({ kind: "transact", pool, proof, extData });
   }
 
+  /**
+   * Move everything this account holds of `token` to `to` in one relayed call, leaving no change behind: to a cloak:
+   * address (stays private) or out to a 0x address (a withdrawal; HYPE arrives as native HYPE, minus the withdrawal
+   * fee). The relayer's fee comes out of the amount. Spends the two largest notes of one tree epoch, so an account
+   * with more notes than that needs another call. Claim links use this, so a claimed link is left empty.
+   */
+  async sweep(token: Address, to: string, onStatus: Status = () => {}): Promise<{ txHash: Hex; amount: bigint; left: bigint }> {
+    const pool = this.market(token).pool;
+    const isHype = pool.toLowerCase() === this.hypeMarket.pool.toLowerCase();
+    const out = !to.startsWith("cloak:");
+    if (out && !/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error("send to a cloak: address or a 0x address");
+    const kind: RelayKind = out && isHype ? "unshieldHype" : "transact";
+    const [live, q] = await Promise.all([this.sync(pool), this.relayFee(kind, pool)]);
+    if (!live.length) throw new Error("nothing to move: this balance is empty");
+    const sorted = [...live].sort((a, b) => (a.amount > b.amount ? -1 : a.amount < b.amount ? 1 : 0));
+    const inputs = sorted.filter((n) => (n.epoch ?? 0) === (sorted[0].epoch ?? 0)).slice(0, 2);
+    const sum = inputs.reduce((a, x) => a + x.amount, 0n);
+    const amount = sum - q.fee;
+    if (amount <= 0n) throw new Error("this balance is smaller than the relayer's fee");
+    onStatus("Generating zero-knowledge proof on this device…");
+    let built;
+    if (out) {
+      built = await buildTransaction({
+        tree: await this.treeFor(pool, inputs),
+        inputs,
+        outputs: [],
+        extAmount: -amount,
+        fee: q.fee,
+        relayer: q.relayer,
+        recipient: isHype ? this.router : (to as Address),
+        ...(isHype ? { data: encodeAbiParameters([{ type: "address" }], [to as Address]) } : {}),
+        ...(await this.dummy()),
+        prover: await this.prover(),
+      });
+    } else {
+      const rcpt = parseCloakAddress(to);
+      built = await buildTransaction({
+        tree: await this.treeFor(pool, inputs),
+        inputs,
+        outputs: [{ amount, pubKey: rcpt.pubKey, memo: (b: bigint) => encryptFullMemo(rcpt.encPub, amount, b, MAIN_KEY) }],
+        fee: q.fee,
+        relayer: q.relayer,
+        ...(await this.dummy()),
+        prover: await this.prover(),
+      });
+    }
+    onStatus(out ? "Relaying withdrawal…" : "Relaying private transfer…");
+    const txHash = await this.submit({ kind, pool, proof: built.proof, extData: built.extData });
+    return { txHash, amount, left: live.reduce((a, x) => a + x.amount, 0n) - sum };
+  }
+
   // ───────────── moving a balance from an earlier deployment ─────────────
 
   /**

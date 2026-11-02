@@ -55,6 +55,7 @@ export const Icon = {
   arrowDown: P("M12 5v14M6 13l6 6 6-6"),
   check: P("M5 12.5l4.5 4.5L19 7"),
   copy: P("M9 9h11v11H9zM5 15H4V4h11v1"),
+  link: P("M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"),
 };
 
 export const GITHUB = "https://github.com/NECOKIZZ/Cloak";

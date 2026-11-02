@@ -20,7 +20,7 @@ const ADDR = {
 const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
   ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"]]],
-  ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
+  ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["payment-links", "Payment links"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
   ["Build", [["sdk", "SDK"], ["agents", "AI agents (MCP)"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["rules", "All the rules"], ["governance", "Who can change what"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
 
@@ -156,6 +156,14 @@ export function Docs() {
           <h2 id="private-send">Private send</h2>
           <p>Every account has a <code>cloak:</code> address (shown in Portfolio). Sending to it is a transfer inside the vault. The chain sees that a private transaction happened, but not who paid whom or how much.</p>
 
+          <h2 id="payment-links">Payment links</h2>
+          <p>Money and requests that travel as a link, for HYPE and USDC. Make them on <Link to="/app/links" className="link">Payment links</Link>.</p>
+          <ul>
+            <li><b>Send money as a link.</b> The link holds its own private account, funded by a private send from yours. Whoever opens it claims the money into their private balance, or straight to any wallet. The relayer submits the claim and takes its fee from the link, so the person claiming needs no gas and no Cloak account. You can cover that fee so they get the full amount. Until someone claims it, you can take it back.</li>
+            <li><b>Lock it with a passcode.</b> The link alone then opens nothing. Send the code another way, or show a riddle on the claim page whose answer is the code: post it in public and the first person to solve it wins. A guessable answer can be guessed by anyone with the link, so use a phrase for real money.</li>
+            <li><b>Request a payment.</b> A link that asks to be paid, with an amount (or none, for a tip jar), a note and your name. It pays your cloak: address privately, or a 0x wallet from the payer's private balance. Show it as a QR code for in-person payments.</li>
+          </ul>
+          <p>Everything sits after the # in the link, which browsers never send to a server, so the details stay between the people who share it. A claim link is like cash: anyone who has it can claim it. The links you make are kept encrypted in your browser, under Your links.</p>
           <h2 id="private-usdc">Private USDC</h2>
           <p>USDC has its own vault. On Portfolio, pick USDC on the Shield tab and deposit from your wallet (the first time asks for an approval, then the deposit). After that you can send it privately to any <code>cloak:</code> address or withdraw it to a fresh address, like HYPE. The relayer's fee is paid in USDC. During the beta a deposit can be at most 1,000 USDC and the vault holds at most 50,000. Swapping USDC privately for HYPE or launch tokens comes later.</p>
           <p>Elysium's USDC is bridged from Circle's USDC on HyperEVM. Circle can freeze the USDC held by the bridge, and the bridge operator can upgrade the Elysium USDC contract. That applies to everyone holding USDC on Elysium, inside Cloak or not.</p>
