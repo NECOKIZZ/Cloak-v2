@@ -103,7 +103,7 @@ await p2.waitForFunction(() => /^Pay (privately|from private balance)$/.test(doc
 const relays = [];
 p2.on("request", (r) => r.url().includes("/relay") && r.method() === "POST" && relays.push(r.url()));
 await p2.locator("main button.btn-ink.btn-lg").first().dblclick();
-await p2.waitForFunction(() => !document.querySelector("main button.btn-ink.btn-lg") || /Paid/i.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 240000 });
+await p2.locator(".okmsg", { hasText: "Paid." }).waitFor({ timeout: 240000 });
 await p2.waitForTimeout(3000);
 ok(relays.length === 1, `double-clicked pay sent ${relays.length} relay request(s)`);
 log("pay page:", (await p2.locator("main").innerText()).slice(0, 200).replace(/\s+/g, " "));
