@@ -33,7 +33,8 @@ interface AppState {
   /** The shared launch-token vault for this private account (null when the deployment has none). */
   shared: SharedVaultClient | null;
   privAddress: string;
-  unlock: () => Promise<CloakPrivate | null>;
+  /** `given`: a wallet that was just connected, before React state has caught up with it. */
+  unlock: (given?: Wallet) => Promise<CloakPrivate | null>;
   unlocking: boolean;
   error: string;
   setError: (e: string) => void;
@@ -215,13 +216,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [provider]);
 
-  const unlock = useCallback(async () => {
+  const unlock = useCallback(async (given?: Wallet) => {
     if (priv) return priv;
+    // also used directly as a click handler, so ignore anything that isn't a wallet (such as the click event)
+    const fresh = given && typeof given === "object" && "account" in given && given.account ? given : undefined;
     if (!ROUTER) {
       setError("Private trading isn't available on this deployment yet.");
       return null;
     }
-    const w = wallet ?? (await connect());
+    const w = fresh ?? wallet ?? (await connect());
     if (!w) return null;
     setUnlocking(true);
     try {

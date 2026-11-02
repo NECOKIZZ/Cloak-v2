@@ -119,7 +119,7 @@ function Locked({ title, back }: { title: string; back?: boolean }) {
         <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
         <div className="wallet-total mute">$0.00</div>
         <p className="small mute" style={{ margin: "0 0 18px" }}>{wallet ? "Sign one message (free, no transaction) to unlock your private account on this device." : "Connect a wallet to see your private balance."}</p>
-        <button className="btn btn-ink" disabled={unlocking} onClick={() => (wallet ? unlock() : connect().then((w) => w && unlock()))}>
+        <button className="btn btn-ink" disabled={unlocking} onClick={() => (wallet ? unlock() : connect().then((w) => w && unlock(w)))}>
           {unlocking ? "Sign in your wallet…" : wallet ? "Unlock private account" : "Connect wallet"}
         </button>
       </div>
