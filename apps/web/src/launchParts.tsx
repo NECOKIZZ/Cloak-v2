@@ -101,7 +101,9 @@ export function CreatorFeesCard({ s, wallet }: { s: AuctionState; wallet: Wallet
   }, [s.address, s.creatorFees]);
   if (!s.creatorFees || !f) return null;
   const mine = wallet?.account.address.toLowerCase() === f.beneficiary.toLowerCase();
-  const earned = f.tokens > 0n || f.whype > 0n;
+  const earned = f.claimableLp > 0n && (f.tokens > 0n || f.whype > 0n);
+  // amounts too small to print in full read as "under 0.000001", never as a misleading 0
+  const amt = (x: bigint, fmt: (v: bigint) => string) => (x === 0n ? "0" : fmt(x) === "0" ? "under 0.000001" : fmt(x));
   async function claim() {
     if (!wallet) return connect();
     setBusy(true);
@@ -123,7 +125,7 @@ export function CreatorFeesCard({ s, wallet }: { s: AuctionState; wallet: Wallet
         This launch's pool can never be emptied. Every trade on it, public or private, pays Uniswap's 0.3% fee into the pool, and the creator can collect that share whenever they like. The locked liquidity itself never comes out.
       </p>
       <div className="summary">
-        <div className="row"><span className="mute">Earned so far</span><span className="mono">{earned ? `${hype(f.whype)} WHYPE + ${tokens(f.tokens)} ${s.tokenSymbol}` : "nothing yet"}</span></div>
+        <div className="row"><span className="mute">Earned so far</span><span className="mono">{earned ? `${amt(f.whype, (v) => hype(v))} WHYPE + ${amt(f.tokens, tokens)} ${s.tokenSymbol}` : "nothing yet"}</span></div>
         <div className="row"><span className="mute">Paid to</span><span className="mono">{mine ? "you" : short(f.beneficiary)}</span></div>
       </div>
       {earned && (
