@@ -96,7 +96,7 @@ export function Pitch() {
         <Slide i={3}>
           <h2 className="p-h">One layer, three parts</h2>
           <div className="p-three">
-            <div className="p-card"><Icon.rocket /><h3>Sealed-bid launch</h3><p>Bids are sealed until bidding ends, then open themselves. Everyone pays one clearing price, and liquidity is locked at that price.</p></div>
+            <div className="p-card"><Icon.rocket /><h3>Sealed-bid launch</h3><p>Bids are sealed until bidding ends, then open themselves. Everyone pays one clearing price, and the token opens on Uniswap at that price with its liquidity locked.</p></div>
             <div className="p-card"><Icon.lock /><h3>Private vault</h3><p>Hold, swap and send launch tokens from a private balance. A relayer submits for you, so your wallet never appears.</p></div>
             <div className="p-card"><Icon.layers /><h3>Batch auctions</h3><p>Orders in standard sizes, crossed at the fair price every round. Nobody can tell how much you traded.</p></div>
           </div>
@@ -108,7 +108,7 @@ export function Pitch() {
             <div className="step"><span className="n">01</span><h3>Seal</h3><p>Price and size are hashed and timelock-encrypted to a future drand round. The chain only stores the fingerprint.</p></div>
             <div className="step"><span className="n">02</span><h3>Auto-reveal</h3><p>When bidding closes, the public drand beacon releases the key. Anyone can open every bid, nobody can change one.</p></div>
             <div className="step"><span className="n">03</span><h3>One price</h3><p>Demand is walked from the top until supply runs out. That's the price every winner pays.</p></div>
-            <div className="step"><span className="n">04</span><h3>Locked LP</h3><p>Part of the raise seeds the pool at that price. LP shares are burned or locked, then private trading opens.</p></div>
+            <div className="step"><span className="n">04</span><h3>Locked LP</h3><p>Part of the raise opens a Uniswap pool at that price. The liquidity is locked forever and the creator earns its trading fees, so nobody can pull it.</p></div>
           </div>
         </Slide>
 
@@ -131,10 +131,10 @@ export function Pitch() {
         <Slide i={6}>
           <h2 className="p-h">It's live on Elysium testnet</h2>
           <div className="p-stats">
-            <div><b>27</b><span>contract tests passing</span></div>
-            <div><b>31/31</b><span>end-to-end checks on testnet, with real proofs</span></div>
+            <div><b>22</b><span>launches on testnet, 13 now trading on Uniswap</span></div>
+            <div><b>246</b><span>private transactions through the vault</span></div>
+            <div><b>139</b><span>contract tests passing, fuzzing included</span></div>
             <div><b>~4 s</b><span>to prove a private trade in the browser</span></div>
-            <div><b>3 s</b><span>drand rounds open sealed bids on time</span></div>
           </div>
           <div className="p-contracts">
             <Contract name="Launch factory" addr={FACTORY} />
@@ -148,25 +148,25 @@ export function Pitch() {
           <div className="p-three">
             <div className="p-card"><Icon.code /><h3>One SDK</h3><p><code>createLaunch()</code> gives any Elysium launchpad a sealed, fair-launch mode. <code>CloakPrivate</code> gives its users private balances.</p></div>
             <div className="p-card"><Icon.users /><h3>Launchpads first</h3><p>A fair-launch mode any Elysium launchpad can add: projects keep their launchpad, buyers get one price and no snipers.</p></div>
-            <div className="p-card"><Icon.shield /><h3>Permissionless keepers</h3><p>Anyone can run a keeper to reveal, settle and relay. Several can run at once, so there's no single point of failure.</p></div>
+            <div className="p-card"><Icon.shield /><h3>Wallets, DEXes and agents</h3><p>Every launch is a standard Uniswap pool and appears in a public token list. An MCP server lets AI agents launch and trade privately too.</p></div>
           </div>
         </Slide>
 
         <Slide i={8}>
           <h2 className="p-h">Business model</h2>
-          <p className="p-tag">Proposed · not in the testnet contracts yet</p>
+          <p className="p-tag">Live in the testnet contracts · hard caps written into the code</p>
           <div className="p-three">
-            <div className="p-card"><div className="p-big">Launch fee</div><p>A small share of each raise at settlement, paid by the project, only when the launch succeeds.</p></div>
-            <div className="p-card"><div className="p-big">Batch fee</div><p>A few basis points on the net that each batch round sends through the pool.</p></div>
-            <div className="p-card"><div className="p-big">Relaying</div><p>Relayers recover gas plus a small tip from inside the private transaction, so users never need public gas.</p></div>
+            <div className="p-card"><div className="p-big">1.5%</div><h3>Launch fee</h3><p>Of each raise at settlement, only when the launch fills. Nothing if it doesn't. Capped at 3%.</p></div>
+            <div className="p-card"><div className="p-big">0.25%</div><h3>Vault exit fee</h3><p>When money leaves the private vault. Deposits, swaps and sends inside it pay none. Capped at 1%.</p></div>
+            <div className="p-card"><div className="p-big">Relaying</div><h3>Gas plus a margin</h3><p>Relayers recover gas plus a small margin from inside the private transaction, so users never need public gas.</p></div>
           </div>
         </Slide>
 
         <Slide i={9}>
           <h2 className="p-h">Roadmap</h2>
           <div className="p-road">
-            <div className="on"><span className="eyebrow">Now · testnet</span><h3>Sealed launches, private vault</h3><p>Sealed bids, one price, locked LP. Private balances, swaps, sends and batch auctions. Hosted keeper and relayer.</p></div>
-            <div><span className="eyebrow">Next</span><h3>Harden and package</h3><p>Bid from a private balance, a security audit, the SDK on npm, and more keepers.</p></div>
+            <div className="on"><span className="eyebrow">Now · testnet</span><h3>Launches, vault, SDK</h3><p>Sealed bids, one price, Uniswap pools with liquidity locked forever and creator fees. Private balances, swaps, sends, batch auctions and bids from a private balance. SDK and MCP server on npm.</p></div>
+            <div><span className="eyebrow">Next</span><h3>Harden</h3><p>A security audit, more keepers, and Uniswap V3 and V4 pools as launch options.</p></div>
             <div><span className="eyebrow">Nov 9 · mainnet</span><h3>Mainnet on Elysium</h3><p>Launch with deposit caps and fees switched on. Caps lift after the audit and trusted-setup ceremony, then launchpad integrations and new private order types.</p></div>
           </div>
         </Slide>
