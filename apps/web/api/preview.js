@@ -1,8 +1,10 @@
-// Link previews for launch pages. X, Telegram, Discord, WhatsApp and similar sites don't run the app, so a rewrite in
+// Link previews for launch pages and payment links. X, Telegram, Discord, WhatsApp and similar sites don't run the app, so a rewrite in
 // vercel.json sends their link fetchers (by user agent) here for /app/launch/0x…: a tiny page whose meta tags carry
 // the token's name, image and status. People who open the link get the normal app.
 //   /api/preview?a=0x…        the preview page
 //   /api/preview?a=0x…&img=1  the token's image (launch images are stored on-chain as data URIs)
+//   /api/preview?kind=claim   a claim link (/claim#…) or a payment request (/pay#…). Link fetchers never see what's
+//   /api/preview?kind=pay     after the #, so these cards are the same for every link: no amount, no names.
 import { createPublicClient, formatEther, http } from "viem";
 import { Cloak, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
 
@@ -70,8 +72,30 @@ function summary(s) {
   return [`${s.tokenName} (${sym}) on Cloak`, `Cleared at ${num(s.clearingPrice)} HYPE with ${num(s.sold)} ${sym} sold. Now trading privately on Cloak.`];
 }
 
+const LINK_CARDS = {
+  claim: ["Someone sent you money, privately", "Open the link to claim it into your private balance on Cloak, or straight to any wallet. No gas needed.", `${SITE}/brand/og-claim.jpg`],
+  pay: ["You have a payment request", "Open the link to pay it privately from your Cloak balance. Nobody sees who paid whom.", `${SITE}/brand/og-pay.jpg`],
+};
+
+function linkCard(kind) {
+  const [title, desc, image] = LINK_CARDS[kind];
+  const page = `${SITE}/app/links`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Cloak">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:image" content="${esc(image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@cloakonelysium">
+<meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(image)}">
+</head><body><p>${esc(title)}. ${esc(desc)}</p><p><a href="${esc(page)}">Payment links on Cloak</a></p></body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, s-maxage=3600" } });
+}
+
 export async function GET(req) {
   const q = new URL(req.url).searchParams;
+  const kind = q.get("kind");
+  if (kind === "claim" || kind === "pay") return linkCard(kind);
   const a = (q.get("a") ?? "").toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(a)) return Response.redirect(SITE, 302);
   const page = `${SITE}/app/launch/${a}`;

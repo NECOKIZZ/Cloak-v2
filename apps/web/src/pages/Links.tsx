@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { buildClaimLink, buildRequestLink, checkPayee, linkAddress, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
+import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, linkAddress, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, parseUnits } from "viem";
 import { friendly, Hint } from "../errors";
 import { addLink, linkBalances, loadLinks, newId, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
@@ -42,19 +42,20 @@ export function LinkResult({ url, title, passcode, shareText }: { url: string; t
 const IDEAS: { id: string; tab: Tab; title: string; text: string; preset: Partial<SendForm & ReqForm> }[] = [
   { id: "gift", tab: "send", title: "Gift a friend", text: "They don't need Cloak or even gas. One click claims it to any wallet.", preset: { token: "HYPE", amt: "0.05", message: "A little something for you" } },
   { id: "riddle", tab: "send", title: "Riddle drop", text: "Post a locked link in public with a riddle. The first person to answer it takes the prize.", preset: { token: "HYPE", amt: "0.02", lock: true, hint: "What chain does Cloak live on?", code: "elysium", message: "Solve it to claim it" } },
+  { id: "envelope", tab: "send", title: "Red envelope", text: "Split one link into equal shares and drop it in a group chat. The first few people to open it each get one.", preset: { token: "HYPE", amt: "0.05", shares: "5", message: "Lucky envelope! First 5 to open it get a share" } },
   { id: "gas", tab: "send", title: "Gas for a newcomer", text: "Fund someone's brand-new wallet without linking it to yours. The claim itself costs them nothing.", preset: { token: "HYPE", amt: "0.01", message: "Gas money. Claim it to your new wallet, no gas needed." } },
   { id: "invoice", tab: "request", title: "Invoice", text: "Ask for an exact amount with a reference. They pay from their private balance.", preset: { token: "USDC", amt: "25", note: "Invoice #001" } },
   { id: "tips", tab: "request", title: "Tip jar", text: "No amount, so the payer chooses. Print the QR on a stall, a stream or a slide.", preset: { token: "HYPE", amt: "", note: "Tips, thank you" } },
   { id: "split", tab: "request", title: "Split the bill", text: "Send everyone at the table the same request. Nobody sees what the others paid.", preset: { token: "USDC", amt: "12.5", note: "Dinner, your share" } },
 ];
 
-interface SendForm { token: LinkToken; amt: string; message: string; from: string; cover: boolean; lock: boolean; code: string; hint: string }
+interface SendForm { token: LinkToken; amt: string; message: string; from: string; cover: boolean; lock: boolean; code: string; hint: string; shares: string }
 interface ReqForm { token: LinkToken; amt: string; note: string; name: string; payTo: "me" | "wallet"; wallet: string }
 
 export function Links() {
   const { wallet, priv, unlock, unlocking, privAddress } = useApp();
   const [tab, setTab] = useState<Tab>("send");
-  const [sf, setSf] = useState<SendForm>({ token: "HYPE", amt: "", message: "", from: "", cover: true, lock: false, code: "", hint: "" });
+  const [sf, setSf] = useState<SendForm>({ token: "HYPE", amt: "", message: "", from: "", cover: true, lock: false, code: "", hint: "", shares: "1" });
   const [rf, setRf] = useState<ReqForm>({ token: "USDC", amt: "", note: "", name: "", payTo: "me", wallet: "" });
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -79,7 +80,7 @@ export function Links() {
     setTab(i.tab);
     setMade(null);
     setErr("");
-    if (i.tab === "send") setSf((f) => ({ ...f, cover: true, lock: false, code: "", hint: "", message: "", ...i.preset }) as SendForm);
+    if (i.tab === "send") setSf((f) => ({ ...f, cover: true, lock: false, code: "", hint: "", message: "", shares: "1", ...i.preset }) as SendForm);
     else setRf((f) => ({ ...f, note: "", ...i.preset }) as ReqForm);
     document.getElementById("link-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -102,20 +103,33 @@ export function Links() {
         const [a, b] = await Promise.all([p.relayFee("transact", pool), sf.token === "HYPE" ? p.relayFee("unshieldHype", pool) : Promise.resolve({ fee: 0n })]);
         claimFee = a.fee > b.fee ? a.fee : b.fee;
       }
-      const total = parseUnits(amtStr, dec) + claimFee;
+      const n = Math.floor(Number(sf.shares || "1"));
+      if (!(n >= 1 && n <= LINK_SHARES_MAX)) throw new Hint(`Split into 1 to ${LINK_SHARES_MAX} shares.`);
+      const whole = parseUnits(amtStr, dec);
+      const share = whole / BigInt(n);
+      if (share === 0n) throw new Hint("That's too little to split that many ways.");
+      // every share is its own note, and each person claiming pays the relayer from theirs, so each share carries the fee
+      const each = share + claimFee;
+      const total = each * BigInt(n);
       const have = await p.balance(pool);
       const sendFee = (await p.relayFee("transact", pool)).fee;
-      if (have < total + sendFee) throw new Hint(`You have ${formatUnits(have, dec)} ${sf.token} private. This link needs ${formatUnits(total + sendFee, dec)} with fees. Shield more first.`);
+      if (have < total + sendFee * BigInt(n)) throw new Hint(`You have ${formatUnits(have, dec)} ${sf.token} private. This link needs ${formatUnits(total + sendFee * BigInt(n), dec)} with fees. Shield more first.`);
       setBusy("Making the link's account…");
       const secret = newLinkSecret();
       const addr = await linkAddress(await linkKeys(secret, sf.lock ? sf.code : undefined));
-      const tx = await p.send(token, addr, total, setBusy);
-      setBusy("Waiting for it to land…");
-      const rc = await publicClient.waitForTransactionReceipt({ hash: tx });
-      const url = buildClaimLink({ secret, block: rc.blockNumber, token: sf.token, amount: amtStr, message: sf.message, from: sf.from, locked: sf.lock, hint: sf.hint }, location.origin);
+      let rc;
+      for (let i = 0; i < n; i++) {
+        const tag = n > 1 ? `Share ${i + 1} of ${n}: ` : "";
+        const tx = await p.send(token, addr, each, (s) => setBusy(tag + s));
+        setBusy(`${tag}waiting for it to land…`);
+        rc = await publicClient.waitForTransactionReceipt({ hash: tx });
+      }
+      if (!rc) return;
+      const shareStr = formatUnits(share, dec);
+      const url = buildClaimLink({ secret, block: rc.blockNumber, token: sf.token, amount: n > 1 ? shareStr : amtStr, message: sf.message, from: sf.from, locked: sf.lock, hint: sf.hint, shares: n }, location.origin);
       const rec: SentLink = { id: newId(), kind: "claim", url, token: sf.token, amount: amtStr, message: sf.message || undefined, passcode: sf.lock ? sf.code.trim() : undefined, hint: sf.hint || undefined, created: Date.now(), status: "open" };
       await addLink(p.keys, rec);
-      setMade({ url, title: `${amtStr} ${sf.token} in a link`, passcode: rec.passcode, share: sf.lock ? (sf.hint ? `Solve this to claim ${amtStr} ${sf.token}: ${sf.hint}` : `A locked gift of ${amtStr} ${sf.token}`) : `${amtStr} ${sf.token} for you, sent privately with Cloak` });
+      setMade({ url, title: n > 1 ? `${amtStr} ${sf.token} in ${n} shares of ${shareStr}` : `${amtStr} ${sf.token} in a link`, passcode: rec.passcode, share: sf.lock ? (sf.hint ? `Solve this to claim ${amtStr} ${sf.token}: ${sf.hint}` : `A locked gift of ${amtStr} ${sf.token}`) : n > 1 ? `Red envelope: ${n} shares of ${shareStr} ${sf.token}. First ${n} to open it each get one` : `${amtStr} ${sf.token} for you, sent privately with Cloak` });
     } catch (e) {
       setErr(friendly(e));
     } finally {
@@ -188,6 +202,10 @@ export function Links() {
                 <input className="input" value={sf.from} onChange={(e) => setS("from", e.target.value)} maxLength={40} placeholder="Your name, or leave it a mystery" />
               </div>
               <label className="check"><input type="checkbox" checked={sf.cover} onChange={(e) => setS("cover", e.target.checked)} /> Cover the claim fee{fee !== null ? ` (${formatUnits(fee, dec)} ${sf.token})` : ""}, so they get the full amount</label>
+              <div className="field">
+                <label><span>Split into shares</span><span>{Number(sf.shares) > 1 ? "a red envelope: each person claims one" : "1 means one person takes it all"}</span></label>
+                <input className="input" value={sf.shares} onChange={(e) => setS("shares", e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="1" />
+              </div>
               <label className="check"><input type="checkbox" checked={sf.lock} onChange={(e) => setS("lock", e.target.checked)} /> Lock it with a passcode</label>
               {sf.lock && (
                 <div className="lockbox">
@@ -287,8 +305,11 @@ function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => voi
         const me = await priv.address();
         for (const t of ["HYPE", "USDC"] as LinkToken[]) {
           if (bals[t] === 0n) continue;
-          const r = await acct.sweep(tokenOf(acct, t), me, (s) => setBusy((b) => ({ ...b, [l.id]: s })));
-          await publicClient.waitForTransactionReceipt({ hash: r.txHash });
+          for (let round = 0; round < 12; round++) {
+            const r = await acct.sweep(tokenOf(acct, t), me, (s) => setBusy((b) => ({ ...b, [l.id]: s })));
+            await publicClient.waitForTransactionReceipt({ hash: r.txHash });
+            if (r.left === 0n) break;
+          }
         }
         await updateLink(priv.keys, l.id, { status: "back" });
         toast("Taken back into your private balance");

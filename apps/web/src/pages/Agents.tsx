@@ -81,6 +81,7 @@ export function Agents() {
               <li>"What Cloak launches are open right now?"</li>
               <li>"Bid on this launch up to 0.00002 HYPE for 50,000 tokens. Dry run first."</li>
               <li>"Send 0.05 private HYPE to cloak:…, then withdraw the rest to a fresh address."</li>
+              <li>"Make a payment link with 0.02 HYPE, locked with a riddle about Elysium."</li>
             </ul>
           </div>
           <div className="card flat">

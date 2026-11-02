@@ -24,7 +24,7 @@ await sender.loadMarkets();
 const hype = sender.hypeMarket;
 const start = await sender.balance(hype.pool);
 console.log(`sender private balance ${formatEther(start)} HYPE`);
-if (start < parseEther("0.03")) throw new Error("the sender needs at least 0.03 private HYPE");
+if (start < parseEther("0.05")) throw new Error("the sender needs at least 0.05 private HYPE");
 
 // 1. a plain link, claimed to a fresh wallet with no gas
 const secret = newLinkSecret();
@@ -61,6 +61,28 @@ const before = await sender.balance(hype.pool);
 const back = await right.sweep(hype.token, await sender.address());
 await pub.waitForTransactionReceipt({ hash: back.txHash });
 ok((await sender.balance(hype.pool)) === before + back.amount, `taken back into the sender's private balance (+${formatEther(back.amount)} HYPE)`);
+
+// 3. a red envelope: one link, three shares, three people each claim one, and a fourth finds it empty
+const s3 = newLinkSecret();
+const k3 = await linkKeys(s3);
+const share = parseEther("0.004");
+for (let i = 0; i < 3; i++) await pub.waitForTransactionReceipt({ hash: await sender.send(hype.token, await linkAddress(k3), share) });
+const env = parseClaimLink(buildClaimLink({ secret: s3, block: 1n, token: "HYPE", amount: "0.004", shares: 3 }));
+ok(env.shares === 3, "the envelope link says it holds 3 shares");
+const got3 = [];
+for (let i = 0; i < 3; i++) {
+  const c = client(await linkKeys(env.secret), BigInt(v4.vaultsBlock));
+  await c.loadMarkets();
+  const w = privateKeyToAccount(generatePrivateKey()).address;
+  const r3 = await c.sweep(hype.token, w, () => {}, { one: true });
+  await pub.waitForTransactionReceipt({ hash: r3.txHash });
+  got3.push(await pub.getBalance({ address: w }));
+}
+// equal shares; what lands differs only by the relayer's fee, which follows gas and the HYPE price between claims
+ok(got3.every((g) => g > 0n && (g > got3[0] ? g - got3[0] : got3[0] - g) * 50n < got3[0]), `three different wallets each claimed one share: ${got3.map((g) => formatEther(g)).join(", ")} HYPE`);
+const late = client(await linkKeys(env.secret), BigInt(v4.vaultsBlock));
+await late.loadMarkets();
+ok((await late.balance(hype.pool)) === 0n, "a fourth person finds the envelope empty");
 
 console.log(`\n${n} checks passed`);
 

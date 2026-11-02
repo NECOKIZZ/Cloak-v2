@@ -834,9 +834,10 @@ export class CloakPrivate {
    * Move everything this account holds of `token` to `to` in one relayed call, leaving no change behind: to a cloak:
    * address (stays private) or out to a 0x address (a withdrawal; HYPE arrives as native HYPE, minus the withdrawal
    * fee). The relayer's fee comes out of the amount. Spends the two largest notes of one tree epoch, so an account
-   * with more notes than that needs another call. Claim links use this, so a claimed link is left empty.
+   * with more notes than that needs another call. Claim links use this, so a claimed link is left empty. With `one`,
+   * it moves a single note picked at random: one share of a link split into several.
    */
-  async sweep(token: Address, to: string, onStatus: Status = () => {}): Promise<{ txHash: Hex; amount: bigint; left: bigint }> {
+  async sweep(token: Address, to: string, onStatus: Status = () => {}, opts: { one?: boolean } = {}): Promise<{ txHash: Hex; amount: bigint; left: bigint }> {
     const pool = this.market(token).pool;
     const isHype = pool.toLowerCase() === this.hypeMarket.pool.toLowerCase();
     const out = !to.startsWith("cloak:");
@@ -845,7 +846,12 @@ export class CloakPrivate {
     const [live, q] = await Promise.all([this.sync(pool), this.relayFee(kind, pool)]);
     if (!live.length) throw new Error("nothing to move: this balance is empty");
     const sorted = [...live].sort((a, b) => (a.amount > b.amount ? -1 : a.amount < b.amount ? 1 : 0));
-    const inputs = sorted.filter((n) => (n.epoch ?? 0) === (sorted[0].epoch ?? 0)).slice(0, 2);
+    // `one`: take a single note, picked at random, so people claiming shares of one link at once rarely collide
+    const worth = sorted.filter((n) => n.amount > q.fee);
+    const inputs = opts.one
+      ? worth.length ? [worth[Math.floor(Math.random() * worth.length)]] : []
+      : sorted.filter((n) => (n.epoch ?? 0) === (sorted[0].epoch ?? 0)).slice(0, 2);
+    if (!inputs.length) throw new Error("this balance is smaller than the relayer's fee");
     const sum = inputs.reduce((a, x) => a + x.amount, 0n);
     const amount = sum - q.fee;
     if (amount <= 0n) throw new Error("this balance is smaller than the relayer's fee");

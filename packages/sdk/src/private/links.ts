@@ -8,6 +8,8 @@
  *                 Cloak account. Until someone claims it, the sender can take it back the same way.
  *                 With a passcode (`p=1`), the account's seed also needs the code, sent another way or posed as a
  *                 riddle (`q=`): a link posted in public that only the right person can open.
+ *                 Split into shares (`n=`), it is a red envelope: several equal notes, and each person who opens the
+ *                 link claims one, first come first served.
  *
  *   request link  https://cloak.boblabs.tech/pay#to=cloak:…&amount=25&token=USDC&note=Invoice+42&name=Robin
  *                 Asks someone to pay you. `to` is a cloak: address (a private payment) or a 0x address (paid from
@@ -26,6 +28,8 @@ export const LINK_ORIGIN = "https://cloak.boblabs.tech";
 export const LINK_MESSAGE_MAX = 140;
 export const LINK_NAME_MAX = 40;
 export const LINK_HINT_MAX = 120;
+/** Most shares one link can be split into. Each share is its own private send, so more means a longer wait to make it. */
+export const LINK_SHARES_MAX = 20;
 /** Tokens a link can carry today. */
 export const LINK_TOKENS = ["HYPE", "USDC"] as const;
 export type LinkToken = (typeof LINK_TOKENS)[number];
@@ -82,6 +86,8 @@ export interface ClaimLink {
   locked?: boolean;
   /** A hint or riddle whose answer is the passcode. */
   hint?: string;
+  /** Split into this many equal shares: each person who opens the link claims one (a red envelope). */
+  shares?: number;
 }
 
 export function buildClaimLink(l: ClaimLink, origin = LINK_ORIGIN): string {
@@ -97,6 +103,7 @@ export function buildClaimLink(l: ClaimLink, origin = LINK_ORIGIN): string {
   if (l.locked) p.set("p", "1");
   const q = cleanLinkText(l.hint, LINK_HINT_MAX);
   if (l.locked && q) p.set("q", q);
+  if (l.shares && l.shares > 1) p.set("n", String(Math.min(Math.floor(l.shares), LINK_SHARES_MAX)));
   return `${origin.replace(/\/+$/, "")}/claim#${p.toString()}`;
 }
 
@@ -125,6 +132,7 @@ export function parseClaimLink(link: string): ClaimLink {
     from: cleanLinkText(p.get("f"), LINK_NAME_MAX) || undefined,
     locked: p.get("p") === "1",
     hint: cleanLinkText(p.get("q"), LINK_HINT_MAX) || undefined,
+    shares: /^\d{1,2}$/.test(p.get("n") ?? "") && Number(p.get("n")) > 1 ? Math.min(Number(p.get("n")), LINK_SHARES_MAX) : undefined,
   };
 }
 

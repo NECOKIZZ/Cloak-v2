@@ -107,7 +107,7 @@ H.call = async (tool, args = {}) => {
 };
 try {
   const { tools } = await A.client.listTools();
-  ok(tools.length === 18, `the server offers ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
+  ok(tools.length === 23, `the server offers ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
   const info = await A.call("cloak_info");
   ok(info.mode === "read and write" && info.wallet.address === alice && info.limits.hype.perTransaction === "30 HYPE", "cloak_info: wallet, public balances and limits (30 HYPE per transaction, 60 a day)");
   const ro = await R.call("shield", { asset: "HYPE", amount: "1" });
@@ -201,6 +201,30 @@ try {
   ok(/USDC/.test(wu.arrived) && num(wu.privateBalance) < 0.1, `withdraw max: ${wu.arrived} landed at the fresh address`);
   const noSwap = await A.call("private_swap", { token: "USDC", side: "buy", amount: "1" });
   ok(/isn't a launch token/.test(noSwap.error), "USDC swaps are refused with a clear reason (not live yet)");
+
+  // ── payment links ──
+  const gift = await A.call("create_payment_link", { asset: "HYPE", amount: "0.3", message: "for bob", passcode: "Ember", hint: "Our token?" });
+  ok(gift.link?.includes("/claim#k=") && gift.passcode === "Ember", `create_payment_link: a locked 0.3 HYPE link ${JSON.stringify(gift).slice(0, 200)}`);
+  ok(/locked/.test((await B.call("check_payment_link", { link: gift.link })).error), "the locked link asks for its passcode");
+  const peek = await B.call("check_payment_link", { link: gift.link, passcode: " ember " });
+  ok(!peek.empty && num(peek.holds.HYPE) >= 0.3 && peek.message === "for bob", `check_payment_link: it holds ${peek.holds.HYPE} (the claim fee covered)`);
+  const fresh2 = privateKeyToAccount(generatePrivateKey()).address;
+  const got = await B.call("claim_payment_link", { link: gift.link, passcode: "EMBER", to: fresh2 });
+  const fb = await d.publicClient.getBalance({ address: fresh2 });
+  ok(fb > parseEther("0.299") && fb < parseEther("0.3"), `claim_payment_link: ${got.claimed?.[0]?.claimed} landed at a brand-new wallet with no gas (0.25% kept)`);
+  ok(/empty|already claimed/.test((await A.call("claim_payment_link", { link: gift.link, passcode: "ember" })).error), "the claimed link is empty afterwards");
+  const env = await A.call("create_payment_link", { asset: "USDC", amount: "6", shares: 3, message: "lucky" });
+  ok(/3 shares of 2 USDC/.test(env.holds), `a USDC red envelope: ${env.holds}`);
+  const usdcB = num((await B.call("private_balance", { include_zero: true })).balances.USDC);
+  await B.call("claim_payment_link", { link: env.link });
+  ok(Math.abs(num((await B.call("private_balance", { include_zero: true })).balances.USDC) - usdcB - 2) < 0.001, "the second agent claimed one 2 USDC share into its private balance");
+  ok((await A.call("check_payment_link", { link: env.link })).sharesLeft === "2 of 3", "two shares are left for others");
+  const req = await B.call("request_payment_link", { asset: "USDC", amount: "5", note: "Invoice 7" });
+  ok(req.link?.includes("/pay#to=cloak") && req.payTo.startsWith("cloak:"), "request_payment_link: a request to the second agent's cloak: address");
+  const usdcB2 = num((await B.call("private_balance", { include_zero: true })).balances.USDC);
+  const payReq = await A.call("pay_payment_request", { link: req.link });
+  ok(payReq.paid === "5 USDC" && Math.abs(num((await B.call("private_balance", { include_zero: true })).balances.USDC) - usdcB2 - 5) < 1e-9, "pay_payment_request: 5 USDC paid privately, exactly as requested");
+  ok(/can't be paid with a different amount/.test((await A.call("pay_payment_request", { link: req.link, amount: "1" })).error), "a fixed request can't be paid with a different amount");
 
   // ── limits over the day ──
   const lim = (await A.call("cloak_info")).limits.hype;

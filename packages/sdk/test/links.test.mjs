@@ -4,7 +4,7 @@ import { buildClaimLink, parseClaimLink, buildRequestLink, parseRequestLink, lin
 
 test("claim link round-trips every field", () => {
   const secret = newLinkSecret();
-  const url = buildClaimLink({ secret, block: 21500000n, token: "USDC", amount: "25", message: "Happy birthday 🎉", from: "Robin", locked: true, hint: "Our chain?" });
+  const url = buildClaimLink({ secret, block: 21500000n, token: "USDC", amount: "25", message: "Happy birthday 🎉", from: "Robin", locked: true, hint: "Our chain?", shares: 5 });
   assert.ok(url.startsWith("https://cloak.boblabs.tech/claim#k="));
   const l = parseClaimLink(url);
   assert.deepEqual([...l.secret], [...secret]);
@@ -15,6 +15,8 @@ test("claim link round-trips every field", () => {
   assert.equal(l.from, "Robin");
   assert.equal(l.locked, true);
   assert.equal(l.hint, "Our chain?");
+  assert.equal(l.shares, 5);
+  assert.equal(parseClaimLink(buildClaimLink({ secret, block: 1n })).shares, undefined);
 });
 
 test("a damaged or cut link is refused", () => {

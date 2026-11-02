@@ -35,6 +35,14 @@ import {
   sharedVaultAbi,
   SharedVaultClient,
   shieldedPoolAbi,
+  buildClaimLink,
+  buildRequestLink,
+  linkAddress,
+  linkKeys,
+  newLinkSecret,
+  parseClaimLink,
+  parseRequestLink,
+  LINK_SHARES_MAX,
   type AuctionState,
   type Prover,
   type Wallet,
@@ -45,14 +53,16 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.7.1";
+export const VERSION = "0.8.0";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
 
 Launches: create_launch starts a sealed-bid auction. place_sealed_bid commits a bid that nobody can read until bidding closes; bids then open by themselves (the keeper reveals them from the drand beacon), so there is nothing to come back for. Everyone who wins pays one clearing price. After settlement, claim puts won tokens straight into the private balance (and refunds into the wallet); the keeper opens each launch's private vault at settlement, and pushes bids nobody claimed to wallets publicly about an hour later. enable_private_trading opens a private vault for an older launch if nobody has yet.
 
-Private balances: shield moves HYPE or USDC from the wallet into a private balance (the one public step). private_swap, batch_order, private_send and withdraw then run from that balance: each is proven on this machine and sent by a relayer, so the wallet never appears on chain. batch_order also hides trade size. withdraw lands funds at a normal address, ideally a fresh one. Amounts are in whole units ("0.5" HYPE), and send, sell and withdraw accept "max".
+Private balances: shield moves HYPE or USDC from the wallet into a private balance (the one public step). private_swap, batch_order, private_send and withdraw then run from that balance: each is proven on this machine and sent by a relayer, so the wallet never appears on chain. batch_order also hides trade size. withdraw lands funds at a normal address, ideally a fresh one.
+
+Payment links (HYPE, USDC): create_payment_link puts money in a link anyone can claim (into their private balance, or to any wallet with no gas), optionally locked with a passcode and riddle or split into shares; claim_payment_link claims one (or takes back your own), check_payment_link shows what is left. request_payment_link makes a link that asks to be paid, and pay_payment_request pays one. Amounts are in whole units ("0.5" HYPE), and send, sell and withdraw accept "max".
 
 Safety: every action that moves value is checked against per-transaction and daily spending limits (see cloak_info), and any write tool takes dry_run: true to see exactly what would happen without signing anything. Use dry_run first when unsure.`;
 
@@ -883,6 +893,200 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         await receipt(h);
         spending.record(c.budget, c.value);
         return { withdrew: fmtAmt(a, x), arrived: fmtAmt(a, arrives), to, privateBalance: fmtAmt(a, await balanceOf(a)), tx: link(h) };
+      });
+    }),
+  );
+
+  // ───────────── payment links ─────────────
+
+  /** HYPE or USDC: the only tokens a payment link carries today. */
+  async function linkAsset(asset: string): Promise<Asset> {
+    const a = await resolve(asset);
+    if (a.kind === "token") throw new Error("Payment links carry HYPE or USDC.");
+    return a;
+  }
+  /** A wallet-less client for the private account a claim link opens. */
+  async function linkClient(url: string, passcode?: string) {
+    const l = parseClaimLink(url);
+    if (l.locked && passcode === undefined) throw new Error(`This link is locked. Pass its passcode${l.hint ? ` (the answer to: "${l.hint}")` : ""}.`);
+    const c = new CloakPrivate(pub, d.router, await linkKeys(l.secret, l.locked ? passcode : undefined), prover, submit, d.vaultsBlock ?? d.routerBlock, d.batcher, d.migrator);
+    for (const a of d.assets ?? []) c.addAsset(a);
+    await c.loadMarkets();
+    return { l, c };
+  }
+  const linkTokenOf = (c: CloakPrivate, a: Asset) => (a.kind === "hype" ? c.hypeMarket.token : a.token);
+
+  server.registerTool(
+    "create_payment_link",
+    {
+      title: "Send money as a link",
+      description: "Put HYPE or USDC from the private balance into a link anyone can claim: into their private balance, or straight to any wallet with no gas (the relayer takes its fee from the link). Optional: a message, a passcode (with a riddle shown to whoever opens it), or several equal shares that different people each claim (a red envelope). Treat the link like cash and keep it: it is the only way to the money, and take_back works with it until someone claims.",
+      inputSchema: {
+        asset: z.enum(["HYPE", "USDC"]),
+        amount: amt("Total the link holds (split evenly across shares)"),
+        message: z.string().max(140).optional().describe("A message shown to whoever opens it"),
+        from: z.string().max(40).optional().describe("A name to show as the sender"),
+        passcode: z.string().max(80).optional().describe("Lock it: the link alone then opens nothing"),
+        hint: z.string().max(120).optional().describe("A riddle or hint shown on the claim page, whose answer is the passcode"),
+        shares: z.number().int().min(1).max(LINK_SHARES_MAX).optional().describe("Split into this many equal shares (default 1)"),
+        cover_claim_fee: z.boolean().optional().describe("Add the relayer's claim fee so they get the full amount (default true)"),
+        dry_run: dry,
+      },
+      annotations: WRITE,
+    },
+    safe(async (x: { asset: string; amount: string; message?: string; from?: string; passcode?: string; hint?: string; shares?: number; cover_claim_fee?: boolean; dry_run?: boolean }) => {
+      const { spending } = needWallet();
+      const a = await linkAsset(x.asset);
+      const whole = amountOf(x.amount, a.decimals);
+      if (whole === null) throw new Error("Give an exact amount for the link.");
+      if (x.hint && !x.passcode) throw new Error("A hint needs a passcode: the hint is the riddle, the passcode its answer.");
+      const n = x.shares ?? 1;
+      const share = whole / BigInt(n);
+      if (share === 0n) throw new Error("That's too little to split that many ways.");
+      const p = await priv();
+      const kinds = a.kind === "hype" ? (["transact", "unshieldHype"] as const) : (["transact"] as const);
+      const fees = await Promise.all(kinds.map((k) => p.relayFee(k, a.pool)));
+      const claimFee = x.cover_claim_fee === false ? 0n : fees.reduce((m, q) => (q.fee > m ? q.fee : m), 0n);
+      const each = share + claimFee;
+      const total = each * BigInt(n);
+      const c = await cost(a, total);
+      spending.check(c.budget, c.value);
+      if (isDry(x.dry_run)) return { dryRun: true, wouldLock: `${fmtAmt(a, total)} in ${n} share${n > 1 ? "s" : ""} of ${fmtAmt(a, each)}`, claimFeeCovered: fmtAmt(a, claimFee * BigInt(n)), locked: !!x.passcode };
+      return exclusive(async () => {
+        const secret = newLinkSecret();
+        const to = await linkAddress(await linkKeys(secret, x.passcode));
+        let block = 0n;
+        const txs: string[] = [];
+        for (let i = 0; i < n; i++) {
+          const h = await p.send(linkTokenOf(p, a), to, each);
+          block = (await receipt(h)).blockNumber;
+          txs.push(link(h));
+        }
+        spending.record(c.budget, c.value);
+        const url = buildClaimLink({ secret, block, token: a.symbol as "HYPE" | "USDC", amount: formatUnits(n > 1 ? share : whole, a.decimals), message: x.message, from: x.from, locked: !!x.passcode, hint: x.hint, shares: n });
+        return {
+          link: url,
+          holds: `${fmtAmt(a, whole)}${n > 1 ? ` in ${n} shares of ${fmtAmt(a, share)}` : ""}`,
+          ...(x.passcode ? { passcode: x.passcode, sendThePasscodeSeparately: true } : {}),
+          txs,
+          keepThisLink: "Anyone with the link can claim it. To take the money back before then, call claim_payment_link with it.",
+        };
+      });
+    }),
+  );
+
+  server.registerTool(
+    "check_payment_link",
+    {
+      title: "Check a payment link",
+      description: "What a claim link still holds (and how many shares are left), without claiming it.",
+      inputSchema: { link: z.string().describe("The claim link (https://…/claim#k=…)"), passcode: z.string().optional() },
+      annotations: READ,
+    },
+    safe(async ({ link: url, passcode }: { link: string; passcode?: string }) => {
+      const { l, c } = await linkClient(url, passcode);
+      const out: Record<string, string> = {};
+      let notes = 0;
+      for (const sym of ["HYPE", "USDC"]) {
+        const a = await linkAsset(sym).catch(() => null);
+        if (!a) continue;
+        const live = await c.sync(a.pool);
+        notes += live.length;
+        out[sym] = fmtAmt(a, live.reduce((s, x) => s + x.amount, 0n));
+      }
+      return { holds: out, ...(l.shares ? { sharesLeft: `${notes} of ${l.shares}` } : {}), ...(l.message ? { message: l.message } : {}), ...(l.from ? { from: l.from } : {}), empty: notes === 0 };
+    }),
+  );
+
+  server.registerTool(
+    "claim_payment_link",
+    {
+      title: "Claim a payment link",
+      description: "Claim the money in a claim link: into this account's private balance (default), or out to any 0x address. Also how a sender takes back a link nobody claimed. The relayer submits it and takes its fee from the link, so no gas is needed. On a link split into shares, it claims one share.",
+      inputSchema: { link: z.string().describe("The claim link"), passcode: z.string().optional(), to: z.string().optional().describe('"private" (default) or a 0x address'), dry_run: dry },
+      annotations: WRITE,
+    },
+    safe(async ({ link: url, passcode, to, dry_run }: { link: string; passcode?: string; to?: string; dry_run?: boolean }) => {
+      const { l, c } = await linkClient(url, passcode);
+      const out = to && to !== "private";
+      if (out && !isAddress(to)) throw new Error('`to` must be "private" or a 0x address.');
+      const held: Asset[] = [];
+      for (const sym of ["HYPE", "USDC"]) {
+        const a = await linkAsset(sym).catch(() => null);
+        if (a && (await c.balance(a.pool)) > 0n) held.push(a);
+      }
+      if (!held.length) throw new Error(l.locked ? "Nothing opens with that passcode, or the link was already claimed." : "This link is empty: someone already claimed it, or the sender took it back.");
+      if (isDry(dry_run)) return { dryRun: true, holds: await Promise.all(held.map(async (a) => fmtAmt(a, await c.balance(a.pool)))), wouldClaimTo: out ? to : "this account's private balance", ...(l.shares ? { oneShareOf: l.shares } : {}) };
+      return exclusive(async () => {
+        const dest = out ? (to as string) : await (await priv()).address();
+        const claimed = [];
+        for (const a of held) {
+          let r;
+          for (let attempt = 0; ; attempt++) {
+            try {
+              r = await c.sweep(linkTokenOf(c, a), dest, () => {}, { one: !!l.shares });
+              await receipt(r.txHash);
+              break;
+            } catch (e) {
+              if (!l.shares || attempt >= 3 || !/already|spent|nullifier|being used/i.test(String(e))) throw e;
+            }
+          }
+          const got = out ? await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [r.amount] }) : r.amount;
+          claimed.push({ claimed: fmtAmt(a, got), tx: link(r.txHash) });
+          if (l.shares) break;
+        }
+        return { claimed, to: out ? to : "this account's private balance", ...(l.message ? { message: l.message } : {}) };
+      });
+    }),
+  );
+
+  server.registerTool(
+    "request_payment_link",
+    {
+      title: "Request a payment with a link",
+      description: "A link that asks to be paid HYPE or USDC, with an optional amount (leave it out for a tip jar), note and name. By default it pays this account's cloak: address privately; pass a 0x address to be paid there instead. Nothing goes on chain until someone pays.",
+      inputSchema: { asset: z.enum(["HYPE", "USDC"]), amount: z.string().optional().describe('Amount in whole units, e.g. "25"'), note: z.string().max(140).optional(), name: z.string().max(40).optional(), to: z.string().optional().describe("A 0x address or cloak: address to be paid at (default: this account's cloak: address)") },
+      annotations: READ,
+    },
+    safe(async ({ asset, amount, note, name, to }: { asset: "HYPE" | "USDC"; amount?: string; note?: string; name?: string; to?: string }) => {
+      const payTo = to ?? (await (await priv()).address());
+      return { link: buildRequestLink({ to: payTo, token: asset, amount, note, name }), payTo, howTheyPay: payTo.startsWith("cloak:") ? "a private transfer: nobody sees who paid whom, or how much" : "from their private balance to this address: their wallet never shows; the amount and this address are public" };
+    }),
+  );
+
+  server.registerTool(
+    "pay_payment_request",
+    {
+      title: "Pay a request link",
+      description: "Pay a request link (https://…/pay#to=…) from the private balance: a private transfer to a cloak: address, or a withdrawal to a 0x address that covers Cloak's fee so the payee gets the exact amount.",
+      inputSchema: { link: z.string().describe("The request link"), amount: z.string().optional().describe("Needed when the request leaves the amount to the payer"), dry_run: dry },
+      annotations: WRITE,
+    },
+    safe(async ({ link: url, amount, dry_run }: { link: string; amount?: string; dry_run?: boolean }) => {
+      const { spending } = needWallet();
+      const r = parseRequestLink(url);
+      const a = await linkAsset(r.token);
+      const raw = r.amount ?? amount;
+      if (!raw) throw new Error("This request leaves the amount to you: pass `amount`.");
+      if (r.amount && amount && amount !== r.amount) throw new Error(`The request is for ${r.amount} ${r.token}; it can't be paid with a different amount.`);
+      const units = amountOf(raw, a.decimals);
+      if (units === null) throw new Error("Give an exact amount.");
+      const p = await priv();
+      const toCloak = r.to.startsWith("cloak:");
+      let gross = units;
+      if (!toCloak) {
+        const one = 10n ** BigInt(a.decimals);
+        const after = await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [one] });
+        gross = after > 0n ? (units * one + after - 1n) / after : units;
+      }
+      const c = await cost(a, gross);
+      spending.check(c.budget, c.value);
+      if (isDry(dry_run)) return { dryRun: true, wouldPay: fmtAmt(a, units), to: r.to, ...(r.note ? { note: r.note } : {}), ...(r.name ? { requestedBy: r.name } : {}), ...(toCloak ? {} : { leavesYourBalance: fmtAmt(a, gross) }) };
+      return exclusive(async () => {
+        const h = toCloak ? await p.send(linkTokenOf(p, a), r.to, gross) : a.kind === "hype" ? await p.unshieldHype(r.to as Address, gross) : await p.unshieldToken(a.token, r.to as Address, gross);
+        await receipt(h);
+        spending.record(c.budget, c.value);
+        return { paid: fmtAmt(a, units), to: r.to, ...(r.note ? { for: r.note } : {}), tx: link(h), privateBalance: fmtAmt(a, await p.balance(a.pool)) };
       });
     }),
   );

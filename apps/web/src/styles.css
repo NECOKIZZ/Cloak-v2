@@ -830,7 +830,7 @@ button.asset-row { cursor: pointer; }
 .demo-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 
 /* payment links */
-.ideas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ideas { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
 .idea { text-align: left; display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--raised); color: var(--text); font: inherit; cursor: pointer; transition: border-color .15s, transform .15s; }
 .idea:hover { border-color: var(--signal); transform: translateY(-1px); }
 .idea b { font: 400 19px/1.2 var(--font-display); letter-spacing: -0.02em; }

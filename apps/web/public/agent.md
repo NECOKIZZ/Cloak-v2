@@ -86,6 +86,10 @@ Private trading always starts the same way:
    - `batch_order`: trade in standard sizes inside a 30 second round, which also hides the size.
    - `private_send`: pay a `cloak:` address. Sender, recipient and amount stay hidden.
    - `withdraw`: send to a normal `0x` address, ideally a brand new one.
+   - `create_payment_link`: put HYPE or USDC in a link anyone can claim (into their private balance, or to any wallet
+     with no gas). Optional message, passcode with a riddle, or `shares` for a red envelope that several people each
+     claim one share of. `claim_payment_link` claims one (or takes back your own), `check_payment_link` shows what's
+     left. `request_payment_link` makes a link that asks to be paid, and `pay_payment_request` pays one.
    - `private_balance`: what's held privately.
 
 Launches from Nov 2 on keep their private balances in one shared launch-token vault (testnet experiment). The same

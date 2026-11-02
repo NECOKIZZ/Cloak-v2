@@ -5,6 +5,28 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/claim",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(Twitterbot|facebookexternalhit|Facebot|Discordbot|TelegramBot|Slackbot|LinkedInBot|WhatsApp|SkypeUriPreview|redditbot|Embedly|Pinterest|Applebot|Iframely|Bluesky|Mastodon).*"
+        }
+      ],
+      "destination": "/api/preview?kind=claim"
+    },
+    {
+      "source": "/pay",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(Twitterbot|facebookexternalhit|Facebot|Discordbot|TelegramBot|Slackbot|LinkedInBot|WhatsApp|SkypeUriPreview|redditbot|Embedly|Pinterest|Applebot|Iframely|Bluesky|Mastodon).*"
+        }
+      ],
+      "destination": "/api/preview?kind=pay"
+    },
+    {
       "source": "/app/launch/:a",
       "has": [
         {

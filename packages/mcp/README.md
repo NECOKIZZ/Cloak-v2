@@ -65,6 +65,7 @@ Then ask, for example:
 - "Bid on EMBR up to 0.00002 HYPE for 50,000 tokens. Dry run first."
 - "Shield 0.5 HYPE, then buy CLOAK privately with 0.1 of it."
 - "Send 0.05 private HYPE to cloak:…, then withdraw the rest to 0x…"
+- "Make a red envelope: 0.1 HYPE split into 5 shares, with the message gm"
 
 ## Tools
 
@@ -88,6 +89,11 @@ Then ask, for example:
 | | `batch_order` | Trade in standard sizes inside a batch round, which hides the trade's size |
 | | `private_send` | Pay a `cloak:` address. Sender, recipient and amount stay hidden |
 | | `withdraw` | Private balance to a normal address (ideally a fresh one) |
+| | `create_payment_link` | HYPE or USDC in a link anyone can claim, to a private balance or any wallet with no gas. Message, passcode and riddle, or split into shares (a red envelope) |
+| | `claim_payment_link` | Claim a link into the private balance or to a `0x` address; also takes back your own unclaimed link |
+| | `check_payment_link` | What a link still holds, and how many shares are left |
+| | `request_payment_link` | A link that asks to be paid HYPE or USDC, with an optional amount, note and name |
+| | `pay_payment_request` | Pay a request link from the private balance, the exact amount asked |
 
 Amounts are in whole units (`"0.5"` HYPE). `private_send`, `withdraw` and a `private_swap` sell accept `"max"`.
 

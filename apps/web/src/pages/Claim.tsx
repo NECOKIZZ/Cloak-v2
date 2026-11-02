@@ -23,6 +23,8 @@ export function Claim() {
   const [code, setCode] = useState("");
   const [acct, setAcct] = useState<CloakPrivate | null>(null);
   const [bals, setBals] = useState<Record<LinkToken, bigint> | null>(null);
+  /** A link split into shares: how many are still unclaimed. */
+  const [left, setLeft] = useState<number | null>(null);
   const [fees, setFees] = useState<Record<string, bigint>>({});
   const [dest, setDest] = useState<"private" | "wallet">("private");
   const [to, setTo] = useState("");
@@ -55,6 +57,10 @@ export function Claim() {
       const [tr, un, us] = await Promise.all([a.relayFee("transact", pool("HYPE")), a.relayFee("unshieldHype", pool("HYPE")), a.relayFee("transact", pool("USDC")).catch(() => ({ fee: 0n }))]);
       setFees({ HYPEprivate: tr.fee, HYPEwallet: un.fee, USDCprivate: us.fee, USDCwallet: us.fee });
       setAcct(a);
+      if (l.shares && l.token) {
+        const notes = await a.sync(a.market(tokenOf(a, l.token)).pool);
+        setLeft(notes.length);
+      }
       setBals(b);
     } catch (e) {
       setErr(friendly(e));
@@ -79,15 +85,26 @@ export function Claim() {
       const out: { t: LinkToken; amount: bigint; tx: Hex }[] = [];
       for (const t of ["HYPE", "USDC"] as LinkToken[]) {
         if (bals[t] === 0n) continue;
-        const r = await acct.sweep(tokenOf(acct, t), dst, setBusy);
-        setBusy("Waiting for it to land…");
-        await publicClient.waitForTransactionReceipt({ hash: r.txHash });
-        out.push({ t, amount: dest === "wallet" ? await acct.afterFee(acct.market(tokenOf(acct, t)).pool, r.amount) : r.amount, tx: r.txHash });
+        // a split link: take one share, and if someone grabbed the same one a moment earlier, try another
+        let r: Awaited<ReturnType<typeof acct.sweep>> | undefined;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            r = await acct.sweep(tokenOf(acct, t), dst, setBusy, { one: !!link?.shares });
+            setBusy("Waiting for it to land…");
+            await publicClient.waitForTransactionReceipt({ hash: r.txHash });
+            break;
+          } catch (e) {
+            if (!link?.shares || attempt >= 3 || !/already|spent|nullifier|in use|being used/i.test(String(e))) throw e;
+            setBusy("Someone took that share first, trying another…");
+          }
+        }
+        out.push({ t, amount: dest === "wallet" ? await acct.afterFee(acct.market(tokenOf(acct, t)).pool, r!.amount) : r!.amount, tx: r!.txHash });
+        if (link?.shares) break;
       }
       setDone(out);
       setBals({ HYPE: 0n, USDC: 0n });
     } catch (e) {
-      setErr(/already|spent|nullifier/i.test(String(e)) ? "Someone claimed this link a moment before you." : friendly(e));
+      setErr(/already|spent|nullifier/i.test(String(e)) ? (link?.shares ? "Every share was taken a moment before you." : "Someone claimed this link a moment before you.") : friendly(e));
     } finally {
       setBusy("");
     }
@@ -107,7 +124,7 @@ export function Claim() {
   // the sender's stated amount, when the link holds at least that (the rest is the claim fee they covered)
   let meant: bigint | null = null;
   try {
-    if (bals && link.amount && link.token && held.length === 1 && held[0] === link.token) {
+    if (bals && link.amount && link.token && held.length === 1 && held[0] === link.token && (left ?? 1) > 0) {
       const m = parseUnits(link.amount, TOKEN_DECIMALS[link.token]);
       if (bals[link.token] >= m) meant = m;
     }
@@ -120,12 +137,13 @@ export function Claim() {
     <div className="claim-wrap">
       <div className="card claim-card">
         <div className="claim-badge"><Icon.lock size={14} />Private payment</div>
-        <p className="mute" style={{ margin: "18px 0 4px" }}>{link.from ? `${link.from} sent you` : "Someone sent you"}</p>
+        <p className="mute" style={{ margin: "18px 0 4px" }}>{link.shares ? `${link.from ?? "Someone"} dropped a red envelope. One share is` : link.from ? `${link.from} sent you` : "Someone sent you"}</p>
         <div className="claim-amount">
           {done ? done.map((d) => <div key={d.t}>{fmt(d.t, d.amount)} <span>{d.t}</span></div>)
             : bals && held.length ? held.map((t) => <div key={t}>{fmt(t, show(t))} <span>{t}</span></div>)
             : <div>{link.amount ?? "?"} <span>{link.token ?? ""}</span></div>}
         </div>
+        {link.shares && left !== null && !done && left > 0 && <p className="small" style={{ margin: "6px 0 0" }}><span className="pill ok">{left} of {link.shares} shares left</span></p>}
         {link.message && <blockquote className="claim-msg">“{link.message}”</blockquote>}
 
         {done ? (
@@ -148,7 +166,7 @@ export function Claim() {
           </div>
         ) : empty ? (
           <div style={{ marginTop: 18 }}>
-            <p className="mute">This link is empty. Someone already claimed it, or the sender took it back.</p>
+            <p className="mute">{link.shares ? `All ${link.shares} shares are gone. Better luck on the next one.` : "This link is empty. Someone already claimed it, or the sender took it back."}</p>
             <Link to="/app/links" className="btn btn-ghost" style={{ marginTop: 8 }}>Make your own payment link</Link>
           </div>
         ) : !acct ? (

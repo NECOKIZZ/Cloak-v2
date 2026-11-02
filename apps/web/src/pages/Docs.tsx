@@ -161,6 +161,7 @@ export function Docs() {
           <ul>
             <li><b>Send money as a link.</b> The link holds its own private account, funded by a private send from yours. Whoever opens it claims the money into their private balance, or straight to any wallet. The relayer submits the claim and takes its fee from the link, so the person claiming needs no gas and no Cloak account. You can cover that fee so they get the full amount. Until someone claims it, you can take it back.</li>
             <li><b>Lock it with a passcode.</b> The link alone then opens nothing. Send the code another way, or show a riddle on the claim page whose answer is the code: post it in public and the first person to solve it wins. A guessable answer can be guessed by anyone with the link, so use a phrase for real money.</li>
+            <li><b>Split it into shares.</b> A red envelope: one link, several equal shares, and each person who opens it claims one, first come first served. Drop it in a group chat.</li>
             <li><b>Request a payment.</b> A link that asks to be paid, with an amount (or none, for a tip jar), a note and your name. It pays your cloak: address privately, or a 0x wallet from the payer's private balance. Show it as a QR code for in-person payments.</li>
           </ul>
           <p>Everything sits after the # in the link, which browsers never send to a server, so the details stay between the people who share it. A claim link is like cash: anyone who has it can claim it. The links you make are kept encrypted in your browser, under Your links.</p>
