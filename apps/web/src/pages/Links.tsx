@@ -55,6 +55,7 @@ interface ReqForm { token: LinkToken; amt: string; note: string; name: string; p
 export function Links() {
   const { wallet, priv, unlock, unlocking, privAddress } = useApp();
   const [tab, setTab] = useState<Tab>("send");
+  const [picked, setPicked] = useState("");
   const [sf, setSf] = useState<SendForm>({ token: "HYPE", amt: "", message: "", from: "", cover: true, lock: false, code: "", hint: "", shares: "1" });
   const [rf, setRf] = useState<ReqForm>({ token: "USDC", amt: "", note: "", name: "", payTo: "me", wallet: "" });
   const [busy, setBusy] = useState("");
@@ -77,12 +78,14 @@ export function Links() {
   }, [priv, sf.token]);
 
   function pickIdea(i: (typeof IDEAS)[number]) {
+    setPicked(i.id);
     setTab(i.tab);
     setMade(null);
     setErr("");
     if (i.tab === "send") setSf((f) => ({ ...f, cover: true, lock: false, code: "", hint: "", message: "", shares: "1", ...i.preset }) as SendForm);
     else setRf((f) => ({ ...f, note: "", ...i.preset }) as ReqForm);
-    document.getElementById("link-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // on a phone the formats sit under the form: bring the filled form back into view
+    if (innerWidth < 900) document.getElementById("link-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function createClaim() {
@@ -169,21 +172,11 @@ export function Links() {
         </div>
       </div>
 
-      <div className="ideas">
-        {IDEAS.map((i) => (
-          <button key={i.id} className="idea" onClick={() => pickIdea(i)}>
-            <span className="eyebrow">{i.tab === "send" ? "Send a link" : "Request"}</span>
-            <b>{i.title}</b>
-            <span>{i.text}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="grid" id="link-form" style={{ marginTop: 20 }}>
+      <div className="grid links-grid" id="link-form">
         <div className="card">
           <div className="tabs">
-            <button className={`tab ${tab === "send" ? "on" : ""}`} onClick={() => { setTab("send"); setMade(null); setErr(""); }}>Send money as a link</button>
-            <button className={`tab ${tab === "request" ? "on" : ""}`} onClick={() => { setTab("request"); setMade(null); setErr(""); }}>Request a payment</button>
+            <button className={`tab ${tab === "send" ? "on" : ""}`} onClick={() => { setTab("send"); setPicked(""); setMade(null); setErr(""); }}>Send money as a link</button>
+            <button className={`tab ${tab === "request" ? "on" : ""}`} onClick={() => { setTab("request"); setPicked(""); setMade(null); setErr(""); }}>Request a payment</button>
           </div>
 
           {tab === "send" ? (
@@ -197,15 +190,17 @@ export function Links() {
                 <label><span>Message</span><span>optional, only in the link</span></label>
                 <input className="input" value={sf.message} onChange={(e) => setS("message", e.target.value)} maxLength={140} placeholder="Happy birthday!" />
               </div>
-              <div className="field">
-                <label><span>From</span><span>optional</span></label>
-                <input className="input" value={sf.from} onChange={(e) => setS("from", e.target.value)} maxLength={40} placeholder="Your name, or leave it a mystery" />
+              <div className="field-row">
+                <div className="field">
+                  <label><span>From</span><span>optional</span></label>
+                  <input className="input" value={sf.from} onChange={(e) => setS("from", e.target.value)} maxLength={40} placeholder="Your name, or leave it a mystery" />
+                </div>
+                <div className="field">
+                  <label><span>Shares</span><span>{Number(sf.shares) > 1 ? "one each" : "1 = all to one"}</span></label>
+                  <input className="input" value={sf.shares} onChange={(e) => setS("shares", e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="1" />
+                </div>
               </div>
               <label className="check"><input type="checkbox" checked={sf.cover} onChange={(e) => setS("cover", e.target.checked)} /> Cover the claim fee{fee !== null ? ` (${formatUnits(fee, dec)} ${sf.token})` : ""}, so they get the full amount</label>
-              <div className="field">
-                <label><span>Split into shares</span><span>{Number(sf.shares) > 1 ? "a red envelope: each person claims one" : "1 means one person takes it all"}</span></label>
-                <input className="input" value={sf.shares} onChange={(e) => setS("shares", e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="1" />
-              </div>
               <label className="check"><input type="checkbox" checked={sf.lock} onChange={(e) => setS("lock", e.target.checked)} /> Lock it with a passcode</label>
               {sf.lock && (
                 <div className="lockbox">
@@ -266,6 +261,20 @@ export function Links() {
         </div>
 
         <div className="col">
+          <div className="card">
+            <div className="card-head"><h3>Formats</h3><span className="xs mute">one click fills the form</span></div>
+            {(["send", "request"] as Tab[]).map((g) => (
+              <div key={g} className="ideas-group">
+                <div className="eyebrow">{g === "send" ? "Send as a link" : "Request a payment"}</div>
+                {IDEAS.filter((i) => i.tab === g).map((i) => (
+                  <button key={i.id} className={`idea ${picked === i.id ? "on" : ""}`} onClick={() => pickIdea(i)} title={i.text}>
+                    <b>{i.title}</b>
+                    <span>{i.text}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
           <YourLinks list={list} onChange={() => priv && loadLinks(priv.keys).then(setList)} />
         </div>
       </div>
