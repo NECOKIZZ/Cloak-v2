@@ -7613,3 +7613,1661 @@ export const cloakFeeLockerAbi = [
     "inputs": []
   }
 ] as const;
+
+export const sharedVaultAbi = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "config_",
+        "type": "address",
+        "internalType": "contract CloakConfig"
+      },
+      {
+        "name": "hasher2_",
+        "type": "address",
+        "internalType": "contract IPoseidon2"
+      },
+      {
+        "name": "hasher4_",
+        "type": "address",
+        "internalType": "contract IPoseidon4"
+      },
+      {
+        "name": "verifier_",
+        "type": "address",
+        "internalType": "contract IVerifierMA"
+      },
+      {
+        "name": "vaults_",
+        "type": "address",
+        "internalType": "contract IVaultList"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "FIELD_SIZE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "LEVELS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_EXT_AMOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_NOTE_AMOUNT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "admit",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "contract ISharedLaunchFactory"
+      },
+      {
+        "name": "launchIndex",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "admitted",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "afterFee",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "calculatePublicAmount",
+    "inputs": [
+      {
+        "name": "extAmount",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "fee",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "collectFees",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "config",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract CloakConfig"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "currentRoot",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "depositTo",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "pubKey",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "blinding",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "encryptedOutput",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "commitment",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "deposited",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "epoch",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "feesOwed",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "filledSubtrees",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hashExtData",
+    "inputs": [
+      {
+        "name": "extData",
+        "type": "tuple",
+        "internalType": "struct SharedVault.ExtData",
+        "components": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "extAmount",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "relayer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "encryptedOutput1",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedOutput2",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "data",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "hashLeftRight",
+    "inputs": [
+      {
+        "name": "left",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "right",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasher",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IPoseidon2"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasher4",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IPoseidon4"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isKnownRoot",
+    "inputs": [
+      {
+        "name": "root",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isSpent",
+    "inputs": [
+      {
+        "name": "nullifierHash",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "knownRoots",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "marketOf",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nextIndex",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nullifierHashes",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tokens",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tokensCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "transact",
+    "inputs": [
+      {
+        "name": "proof",
+        "type": "tuple",
+        "internalType": "struct SharedVault.Proof",
+        "components": [
+          {
+            "name": "a",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "b",
+            "type": "uint256[2][2]",
+            "internalType": "uint256[2][2]"
+          },
+          {
+            "name": "c",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "root",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "extDataHash",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAsset",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "inputNullifiers",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "outputCommitments",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          }
+        ]
+      },
+      {
+        "name": "extData",
+        "type": "tuple",
+        "internalType": "struct SharedVault.ExtData",
+        "components": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "extAmount",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "relayer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "encryptedOutput1",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedOutput2",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "data",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "vaults",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IVaultList"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "verifier",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IVerifierMA"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "zeros",
+    "inputs": [
+      {
+        "name": "i",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "event",
+    "name": "Admitted",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "market",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Deposit",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FeesCollected",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NewCommitment",
+    "inputs": [
+      {
+        "name": "commitment",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "encryptedOutput",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NewEpoch",
+    "inputs": [
+      {
+        "name": "epoch",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NewNullifier",
+    "inputs": [
+      {
+        "name": "nullifier",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "WithdrawFee",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "fee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Withdrawal",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AlreadyAdmitted",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadExtDataHash",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadPublicAmount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "FeeOnTransferToken",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "HasOwnVault",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "HiddenAssetMustBeFree",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidExtAmount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidFee",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidNote",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidProof",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAdmitted",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotLaunched",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotUniswap",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NothingToCollect",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NullifierAlreadySpent",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OverDepositLimit",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Reentrancy",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TransferFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnknownFactory",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnknownRoot",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ValueOutOfField",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroRecipient",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroRelayer",
+    "inputs": []
+  }
+] as const;
+
+export const sharedRouterAbi = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "shared_",
+        "type": "address",
+        "internalType": "contract SharedVault"
+      },
+      {
+        "name": "hypePool_",
+        "type": "address",
+        "internalType": "contract ShieldedPool"
+      },
+      {
+        "name": "whype_",
+        "type": "address",
+        "internalType": "contract WHYPE"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "receive",
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "HYPE_SEND_GAS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "buy",
+    "inputs": [
+      {
+        "name": "proof",
+        "type": "tuple",
+        "internalType": "struct ShieldedPool.Proof",
+        "components": [
+          {
+            "name": "a",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "b",
+            "type": "uint256[2][2]",
+            "internalType": "uint256[2][2]"
+          },
+          {
+            "name": "c",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "root",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "extDataHash",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "inputNullifiers",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "outputCommitments",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          }
+        ]
+      },
+      {
+        "name": "ext",
+        "type": "tuple",
+        "internalType": "struct ShieldedPool.ExtData",
+        "components": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "extAmount",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "relayer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "encryptedOutput1",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedOutput2",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "data",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "hypePool",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ShieldedPool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "sell",
+    "inputs": [
+      {
+        "name": "proof",
+        "type": "tuple",
+        "internalType": "struct SharedVault.Proof",
+        "components": [
+          {
+            "name": "a",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "b",
+            "type": "uint256[2][2]",
+            "internalType": "uint256[2][2]"
+          },
+          {
+            "name": "c",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "root",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "extDataHash",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAsset",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "inputNullifiers",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "outputCommitments",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          }
+        ]
+      },
+      {
+        "name": "ext",
+        "type": "tuple",
+        "internalType": "struct SharedVault.ExtData",
+        "components": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "extAmount",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "relayer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "encryptedOutput1",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedOutput2",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "data",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "out",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "send",
+    "inputs": [
+      {
+        "name": "sendProof",
+        "type": "tuple",
+        "internalType": "struct SharedVault.Proof",
+        "components": [
+          {
+            "name": "a",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "b",
+            "type": "uint256[2][2]",
+            "internalType": "uint256[2][2]"
+          },
+          {
+            "name": "c",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "root",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "extDataHash",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAsset",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "inputNullifiers",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "outputCommitments",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          }
+        ]
+      },
+      {
+        "name": "sendExt",
+        "type": "tuple",
+        "internalType": "struct SharedVault.ExtData",
+        "components": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "extAmount",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "relayer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "encryptedOutput1",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedOutput2",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "data",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      },
+      {
+        "name": "feeProof",
+        "type": "tuple",
+        "internalType": "struct ShieldedPool.Proof",
+        "components": [
+          {
+            "name": "a",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "b",
+            "type": "uint256[2][2]",
+            "internalType": "uint256[2][2]"
+          },
+          {
+            "name": "c",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "root",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "extDataHash",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "inputNullifiers",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "outputCommitments",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          }
+        ]
+      },
+      {
+        "name": "feeExt",
+        "type": "tuple",
+        "internalType": "struct ShieldedPool.ExtData",
+        "components": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "extAmount",
+            "type": "int256",
+            "internalType": "int256"
+          },
+          {
+            "name": "relayer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fee",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "encryptedOutput1",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "encryptedOutput2",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "data",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "sendFingerprint",
+    "inputs": [
+      {
+        "name": "p",
+        "type": "tuple",
+        "internalType": "struct SharedVault.Proof",
+        "components": [
+          {
+            "name": "a",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "b",
+            "type": "uint256[2][2]",
+            "internalType": "uint256[2][2]"
+          },
+          {
+            "name": "c",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "root",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "extDataHash",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicAsset",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "inputNullifiers",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "outputCommitments",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "shared",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract SharedVault"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "whype",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract WHYPE"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "PaidInWhype",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PrivateBuy",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hypeIn",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokensOut",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PrivateSell",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "tokensIn",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "hypeOut",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PrivateSend",
+    "inputs": [
+      {
+        "name": "relayFee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "BadFeeProof",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadRecipient",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Expired",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAdmitted",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotFree",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Reentrancy",
+    "inputs": []
+  }
+] as const;

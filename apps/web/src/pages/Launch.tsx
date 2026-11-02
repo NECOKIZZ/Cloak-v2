@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatEther, parseEther, type Address } from "viem";
-import { Cloak, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, drandRoundTime, privateRouterAbi, type AuctionState } from "@cloakely/sdk";
+import { Cloak, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, drandRoundTime, privateRouterAbi, sharedVaultAbi, type AuctionState } from "@cloakely/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
 import { CreatorFeesCard, DemandMeter, PrivateBids } from "../launchParts";
-import { addrLink, KEEPER_URL, ROUTER, VAULTS } from "../config";
+import { addrLink, KEEPER_URL, ROUTER, SHARED, SHARED_BLOCK, VAULTS } from "../config";
 import { duration, hype, pctChange, short } from "../format";
 import { PriceChart, usePrice } from "../chart";
 import { Link, useRoute } from "../router";
@@ -11,7 +11,7 @@ import { useApp } from "../state";
 import { LaunchRecord } from "./LaunchRecord";
 import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
-import { useTokenMeta } from "../tokenMeta";
+import { launchCreatedLogs, useTokenMeta } from "../tokenMeta";
 import { publicClient, readCloak } from "../wallet";
 
 type MyBidsT = Awaited<ReturnType<typeof readCloak.bidsOf>>;
@@ -81,7 +81,11 @@ export function Launch({ auction }: { auction: Address }) {
   }, []);
   useEffect(() => {
     if (!ROUTER || !s?.settled) return;
-    publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "poolOf", args: [s.token] }).then((p) => setPrivMarket(p !== ZERO)).catch(() => {});
+    (async () => {
+      // a token in the shared launch-token vault already trades privately; otherwise it needs a vault of its own
+      if (SHARED && (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [s.token] }))) return setPrivMarket(true);
+      setPrivMarket((await publicClient.readContract({ address: ROUTER!, abi: privateRouterAbi, functionName: "poolOf", args: [s.token] })) !== ZERO);
+    })().catch(() => {});
   }, [s?.settled, s?.token]);
 
   async function run(label: string, fn: (c: Cloak) => Promise<unknown>) {
@@ -102,6 +106,13 @@ export function Launch({ auction }: { auction: Address }) {
     const l = (await readCloak.listLaunches()).find((x) => x.auction.toLowerCase() === s.address.toLowerCase());
     if (!l) return setError("This launch wasn't made with a Cloak factory, so it can't get private trading.");
     await run("enable", async () => {
+      // a Uniswap launch created after the shared vault opened goes in the shared vault, like the keeper does it
+      const created = (await launchCreatedLogs(s.address))[0]?.blockNumber ?? 0n;
+      if (SHARED && BigInt(s.uniPair ?? 0) !== 0n && created >= SHARED_BLOCK) {
+        const h = await wallet.writeContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admit", args: [l.factory, l.index] });
+        await publicClient.waitForTransactionReceipt({ hash: h });
+        return setPrivMarket(true);
+      }
       const vaults = VAULTS ?? (await publicClient.readContract({ address: ROUTER!, abi: privateRouterAbi, functionName: "vaults" }));
       const h = await wallet.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createPool", args: [l.factory, l.index] });
       await publicClient.waitForTransactionReceipt({ hash: h });

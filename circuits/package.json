@@ -1,0 +1,9 @@
+{
+  "name": "@cloak/circuits",
+  "private": true,
+  "description": "Cloak's circom circuits. Built artifacts live in apps/web/public/circuits.",
+  "devDependencies": {
+    "circom2": "0.2.23",
+    "circomlib": "2.0.5"
+  }
+}

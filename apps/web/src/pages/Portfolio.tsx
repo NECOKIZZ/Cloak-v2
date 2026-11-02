@@ -4,7 +4,7 @@ import { CloakPrivate, shieldedPoolAbi } from "@cloakely/sdk";
 import { ASSETS, CHAIN_ID, CLOAK_TOKEN, MIGRATOR, PREVIOUS, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
-import { getProver, useApp } from "../state";
+import { getProver, getSharedProver, useApp } from "../state";
 import { friendly, Hint } from "../errors";
 import { markDone } from "../guide";
 import { Link, navigate, useRoute } from "../router";
@@ -67,7 +67,7 @@ function useAssets(): Asset[] {
 /** Private balances of every asset, refreshed every 8 seconds while unlocked. Each vault's balance shows as soon as it
  * has synced, so HYPE appears first even while the launch-token vaults are still scanning. */
 function usePrivateBalances() {
-  const { priv } = useApp();
+  const { priv, shared } = useApp();
   const { markets } = useMarkets();
   const [bals, setBals] = useState<Record<string, bigint>>({});
   const [synced, setSynced] = useState(false);
@@ -77,8 +77,14 @@ function usePrivateBalances() {
     syncing.current = true;
     try {
       // inside the try: right after unlocking, the account may still be loading its markets (hypeMarket throws)
-      const jobs: [string, Address][] = [["HYPE", priv.hypeMarket.pool], ...markets.map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
-      await Promise.all(jobs.map(([k, pool]) => priv.balance(pool).then((b) => setBals((cur) => (cur[k] === b ? cur : { ...cur, [k]: b }))).catch(() => {})));
+      const own = markets.filter((m) => !m.shared);
+      const jobs: [string, Address][] = [["HYPE", priv.hypeMarket.pool], ...own.map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
+      const put = (k: string) => (b: bigint) => setBals((cur) => (cur[k] === b ? cur : { ...cur, [k]: b }));
+      await Promise.all([
+        ...jobs.map(([k, pool]) => priv.balance(pool).then(put(k)).catch(() => {})),
+        // the shared launch-token vault: one scan, every token's balance
+        ...(shared ? [shared.sync().then(() => Promise.all(markets.filter((m) => m.shared).map((m) => shared.balance(m.token).then(put(m.token))))).catch(() => {})] : []),
+      ]);
       setSynced(true);
     } catch {
     } finally {
@@ -89,7 +95,7 @@ function usePrivateBalances() {
     refresh();
     const t = setInterval(refresh, 8000);
     return () => clearInterval(t);
-  }, [priv, markets]);
+  }, [priv, shared, markets]);
   return { bals, refresh, loaded: bals.HYPE !== undefined, synced };
 }
 
@@ -302,7 +308,7 @@ const TITLES: Record<Kind, [string, string]> = {
 };
 
 export function PortfolioAction({ kind }: { kind: Kind }) {
-  const { wallet, priv } = useApp();
+  const { wallet, priv, shared } = useApp();
   const { query } = useRoute();
   const assets = useAssets();
   const { bals, refresh } = usePrivateBalances();
@@ -320,7 +326,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   }, [firstHeld]);
 
   // shield: HYPE, USDC and CLOAK, with what the wallet holds of each
-  const shieldable = assets.filter((a) => a.kind !== "launch" || (CLOAK_TOKEN && a.key.toLowerCase() === CLOAK_TOKEN.toLowerCase()));
+  const shieldable = assets.filter((a) => a.kind !== "launch" || a.market?.shared || (CLOAK_TOKEN && a.key.toLowerCase() === CLOAK_TOKEN.toLowerCase()));
   useEffect(() => {
     if (kind !== "shield" || !wallet) return;
     const me = wallet.account.address;
@@ -344,6 +350,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
       const x = cur.key === "HYPE" ? (have > 2_000_000_000_000_000n ? have - 2_000_000_000_000_000n : 0n) : have;
       return setAmt(formatUnits(x, cur.decimals));
     }
+    if (cur.market?.shared && shared) return setAmt(formatUnits(kind === "send" ? have : await shared.maxWithdraw(cur.key as Address).catch(() => have), cur.decimals));
     const pool = cur.key === "HYPE" ? priv.hypeMarket.pool : priv.market(cur.key).pool;
     const k = kind === "withdraw" && cur.key === "HYPE" ? "unshieldHype" : "transact";
     setAmt(formatUnits(await priv.maxSpendable(pool, k).catch(() => have), cur.decimals));
@@ -364,19 +371,25 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     try {
       if (kind === "shield") {
         setBusy("Depositing into your private balance…");
-        const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a) : await priv.shieldToken(wallet, cur.key, a, setBusy);
+        const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a) : cur.market?.shared && shared ? await shared.shield(wallet, cur.key as Address, a, setBusy) : await priv.shieldToken(wallet, cur.key, a, setBusy);
         markDone("shield");
         setRes({ ok: `${amt} ${cur.symbol} is now private.`, tx });
       } else {
         setBusy("Loading the prover…");
-        await getProver();
+        await (cur.market?.shared ? getSharedProver() : getProver());
         if (kind === "send") {
           if (!to.startsWith("cloak:")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
-          const tx = await priv.send(cur.key === "HYPE" ? priv.hypeMarket.token : cur.key, to, a, setBusy);
-          setRes({ ok: "Sent privately. The chain can't see who paid whom, or how much.", tx });
+          if (cur.market?.shared && shared) {
+            await getProver(); // the relayer's fee is proven from your private HYPE
+            const tx = await shared.send(cur.key as Address, a, to, setBusy);
+            setRes({ ok: "Sent privately. The chain can't see who paid whom, how much, or even which token.", tx });
+          } else {
+            const tx = await priv.send(cur.key === "HYPE" ? priv.hypeMarket.token : cur.key, to, a, setBusy);
+            setRes({ ok: "Sent privately. The chain can't see who paid whom, or how much.", tx });
+          }
         } else {
           if (!isAddress(to)) throw new Hint("Enter the 0x address to withdraw to. A brand-new address keeps you unlinkable.");
-          const tx = cur.key === "HYPE" ? await priv.unshieldHype(to, a, setBusy) : await priv.unshieldToken(cur.key, to, a, setBusy);
+          const tx = cur.key === "HYPE" ? await priv.unshieldHype(to, a, setBusy) : cur.market?.shared && shared ? await shared.unshield(cur.key as Address, a, to as Address, setBusy) : await priv.unshieldToken(cur.key, to, a, setBusy);
           setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${to.slice(0, 6)}…${to.slice(-4)}.`, tx });
         }
       }

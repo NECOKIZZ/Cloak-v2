@@ -122,5 +122,11 @@
   },
   "uniswapDeployCost": "0.00073316345572 HYPE",
   "feeLocker": "0x3b74062a72b16f9a221d63515518a635414501d8",
-  "feesDeployCost": "0.00053075318596 HYPE"
+  "feesDeployCost": "0.00053075318596 HYPE",
+  "poseidon4": "0xbe88b7f6fe46d048434bee14bedccc1b118fac77",
+  "verifierMA": "0x41ad3218e820f9ccf64dda0492a700218440381d",
+  "shared": "0x0ce2ecb0195e07899377e3d7b01e927ab3f87610",
+  "sharedBlock": "21426599",
+  "sharedRouter": "0xe2a0769a5acbd987c1b6725247c56187a112dc7e",
+  "sharedDeployCost": "0.00082346881872 HYPE"
 }

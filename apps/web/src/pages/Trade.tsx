@@ -5,7 +5,7 @@ import { splitStandard } from "@cloakely/sdk";
 import { BATCHER, txLink } from "../config";
 import { hype, tokens } from "../format";
 import { Link, useRoute } from "../router";
-import { getProver, useApp } from "../state";
+import { getProver, getSharedProver, useApp } from "../state";
 import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { quote, useFeePct, useMarkets, type Market } from "./markets";
@@ -35,7 +35,7 @@ function TokenSel({ label, token, onPick, markets }: { label: string; token?: st
 
 export function Trade() {
   const { query } = useRoute();
-  const { wallet, connect, priv, unlock, unlocking } = useApp();
+  const { wallet, connect, priv, shared, unlock, unlocking } = useApp();
   const { markets, err } = useMarkets();
   const [market, setMarket] = useState<Market | null>(null);
   const feePct = useFeePct();
@@ -78,7 +78,7 @@ export function Trade() {
     if (!priv || !market || syncing.current) return;
     syncing.current = true;
     try {
-      const [h, t] = await Promise.all([priv.balance(priv.hypeMarket.pool), priv.balance(market.pool)]);
+      const [h, t] = await Promise.all([priv.balance(priv.hypeMarket.pool), market.shared ? (shared ? shared.balance(market.token) : Promise.resolve(0n)) : priv.balance(market.pool)]);
       setBal({ hype: h, tok: t });
     } catch {
     } finally {
@@ -89,7 +89,7 @@ export function Trade() {
     refreshBal();
     const t = setInterval(refreshBal, 8000);
     return () => clearInterval(t);
-  }, [priv, market]);
+  }, [priv, shared, market]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
@@ -121,6 +121,13 @@ export function Trade() {
         const rounds = [...new Set(r.orders.map((o) => o.round.toString()))];
         markDone("swap");
         setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles.${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
+      } else if (market.shared) {
+        // a token in the shared launch-token vault: same swap, through the shared router
+        if (!shared) throw new Error("Unlock your private account again to trade this token.");
+        if (side === "sell") await getSharedProver();
+        const tx = side === "buy" ? await shared.buy(market.token, amountIn, { onStatus: setBusy }) : await shared.sell(market.token, amountIn, { onStatus: setBusy });
+        markDone("swap");
+        setRes({ ok: `Swapped privately for ~${fmtOut(q)} ${toSym}.`, tx });
       } else {
         const r = side === "buy" ? await p.buy(market.token as Address, amountIn, { onStatus: setBusy }) : await p.sell(market.token as Address, amountIn, { onStatus: setBusy });
         markDone("swap");
@@ -161,7 +168,7 @@ export function Trade() {
                 <div className="k"><span>You pay (private)</span>{fromBal !== undefined && <span className="link" onClick={async () => {
                   // instant trades pay the relayer from the same balance; batch mode makes room for its own fees
                   const pool = side === "buy" ? priv?.hypeMarket.pool : market.pool;
-                  const most = mode === "instant" && priv && pool ? await priv.maxSpendable(pool, "privateSwap").catch(() => fromBal) : fromBal;
+                  const most = market.shared ? (side === "sell" && shared ? await shared.maxWithdraw(market.token, "sharedSell").catch(() => fromBal) : priv ? await priv.maxSpendable(priv.hypeMarket.pool, "privateSwap").catch(() => fromBal) : fromBal) : mode === "instant" && priv && pool ? await priv.maxSpendable(pool, "privateSwap").catch(() => fromBal) : fromBal;
                   setAmt(formatEther(most));
                 }}>Balance {fmtIn(fromBal)}</span>}</div>
                 <div className="amt">

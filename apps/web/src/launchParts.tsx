@@ -4,7 +4,7 @@ import { Cloak, type AuctionState, type Wallet } from "@cloakely/sdk";
 import { DEPLOYMENT } from "./config";
 import { duration, hype, short, tokens } from "./format";
 import { friendly } from "./errors";
-import { useApp } from "./state";
+import { sharedFor, useApp } from "./state";
 import { publicClient, readCloak } from "./wallet";
 
 const FROM_BLOCK = DEPLOYMENT?.firstFactoryBlock ?? DEPLOYMENT?.factoryBlock ?? 0n;
@@ -170,7 +170,7 @@ export function PrivateBids({ s, onDone }: { s: AuctionState; onDone: () => void
     setBusy("finish");
     setErr("");
     try {
-      const r = await priv!.finishPrivateBids(s.address, (m) => setBusy(m));
+      const r = await priv!.finishPrivateBids(s.address, (m) => setBusy(m), sharedFor(priv!) ?? undefined);
       toast(r.claimed ? `${s.tokenSymbol} and refunds moved into your private balance` : "Refund moved into your private balance");
       await load();
       onDone();

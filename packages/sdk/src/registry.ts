@@ -38,6 +38,11 @@ export interface CloakRegistry {
   batcher?: Address;
   batcherBlock?: bigint;
   migrator?: Address;
+  /** SharedVault: one private vault for every new Uniswap launch token (testnet experiment). */
+  shared?: Address;
+  sharedBlock?: bigint;
+  /** SharedRouter: private buys, sells and hidden sends for the shared vault. */
+  sharedRouter?: Address;
   factory: Address;
   factoryBlock: bigint;
   /** Earlier factories of the current version (a factory added next to the first), newest first. */
@@ -78,6 +83,9 @@ export async function readRegistry(publicClient: PublicClient, config: Address):
     batcher: batcher?.addr,
     batcherBlock: batcher?.startBlock,
     migrator: newest("migrator", router.version)?.addr,
+    shared: newest("shared")?.addr,
+    sharedBlock: newest("shared")?.startBlock,
+    sharedRouter: newest("sharedRouter")?.addr,
     factory: factory.addr,
     factoryBlock: factory.startBlock,
     earlierFactories: entries.filter((e) => e.kind === "factory" && e.version === factory.version && e.addr !== factory.addr).reverse().map((e) => e.addr),

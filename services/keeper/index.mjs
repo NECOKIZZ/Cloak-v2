@@ -22,7 +22,8 @@ import { createServer } from "node:http";
 import { startSnapshots } from "./snapshot.mjs";
 import { createPublicClient, createWalletClient, http, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
+import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter, SHARED_SWAP_DATA_ABI } from "@cloakely/sdk";
+import { decodeAbiParameters } from "viem";
 
 const RPC = process.env.RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];
 const chain = RPC.includes("127.0.0.1") || RPC.includes("localhost") ? anvilLocal : elysiumTestnet;
@@ -52,6 +53,10 @@ const ROUTER = env("ROUTER") ?? reg?.router; // enables POST /relay for private 
 const BATCHER = env("BATCHER") ?? reg?.batcher; // enables batch-auction orders + settles/claims rounds
 const BATCHER_BLOCK = BigInt(env("BATCHER_BLOCK") ?? reg?.batcherBlock ?? START_BLOCK);
 const MIGRATOR = env("MIGRATOR") ?? reg?.migrator; // enables relayed moves from earlier deployments
+// the shared launch-token vault (testnet experiment): launches created after it opens go in it instead of a vault each
+const SHARED = reg?.shared;
+const SHARED_ROUTER = reg?.sharedRouter;
+const SHARED_BLOCK = reg?.sharedBlock;
 // v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
 const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
 
@@ -128,9 +133,34 @@ async function tick() {
   status.lastTick = Date.now();
 }
 
+/** Launches created before the shared vault opened: they keep a vault of their own. Read once. */
+let preShared = null;
+async function createdBeforeShared(auction) {
+  if (!preShared) {
+    const logs = await publicClient.getContractEvents({ address: [FACTORY, ...EARLIER], abi: cloakFactoryAbi, eventName: "LaunchCreated", fromBlock: START_BLOCK, toBlock: SHARED_BLOCK - 1n, strict: true });
+    preShared = new Set(logs.map((l) => l.args.auction.toLowerCase()));
+  }
+  return preShared.has(auction.toLowerCase());
+}
+
 /** The launch's permanent private vault, so winners can claim privately and the token trades privately at once. */
 async function openVault(auction, token, factory, index) {
+  // a Uniswap launch created after the shared vault opened goes in the shared vault
+  if (SHARED && !(await createdBeforeShared(auction))) {
+    const s = await cloak.getAuction(auction);
+    if (BigInt(s.uniPair ?? 0) !== 0n) {
+      const own = VAULTS ? await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [token] }) : zeroAddress;
+      if (own !== zeroAddress) return;
+      if (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [token] })) return;
+      const c = { address: SHARED, abi: sharedVaultAbi, functionName: "admit", args: [factory, index] };
+      await publicClient.simulateContract({ ...c, account });
+      log(auction, `admitted to the shared vault ${await walletClient.writeContract(c)}`);
+      return;
+    }
+  }
   if (!VAULTS) return;
+  // never a second vault for a token someone already let into the shared vault
+  if (SHARED && (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [token] }))) return;
   const pool = await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [token] });
   if (pool !== zeroAddress) return;
   const c = { address: VAULTS, abi: cloakVaultsAbi, functionName: "createPool", args: [factory, index] };
@@ -357,6 +387,88 @@ async function relay(body) {
   }
 }
 
+// ───────────── shared launch-token vault relay ─────────────
+// sharedTransact (a withdrawal or note merge, fee in the token), sharedSell (fee in the token), sharedBuy (fee in HYPE)
+// and sharedSend (a send that hides its token; a second proof pays the fee from the sender's HYPE vault).
+const SHARED_KINDS = ["sharedTransact", "sharedBuy", "sharedSell", "sharedSend"];
+const SHARED_GAS = { sharedTransact: 2_000_000n, sharedSell: 2_700_000n, sharedBuy: 2_700_000n, sharedSend: 3_800_000n };
+const readShared = (functionName, args = []) => publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName, args });
+async function quoteShared(kind, token) {
+  if (!SHARED_KINDS.includes(kind)) throw err("bad kind", 400);
+  if (!SHARED || !SHARED_ROUTER || !ROUTER) throw err("the shared vault isn't enabled on this relayer", 503);
+  const gasPrice = await publicClient.getGasPrice();
+  const hype = (SHARED_GAS[kind] * (gasPrice > MIN_GAS_PRICE ? gasPrice : MIN_GAS_PRICE) * MARGIN_BPS) / 10_000n;
+  if (kind === "sharedBuy") return hype;
+  // a hidden send never tells the relayer its token: its fee comes out of the HYPE vault, which keeps its withdrawal fee
+  if (kind === "sharedSend") return (hype * 10_000n) / (10_000n - BigInt(await publicClient.readContract({ address: await readRouter("config"), abi: [{ type: "function", name: "withdrawFeeBps", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] }], functionName: "withdrawFeeBps" }))) + 1n;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(token ?? "") || !(await readShared("admitted", [token]))) throw err("this token isn't in the shared vault", 400);
+  const market = await readShared("marketOf", [token]);
+  const [rH, rT] = await Promise.all([
+    publicClient.readContract({ address: market, abi: cloakPairAbi, functionName: "reserveHype" }),
+    publicClient.readContract({ address: market, abi: cloakPairAbi, functionName: "reserveToken" }),
+  ]);
+  if (rH === 0n) throw err("no market for this token", 400);
+  return (hype * rT) / rH + 1n;
+}
+
+const parseProof = (p) => ({
+  a: big(p.a), b: big(p.b), c: big(p.c), root: big(p.root), publicAmount: big(p.publicAmount), extDataHash: big(p.extDataHash),
+  ...(p.publicAsset !== undefined ? { publicAsset: big(p.publicAsset) } : {}),
+  inputNullifiers: big(p.inputNullifiers), outputCommitments: big(p.outputCommitments),
+});
+const parseExt = (e) => ({ ...e, extAmount: BigInt(e.extAmount), fee: BigInt(e.fee) });
+const me = (a) => String(a).toLowerCase() === account.address.toLowerCase();
+
+async function relayShared(body) {
+  if (!SHARED || !SHARED_ROUTER || !ROUTER) throw err("the shared vault isn't enabled on this relayer", 503);
+  const { kind } = body;
+  if (!SHARED_KINDS.includes(kind)) throw err("bad kind", 400);
+  const proof = parseProof(body.proof);
+  const extData = parseExt(body.extData);
+  const hypePool = await readRouter("hypePool");
+  let call, spends;
+  if (kind === "sharedBuy") {
+    const [d] = decodeAbiParameters(SHARED_SWAP_DATA_ABI, extData.data);
+    if (!me(extData.relayer) || extData.fee * 10n < (await quoteShared(kind, d.token)) * 8n) throw err("relayer fee too low: GET /quote-shared first", 402);
+    call = { address: SHARED_ROUTER, abi: sharedRouterAbi, functionName: "buy", args: [proof, extData] };
+    spends = [[hypePool, shieldedPoolAbi, proof.inputNullifiers]];
+  } else if (kind === "sharedSend") {
+    if (!body.feeProof || !body.feeExtData) throw err("malformed request", 400);
+    const feeProof = parseProof(body.feeProof);
+    const feeExt = parseExt(body.feeExtData);
+    if (proof.publicAsset !== 0n || extData.extAmount !== 0n || extData.fee !== 0n) throw err("a hidden send moves no tokens and pays no fee in the vault", 400);
+    if (feeExt.recipient.toLowerCase() !== SHARED_ROUTER.toLowerCase() || -feeExt.extAmount * 10n < (await quoteShared(kind)) * 8n) throw err("relayer fee too low: GET /quote-shared first", 402);
+    call = { address: SHARED_ROUTER, abi: sharedRouterAbi, functionName: "send", args: [proof, extData, feeProof, feeExt] };
+    spends = [[SHARED, sharedVaultAbi, proof.inputNullifiers], [hypePool, shieldedPoolAbi, feeProof.inputNullifiers]];
+  } else {
+    const token = `0x${(proof.publicAsset ?? 0n).toString(16).padStart(40, "0")}`;
+    if (!me(extData.relayer) || extData.fee * 10n < (await quoteShared(kind, token)) * 8n) throw err("relayer fee too low: GET /quote-shared first", 402);
+    call = kind === "sharedSell"
+      ? { address: SHARED_ROUTER, abi: sharedRouterAbi, functionName: "sell", args: [proof, extData] }
+      : { address: SHARED, abi: sharedVaultAbi, functionName: "transact", args: [proof, extData] };
+    spends = [[SHARED, sharedVaultAbi, proof.inputNullifiers]];
+  }
+  const keys = spends.flatMap(([pool, , ns]) => ns.map((n) => `${chain.id}:${pool.toLowerCase()}:${n}`));
+  if (keys.some((k) => inflight.has(k))) throw err("this spend is already being relayed", 409);
+  for (const [pool, abi, ns] of spends) for (const n of ns) if (await publicClient.readContract({ address: pool, abi, functionName: "isSpent", args: [n] })) throw err("already spent", 409);
+  keys.forEach((k) => inflight.set(k, Date.now() + 180_000));
+  let gas;
+  try {
+    await publicClient.simulateContract({ ...call, account });
+    gas = await publicClient.estimateContractGas({ ...call, account: account.address });
+  } catch (e) {
+    keys.forEach((k) => inflight.delete(k));
+    throw isNetworkError(e) ? err("The network didn't answer. Nothing was sent, so try again in a moment.", 503) : e;
+  }
+  try {
+    return await walletClient.writeContract({ ...call, gas: (gas * 13n) / 10n + 100_000n });
+  } catch (e) {
+    if (isNetworkError(e)) throw err("The network didn't answer while sending. Check your balance in a minute before trying again.", 503);
+    keys.forEach((k) => inflight.delete(k));
+    throw e;
+  }
+}
+
 // Browsers may only call the relayer from these sites. Other apps run their own keeper or set CORS_ORIGINS.
 const ORIGINS = (process.env.CORS_ORIGINS ?? "https://cloak.boblabs.tech,http://localhost:5173,http://localhost:4173").split(",").map((s) => s.trim());
 const MAX_BODY = 64 * 1024;
@@ -380,7 +492,7 @@ const send = (req, res, code, obj) => {
 createServer((req, res) => {
   const path = (req.url ?? "/").split("?")[0];
   if (req.method === "OPTIONS") return send(req, res, 204, {});
-  if (req.method === "POST" && path === "/relay") {
+  if (req.method === "POST" && (path === "/relay" || path === "/relay-shared")) {
     if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
     let body = "";
     let size = 0;
@@ -405,7 +517,7 @@ createServer((req, res) => {
         return send(req, res, 400, { error: "malformed request" });
       }
       try {
-        const txHash = await relay(parsed);
+        const txHash = await (path === "/relay-shared" ? relayShared(parsed) : relay(parsed));
         console.log(`[relay] ${txHash}`);
         send(req, res, 200, { txHash });
       } catch (e) {
@@ -426,6 +538,14 @@ createServer((req, res) => {
       .catch((e) => send(req, res, e.status ?? 400, { error: e.status ? e.message : "quote failed" }));
     return;
   }
+  if (req.method === "GET" && path === "/quote-shared") {
+    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
+    const q = new URL(req.url, "http://x").searchParams;
+    quoteShared(q.get("kind"), q.get("token") ?? undefined)
+      .then((fee) => send(req, res, 200, { relayer: account.address, fee: fee.toString() }))
+      .catch((e) => send(req, res, e.status ?? 400, { error: e.status ? e.message : "quote failed" }));
+    return;
+  }
   if (req.method === "GET" && path === "/snapshot") {
     const body = snapshot?.get();
     if (!body) return send(req, res, 503, { error: "no snapshot yet" });
@@ -436,7 +556,7 @@ createServer((req, res) => {
     return res.end(gz ? snapshot.gz() : body);
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, claimDelay: CLAIM_DELAY });
+    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, shared: SHARED ?? null, sharedRouter: SHARED_ROUTER ?? null, claimDelay: CLAIM_DELAY });
   }
   send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));

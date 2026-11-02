@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
-import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, type AuctionState, type Wallet, Cloak } from "@cloakely/sdk";
-import { addrLink, DEPLOYMENT, FACTORY, txLink, VAULTS } from "./config";
+import { budgetBuckets, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, sharedVaultAbi, type AuctionState, type Wallet, Cloak } from "@cloakely/sdk";
+import { addrLink, DEPLOYMENT, FACTORY, SHARED, txLink, VAULTS } from "./config";
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
-import { useApp } from "./state";
+import { sharedFor, useApp } from "./state";
 import { friendly } from "./errors";
 import { markDone } from "./guide";
 import { compressImage, encodeMeta, loadAllMeta } from "./tokenMeta";
@@ -256,13 +256,16 @@ type MyBid = Awaited<ReturnType<Cloak["bidsOf"]>>[number];
  * Whether this wallet's won bids can be claimed straight into the private vault: a v4 launch whose vault is open, and
  * each claim within the vault's beta deposit cap (checked by simulating it). "cap" when the cap blocks it.
  */
-function usePrivateClaim(s: AuctionState, won: MyBid[], account?: Address): "yes" | "no" | "cap" {
-  const [ok, setOk] = useState<"yes" | "no" | "cap">("no");
+function usePrivateClaim(s: AuctionState, won: MyBid[], account?: Address): "yes" | "no" | "cap" | "shared" {
+  const [ok, setOk] = useState<"yes" | "no" | "cap" | "shared">("no");
   const ids = won.map((b) => b.id.toString()).join(",");
   useEffect(() => {
     let alive = true;
-    (async (): Promise<"yes" | "no" | "cap"> => {
-      if (!VAULTS || !FACTORY || !s.settled || s.failed || !account || !won.length) return "no";
+    (async (): Promise<"yes" | "no" | "cap" | "shared"> => {
+      if (!FACTORY || !s.settled || s.failed || !account || !won.length) return "no";
+      // a launch whose token lives in the shared vault: claim to the wallet, then move the tokens in
+      if (SHARED && (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [s.token] }).catch(() => false))) return "shared";
+      if (!VAULTS) return "no";
       const factory = await publicClient.readContract({ address: s.address, abi: cloakAuctionAbi, functionName: "factory" }).catch(() => undefined);
       const ours = [FACTORY, ...(DEPLOYMENT?.earlierFactories ?? [])].map((x) => x.toLowerCase());
       if (!factory || !ours.includes(factory.toLowerCase())) return "no"; // launches before v4 have no private claim
@@ -292,7 +295,7 @@ export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: W
   const unclaimed = bids.filter((b) => !b.claimed).map((b) => b.id);
   const won = bids.filter((b) => !b.claimed && b.tokens > 0n);
   const privateClaim = usePrivateClaim(s, won, wallet?.account.address);
-  const canPrivate = privateClaim === "yes";
+  const canPrivate = privateClaim === "yes" || privateClaim === "shared";
   if (!wallet) return null;
   const secrets = loadSecrets(s.address);
 
@@ -313,7 +316,11 @@ export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: W
     act("pclaim", async () => {
       const p = priv ?? (await unlock());
       if (!p) throw new Error("Unlock your private account to claim privately.");
-      for (const b of won) await p.claimPrivately(wallet!, s.address, b.id);
+      if (privateClaim === "shared") {
+        const sh = sharedFor(p, wallet);
+        if (!sh) throw new Error("Private claims aren't available on this deployment.");
+        await sh.claimInto(wallet!, s.address, won.map((b) => b.id));
+      } else for (const b of won) await p.claimPrivately(wallet!, s.address, b.id);
       toast(`${s.tokenSymbol} claimed into your private balance`);
     });
   return (

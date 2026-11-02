@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { cloakConfigAbi, cloakPairAbi, cloakTokenAbi, privateRouterAbi } from "@cloakely/sdk";
-import { ROUTER } from "../config";
+import { cloakConfigAbi, cloakPairAbi, cloakTokenAbi, privateRouterAbi, sharedVaultAbi } from "@cloakely/sdk";
+import { ROUTER, SHARED } from "../config";
 import { publicClient } from "../wallet";
 import { friendly } from "../errors";
 import { getSnapshot, save, saved } from "../snapshot";
@@ -18,6 +18,30 @@ export interface Market {
   reserveToken: bigint;
   /** Batch rounds need the pair's time-weighted price, which first-deployment pairs don't have. */
   batchable: boolean;
+  /** In the shared launch-token vault (pool is the shared vault): instant trades, sends that hide the token. */
+  shared?: boolean;
+}
+
+/** Tokens in the shared launch-token vault, with their Uniswap market. Always read from the chain. */
+async function sharedMarkets(): Promise<Market[]> {
+  if (!SHARED) return [];
+  const c = { address: SHARED, abi: sharedVaultAbi } as const;
+  const n = Number(await publicClient.readContract({ ...c, functionName: "tokensCount" }));
+  const tokens = await Promise.all(Array.from({ length: n }, (_, i) => publicClient.readContract({ ...c, functionName: "tokens", args: [BigInt(i)] })));
+  const rows = await Promise.all(
+    tokens.map(async (token): Promise<Market> => {
+      const pair = await publicClient.readContract({ ...c, functionName: "marketOf", args: [token] });
+      const [symbol, name, reserveHype, reserveToken, price] = await Promise.all([
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "symbol" }),
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "name" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveHype" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "price" }),
+      ]);
+      return { token, pool: SHARED!, pair, symbol, name, price, reserveHype, reserveToken, batchable: false, shared: true };
+    }),
+  );
+  return rows.reverse();
 }
 
 let cache: { at: number; data: Market[] } | null = null;
@@ -68,7 +92,10 @@ export async function loadMarkets(force = false): Promise<Market[]> {
   if (!ROUTER) return [];
   if (!force && cache && Date.now() - cache.at < 15_000) return cache.data;
   const snap = force ? null : await getSnapshot();
-  const data = (snap && (await checked(snap.markets as Market[]))) || (await marketsFromChain());
+  const [own, shared] = await Promise.all([(async () => (snap && (await checked(snap.markets as Market[]))) || (await marketsFromChain()))(), sharedMarkets().catch(() => [] as Market[])]);
+  // a token is listed once: if it is in the shared vault, that is where its private balance lives
+  const inShared = new Set(shared.map((m) => m.token.toLowerCase()));
+  const data = [...shared, ...own.filter((m) => !inShared.has(m.token.toLowerCase()))];
   cache = { at: Date.now(), data };
   save("markets", data);
   return data;

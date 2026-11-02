@@ -25,6 +25,8 @@ export interface OwnedNote {
   commitment: bigint;
   nullifier: bigint;
   spent: boolean;
+  /** Shared vault only: which token this note holds (its address as a number). */
+  asset?: bigint;
 }
 
 export interface OutputNote {
@@ -127,6 +129,9 @@ export async function buildTransaction(p: {
   dummyPubKey: bigint;
   dummyMemo: (blinding: bigint) => Hex;
   prover: Prover;
+  /** Shared vault only: the token every note of this transaction holds, and whether the proof names it (0 hides it). */
+  asset?: bigint;
+  publicAsset?: bigint;
 }): Promise<{ proof: ProofArgs; extData: ExtData }> {
   const extAmount = p.extAmount ?? 0n;
   const fee = p.fee ?? 0n;
@@ -137,6 +142,9 @@ export async function buildTransaction(p: {
     const privKey = randomField();
     ins.push({ amount: 0n, privKey, pubKey: await poseidon([privKey]), blinding: randomField(), leafIndex: 0 });
   }
+  const shared = p.asset !== undefined;
+  if (shared && p.inputs.some((n) => n.asset !== p.asset)) throw new Error("every input must hold the same token");
+  if (shared && (extAmount !== 0n || fee !== 0n) && p.publicAsset !== p.asset) throw new Error("moving tokens in or out must name the token");
   const outs = p.outputs.map((o) => ({ ...o, blinding: o.blinding ?? randomField() }));
   while (outs.length < 2) outs.push({ amount: 0n, pubKey: p.dummyPubKey, blinding: randomField(), memo: p.dummyMemo });
   for (const o of outs) if (o.amount < 0n || o.amount >= MAX_NOTE_AMOUNT) throw new Error("output amount out of range");
@@ -171,8 +179,9 @@ export async function buildTransaction(p: {
     root,
     publicAmount: fieldMod(extAmount - fee),
     extDataHash: hashExtData(extData),
-    inputNullifier: await Promise.all(ins.map((n) => nullifierOf(n, n.leafIndex, n.privKey))),
-    outputCommitment: await Promise.all(outs.map((o) => noteCommitment(o))),
+    ...(shared ? { publicAsset: p.publicAsset ?? 0n, asset: p.asset } : {}),
+    inputNullifier: await Promise.all(ins.map((n) => nullifierOf({ ...n, asset: p.asset }, n.leafIndex, n.privKey))),
+    outputCommitment: await Promise.all(outs.map((o) => noteCommitment({ ...o, asset: p.asset }))),
     inAmount: ins.map((n) => n.amount),
     inPrivateKey: ins.map((n) => n.privKey),
     inBlinding: ins.map((n) => n.blinding),

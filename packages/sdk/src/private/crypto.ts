@@ -108,9 +108,12 @@ export interface Note {
   amount: bigint;
   pubKey: bigint;
   blinding: bigint;
+  /** Shared vault only: the token's address as a number. Notes of single-token vaults have none. */
+  asset?: bigint;
 }
 
-export const noteCommitment = (n: Note) => poseidon([n.amount, n.pubKey, n.blinding]);
+export const noteCommitment = (n: Note) =>
+  n.asset === undefined ? poseidon([n.amount, n.pubKey, n.blinding]) : poseidon([n.amount, n.pubKey, n.blinding, n.asset]);
 
 export async function nullifierOf(n: Note, leafIndex: number, privKey: bigint) {
   const c = await noteCommitment(n);

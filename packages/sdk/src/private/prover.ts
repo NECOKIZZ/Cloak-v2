@@ -7,6 +7,8 @@ export interface ProofArgs {
   extDataHash: bigint;
   inputNullifiers: [bigint, bigint];
   outputCommitments: [bigint, bigint];
+  /** Shared-vault proofs only: the token named publicly, or 0 for a send that hides it. */
+  publicAsset?: bigint;
 }
 export type Prover = (input: Record<string, unknown>) => Promise<ProofArgs>;
 
@@ -34,6 +36,33 @@ export function createProver(wasm: Uint8Array, zkey: Uint8Array): Prover {
       extDataHash: s[2],
       inputNullifiers: [s[3], s[4]],
       outputCommitments: [s[5], s[6]],
+    };
+  };
+}
+
+/** Groth16 prover for the shared launch-token vault (`transactionMA2x2`, 8 public signals). */
+export function createSharedProver(wasm: Uint8Array, zkey: Uint8Array): Prover {
+  return async (input) => {
+    const snarkjs = await import("snarkjs");
+    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+      Object.fromEntries(Object.entries(input).map(([k, v]) => [k, str(v)])),
+      wasm,
+      zkey,
+    );
+    const s = (publicSignals as string[]).map(BigInt);
+    return {
+      a: [BigInt(proof.pi_a[0]), BigInt(proof.pi_a[1])],
+      b: [
+        [BigInt(proof.pi_b[0][1]), BigInt(proof.pi_b[0][0])],
+        [BigInt(proof.pi_b[1][1]), BigInt(proof.pi_b[1][0])],
+      ],
+      c: [BigInt(proof.pi_c[0]), BigInt(proof.pi_c[1])],
+      root: s[0],
+      publicAmount: s[1],
+      extDataHash: s[2],
+      publicAsset: s[3],
+      inputNullifiers: [s[4], s[5]],
+      outputCommitments: [s[6], s[7]],
     };
   };
 }

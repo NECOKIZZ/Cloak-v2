@@ -360,7 +360,7 @@ export class CloakPrivate {
     return this.publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [amount] }).catch(() => amount);
   }
 
-  private async changeOutput(amount: bigint) {
+  async changeOutput(amount: bigint) {
     const main = await this.keys.main();
     return { amount, pubKey: main.pubKey, memo: (b: bigint) => encryptFullMemo(this.keys.encPub, amount, b, MAIN_KEY) };
   }
@@ -374,7 +374,7 @@ export class CloakPrivate {
    * Get 1–2 notes (from one tree epoch) covering `target`, merging notes privately first when the balance is spread
    * across many. Each merge is a relayed transaction and pays the relayer's fee from the merged notes.
    */
-  private async inputsFor(pool: Address, target: bigint, onStatus: Status): Promise<OwnedNote[]> {
+  async inputsFor(pool: Address, target: bigint, onStatus: Status): Promise<OwnedNote[]> {
     for (let round = 0; round < 6; round++) {
       const live = await this.sync(pool);
       const byEpoch = new Map<number, OwnedNote[]>();
@@ -547,13 +547,19 @@ export class CloakPrivate {
    * wallet's HYPE back into the private balance. Before settlement it only moves back HYPE from a one-time wallet whose
    * bid never went through. Safe to call again; it only does what's left.
    */
-  async finishPrivateBids(auction: Address, onStatus: Status = () => {}): Promise<{ claimed: number; movedHype: bigint; movedTokens: bigint }> {
+  async finishPrivateBids(
+    auction: Address,
+    onStatus: Status = () => {},
+    /** The shared launch-token vault, for launches whose token lives there (claimed to the bid wallet, then moved in). */
+    shared?: { isAdmitted(token: Address): Promise<boolean>; shield(wallet: Wallet, token: Address, amount: bigint): Promise<Hex> },
+  ): Promise<{ claimed: number; movedHype: bigint; movedTokens: bigint }> {
     const reader = new Cloak(this.publicClient);
     const s = await reader.getAuction(auction);
     let claimed = 0;
     let movedHype = 0n;
     let movedTokens = 0n;
     const vaultOpen = !s.failed && this.markets.some((m) => m.token.toLowerCase() === s.token.toLowerCase());
+    const inShared = !s.failed && !vaultOpen && !!shared && (await shared.isAdmitted(s.token));
     for (const bw of await this.bidWallets(auction)) {
       const c = new Cloak(this.publicClient, bw.wallet);
       const bids = await reader.bidsOf(auction, bw.address);
@@ -577,12 +583,12 @@ export class CloakPrivate {
         const h = await bw.wallet.writeContract({ address: auction, abi: cloakAuctionAbi, functionName: "withdrawRefund", args: [bw.address] });
         await this.publicClient.waitForTransactionReceipt({ hash: h });
       }
-      if (vaultOpen) {
+      if (vaultOpen || inShared) {
         const t = await this.publicClient.readContract({ address: s.token, abi: ERC20_ABI, functionName: "balanceOf", args: [bw.address] });
         if (t > 0n) {
           onStatus("Moving tokens into your private balance…");
           try {
-            await this.shieldToken(bw.wallet, s.token, t);
+            await (inShared ? shared!.shield(bw.wallet, s.token, t) : this.shieldToken(bw.wallet, s.token, t));
             movedTokens += t;
           } catch {} // a cap may block it; the tokens stay in the one-time wallet, which nobody can tie to you
         }

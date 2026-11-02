@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { CloakPrivate, loadProver, relayerSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
-import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, ASSETS } from "./config";
+import { CloakPrivate, SharedVaultClient, createSharedProver, loadProver, relayerSubmitter, sharedRelayerSubmitter, sharedWalletSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
+import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, ASSETS, SHARED, SHARED_BLOCK, SHARED_ROUTER } from "./config";
 import { chain, IS_LOCAL } from "./config";
 import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";
@@ -8,6 +8,23 @@ import { connectBurner, connectProvider, ensureElysium, installedWallets, public
 
 let proverPromise: Promise<Prover> | null = null;
 export const getProver = () => (proverPromise ??= loadProver("/circuits"));
+// the shared vault's circuit (12 MB), fetched the first time a shared-vault token is moved
+let sharedProverPromise: Promise<Prover> | null = null;
+export const getSharedProver = () =>
+  (sharedProverPromise ??= Promise.all(
+    ["transactionMA2x2.wasm", "transactionMA2x2_final.zkey"].map(async (f) => {
+      const r = await fetch(`/circuits/${f}`);
+      if (!r.ok) throw new Error(`could not download ${f}`);
+      return new Uint8Array(await r.arrayBuffer());
+    }),
+  ).then(([w, z]) => createSharedProver(w, z)).catch((e) => ((sharedProverPromise = null), Promise.reject(e))));
+
+/** The shared launch-token vault client for a private account (null when the deployment has none). */
+export function sharedFor(p: CloakPrivate, w?: Wallet | null): SharedVaultClient | null {
+  if (!SHARED || !SHARED_ROUTER) return null;
+  const ss = RELAYER_URL ? sharedRelayerSubmitter(RELAYER_URL) : w ? sharedWalletSubmitter(p, w, SHARED, SHARED_ROUTER) : null;
+  return ss ? new SharedVaultClient(p, SHARED, SHARED_ROUTER, getSharedProver, ss, SHARED_BLOCK) : null;
+}
 
 export type Theme = "light" | "dark" | "auto";
 
@@ -20,6 +37,8 @@ interface AppState {
   wrongChain: boolean;
   switchNetwork: () => Promise<void>;
   priv: CloakPrivate | null;
+  /** The shared launch-token vault for this private account (null when the deployment has none). */
+  shared: SharedVaultClient | null;
   privAddress: string;
   unlock: () => Promise<CloakPrivate | null>;
   unlocking: boolean;
@@ -41,6 +60,7 @@ function applyTheme(t: Theme) {
 export function AppProvider({ children }: { children: ReactNode }) {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [priv, setPriv] = useState<CloakPrivate | null>(null);
+  const [shared, setShared] = useState<SharedVaultClient | null>(null);
   const [privAddress, setPrivAddress] = useState("");
   const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState("");
@@ -97,6 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWallet(null);
     setWalletInfo(null);
     setPriv(null);
+    setShared(null);
     setPrivAddress("");
     setWrongChain(false);
     try {
@@ -111,6 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!accs?.length) return disconnect();
       setWallet(walletFor(provider, accs[0] as `0x${string}`));
       setPriv(null); // private keys come from the wallet, so a new account means a new private account
+      setShared(null);
       setPrivAddress("");
     };
     const onChain = (id: string) => setWrongChain(Number(id) !== chain.id);
@@ -229,6 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await p.loadMarkets();
       ASSETS.forEach((a) => p.addAsset(a));
       setPrivAddress(await p.address());
+      setShared(sharedFor(p, w));
       setPriv(p);
       getProver(); // warm the 12 MB circuit download
       return p;
@@ -241,7 +264,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [priv, wallet, connect]);
 
   return (
-    <Ctx.Provider value={{ wallet, connect, disconnect, walletInfo, provider, wrongChain, switchNetwork, priv, privAddress, unlock, unlocking, error, setError, theme, setTheme, toast }}>
+    <Ctx.Provider value={{ wallet, connect, disconnect, walletInfo, provider, wrongChain, switchNetwork, priv, shared, privAddress, unlock, unlocking, error, setError, theme, setTheme, toast }}>
       {children}
       {modal && <WalletModal onPick={pick} onClose={closeModal} onDevWallet={IS_LOCAL ? devPick : undefined} />}
       {toastMsg && <div className="toast">{toastMsg}</div>}

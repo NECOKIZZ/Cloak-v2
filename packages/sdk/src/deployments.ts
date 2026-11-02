@@ -43,6 +43,12 @@ export interface CloakDeployment {
   batcher: Address;
   /** Moves balances from every earlier deployment into the permanent vaults. */
   migrator?: Address;
+  /** SharedVault: one private vault for every new Uniswap launch token (testnet experiment). */
+  shared?: Address;
+  /** Block the shared vault was deployed in: scan its notes from here. */
+  sharedBlock?: bigint;
+  /** SharedRouter: private buys, sells and hidden sends for the shared vault. */
+  sharedRouter?: Address;
   hypePool: Address;
   whype: Address;
   /** Hosted relayer (POST /relay, GET /quote). */
@@ -72,6 +78,10 @@ export const deployments: Record<number, CloakDeployment> = {
     firstFactoryBlock: 19484794n,
     seeder: "0x633aa82b806dafc0ae4c84418d23f3726139a88d",
     feeLocker: "0x3b74062a72b16f9a221d63515518a635414501d8",
+    // the shared launch-token vault (Nov 2, testnet experiment): new Uniswap launches keep their private balances here
+    shared: "0x0ce2ecb0195e07899377e3d7b01e927ab3f87610",
+    sharedBlock: 21426599n,
+    sharedRouter: "0xe2a0769a5acbd987c1b6725247c56187a112dc7e",
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",
@@ -152,6 +162,9 @@ export async function liveDeployment(publicClient: PublicClient, base: CloakDepl
     routerBlock: reg.routerBlock,
     batcher: reg.batcher ?? base.batcher,
     migrator: reg.migrator ?? base.migrator,
+    shared: reg.shared ?? base.shared,
+    sharedBlock: reg.sharedBlock ?? base.sharedBlock,
+    sharedRouter: reg.sharedRouter ?? base.sharedRouter,
     hypePool,
     whype,
     previous: reg.previous.length

@@ -63,6 +63,11 @@ export const PREVIOUS: PreviousDeployment[] = D?.previous ?? [];
 /** Every factory before the current one, newest first (this deployment's earlier factory, then earlier deployments'). */
 export const LEGACY_FACTORIES: Address[] = D ? legacyFactories(D) : [];
 
+/** The shared launch-token vault (testnet experiment): new Uniswap launches keep their private balances here. */
+export const SHARED = D?.shared;
+export const SHARED_ROUTER = D?.sharedRouter;
+export const SHARED_BLOCK = D?.sharedBlock ?? 0n;
+
 /** Vaults for existing tokens (USDC): private sends and withdrawals. The router also lists them; these load faster. */
 export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[] = D?.assets ?? [];
 
