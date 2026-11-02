@@ -56,11 +56,11 @@ export function Claim() {
       const pool = (t: LinkToken) => a.market(tokenOf(a, t)).pool;
       const [tr, un, us] = await Promise.all([a.relayFee("transact", pool("HYPE")), a.relayFee("unshieldHype", pool("HYPE")), a.relayFee("transact", pool("USDC")).catch(() => ({ fee: 0n }))]);
       setFees({ HYPEprivate: tr.fee, HYPEwallet: un.fee, USDCprivate: us.fee, USDCwallet: us.fee });
-      setAcct(a);
       if (l.shares && l.token) {
         const notes = await a.sync(a.market(tokenOf(a, l.token)).pool);
         setLeft(notes.length);
       }
+      setAcct(a);
       setBals(b);
     } catch (e) {
       setErr(friendly(e));
