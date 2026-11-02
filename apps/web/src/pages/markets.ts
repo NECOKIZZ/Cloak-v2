@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { cloakConfigAbi, cloakPairAbi, cloakTokenAbi, privateRouterAbi, sharedVaultAbi } from "@cloakely/sdk";
-import { ROUTER, SHARED } from "../config";
+import { ROUTER, SHARED, SHARED_BATCHER } from "../config";
 import { publicClient } from "../wallet";
 import { friendly } from "../errors";
 import { getSnapshot, save, saved } from "../snapshot";
@@ -38,7 +38,7 @@ async function sharedMarkets(): Promise<Market[]> {
         publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
         publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "price" }),
       ]);
-      return { token, pool: SHARED!, pair, symbol, name, price, reserveHype, reserveToken, batchable: false, shared: true };
+      return { token, pool: SHARED!, pair, symbol, name, price, reserveHype, reserveToken, batchable: !!SHARED_BATCHER, shared: true };
     }),
   );
   return rows.reverse();

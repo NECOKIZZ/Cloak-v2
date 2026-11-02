@@ -49,6 +49,8 @@ export interface CloakDeployment {
   sharedBlock?: bigint;
   /** SharedRouter: private buys, sells and hidden sends for the shared vault. */
   sharedRouter?: Address;
+  /** SharedBatcher: batch rounds for the shared vault's tokens. */
+  sharedBatcher?: Address;
   hypePool: Address;
   whype: Address;
   /** Hosted relayer (POST /relay, GET /quote). */
@@ -82,6 +84,7 @@ export const deployments: Record<number, CloakDeployment> = {
     shared: "0x0ce2ecb0195e07899377e3d7b01e927ab3f87610",
     sharedBlock: 21426599n,
     sharedRouter: "0xe2a0769a5acbd987c1b6725247c56187a112dc7e",
+    sharedBatcher: "0xdc725bdeb0fca923bf2dc65232f54463b0f80820",
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",
@@ -165,6 +168,7 @@ export async function liveDeployment(publicClient: PublicClient, base: CloakDepl
     shared: reg.shared ?? base.shared,
     sharedBlock: reg.sharedBlock ?? base.sharedBlock,
     sharedRouter: reg.sharedRouter ?? base.sharedRouter,
+    sharedBatcher: reg.sharedBatcher ?? base.sharedBatcher,
     hypePool,
     whype,
     previous: reg.previous.length

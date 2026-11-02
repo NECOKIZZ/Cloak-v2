@@ -97,8 +97,9 @@ export function Trade() {
   }, []);
   useEffect(() => {
     if (!priv || !BATCHER) return;
-    if (!round || now > round.endsAt) priv.roundInfo().then(setRound).catch(() => {});
-  }, [priv, now > (round?.endsAt ?? 0)]);
+    // the shared vault's batcher runs its own rounds (same length)
+    if (!round || now > round.endsAt) (market?.shared && shared ? shared.roundInfo() : priv.roundInfo()).then(setRound).catch(() => {});
+  }, [priv, shared, market?.shared, now > (round?.endsAt ?? 0)]);
 
   const split = splitStandard(amountIn, 6);
   const fromSym = side === "buy" ? "HYPE" : market?.symbol ?? "…";
@@ -117,7 +118,9 @@ export function Trade() {
       setBusy("Loading the prover…");
       await getProver();
       if (mode === "batch") {
-        const r = await p.batch(market.token as Address, side, amountIn, { onStatus: setBusy });
+        if (market.shared && !shared) throw new Error("Unlock your private account again to trade this token.");
+        if (market.shared && side === "sell") await getSharedProver();
+        const r = market.shared ? await shared!.batch(market.token, side, amountIn, { onStatus: setBusy }) : await p.batch(market.token as Address, side, amountIn, { onStatus: setBusy });
         const rounds = [...new Set(r.orders.map((o) => o.round.toString()))];
         markDone("swap");
         setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles.${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
@@ -227,7 +230,7 @@ export function Trade() {
               <div className="card flat">
                 <h3>In the shared vault</h3>
                 <p className="small soft" style={{ margin: "10px 0 0" }}>
-                  ${market.symbol} is a new launch, so its private balance lives in one vault with every other new launch token. When you send it privately, nobody can tell which token moved, only that something did. Batch mode isn't available for these tokens yet. Instant trades are.
+                  ${market.symbol} is a new launch, so its private balance lives in one vault with every other new launch token. When you send it privately, nobody can tell which token moved, only that something did. Batch mode works the same way as for every other token: standard sizes, one price per round, only the net hits the pool.
                 </p>
               </div>
             ) : (

@@ -85,13 +85,20 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
       }),
     );
     const from = d.sharedBlock ?? 0n;
+    const sb = d.sharedBatcher;
+    const [settles, orders] = sb
+      ? await Promise.all([
+          since(`${sb}:BatchSettled`, from, head, { address: sb, abi: privateBatcherAbi, eventName: "BatchSettled" }),
+          since(`${sb}:OrderPlaced`, from, head, { address: sb, abi: privateBatcherAbi, eventName: "OrderPlaced" }),
+        ])
+      : [[], []];
     const [buys, sells, sends, nullifiers] = await Promise.all([
       since(`${d.sharedRouter}:PrivateBuy`, from, head, { address: d.sharedRouter, abi: sharedRouterAbi, eventName: "PrivateBuy" }),
       since(`${d.sharedRouter}:PrivateSell`, from, head, { address: d.sharedRouter, abi: sharedRouterAbi, eventName: "PrivateSell" }),
       since(`${d.sharedRouter}:PrivateSend`, from, head, { address: d.sharedRouter, abi: sharedRouterAbi, eventName: "PrivateSend" }),
       since(`${d.shared}:NewNullifier`, from, head, { address: d.shared, abi: sharedVaultAbi, eventName: "NewNullifier" }),
     ]);
-    return { value: value.reduce((a, b) => a + b, 0n), buys, sells, sends, nullifiers };
+    return { value: value.reduce((a, b) => a + b, 0n), buys, sells, sends, nullifiers, settles, orders };
   }
 
   /** The Volume page's totals, from the current deployment and every earlier one (same rules as the site). */
@@ -119,7 +126,10 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
     );
     const sh = await sharedPart(head).catch((e) => (log(`[snapshot] shared vault skipped: ${e.shortMessage ?? e.message}`), null));
     const all = (k) => sources.flatMap((x) => x[k]);
-    const [shields, unshields, swaps, settles, orders, nullifiers] = ["shields", "unshields", "swaps", "settles", "orders", "nullifiers"].map(all);
+    const [shields, unshields, swaps, settles0, orders0, nullifiers] = ["shields", "unshields", "swaps", "settles", "orders", "nullifiers"].map(all);
+    // the shared vault's batch rounds count like any other
+    const settles = [...settles0, ...(sh?.settles ?? [])];
+    const orders = [...orders0, ...(sh?.orders ?? [])];
     const hypePools = new Set(sources.map((x) => x.hypePool.toLowerCase()));
     const sum = (xs) => xs.reduce((a, b) => a + b, 0n);
     const swapHype = swaps.map((e) => (hypePools.has(e.args.poolIn.toLowerCase()) ? e.args.amountIn : e.args.amountOut));

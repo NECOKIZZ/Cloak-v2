@@ -1,10 +1,10 @@
-import { encodeAbiParameters, formatEther, keccak256, zeroAddress, type Address, type Hex } from "viem";
-import { cloakAuctionAbi, cloakPairAbi, sharedRouterAbi, sharedVaultAbi } from "../abis.js";
+import { encodeAbiParameters, formatEther, keccak256, parseEventLogs, zeroAddress, type Address, type Hex } from "viem";
+import { cloakAuctionAbi, cloakPairAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi } from "../abis.js";
 import { Cloak, type Wallet } from "../cloak.js";
 import { MAIN_KEY, encryptFullMemo, encryptRouterMemo, noteCommitment, nullifierOf, parseCloakAddress, randomField, randomKeyIndex, readMemo } from "./crypto.js";
 import { MerkleTree } from "./tree.js";
 import type { ProofArgs, Prover } from "./prover.js";
-import { buildTransaction, selectNotes, type ExtData, type OwnedNote } from "./tx.js";
+import { ORDER_DATA_ABI, buildTransaction, selectNotes, splitStandard, type ExtData, type OwnedNote } from "./tx.js";
 import type { CloakPrivate, RelayQuote, Status } from "./client.js";
 
 /**
@@ -36,7 +36,7 @@ export const SHARED_SWAP_DATA_ABI = [
   },
 ] as const;
 
-export type SharedRelayKind = "sharedTransact" | "sharedBuy" | "sharedSell" | "sharedSend";
+export type SharedRelayKind = "sharedTransact" | "sharedBuy" | "sharedSell" | "sharedSend" | "sharedOrderBuy" | "sharedOrderSell";
 export interface SharedRelayCall {
   kind: SharedRelayKind;
   /** The shared-vault proof (or, for sharedBuy, the HYPE vault proof). */
@@ -72,10 +72,15 @@ export function sharedRelayerSubmitter(url: string): SharedSubmitter {
 }
 
 /** Submit shared-vault calls from a wallet (that wallet pays gas and appears as the sender). For tests and relayers. */
-export function sharedWalletSubmitter(priv: CloakPrivate, wallet: Wallet, vault: Address, router: Address): SharedSubmitter {
+export function sharedWalletSubmitter(priv: CloakPrivate, wallet: Wallet, vault: Address, router: Address, batcher?: Address): SharedSubmitter {
   return async (call) => {
+    if ((call.kind === "sharedOrderBuy" || call.kind === "sharedOrderSell") && !batcher) throw new Error("no shared batcher configured");
     const req =
-      call.kind === "sharedTransact"
+      call.kind === "sharedOrderBuy"
+        ? { address: batcher!, abi: sharedBatcherAbi, functionName: "placeBuy", args: [call.proof, call.extData] }
+        : call.kind === "sharedOrderSell"
+          ? { address: batcher!, abi: sharedBatcherAbi, functionName: "placeSell", args: [call.proof, call.extData] }
+          : call.kind === "sharedTransact"
         ? { address: vault, abi: sharedVaultAbi, functionName: "transact", args: [call.proof, call.extData] }
         : call.kind === "sharedBuy"
           ? { address: router, abi: sharedRouterAbi, functionName: "buy", args: [call.proof, call.extData] }
@@ -122,6 +127,8 @@ export class SharedVaultClient {
     readonly prover: () => Promise<Prover>,
     readonly submit: SharedSubmitter,
     readonly fromBlock = 0n,
+    /** SharedBatcher: batch rounds that hide trade size for these tokens. */
+    readonly batcher?: Address,
   ) {
     this.nextBlock = fromBlock;
   }
@@ -469,5 +476,90 @@ export class SharedVaultClient {
     });
     onStatus("Relaying…");
     return this.submit({ kind: "sharedTransact", proof, extData });
+  }
+
+  // ───────────── batch rounds (hide trade size) ─────────────
+
+  async roundInfo(): Promise<{ round: bigint; endsAt: number; roundSecs: number }> {
+    if (!this.batcher) throw new Error("no shared batcher configured");
+    const c = { address: this.batcher, abi: sharedBatcherAbi } as const;
+    const [round, roundSecs] = await Promise.all([this.pub.readContract({ ...c, functionName: "currentRound" }), this.pub.readContract({ ...c, functionName: "roundSecs" })]);
+    return { round, roundSecs: Number(roundSecs), endsAt: Number((round + 1n) * roundSecs) };
+  }
+
+  /**
+   * Batched private buy or sell of a shared-vault token: the amount is split into standard sizes (1, 2, 5 × 10ⁿ), each
+   * placed by the relayer into the current round. When the round ends, buys and sells cross at the pool's average price
+   * and only the net trades on Uniswap; outputs arrive as private notes. Nobody can tell how much any one trader moved.
+   * Any remainder that isn't a standard size stays in the private balance.
+   */
+  async batch(token: Address, side: "buy" | "sell", amount: bigint, opts: { maxOrders?: number; onStatus?: Status } = {}) {
+    if (!this.batcher) throw new Error("no shared batcher configured");
+    if (!this.tokens.length) await this.loadTokens();
+    this.info(token);
+    const onStatus = opts.onStatus ?? (() => {});
+    const asset = asNum(token);
+    const kind = side === "buy" ? "sharedOrderBuy" : "sharedOrderSell";
+    const hypePool = this.priv.hypeMarket.pool;
+    const maxOrders = opts.maxOrders ?? 6;
+    let { sizes, rest } = splitStandard(amount, maxOrders);
+    const fee = (await this.quote(kind, token)).fee;
+    if (fee > 0n) {
+      const have = side === "buy" ? await this.priv.balance(hypePool) : await this.balance(token);
+      const reserve = (n: number) => (fee * BigInt(n) * 5n) / 4n + fee;
+      if (sizes.reduce((a, x) => a + x, 0n) + reserve(sizes.length) > have) {
+        // every order pays its own relayer fee: use fewer orders when that's all the balance can pay for
+        let fit = false;
+        for (let n = maxOrders; n >= 1 && !fit; n--) {
+          const budget = have - reserve(n);
+          if (budget <= 0n) continue;
+          ({ sizes } = splitStandard(budget < amount ? budget : amount, n));
+          fit = sizes.length > 0;
+        }
+        if (!fit) throw new Error("insufficient private balance");
+        rest = amount - sizes.reduce((a, x) => a + x, 0n);
+      }
+    }
+    if (sizes.length === 0) throw new Error("amount too small for a standard-size order");
+    const placed: { id: bigint; size: bigint; round: bigint; txHash: Hex }[] = [];
+    for (let i = 0; i < sizes.length; i++) {
+      const size = sizes[i];
+      onStatus(`Order ${i + 1}/${sizes.length}: syncing…`);
+      const q = await this.quote(kind, token);
+      let inputs: OwnedNote[];
+      try {
+        inputs = side === "buy" ? await this.priv.inputsFor(hypePool, size + q.fee, onStatus) : await this.inputsFor(token, size + q.fee, onStatus);
+      } catch (e) {
+        if (!placed.length || !/insufficient private balance/.test(String((e as Error).message))) throw e;
+        rest += sizes.slice(i).reduce((a, x) => a + x, 0n);
+        break;
+      }
+      const keyIndex = randomKeyIndex();
+      const outKey = await this.priv.keys.key(keyIndex);
+      const outBlinding = randomField();
+      const data = encodeAbiParameters(ORDER_DATA_ABI, [{ token, outPubKey: outKey.pubKey, outBlinding, outMemo: encryptRouterMemo(this.priv.keys.encPub, outBlinding, keyIndex) }]);
+      const change = inputs.reduce((a, x) => a + x.amount, 0n) - size - q.fee;
+      onStatus(`Order ${i + 1}/${sizes.length}: proving on this device…`);
+      const common = {
+        inputs,
+        outputs: change > 0n ? [await this.priv.changeOutput(change)] : [],
+        extAmount: -size,
+        fee: q.fee,
+        relayer: q.relayer,
+        recipient: this.batcher,
+        data,
+        ...(await this.priv.dummy()),
+      };
+      const { proof, extData } =
+        side === "buy"
+          ? await buildTransaction({ ...common, tree: await this.priv.treeFor(hypePool, inputs), prover: await this.priv.prover() })
+          : await buildTransaction({ ...common, tree: await this.tree(inputs[0].epoch ?? 0), asset, publicAsset: asset, prover: await this.prover() });
+      onStatus(`Order ${i + 1}/${sizes.length}: relaying…`);
+      const txHash = await this.submit({ kind, proof, extData });
+      const rc = await this.pub.waitForTransactionReceipt({ hash: txHash });
+      const ev = parseEventLogs({ abi: sharedBatcherAbi, logs: rc.logs, eventName: "OrderPlaced" })[0];
+      placed.push({ id: ev.args.id, size, round: ev.args.round, txHash });
+    }
+    return { orders: placed, rest };
   }
 }

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { CloakPrivate, SharedVaultClient, loadProver, loadSharedProver, relayerSubmitter, sharedRelayerSubmitter, sharedWalletSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
-import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, ASSETS, SHARED, SHARED_BLOCK, SHARED_ROUTER } from "./config";
+import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, ASSETS, SHARED, SHARED_BATCHER, SHARED_BLOCK, SHARED_ROUTER } from "./config";
 import { chain, IS_LOCAL } from "./config";
 import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";
@@ -15,8 +15,8 @@ export const getSharedProver = () => (sharedProverPromise ??= loadSharedProver("
 /** The shared launch-token vault client for a private account (null when the deployment has none). */
 export function sharedFor(p: CloakPrivate, w?: Wallet | null): SharedVaultClient | null {
   if (!SHARED || !SHARED_ROUTER) return null;
-  const ss = RELAYER_URL ? sharedRelayerSubmitter(RELAYER_URL) : w ? sharedWalletSubmitter(p, w, SHARED, SHARED_ROUTER) : null;
-  return ss ? new SharedVaultClient(p, SHARED, SHARED_ROUTER, getSharedProver, ss, SHARED_BLOCK) : null;
+  const ss = RELAYER_URL ? sharedRelayerSubmitter(RELAYER_URL) : w ? sharedWalletSubmitter(p, w, SHARED, SHARED_ROUTER, SHARED_BATCHER) : null;
+  return ss ? new SharedVaultClient(p, SHARED, SHARED_ROUTER, getSharedProver, ss, SHARED_BLOCK, SHARED_BATCHER) : null;
 }
 
 export type Theme = "light" | "dark" | "auto";

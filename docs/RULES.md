@@ -116,7 +116,7 @@ HYPE, USDC and every earlier launch keep their own vaults.
 | Hidden sends | A private send that pays no fee in the vault names no token. Its relayer is paid from the sender's private HYPE in the same transaction | Contract (fixed) |
 | Deposits, withdrawals, swaps | Name their token, as they must (the vault has to know what to pay out) | Contract (fixed) |
 | Fees and caps | The same as a launch-token vault: free deposits and sends, 0.25% on withdrawals and sells, 10% of supply per deposit and 50% in total during the beta | Config |
-| Trading | Instant private buys and sells through the launch's Uniswap pool (`SharedRouter`). Batch rounds aren't available for these tokens yet | Contract |
+| Trading | Instant private buys and sells through the launch's Uniswap pool (`SharedRouter`), and batch rounds (`SharedBatcher`) with the same rules as every other token: 30 s rounds, standard sizes, one price per round, 2% price tolerance, 5% impact guard, refund after 10 minutes | Contract + Config |
 | Trusted setup | A development setup, like the other circuit. The public ceremony covers both | Plan |
 
 ## Private swaps

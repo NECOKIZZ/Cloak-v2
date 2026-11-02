@@ -43,6 +43,8 @@ export interface CloakRegistry {
   sharedBlock?: bigint;
   /** SharedRouter: private buys, sells and hidden sends for the shared vault. */
   sharedRouter?: Address;
+  /** SharedBatcher: batch rounds for the shared vault's tokens. */
+  sharedBatcher?: Address;
   factory: Address;
   factoryBlock: bigint;
   /** Earlier factories of the current version (a factory added next to the first), newest first. */
@@ -86,6 +88,7 @@ export async function readRegistry(publicClient: PublicClient, config: Address):
     shared: newest("shared")?.addr,
     sharedBlock: newest("shared")?.startBlock,
     sharedRouter: newest("sharedRouter")?.addr,
+    sharedBatcher: newest("sharedBatcher")?.addr,
     factory: factory.addr,
     factoryBlock: factory.startBlock,
     earlierFactories: entries.filter((e) => e.kind === "factory" && e.version === factory.version && e.addr !== factory.addr).reverse().map((e) => e.addr),

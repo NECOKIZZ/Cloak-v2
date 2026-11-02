@@ -147,7 +147,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   async function shared(): Promise<SharedVaultClient> {
     if (!d.shared || !d.sharedRouter) throw new Error("This deployment has no shared launch-token vault.");
     const p = await priv();
-    if (!sharedC || sharedC.priv !== p) sharedC = new SharedVaultClient(p, d.shared, d.sharedRouter, sharedProver, sharedRelayerSubmitter(d.relayerUrl), d.sharedBlock ?? 0n);
+    if (!sharedC || sharedC.priv !== p) sharedC = new SharedVaultClient(p, d.shared, d.sharedRouter, sharedProver, sharedRelayerSubmitter(d.relayerUrl), d.sharedBlock ?? 0n, d.sharedBatcher);
     return sharedC;
   }
   /** Private balance of one asset, wherever its vault is. */
@@ -801,16 +801,16 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const { spending } = needWallet();
       const t = await resolve(token);
       if (t.kind !== "token") throw new Error(`${t.symbol} isn't a launch token: batch orders trade launch tokens against HYPE.`);
-      if (t.shared) throw new Error(`${t.symbol} is in the shared launch-token vault, which has no batch rounds yet. Use private_swap.`);
       const x = amountOf(amount, 18);
       if (x === null) throw new Error('Give an exact amount for a batch order ("max" works for private_swap).');
       const c = await cost(side === "buy" ? (await vaults())[0] : t, x);
       spending.check(c.budget, c.value);
       const p = await priv();
-      const round = await p.roundInfo();
+      if (t.shared && !d.sharedBatcher) throw new Error(`${t.symbol} is in the shared launch-token vault, which has no batch rounds on this deployment. Use private_swap.`);
+      const round = t.shared ? await (await shared()).roundInfo() : await p.roundInfo();
       if (isDry(dry_run)) return { dryRun: true, wouldPlace: `${formatEther(x)} ${side === "buy" ? "HYPE" : t.symbol} as standard-size ${side} orders`, roundEndsAt: iso(round.endsAt) };
       return exclusive(async () => {
-        const r = await p.batch(t.token, side, x);
+        const r = t.shared ? await (await shared()).batch(t.token, side, x) : await p.batch(t.token, side, x);
         const placed = r.orders.reduce((a, o) => a + o.size, 0n);
         const pc = await cost(side === "buy" ? (await vaults())[0] : t, placed);
         spending.record(pc.budget, pc.value);

@@ -67,6 +67,7 @@ export const LEGACY_FACTORIES: Address[] = D ? legacyFactories(D) : [];
 export const SHARED = D?.shared;
 export const SHARED_ROUTER = D?.sharedRouter;
 export const SHARED_BLOCK = D?.sharedBlock ?? 0n;
+export const SHARED_BATCHER = D?.sharedBatcher;
 
 /** Vaults for existing tokens (USDC): private sends and withdrawals. The router also lists them; these load faster. */
 export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[] = D?.assets ?? [];

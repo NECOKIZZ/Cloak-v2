@@ -15,6 +15,7 @@ import {CloakVaults, ILaunchFactory} from "../src/shielded/CloakVaults.sol";
 import {WHYPE} from "../src/shielded/WHYPE.sol";
 import {SharedVault, IPoseidon4, IVerifierMA, ISharedLaunchFactory, IVaultList} from "../src/shielded/SharedVault.sol";
 import {SharedRouter} from "../src/shielded/SharedRouter.sol";
+import {SharedBatcher} from "../src/shielded/SharedBatcher.sol";
 import {IPoseidon2, IPoseidon3} from "../src/shielded/interfaces/IHasher.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
 
@@ -50,6 +51,7 @@ contract SharedVaultTest is Test {
     WHYPE whype;
     SharedVault shared;
     SharedRouter router;
+    SharedBatcher batcher;
     MockVerifierMA maVerifier;
     IPoseidon4 p4;
 
@@ -85,6 +87,7 @@ contract SharedVaultTest is Test {
         maVerifier = new MockVerifierMA();
         shared = new SharedVault(config, p2, p4, IVerifierMA(address(maVerifier)), IVaultList(address(vaults)));
         router = new SharedRouter(shared, hypePool, whype);
+        batcher = new SharedBatcher(shared, hypePool, whype, 30, 200, 600, 1e12);
 
         vm.deal(alice, 100_000 ether);
         a = _launchAndSettle(factory, "Alpha", 19);
@@ -450,6 +453,120 @@ contract SharedVaultTest is Test {
 
     function test_router_refusesDirectHype() public {
         (bool ok,) = address(router).call{value: 1}("");
+        assertFalse(ok);
+    }
+
+    // ───────────────────────────── batch rounds ─────────────────────────────
+
+    function _order(address token) internal view returns (bytes memory) {
+        return abi.encode(SharedBatcher.OrderData(token, 77, 88, hex"bb"));
+    }
+
+    function _buyOrder(address token, uint256 size) internal returns (uint256) {
+        ShieldedPool.ExtData memory ext = ShieldedPool.ExtData(address(batcher), -int256(size), address(0), 0, hex"01", hex"02", _order(token));
+        return batcher.placeBuy(_hp(ext), ext);
+    }
+
+    function _sellOrder(address token, uint256 size, uint256 publicAsset) internal returns (uint256) {
+        SharedVault.ExtData memory ext = SharedVault.ExtData(address(batcher), -int256(size), address(0), 0, hex"01", hex"02", _order(token));
+        return batcher.placeSell(_sp(ext, publicAsset), ext);
+    }
+
+    /// Buys and sells of a shared-vault token cross at the round's average price; only the net trades on Uniswap, and
+    /// every output lands as a note in the right vault.
+    function test_batch_crossesAndPaysIntoTheRightVaults() public {
+        _admit(0);
+        _shieldHype(10 ether);
+        _deposit(a, 100_000e18);
+        uint256 t0 = vm.getBlockTimestamp();
+        vm.warp(((t0 / 30) + 1) * 30); // start of a fresh round
+        uint256 buyId = _buyOrder(address(a), 1 ether);
+        uint256 sellId = _sellOrder(address(a), 1000e18, uint256(uint160(address(a)))); // ~2 HYPE: net 1 HYPE of selling, well inside the 5% impact guard
+        vm.warp(((t0 / 30) + 2) * 30 + 1); // round over
+        (,,,,,, uint32 n,,) = batcher.batches(address(a), batcher.currentRound() - 1);
+        assertEq(n, 2);
+        uint256 sharedBefore = shared.deposited(address(a));
+        uint256 hypeBefore = hypePool.deposited();
+        batcher.settle(address(a), batcher.currentRound() - 1);
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = buyId;
+        ids[1] = sellId;
+        batcher.claim(ids);
+        assertGt(shared.deposited(address(a)), sharedBefore, "buyer's tokens landed in the shared vault");
+        assertGt(hypePool.deposited(), hypeBefore, "seller's HYPE landed in the HYPE vault");
+        assertEq(address(batcher).balance, 0);
+        assertLe(a.balanceOf(address(batcher)), 1e6, "the batcher keeps at most rounding dust");
+    }
+
+    /// A round whose net trade would move the pool more than 5% can't settle, and is refunded instead.
+    function test_batch_tooBigForThePoolIsRefunded() public {
+        _admit(0);
+        _deposit(a, 100_000e18);
+        uint256 t0 = vm.getBlockTimestamp();
+        vm.warp(((t0 / 30) + 1) * 30);
+        uint256 id = _sellOrder(address(a), 50_000e18, uint256(uint160(address(a)))); // ~100 HYPE into a ~985 HYPE pool
+        vm.warp(((t0 / 30) + 2) * 30 + 1);
+        uint64 round = batcher.currentRound() - 1;
+        vm.expectRevert();
+        batcher.settle(address(a), round);
+        uint256 before = shared.deposited(address(a));
+        vm.warp(((t0 / 30) + 2) * 30 + 601);
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = id;
+        batcher.refund(ids);
+        assertEq(shared.deposited(address(a)), before + shared.afterFee(50_000e18), "the seller gets the tokens back privately");
+    }
+
+    function test_batch_sellMustNameItsToken() public {
+        _admit(0);
+        _admit(1);
+        _deposit(a, 10_000e18);
+        _deposit(b, 10_000e18);
+        SharedVault.ExtData memory ext = SharedVault.ExtData(address(batcher), -int256(1000e18), address(0), 0, hex"01", hex"02", _order(address(b)));
+        SharedVault.Proof memory pr = _sp(ext, uint256(uint160(address(a))));
+        vm.expectRevert(SharedBatcher.UnknownPool.selector);
+        batcher.placeSell(pr, ext);
+    }
+
+    function test_batch_onlySharedVaultTokens() public {
+        _shieldHype(10 ether);
+        ShieldedPool.ExtData memory ext = ShieldedPool.ExtData(address(batcher), -int256(1 ether), address(0), 0, hex"01", hex"02", _order(address(a)));
+        ShieldedPool.Proof memory pr = _hp(ext);
+        vm.expectRevert(SharedBatcher.NoMarket.selector);
+        batcher.placeBuy(pr, ext);
+    }
+
+    function test_batch_standardSizesOnly() public {
+        _admit(0);
+        _shieldHype(10 ether);
+        ShieldedPool.ExtData memory ext = ShieldedPool.ExtData(address(batcher), -int256(3 ether), address(0), 0, hex"01", hex"02", _order(address(a)));
+        ShieldedPool.Proof memory pr = _hp(ext);
+        vm.expectRevert(SharedBatcher.NotStandardSize.selector);
+        batcher.placeBuy(pr, ext);
+    }
+
+    function test_batch_refundGoesBackWhereItCameFrom() public {
+        _admit(0);
+        _shieldHype(10 ether);
+        _deposit(a, 10_000e18);
+        uint256 t0 = vm.getBlockTimestamp();
+        uint256 buyId = _buyOrder(address(a), 1 ether);
+        uint256 sellId = _sellOrder(address(a), 1000e18, uint256(uint160(address(a))));
+        uint256 hypeAfterOrder = hypePool.deposited();
+        uint256 sharedAfterOrder = shared.deposited(address(a));
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = buyId;
+        ids[1] = sellId;
+        vm.expectRevert(SharedBatcher.TooEarly.selector);
+        batcher.refund(ids);
+        vm.warp(t0 + 30 + 600 + 31);
+        batcher.refund(ids);
+        assertEq(hypePool.deposited(), hypeAfterOrder + hypePool.afterFee(1 ether), "buy refunded into the HYPE vault");
+        assertEq(shared.deposited(address(a)), sharedAfterOrder + shared.afterFee(1000e18), "sell refunded into the shared vault");
+    }
+
+    function test_batch_refusesDirectHype() public {
+        (bool ok,) = address(batcher).call{value: 1}("");
         assertFalse(ok);
     }
 

@@ -90,7 +90,7 @@ Private trading always starts the same way:
 
 Launches from Nov 2 on keep their private balances in one shared launch-token vault (testnet experiment). The same
 tools work for them. A `private_send` of such a token doesn't even show which token moved, because its relayer is paid
-from private HYPE, so keep a little HYPE in the private balance. `batch_order` isn't available for them yet.
+from private HYPE, so keep a little HYPE in the private balance. `batch_order` works for them too.
 
 Launches: `list_launches`, `get_launch`, `quote_bid`, `place_sealed_bid` (bids stay sealed until bidding closes),
 `my_bids`, `claim` (private by default), `create_launch`.
