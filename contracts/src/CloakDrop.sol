@@ -218,7 +218,7 @@ contract CloakDrop {
         if (settled) return tiesReady || tieSupply == 0 ? 5 : 4;
         if (block.timestamp < _p.gtdEnd) return 0;
         if (block.timestamp < _p.commitEnd) return 1;
-        if (block.timestamp < _p.revealEnd) return 2;
+        if (block.timestamp < _p.revealEnd && !_allOpen()) return 2;
         return 3;
     }
 
@@ -276,7 +276,8 @@ contract CloakDrop {
     {
         require(block.timestamp >= _p.gtdEnd, "gtd window");
         require(block.timestamp < _p.commitEnd, "bidding closed");
-        require(msg.value > 0 && msg.value <= type(uint128).max, "deposit");
+        // a bid must at least cover one NFT at the floor: no free spam for the keeper to deliver
+        require(msg.value >= _p.floor && msg.value <= type(uint128).max, "deposit");
         if (bidCap != 0) require(msg.value <= bidCap && totalDeposits + msg.value <= depositCap, "over cap");
         if (wl) {
             require(_p.wlRoot != bytes32(0) && _verify(wlProof, _p.wlRoot, keccak256(bytes.concat(keccak256(abi.encode(msg.sender))))), "not on wl");
@@ -315,7 +316,12 @@ contract CloakDrop {
     }
 
     function _inReveal() internal view returns (bool) {
-        return block.timestamp >= _p.commitEnd && block.timestamp < _p.revealEnd;
+        return !settled && block.timestamp >= _p.commitEnd && block.timestamp < _p.revealEnd;
+    }
+
+    /// Every bid is open, so the reveal window can end early: a long window costs nobody time.
+    function _allOpen() internal view returns (bool) {
+        return _bids.length > 0 && revealCount == _bids.length;
     }
 
     function _tryReveal(uint256 id, uint16 tick, uint128 quantity, bytes32 salt) internal returns (bool) {
@@ -340,7 +346,7 @@ contract CloakDrop {
     // ───────────────────────────── settle ─────────────────────────────
 
     function settle() external {
-        require(block.timestamp >= _p.revealEnd, "reveal open");
+        require(block.timestamp >= _p.revealEnd || (block.timestamp >= _p.commitEnd && _allOpen()), "reveal open");
         require(!settled, "settled");
         settled = true;
         uint32 supply = auctionSupply();

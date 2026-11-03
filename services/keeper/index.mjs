@@ -295,6 +295,7 @@ const DROP_FACTORY = process.env.DROP_FACTORY || knownDeployment?.dropFactory;
 const drops = DROP_FACTORY ? new CloakDrops(publicClient, walletClient, DROP_FACTORY, BigInt(process.env.DROP_FACTORY_BLOCK ?? knownDeployment?.dropFactoryBlock ?? 0)) : null;
 const dropsDone = new Set();
 const dropWait = new Map();
+const dropSettledAt = new Map();
 async function tickDrops() {
   if (!drops) return;
   const list = await drops.list();
@@ -308,12 +309,16 @@ async function tickDrops() {
       if (s.phase === "reveal" && s.reveals < s.bids && Date.now() / 1000 >= drandRoundTime(s.tlockRound)) {
         const r = await drops.revealAll(d, { log: (m) => log(d, m) });
         if (r.revealed) log(d, `drop: opened ${r.revealed} bids`);
-      } else if ((s.phase === "settle" && now >= s.revealEnd) || s.phase === "numbering") {
+      } else if (s.phase === "settle" || s.phase === "numbering") {
+        // "settle" comes as soon as every bid is open, or when the reveal window ends
         for (const h of await drops.settle(d)) log(d, `drop: settled ${h}`);
       } else if (s.phase === "settled") {
         // winners get the same window as a launch to take their NFTs to another wallet themselves
-        if (now < s.revealEnd + CLAIM_DELAY) {
-          dropWait.set(d, s.revealEnd + CLAIM_DELAY);
+        // drops can settle before the reveal window ends, so the hour counts from when we first saw it settled
+        if (!dropSettledAt.has(d)) dropSettledAt.set(d, Math.min(now, s.revealEnd));
+        const due = dropSettledAt.get(d) + CLAIM_DELAY;
+        if (now < due) {
+          dropWait.set(d, due);
           continue;
         }
         const r = await drops.claimAll(d);

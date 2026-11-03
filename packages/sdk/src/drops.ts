@@ -21,6 +21,8 @@ export const DROP_MAX_PER_BID = 20;
 export const DROP_MAX_SUPPLY = 10_000;
 /** Most entries one GTD or WL list can hold (the lists travel in one transaction). */
 export const DROP_LIST_MAX = 2_000;
+/** How long the keeper has to open the bids at most. Settlement doesn't wait for it once every bid is open. */
+export const DROP_DEFAULT_REVEAL_SECS = 1_800;
 
 // ───────────────────────────── Merkle lists ─────────────────────────────
 
@@ -96,7 +98,8 @@ export interface CreateDropOptions {
   gtd?: { list: GtdEntry[]; price: bigint; durationSecs: number };
   wl?: { list: Address[]; boostBps: number };
   biddingSecs: number;
-  /** Time after bidding closes for the keeper to open the bids (default 3 minutes). */
+  /** Longest time after bidding closes for the keeper to open the bids (default 30 minutes). The drop settles as soon
+   * as every bid is open, so a long window only matters if the keeper is down; a bid still sealed at its end loses 10%. */
   revealSecs?: number;
   image?: string;
   description?: string;
@@ -214,7 +217,7 @@ export class CloakDrops {
     const gtdEnd = now + 90 + (gtdList.length ? o.gtd!.durationSecs : 0);
     const commitEnd = gtdEnd + o.biddingSecs;
     const tlockRound = drandRoundAt(commitEnd);
-    const revealEnd = Math.max(commitEnd + (o.revealSecs ?? 180), drandRoundTime(tlockRound) + 60);
+    const revealEnd = Math.max(commitEnd + (o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS), drandRoundTime(tlockRound) + 60);
     const params = {
       creator: w.account.address,
       supply: o.supply,
@@ -247,7 +250,7 @@ export class CloakDrops {
 
   /** A drop's published details: its image, description and the lists behind its roots. */
   async details(drop: Address): Promise<DropDetails> {
-    const logs = await this.publicClient.getContractEvents({ address: this.factory, abi: cloakDropFactoryAbi, eventName: "DropDetails", args: { drop }, fromBlock: this.fromBlock, strict: true });
+    const logs = await this.chunked((from, to) => this.publicClient.getContractEvents({ address: this.factory, abi: cloakDropFactoryAbi, eventName: "DropDetails", args: { drop }, fromBlock: from, toBlock: to, strict: true }), true);
     try {
       const d = JSON.parse(logs[0]?.args.details ?? "{}");
       return {
@@ -374,16 +377,43 @@ export class CloakDrops {
     return { id: result, txHash, tick, salt };
   }
 
-  async committedLogs(drop: Address) {
+  /** Read logs from `fromBlock` to now in one call, or in 100k-block pieces where the RPC limits ranges. */
+  private async chunked<T>(get: (from: bigint, to: bigint) => Promise<T[]>, firstOnly = false): Promise<T[]> {
     const latest = await this.publicClient.getBlockNumber({ cacheTime: 0 });
-    const get = (from: bigint, to: bigint) => this.publicClient.getContractEvents({ address: drop, abi: cloakDropAbi, eventName: "Committed", strict: true, fromBlock: from, toBlock: to });
     try {
       return await get(this.fromBlock, latest);
     } catch {
-      const out: Awaited<ReturnType<typeof get>> = [];
-      for (let from = this.fromBlock; from <= latest; from += 10_000n) out.push(...(await get(from, from + 9_999n > latest ? latest : from + 9_999n)));
+      const out: T[] = [];
+      for (let from = this.fromBlock; from <= latest; from += 100_000n) {
+        out.push(...(await get(from, from + 99_999n > latest ? latest : from + 99_999n)));
+        if (firstOnly && out.length) break;
+      }
       return out;
     }
+  }
+
+  async committedLogs(drop: Address) {
+    return this.chunked((from, to) => this.publicClient.getContractEvents({ address: drop, abi: cloakDropAbi, eventName: "Committed", strict: true, fromBlock: from, toBlock: to }));
+  }
+
+  /** Deliver one bid now: its NFTs to the bidder and the rest of its deposit back (anyone can, it's always the bidder's). */
+  async claim(drop: Address, id: bigint): Promise<Hex> {
+    const { request } = await this.publicClient.simulateContract({ address: drop, abi: cloakDropAbi, functionName: "claim", args: [id], account: this.wallet().account });
+    const h = await this.wallet().writeContract(request);
+    await this.send(h);
+    return h;
+  }
+
+  /** A refund the drop couldn't send (a wallet that refuses HYPE) waits here for its bidder. */
+  async refundOwed(drop: Address, bidder: Address): Promise<bigint> {
+    return this.publicClient.readContract({ address: drop, abi: cloakDropAbi, functionName: "refundOwed", args: [bidder] });
+  }
+
+  async withdrawRefund(drop: Address, to: Address): Promise<Hex> {
+    const { request } = await this.publicClient.simulateContract({ address: drop, abi: cloakDropAbi, functionName: "withdrawRefund", args: [to], account: this.wallet().account });
+    const h = await this.wallet().writeContract(request);
+    await this.send(h);
+    return h;
   }
 
   /** Every bid on a drop (or one bidder's), with what it won once settled. */
@@ -456,7 +486,8 @@ export class CloakDrops {
 
   /** The bidder takes its NFTs to another address (a fresh wallet, say); the refund still goes to the bidder. */
   async claimTo(drop: Address, id: bigint, to: Address): Promise<Hex> {
-    const h = await this.wallet().writeContract({ address: drop, abi: cloakDropAbi, functionName: "claimTo", args: [id, to] });
+    const { request } = await this.publicClient.simulateContract({ address: drop, abi: cloakDropAbi, functionName: "claimTo", args: [id, to], account: this.wallet().account });
+    const h = await this.wallet().writeContract(request);
     await this.send(h);
     return h;
   }

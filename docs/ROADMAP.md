@@ -16,8 +16,8 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 - **Penalties for hiding bids.** A bid that is never revealed loses at least 10% of its deposit, and that money is burned.
 
 **NFT drops and WL spot sales**
-- **Sealed NFT drops** (Nov 3): one ERC-721 contract per drop. GTD wallets mint first, then everyone bids sealed with the creator's price as the floor, and every winner pays one clearing price. WL bids get a public boost (0% to 30%), ties are drawn fairly, and losers are refunded. Factory [`0xa679…d059`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa679e1a41c3dea1deae16be2806c9969923ed059).
-- **WL spot sales** (Nov 3): a partner collection's whitelist spots sell as a sealed drop. Each winner names the Elysium wallet to whitelist, and the sale page gives the partner the list as a CSV. One `CloakSpotBook` serves every sale ([`0xf33b…016d`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xf33b77307d5446409ffc4065c98551829366016d)).
+- **Sealed NFT drops** (Nov 3): one ERC-721 contract per drop. GTD wallets mint first, then everyone bids sealed with the creator's price as the floor, and every winner pays one clearing price. WL bids get a public boost (0% to 30%), ties are drawn fairly, and losers are refunded. Factory [`0x2afb…d783`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x2afb7d9a5baa02a2d72a7c761521fc66dce9d783).
+- **WL spot sales** (Nov 3): a partner collection's whitelist spots sell as a sealed drop. Each winner names the Elysium wallet to whitelist, and the sale page gives the partner the list as a CSV. One `CloakSpotBook` serves every sale ([`0x9180…1fc8`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x91806d96814cc205d4b642e280023a1c7b361fc8)).
 
 **Private balances and trading**
 - **Shield HYPE** into a private balance, in one public step to a one-time key.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { isAddress, parseEther, type Address, type Hex } from "viem";
-import { CloakDrops, CloakSpots, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
+import { CloakDrops, CloakSpots, drandRoundTime, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
 import { addrLink, txLink } from "../config";
 import { dropsClient, pct, spotsClient } from "../drops";
 import { checked, friendly, Hint } from "../errors";
@@ -32,6 +32,8 @@ export function Drop({ drop }: { drop: Address }) {
   const [winnersRaw, setWinners] = useState<SpotWinner[] | null>(null);
   const winners = winnersRaw ?? [];
   const [named, setNamed] = useState<Record<string, string[]>>({});
+  const [held, setHeld] = useState(0n);
+  const [stale, setStale] = useState(false);
 
   async function load() {
     const c = dropsClient();
@@ -46,6 +48,7 @@ export function Drop({ drop }: { drop: Address }) {
       const [l, b] = await Promise.all([c.listed(drop, wallet.account.address), c.bids(drop, wallet.account.address)]);
       setMe(l);
       setMine(b);
+      setHeld(st.settled ? await c.refundOwed(drop, wallet.account.address).catch(() => 0n) : 0n);
     } else {
       setMe(null);
       setMine([]);
@@ -54,7 +57,7 @@ export function Drop({ drop }: { drop: Address }) {
   useEffect(() => {
     load().catch((e) => setErr(friendly(e)));
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
-    const r = setInterval(() => load().catch(() => {}), 15000);
+    const r = setInterval(() => load().then(() => setStale(false), () => setStale(true)), 15000);
     return () => (clearInterval(t), clearInterval(r));
   }, [drop, wallet]);
   useEffect(() => { if (s && !price) setPrice(hype(s.floor, 6).replace(/,/g, "")); }, [s]);
@@ -117,6 +120,7 @@ export function Drop({ drop }: { drop: Address }) {
   return (
     <div>
       <Link to="/app/drops" className="back-btn"><span aria-hidden>←</span>All drops</Link>
+      {stale && <p className="xs mute" style={{ marginBottom: 8 }}>Couldn't reach the network to refresh. Showing the last update, retrying…</p>}
       <div className="drop-hero">
         <DropArt details={details} name={s.name} size={220} />
         <div style={{ minWidth: 0 }}>
@@ -164,6 +168,7 @@ export function Drop({ drop }: { drop: Address }) {
               </div>
               <div className="summary">
                 <div className="row"><span className="mute">Your bid level</span><span className="mono">{hype(level)} HYPE</span></div>
+                {priceWei > level + s.tickSize && tick === s.numTicks - 1 && <div className="row"><span className="mute">Highest level in this drop</span><span className="mono">{hype(level)} HYPE</span></div>}
                 {wlBid && <div className="row"><span className="mute">Ranks as (WL +{pct(s.wlBoostBps)})</span><span className="mono">{hype(ranks)} HYPE</span></div>}
                 <div className="row"><span className="mute">Deposit (refunded above what you pay)</span><span className="mono">{hype(level * BigInt(qty))} HYPE</span></div>
               </div>
@@ -178,12 +183,34 @@ export function Drop({ drop }: { drop: Address }) {
             </>
           )}
 
-          {(s.phase === "reveal" || s.phase === "settle" || s.phase === "numbering") && (
-            <>
-              <div className="card-head"><h3>Opening the bids</h3></div>
-              <p className="small mute">Bidding closed. Cloak's keeper is opening every sealed bid now that the drand round is out, then settles the sale. This takes a few minutes, and results show here.</p>
-            </>
-          )}
+          {(s.phase === "reveal" || s.phase === "settle" || s.phase === "numbering") && (() => {
+            const roundAt = drandRoundTime(s.tlockRound);
+            // the keeper normally does each step within seconds; if it's late, anyone can do it from here
+            const openLate = s.phase === "reveal" && s.reveals < s.bids && now > roundAt + 90;
+            const settleLate = (s.phase === "settle" && now > Math.min(s.revealEnd, roundAt) + 60) || (s.phase === "numbering" && now > s.revealEnd + 60);
+            return (
+              <>
+                <div className="card-head"><h3>Opening the bids</h3>{s.bids > 0 && <span className="pill">{s.reveals} of {s.bids} open</span>}</div>
+                <p className="small mute">
+                  {now < roundAt
+                    ? `Bidding closed. The bids unlock when the drand round comes out, in about ${duration(roundAt - now)}.`
+                    : s.phase === "reveal"
+                      ? `Cloak's keeper is opening every sealed bid now. It settles as soon as they're all open, or when the window ends in ${duration(s.revealEnd - now)}.`
+                      : "Every bid is open. Settling the sale now, and results show here."}
+                </p>
+                {(openLate || settleLate) && (
+                  <>
+                    <p className="xs mute" style={{ marginTop: 8 }}>The keeper is taking longer than usual. Anyone can do this step, so you can do it yourself for a little gas. {openLate ? `Bids still sealed when the window ends lose 10% of their deposit.` : ""}</p>
+                    <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={!!busy} onClick={act(openLate ? "Bids opened" : "Sale settled", async (w) => {
+                      const c = dropsClient(w);
+                      if (openLate) await c.revealAll(drop);
+                      else await c.settle(drop);
+                    })}>{busy || (wallet ? (openLate ? "Open the bids now" : "Settle now") : "Connect to do it yourself")}</button>
+                  </>
+                )}
+              </>
+            );
+          })()}
 
           {s.phase === "settled" && (
             <>
@@ -209,7 +236,7 @@ export function Drop({ drop }: { drop: Address }) {
                   <div key={String(b.id)}>
                     <span className="small"><span className="mono">{b.revealed ? `${b.quantity} × ${hype(b.price)} HYPE` : `Sealed bid · ${hype(b.deposit)} HYPE deposit`}</span>{b.wl && <span className="pill ok" style={{ marginLeft: 6 }}>WL</span>}</span>
                     <span className="small mute">
-                      {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : b.nfts ? `won ${b.nfts}${sale ? ` spot${b.nfts > 1 ? "s" : ""}` : ""} · paid ${hype(b.paid)}` : "not won"}
+                      {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : !b.revealed ? "never opened · 10% kept" : b.nfts ? `won ${b.nfts}${sale ? ` spot${b.nfts > 1 ? "s" : ""}` : ""} · paid ${hype(b.paid)}` : "not won"}
                       {s.phase === "settled" && (b.claimed ? " · delivered" : b.refund > 0n ? ` · ${hype(b.refund)} back` : "")}
                     </span>
                   </div>
@@ -255,7 +282,20 @@ export function Drop({ drop }: { drop: Address }) {
                   })}>{busy || "Claim to that wallet"}</button>
                 </>
               )}
+              {s.phase === "settled" && mine.some((b) => !b.claimed) && (
+                <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={!!busy} onClick={act("Delivered", async (w) => {
+                  let h: Hex | undefined;
+                  for (const b of mine.filter((x) => !x.claimed)) h = await dropsClient(w).claim(drop, b.id);
+                  return h;
+                })}>{busy || (myWon > 0 ? `Claim ${sale ? "my receipt" : "to my bidding wallet"} now` : "Get my refund now")}</button>
+              )}
               {s.phase === "settled" && myWon > 0 && <p className="okmsg small" style={{ marginTop: 8 }}><Icon.check size={14} /> You won {myWon} {unit}{myWon > 1 ? "s" : ""}.{sale ? " A receipt NFT comes to your bidding wallet." : ""}</p>}
+            </>
+          )}
+          {held > 0n && (
+            <>
+              <p className="small" style={{ marginTop: 12 }}>{hype(held)} HYPE of your refund couldn't be sent to this wallet automatically, so it's waiting for you.</p>
+              <button className="btn btn-ink btn-block" disabled={!!busy} onClick={act("Refund withdrawn", (w) => dropsClient(w).withdrawRefund(drop, w.account.address))}>{busy || `Withdraw ${hype(held)} HYPE`}</button>
             </>
           )}
           {err && <div className="err">{err}</div>}

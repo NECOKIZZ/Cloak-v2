@@ -131,7 +131,7 @@
   "sharedDeployCost": "0.00082346881872 HYPE",
   "sharedBatcher": "0xdc725bdeb0fca923bf2dc65232f54463b0f80820",
   "sharedBatcherBlock": "21495522",
-  "dropFactory": "0xa679e1a41c3dea1deae16be2806c9969923ed059",
-  "dropFactoryBlock": 22228835,
-  "spotBook": "0xf33b77307d5446409ffc4065c98551829366016d"
+  "dropFactory": "0x2afb7d9a5baa02a2d72a7c761521fc66dce9d783",
+  "dropFactoryBlock": 22329730,
+  "spotBook": "0x91806d96814cc205d4b642e280023a1c7b361fc8"
 }
