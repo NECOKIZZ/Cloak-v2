@@ -15,6 +15,10 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 - **A fair-launch record on chain** that any launchpad can read.
 - **Penalties for hiding bids.** A bid that is never revealed loses at least 10% of its deposit, and that money is burned.
 
+**NFT drops and WL spot sales**
+- **Sealed NFT drops** (Nov 3): one ERC-721 contract per drop. GTD wallets mint first, then everyone bids sealed with the creator's price as the floor, and every winner pays one clearing price. WL bids get a public boost (0% to 30%), ties are drawn fairly, and losers are refunded. Factory [`0xa679…d059`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa679e1a41c3dea1deae16be2806c9969923ed059).
+- **WL spot sales** (Nov 3): a partner collection's whitelist spots sell as a sealed drop. Each winner names the Elysium wallet to whitelist, and the sale page gives the partner the list as a CSV. One `CloakSpotBook` serves every sale ([`0xf33b…016d`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xf33b77307d5446409ffc4065c98551829366016d)).
+
 **Private balances and trading**
 - **Shield HYPE** into a private balance, in one public step to a one-time key.
 - **Private buy and sell of any Cloak launch token**, proven on your device and sent by a relayer, so your wallet never appears on the trade.
@@ -165,6 +169,14 @@ Selective disclosure, applied to tokens.
 
 ---
 
+## This week · NFT partnerships
+
+- **Outreach to Elysium NFT collections:** run part or all of a mint as a sealed drop, or auction a batch of their WL spots.
+- **Next for drops:** MCP tools for drops, link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
+- **`@cloakely/sdk` 0.8.2** with drops and WL spot sales, once approved.
+
+---
+
 ## Mainnet · Nov 9
 
 **Done on testnet (v2, Oct 25):**
@@ -201,8 +213,9 @@ Already planned:
 Launch pools:
 - **Uniswap V3 as an option per launch:** a full-range position (a new token's price moves too much for a narrow one), with the creator picking the fee tier. The LP position NFT is locked or burned like today's LP.
 - **Creator fees: live (Nov 2)** through `CloakFeeLocker` on V2 pools (the LP locked forever, the 0.3% trading fee to the creator).
-- **Uniswap V4 with a Cloak hook:** the hook can carry a separate creator fee, anti-sniping right after settlement and a built-in price feed for batch rounds. The private router learns V4 pools first.
+- **Uniswap V4 with a Cloak hook:** the hook can carry a separate creator fee, anti-sniping right after settlement, a private opening window and a built-in price feed for batch rounds. The private router learns V4 pools first. Testnet already has 17 v4 PoolManagers from different teams (none confirmed official), so we wait for the official mainnet addresses and only route through approved managers and hooks. Research and plan: [V4-AND-STOCKS.md](V4-AND-STOCKS.md).
 - **Choosing per launch:** the factory takes a pool type and settlement opens that pool. V2 stays the default.
+- **Private stock trading:** once real tokenized stocks (Synthra sSTOCKs, xStocks) have real liquidity on Elysium, after checking each token for transfer lists, freezes and rebasing. Testnet only has mock and launchpad copies today ([V4-AND-STOCKS.md](V4-AND-STOCKS.md)).
 - **Private swaps through outside pools** (USDC, stock tokens, curated outside tokens): a swap router over approved Uniswap V2 and V3 factories, see [PRIVACY-LAYER.md](PRIVACY-LAYER.md).
 - **Availability** ([PARTNERS.md](PARTNERS.md)): the Cloak token list (`tokenlist.json`, live) and launch feed (live), explorer source verification, price charts on launch pages from the keeper's record of trades, and asking DexScreener, GeckoTerminal, DefiLlama, 0x and KyberSwap to add Elysium once mainnet is live.
 

@@ -156,3 +156,7 @@ The launch auction is the shipped core. These items extend the same privacy stor
 - [x] Private trading: ShieldedPool + PrivateRouter + CloakPrivate SDK + relay, live on testnet (10/10 with real proofs)
 - [x] Private sends + PrivateBatcher (batch trading that hides size), live on testnet (18/18 with real proofs)
 - [x] Demo video
+
+## 10. Uniswap v4 and tokenized stocks
+
+Research from the Nov 3 testnet scan and the plan for a v4 private route, v4 launches with a Cloak hook, and private stock trading: [V4-AND-STOCKS.md](V4-AND-STOCKS.md).
