@@ -187,6 +187,9 @@ Selective disclosure, applied to tokens.
 
 **Done on testnet (v4, Oct 31):** permanent vaults, the address registry, fixed account keys and private claims: the layout mainnet deploys once.
 
+**Mainnet is chain 99901** (parent chain 999, HyperEVM mainnet), already deployed by Conduit and opening to the public
+on Nov 9. Official Uniswap v4 is live there (see [V4-AND-STOCKS.md](V4-AND-STOCKS.md)). Testnet stays on 99801.
+
 **Still to do before Nov 9:**
 - **Public trusted-setup ceremony**, with outside contributors and a drand beacon. The new verifier goes in through the config.
 - **Hand ownership to a multisig, then `endSetup()`.** After that, every loosening change waits 3 days.

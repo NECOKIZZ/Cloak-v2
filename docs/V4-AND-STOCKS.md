@@ -22,9 +22,19 @@ Labs support has been announced", with v4 "upcoming" for testnet and mainnet on 
 as the official Uniswap deployment.** Their owners can set protocol fees, and their pools run hooks we haven't read.
 
 ### Official Uniswap v4 (verified Nov 3, on chain 99901)
-ElysPump's Launchpad v3 publishes the official Uniswap v4 contracts. They are on **chain 99901** (RPC
-`rpc-live.elysp.com`, about 294k blocks old on Nov 3), not on chain 99801 where Cloak runs today: none of these
-addresses has code on 99801.
+ElysPump's Launchpad v3 publishes the official Uniswap v4 contracts. They are on **chain 99901, Elysium mainnet**,
+not on chain 99801 (Elysium's public testnet, where Cloak runs): none of these addresses has code on 99801.
+
+What 99901 is (Nov 3):
+- **Elysium mainnet, not yet public.** Kinetiq's intake form gives 99901 as mainnet (LI.FI's integration), and dRPC's
+  integration notes Conduit has deployed chain 99901 with **parent chain 999, HyperEVM mainnet** (99801's parent is
+  998, HyperEVM testnet). Mainnet opens to the public on **Nov 9**. Its official RPC
+  (`rpc-elysium-mainnet.t.conduit.xyz`) still returns 403.
+- **On chain:** block 1 on Oct 19, about 296k blocks, ~1.1 s per block so far (99801: block 1 Sep 11, ~22.4M blocks,
+  ~0.09 s). We read it through ElysPump's own relay (`rpc-live.elysp.com`, client `elyspump-live/inbox-relay`), which
+  gives partners early access before the public RPC opens. Treat that relay as ElysPump's, not Kinetiq's.
+- **So Cloak was never on the wrong testnet.** 99801 is the only public Elysium testnet. The official Uniswap v4 is
+  simply a mainnet deployment, and the v4 copies on 99801 are other teams' test deployments.
 
 | Contract | Address | Checked on chain |
 |---|---|---|
@@ -40,8 +50,9 @@ Ethereum, Base, Arbitrum and Unichain, Uniswap governance owns the PoolManager i
 wallet and hands ownership to governance later; we couldn't confirm this wallet is Uniswap's. The owner can only turn
 on protocol fees (capped in the contract), never move pool funds.
 
-**What it means for us:** the 17 PoolManagers on 99801 are copies. The real v4 lives on 99901, so a v4 route or v4
-launches mean deploying Cloak on 99901 (or on whichever network is mainnet) and testing there against these addresses.
+**What it means for us:** the official v4 is a mainnet deployment, so there is no official v4 to test against on
+testnet. v4 work gets tested on a local fork of 99901 (reading mainnet state, spending nothing), then ships with
+Cloak's mainnet deploy.
 
 ### Tokenized stocks
 No Synthra sSTOCK token showed up. Synthra only mentions sSTOCKs as a pair asset on its own launchpad, with nothing yet
@@ -95,7 +106,7 @@ Once a real stock token has real liquidity:
 - Pitch: "buy NVDA on Elysium without anyone seeing your position."
 
 ## 4. Open questions
-- Is chain 99901 Elysium's mainnet (or the network mainnet will be)? If so, Cloak's next deploy goes there.
+- The official mainnet RPC and explorer, once Kinetiq publishes them (expected at the Nov 9 launch).
 - Does Uniswap publish these addresses itself, and when does PoolManager ownership move to governance?
 - Synthra's sSTOCK contract addresses, and how they are backed (custody, oracle, synthetic).
 - Do any stock tokens restrict who can hold them? If so, they stay out of the vaults.
