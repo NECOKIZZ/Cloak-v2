@@ -105,6 +105,18 @@ const RULES: [RegExp, string][] = [
 
 // require() reasons from CloakAuction and CloakPair: short words, so they only match a whole line
 const REASONS: Record<string, string> = {
+  "bidding closed": "Bidding for this drop has closed.",
+  "gtd window": "Bidding opens when the GTD window closes.",
+  "gtd closed": "The GTD window has closed. Your spot rolled into the auction, so you can still bid.",
+  "no gtd": "This drop has no GTD list.",
+  "not on gtd": "This wallet isn't on the GTD list.",
+  "not on wl": "This wallet isn't on the WL. Bid without the WL boost, or switch to your listed wallet.",
+  spots: "That's more than your GTD spots.",
+  "sold out": "Every NFT in this drop is already spoken for.",
+  "ties not numbered": "The drop is still sorting out tied bids. Try again in a minute.",
+  "none left": "There are no unsold NFTs left to mint.",
+  "drops closed": "New drops are paused on this network right now.",
+  "per bid": "Pick between 1 and 20 NFTs per bid.",
   "commit closed": "Bidding for this launch has closed.",
   deposit: "Add a deposit to place a bid.",
   "not reveal phase": "Bids can only be opened during the reveal window.",

@@ -22,7 +22,7 @@ contract CloakDropTest is Test {
 
     function setUp() public {
         config = new CloakConfig(address(1), treasury);
-        factory = new CloakDropFactory(config);
+        factory = new CloakDropFactory(config, "https://cloak.example/api/nft/");
     }
 
     // ───────────── helpers ─────────────
@@ -419,5 +419,18 @@ contract CloakDropTest is Test {
             rs[run] = drop.tieRandom();
         }
         assertEq(rs[0], rs[1]);
+    }
+
+    function test_noFolder_usesTheFactoryDefault() public {
+        CloakDrop.Params memory p;
+        p.supply = 1;
+        p.maxPerBid = 1;
+        p.numTicks = 1;
+        p.gtdEnd = uint64(block.timestamp);
+        p.commitEnd = uint64(block.timestamp + 1);
+        p.revealEnd = uint64(block.timestamp + 2);
+        p.floor = 1;
+        CloakDrop d = factory.createDrop(p, "X", "X", "", "");
+        assertEq(d.baseURI(), string.concat("https://cloak.example/api/nft/", vm.toLowercase(vm.toString(address(d))), "/"));
     }
 }

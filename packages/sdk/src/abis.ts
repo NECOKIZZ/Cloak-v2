@@ -12006,6 +12006,11 @@ export const cloakDropFactoryAbi = [
         "name": "config_",
         "type": "address",
         "internalType": "contract CloakConfig"
+      },
+      {
+        "name": "defaultBaseURI_",
+        "type": "string",
+        "internalType": "string"
       }
     ],
     "stateMutability": "nonpayable"
@@ -12151,6 +12156,19 @@ export const cloakDropFactoryAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "defaultBaseURI",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",

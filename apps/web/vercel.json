@@ -38,6 +38,10 @@
       "destination": "/api/preview?a=:a"
     },
     {
+      "source": "/api/nft/:drop/:id",
+      "destination": "/api/nft?drop=:drop&id=:id"
+    },
+    {
       "source": "/tokenlist.json",
       "destination": "/api/tokenlist"
     },

@@ -42,6 +42,7 @@ const GROUPS: [string, Item[]][] = [
   ["Launch", [
     { to: "/app/launches", label: "Launches", I: Icon.launch, on: (p) => p.startsWith("/app/launch") },
     { to: "/app/create", label: "Create a launch", I: Icon.plus, on: (p) => p === "/app/create" },
+    { to: "/app/drops", label: "NFT drops", I: Icon.rocket, on: (p) => p.startsWith("/app/drop") },
     { to: "/app/volume", label: "Volume", I: Icon.layers, on: (p) => p.startsWith("/app/volume") },
   ]],
 ];

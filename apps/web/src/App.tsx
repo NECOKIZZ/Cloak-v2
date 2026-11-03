@@ -9,6 +9,9 @@ import { Pitch } from "./pages/Pitch";
 import { Demo } from "./pages/Demo";
 import { Claim } from "./pages/Claim";
 import { Links } from "./pages/Links";
+import { Drop } from "./pages/Drop";
+import { Drops } from "./pages/Drops";
+import { DropCreate } from "./pages/DropCreate";
 import { Pay } from "./pages/Pay";
 import { Launch } from "./pages/Launch";
 import { Launches } from "./pages/Launches";
@@ -38,8 +41,12 @@ function Routes() {
   if (path === "/pay") return <AppShell><Pay /></AppShell>;
   if (path.startsWith("/app")) {
     const m = path.match(/^\/app\/launch\/(0x[0-9a-fA-F]{40})$/);
+    const dm = path.match(/^\/app\/drop\/(0x[0-9a-fA-F]{40})$/);
     const act = path.match(/^\/app\/portfolio\/(shield|send|withdraw)$/);
     const page = m ? <Launch key={m[1]} auction={m[1] as Address} />
+      : dm ? <Drop key={dm[1]} drop={dm[1] as Address} />
+      : path === "/app/drops" ? <Drops />
+      : path === "/app/drops/create" ? <DropCreate />
       : act ? <PortfolioAction key={act[1]} kind={act[1] as "shield" | "send" | "withdraw"} />
       : path === "/app/trade" ? <Trade />
       : path === "/app/launches" ? <Launches />

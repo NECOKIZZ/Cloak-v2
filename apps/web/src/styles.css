@@ -867,3 +867,19 @@ button.asset-row { cursor: pointer; }
 .claim-done { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .claim-done .okmsg { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 560px) { .claim-card { padding: 24px 18px; } .claim-amount { font-size: 42px; } }
+
+/* ───────────── NFT drops ───────────── */
+.drop-art { grid-area: icon; border-radius: 14px; object-fit: cover; background: var(--card-2); display: inline-grid; place-items: center; font-weight: 600; color: var(--mute); flex: none; }
+.drop-hero { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; margin-bottom: 24px; }
+.drop-hero .drop-art { width: 100% !important; height: auto !important; aspect-ratio: 1; border-radius: var(--r-md); font-size: 56px !important; }
+.drop-hero h1 { font: 300 40px/1.05 var(--font-display); letter-spacing: -0.035em; overflow-wrap: anywhere; }
+.drop-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 16px; }
+.drop-stats > div { background: var(--card); border-radius: var(--r-sm); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.drop-stats b { font: 500 16px var(--font-mono); overflow-wrap: anywhere; }
+.drop-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 20px; align-items: start; }
+.drop-bids { display: flex; flex-direction: column; }
+.drop-bids > div { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--line); }
+.drop-bids > div:first-child { border-top: 0; }
+.list-input { font: 13px/1.5 var(--font-mono); min-height: 96px; resize: vertical; padding: 10px 12px; }
+@media (max-width: 900px) { .drop-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .drop-hero { grid-template-columns: minmax(0, 1fr); } .drop-hero .drop-art { max-width: 220px; } .drop-hero h1 { font-size: 32px; } }

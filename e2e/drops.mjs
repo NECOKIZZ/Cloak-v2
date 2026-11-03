@@ -29,7 +29,7 @@ const send = async (p) => {
 
 const d = clients(chain, RPC, PK);
 const f = await deployFactory(d.publicClient, d.walletClient, { rules: { withdrawFeeBps: 25, launchFeeBps: 200 } });
-const df = await send(d.walletClient.deployContract({ abi: cloakDropFactoryAbi, bytecode: bytecode.CloakDropFactory, args: [f.config] }));
+const df = await send(d.walletClient.deployContract({ abi: cloakDropFactoryAbi, bytecode: bytecode.CloakDropFactory, args: [f.config, "https://cloak.boblabs.tech/api/nft/"] }));
 const DROP_FACTORY = df.contractAddress;
 console.log(`drop factory ${DROP_FACTORY}`);
 

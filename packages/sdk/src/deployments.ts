@@ -89,6 +89,9 @@ export const deployments: Record<number, CloakDeployment> = {
     sharedBlock: 21426599n,
     sharedRouter: "0xe2a0769a5acbd987c1b6725247c56187a112dc7e",
     sharedBatcher: "0xdc725bdeb0fca923bf2dc65232f54463b0f80820",
+    // sealed NFT drops (Nov 3): GTD, then a sealed auction with the creator's price as the floor and a WL bid boost
+    dropFactory: "0xa679e1a41c3dea1deae16be2806c9969923ed059",
+    dropFactoryBlock: 22228835n,
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",

@@ -164,7 +164,10 @@ contract CloakDrop {
         _p = p;
         name = name_;
         symbol = symbol_;
-        baseURI = baseURI_;
+        // no metadata folder of its own: the factory's default, which serves each token from the drop's details
+        baseURI = bytes(baseURI_).length > 0
+            ? baseURI_
+            : string.concat(CloakDropFactory(msg.sender).defaultBaseURI(), _hexAddress(address(this)), "/");
         launchFeeBps = config_.launchFeeBps();
         (uint128 perBid, uint128 total) = config_.auctionLimit();
         bool capped = config_.depositLimitsOn();
@@ -611,6 +614,19 @@ contract CloakDrop {
         return a == 0 ? 0 : (a - 1) / b + 1;
     }
 
+    function _hexAddress(address a) internal pure returns (string memory) {
+        bytes memory s = new bytes(42);
+        s[0] = "0";
+        s[1] = "x";
+        bytes16 hexChars = "0123456789abcdef";
+        uint160 v = uint160(a);
+        for (uint256 k = 41; k > 1; --k) {
+            s[k] = hexChars[v & 0xf];
+            v >>= 4;
+        }
+        return string(s);
+    }
+
     function _toString(uint256 v) internal pure returns (string memory) {
         if (v == 0) return "0";
         uint256 len;
@@ -626,6 +642,8 @@ contract CloakDrop {
 contract CloakDropFactory {
     CloakConfig public immutable config;
     address[] public drops;
+    /// Metadata for drops that bring no folder of their own: tokenURI = defaultBaseURI + drop + "/" + id.
+    string public defaultBaseURI;
 
     uint256 public constant MAX_DETAILS = 96_000;
 
@@ -634,8 +652,9 @@ contract CloakDropFactory {
     /// from, so anyone can rebuild a proof. The roots on the drop are what count; a list that doesn't match is ignored.
     event DropDetails(address indexed drop, string details);
 
-    constructor(CloakConfig config_) {
+    constructor(CloakConfig config_, string memory defaultBaseURI_) {
         config = config_;
+        defaultBaseURI = defaultBaseURI_;
     }
 
     function createDrop(

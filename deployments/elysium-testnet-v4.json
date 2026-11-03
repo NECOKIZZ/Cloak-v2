@@ -130,5 +130,7 @@
   "sharedRouter": "0xe2A0769A5aCBD987c1B6725247c56187A112dC7E",
   "sharedDeployCost": "0.00082346881872 HYPE",
   "sharedBatcher": "0xdc725bdeb0fca923bf2dc65232f54463b0f80820",
-  "sharedBatcherBlock": "21495522"
+  "sharedBatcherBlock": "21495522",
+  "dropFactory": "0xa679e1a41c3dea1deae16be2806c9969923ed059",
+  "dropFactoryBlock": 22228835
 }
