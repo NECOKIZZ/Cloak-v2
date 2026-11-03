@@ -10,7 +10,7 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 - **Hidden bid size.** Deposits round up to 1, 2 or 5 × 10ⁿ, so a deposit only shows the order of magnitude.
 - **One clearing price for everyone**, found across up to 256 price ticks. Bids at the clearing tick fill pro rata, and lower bids get a full refund.
 - **Liquidity seeded at that price and locked.** The pool starts at exactly the clearing price, the LP is burned or time-locked, and unsold tokens are burned.
-- **Every launch opens a standard Uniswap V2 pool** (token / WHYPE, from Nov 2). The token trades on Uniswap, aggregators and any wallet, and trackers can chart it, while private buys, sells and batch rounds trade the same pool through the vaults. Launches before Nov 2 keep their Cloak pool.
+- **Every launch opens a Uniswap v4 pool** (native HYPE / token, from Nov 3) through Cloak's hook: the liquidity stays forever, trading fees go to the creator, an anti-snipe fee (10% falling to 0.3% over 5 minutes) makes racing the listing cost the racer, and a time-weighted price feeds batch rounds. The PoolManager is Uniswap's, built byte for byte like mainnet's. Launches from Nov 2 to Nov 3 opened a standard Uniswap V2 pool (token / WHYPE). The token trades on Uniswap, aggregators and any wallet, and trackers can chart it, while private buys, sells and batch rounds trade the same pool through the vaults. Launches before Nov 2 keep their Cloak pool.
 - **Creator share** of at most 20% of supply, vesting over at least 30 days.
 - **A fair-launch record on chain** that any launchpad can read.
 - **Penalties for hiding bids.** A bid that is never revealed loses at least 10% of its deposit, and that money is burned.

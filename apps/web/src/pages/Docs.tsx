@@ -131,7 +131,15 @@ export function Docs() {
           <p>With "locked forever", the pool's LP goes into <code>CloakFeeLocker</code> at settlement and never comes out. Every trade on the pool, public or private, pays Uniswap's 0.3% fee into the pool. The locker remembers what the liquidity was worth when it was locked and lets the creator collect only the growth since, so the creator earns from trading but can never take the liquidity itself. Anyone can trigger a collection; the fees always go to the creator. Fees come from trading only: bidding pays the creator through the raise.</p>
 
           <h2 id="uniswap">Trading on Uniswap</h2>
-          <p>Since Nov 2, every launch's pool is a standard <b>Uniswap V2 pool</b> (token / WHYPE, 0.3% fee) from Elysium's Uniswap V2 factory. That means the token is a normal token everywhere: anyone can trade it on Uniswap, aggregators can route to it, wallets can price it, and trackers like DexScreener can chart it once they support Elysium. The launch page links to the pool.</p>
+          <p><b>Since Nov 3, launches open a Uniswap v4 pool</b> (native HYPE / token) at the clearing price, through Cloak's hook (<code>CloakV4Hook</code>). The hook:</p>
+          <ul>
+            <li><b>Keeps the liquidity forever.</b> It owns the pool's only position and never removes it, and nobody else can add or remove liquidity, so nobody can pull depth out from under traders.</li>
+            <li><b>Pays the trading fees to the creator</b> (0.3% per trade), or to 0x…dEaD for a launch that burns its LP. Anyone can trigger a payout; it always goes to the creator.</li>
+            <li><b>Charges an anti-snipe fee.</b> The fee starts at 10% when the pool opens and falls in a straight line to 0.3% over 5 minutes, so racing the listing costs the racer, and what they pay goes to the creator.</li>
+            <li><b>Keeps a time-weighted price</b> for batch rounds, updated before every swap.</li>
+          </ul>
+          <p>The pool lives in Uniswap's own PoolManager, so the token trades on the Universal Router, aggregators and wallets like any v4 token, and private trades use the same pool through <code>CloakV4Market</code>. On testnet Cloak deploys Uniswap's PoolManager itself, built from Uniswap's source byte for byte like the one on Elysium mainnet; on mainnet it uses Uniswap's own. v4 liquidity is a position, not a token, so a v4 launch's LP is either locked forever (fees to the creator) or burned, never locked until a date.</p>
+          <p>From Nov 2 to Nov 3, every launch's pool is a standard <b>Uniswap V2 pool</b> (token / WHYPE, 0.3% fee) from Elysium's Uniswap V2 factory. That means the token is a normal token everywhere: anyone can trade it on Uniswap, aggregators can route to it, wallets can price it, and trackers like DexScreener can chart it once they support Elysium. The launch page links to the pool.</p>
           <p>Private trades use <b>the same pool</b>. A small adapter (<code>CloakV2Market</code>) lets Cloak's private router and batch rounds trade it, so liquidity is never split between a "public" and a "private" market. Batch rounds price against the pool's own time-weighted price. Launches from before Nov 2 keep their Cloak pool, which works the same way.</p>
 
           <h2 id="nft-drops">NFT drops</h2>
@@ -242,6 +250,8 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>CloakVaults (the permanent vaults)</td><td><a href={A(ADDR.vaults)} target="_blank" rel="noreferrer"><code>{ADDR.vaults}</code></a></td></tr>
               {DEPLOYMENT?.dropFactory && <tr><td>CloakDropFactory (sealed NFT drops)</td><td><a href={A(DEPLOYMENT.dropFactory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.dropFactory}</code></a></td></tr>}
               {DEPLOYMENT?.spotBook && <tr><td>CloakSpotBook (WL spot sales)</td><td><a href={A(DEPLOYMENT.spotBook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.spotBook}</code></a></td></tr>}
+              {DEPLOYMENT?.v4Hook && <tr><td>CloakV4Hook (Uniswap v4 launches: seeds the pool, keeps the liquidity, creator fees, anti-snipe fee)</td><td><a href={A(DEPLOYMENT.v4Hook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.v4Hook}</code></a></td></tr>}
+              {DEPLOYMENT?.poolManager && <tr><td>Uniswap v4 PoolManager</td><td><a href={A(DEPLOYMENT.poolManager)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.poolManager}</code></a></td></tr>}
               {DEPLOYMENT?.feeLocker && <tr><td>CloakFeeLocker (LP locked forever, trading fees to creators)</td><td><a href={A(DEPLOYMENT.feeLocker)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.feeLocker}</code></a></td></tr>}
               <tr><td>CloakFactory (launches open a Uniswap V2 pool)</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
               {ADDR.seeder && <tr><td>CloakSeeder (opens each pool at the clearing price)</td><td><a href={A(ADDR.seeder)} target="_blank" rel="noreferrer"><code>{ADDR.seeder}</code></a></td></tr>}

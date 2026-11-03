@@ -1,6 +1,6 @@
 # Uniswap v4 and tokenized stocks on Elysium
 
-Status: research and plan (Nov 3). Nothing here is built yet. Read from Elysium testnet (chain `99801`) on Nov 3.
+Status (Nov 3): **3.2, launches on v4 with a Cloak hook, is live on testnet**, and private trading of v4 launches works through the existing router (3.1 turned out not to need its own contract: `CloakV4Market` gives a v4 pool the interface the router already trades). Testnet addresses: PoolManager `0x51027076df8416e42ea8438b27a0c433d9662e68` (Uniswap's build, byte-identical to mainnet's apart from its own address), CloakV4Hook `0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80`, launch factory `0x1b0072684e98d9e23018e2d107ed8166ef84c077`. Source in `contracts-v4/`. On mainnet the same hook and factory deploy against Uniswap's own PoolManager (`POOL_MANAGER=0xe2e1…23f1 node e2e/deploy-v4pools.mjs`).
 
 ## 1. What is on chain today
 
