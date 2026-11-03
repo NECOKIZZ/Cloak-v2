@@ -40,7 +40,7 @@ Everything below is live on Elysium testnet (chain `99801`) at [cloak.boblabs.te
 - **`@cloakely/sdk` on npm** (0.4.0), published from GitHub with npm trusted publishing. It covers launches, bids, private balances, swaps, batch orders, sends, USDC, and the on-device prover.
 - **A hosted keeper** that reveals bids, settles launches and batch rounds, opens each launch's vault at settlement, and relays private transactions for a quoted fee.
 - **One address for everything:** `CloakConfig` lists every Cloak contract with its start block (`readRegistry` in the SDK).
-- **An MCP server for AI agents:** a hosted link (`https://cloak.boblabs.tech/mcp`, read and plan, no install) and a local server (`npx @cloakely/mcp`, on npm) with 18 tools covering launches, bids and private trading, under spending limits with dry runs.
+- **An MCP server for AI agents:** a hosted link (`https://cloak.boblabs.tech/mcp`, read and plan, no install) and a local server (`npx @cloakely/mcp`, on npm) with 29 tools covering launches, bids, private trading, payment links, NFT drops and WL spot sales, under spending limits with dry runs.
 
 **Not yet**
 - **No private swaps for USDC yet:** see 3b.
@@ -125,6 +125,7 @@ Why it matters: an agent that trades on-chain leaks its strategy with every tran
 |---------|-------|
 | Read    | `cloak_info`, `list_launches`, `get_launch`, `quote_bid`, `quote_swap`, `vault_stats` (hosted adds `plan_launch` and `connect_full_agent`) |
 | Launch  | `create_launch`, `place_sealed_bid`, `my_bids`, `claim`, `enable_private_trading` |
+| Drops   | `list_drops`, `get_drop`, `place_drop_bid`, `my_drop_bids`, `claim_drop`, `set_whitelist_wallets` |
 | Private | `unlock` (derives the private keys from one local signature), `private_balance`, `shield`, `private_swap`, `batch_order`, `private_send`, `withdraw` |
 
 Safety built in:

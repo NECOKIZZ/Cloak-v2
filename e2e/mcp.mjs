@@ -107,7 +107,7 @@ H.call = async (tool, args = {}) => {
 };
 try {
   const { tools } = await A.client.listTools();
-  ok(tools.length === 23, `the server offers ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
+  ok(tools.length === 29, `the server offers ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
   const info = await A.call("cloak_info");
   ok(info.mode === "read and write" && info.wallet.address === alice && info.limits.hype.perTransaction === "30 HYPE", "cloak_info: wallet, public balances and limits (30 HYPE per transaction, 60 a day)");
   const ro = await R.call("shield", { asset: "HYPE", amount: "1" });
@@ -119,7 +119,7 @@ try {
   const launch = await A.call("create_launch", { name: "Ember", symbol: "EMBR", sale_supply: "1000000", min_price: "0.000001", price_ticks: 50, bidding_minutes: 0.25, reveal_minutes: 1, lp_percent: 80 });
   ok(launch.created && launch.auction, `create_launch: ${launch.auction ?? launch.error}`);
   const hostedTools = (await H.client.listTools()).tools.map((t) => t.name);
-  ok(hostedTools.length === 8 && !hostedTools.some((t) => ["create_launch", "place_sealed_bid", "my_bids", "claim", "enable_private_trading", "unlock", "private_balance", "shield", "private_swap", "batch_order", "private_send", "withdraw"].includes(t)), `the hosted link offers read and plan tools only: ${hostedTools.join(", ")}`);
+  ok(hostedTools.length === 10 && !hostedTools.some((t) => ["create_launch", "place_sealed_bid", "my_bids", "claim", "enable_private_trading", "unlock", "private_balance", "shield", "private_swap", "batch_order", "private_send", "withdraw"].includes(t)), `the hosted link offers read and plan tools only: ${hostedTools.join(", ")}`);
   const hi = await H.call("cloak_info");
   ok(/never signs/.test(hi.mode) && !hi.wallet, "the hosted link has no wallet, even when the environment it runs in holds a key");
   ok(/never takes private keys/.test((await H.call("get_launch", { auction: aliceKey })).error), "the hosted link refuses a call that carries a private key");

@@ -82,6 +82,12 @@ Then ask, for example:
 | | `my_bids` | The wallet's bids: opened, claimed, tokens won, refund |
 | | `claim` | Settle if nobody has, then claim tokens and refunds |
 | | `enable_private_trading` | Open a private vault for a settled launch's token |
+| NFT drops | `list_drops` | Sealed NFT drops and WL spot sales, newest first, with phase, floor, WL boost and results |
+| | `get_drop` | One drop in full: timing, floor, results, whether a wallet is on its GTD list or WL, and a spot sale's whitelist |
+| | `place_drop_bid` | Seal a bid at the floor or more. A WL wallet gets its boost automatically |
+| | `my_drop_bids` | The wallet's bids on a drop: sealed or opened, won, paid, refund |
+| | `claim_drop` | Take NFTs (optionally to a fresh wallet) and refunds now, without waiting for the keeper |
+| | `set_whitelist_wallets` | In a WL spot sale you won, name the Elysium wallets to whitelist, one per spot, until the deadline |
 | Private | `unlock` | Derive the private account from one local signature and return its `cloak:` address |
 | | `private_balance` | HYPE, USDC and launch tokens held privately |
 | | `shield` | HYPE or USDC from the wallet into the private balance (the one public step) |

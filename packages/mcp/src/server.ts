@@ -45,6 +45,10 @@ import {
   parseClaimLink,
   parseRequestLink,
   LINK_SHARES_MAX,
+  CloakDrops,
+  CloakSpots,
+  type DropBid,
+  type DropState,
   type AuctionState,
   type Prover,
   type Wallet,
@@ -55,7 +59,7 @@ import { Spending, show, type Budget } from "./limits.js";
 export { loadSettings, type Settings, type Limits } from "./config.js";
 export { Spending } from "./limits.js";
 
-export const VERSION = "0.8.1";
+export const VERSION = "0.8.2";
 export const HOSTED_URL = "https://cloak.boblabs.tech/mcp";
 
 const INSTRUCTIONS = `Cloak: sealed-bid token launches and private trading on Kinetiq's Elysium (HYPE is the gas and base currency).
@@ -65,6 +69,8 @@ Launches: create_launch starts a sealed-bid auction. place_sealed_bid commits a 
 Private balances: shield moves HYPE or USDC from the wallet into a private balance (the one public step). private_swap, batch_order, private_send and withdraw then run from that balance: each is proven on this machine and sent by a relayer, so the wallet never appears on chain. batch_order also hides trade size. withdraw lands funds at a normal address, ideally a fresh one.
 
 Payment links (HYPE, USDC): create_payment_link puts money in a link anyone can claim (into their private balance, or to any wallet with no gas), optionally locked with a passcode and riddle or split into shares; claim_payment_link claims one (or takes back your own), check_payment_link shows what is left. request_payment_link makes a link that asks to be paid, and pay_payment_request pays one. Amounts are in whole units ("0.5" HYPE), and send, sell and withdraw accept "max".
+
+NFT drops and WL spot sales: list_drops and get_drop show sealed NFT drops (and sales of a partner collection's whitelist spots). place_drop_bid seals a bid at the creator's price or more (WL wallets get their public boost automatically); bids open by themselves after bidding closes and every winner pays one price. claim_drop takes NFTs (optionally to a fresh wallet) and refunds without waiting for the keeper. In a WL spot sale, set_whitelist_wallets names the Elysium wallet to whitelist for each spot won, until the sale's deadline.
 
 Safety: every action that moves value is checked against per-transaction and daily spending limits (see cloak_info), and any write tool takes dry_run: true to see exactly what would happen without signing anything. Use dry_run first when unsure.`;
 
@@ -469,6 +475,96 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         out.push({ asset: a.symbol, token: a.token, vault: a.pool, held: fmtAmt(a, held) });
       }
       return { vaults: out, note: "Each vault is one shared pool of encrypted notes. The chain shows the total, not the owners or their balances." };
+    }),
+  );
+
+  // ───────────── NFT drops and WL spot sales ─────────────
+
+  const dropsFor = (w?: Wallet) => {
+    if (!d.dropFactory) throw new Error("NFT drops aren't deployed on this network yet.");
+    return new CloakDrops(pub, w, d.dropFactory, d.dropFactoryBlock ?? 0n);
+  };
+  const spotsFor = (w?: Wallet) => (d.spotBook ? new CloakSpots(dropsFor(w), d.spotBook) : null);
+  const dropPhase = (s: DropState) => (s.failed ? "ended with no sale (every bid refunded)" : s.phase === "gtd" ? "gtd (guaranteed list minting; bidding opens after)" : s.phase === "settle" || s.phase === "numbering" ? "settling" : s.phase);
+  async function dropView(s: DropState) {
+    const c = dropsFor();
+    const [det, sale] = await Promise.all([c.details(s.address).catch(() => ({}) as Awaited<ReturnType<CloakDrops["details"]>>), spotsFor()?.sale(s.address).catch(() => null) ?? null]);
+    return {
+      drop: s.address,
+      name: s.name,
+      symbol: s.symbol,
+      kind: sale ? `WL spot sale for ${sale.partner}` : "NFT drop",
+      phase: dropPhase(s),
+      ...(s.phase === "gtd" ? { biddingOpens: iso(s.gtdEnd) } : {}),
+      biddingEnds: iso(s.commitEnd),
+      [sale ? "spots" : "supply"]: s.supply,
+      floor: `${formatEther(s.floor)} HYPE each (the creator's price; bids go up in ${formatEther(s.tickSize)} HYPE steps)`,
+      maxPerBid: s.maxPerBid,
+      ...(s.hasWl ? { wlBoost: `${s.wlBoostBps / 100}% (WL bids rank this much higher, and WL winners pay that much less, never under the floor)` } : {}),
+      ...(s.hasGtd ? { gtd: `${s.gtdMinted} minted at ${formatEther(s.gtdPrice)} HYPE` } : {}),
+      sealedBids: s.bids,
+      bidsOpened: s.reveals,
+      ...(s.settled && !s.failed ? { sold: s.sold, publicWinnersPaid: hype(s.publicPrice), ...(s.hasWl ? { wlWinnersPaid: hype(s.wlPrice) } : {}) } : {}),
+      ...(sale ? { walletsDeadline: iso(sale.deadline) } : {}),
+      ...(det.description ? { description: det.description } : {}),
+      page: `https://cloak.boblabs.tech/app/drop/${s.address}`,
+    };
+  }
+  const bidView = (b: DropBid, settled: boolean) => ({
+    id: b.id.toString(),
+    wl: b.wl,
+    deposit: hype(b.deposit),
+    ...(b.revealed ? { bid: `${b.quantity} at ${formatEther(b.price)} HYPE` } : { bid: "sealed" }),
+    ...(settled ? (b.revealed ? { won: b.nfts, paid: hype(b.paid), refund: hype(b.refund) } : { won: 0, note: "never opened: 90% of the deposit comes back" }) : {}),
+    delivered: b.claimed,
+  });
+
+  server.registerTool(
+    "list_drops",
+    {
+      title: "List NFT drops",
+      description: "Sealed NFT drops and WL spot sales, newest first, with phase, floor, WL boost and results.",
+      inputSchema: { limit: z.number().int().min(1).max(50).optional().describe("How many (default 10)"), live_only: z.boolean().optional().describe("Only drops still minting or taking bids") },
+      annotations: READ,
+    },
+    safe(async ({ limit, live_only }: { limit?: number; live_only?: boolean }) => {
+      const c = dropsFor();
+      const all = (await c.list()).reverse();
+      const out = [];
+      for (const a of all) {
+        if (out.length >= (limit ?? 10)) break;
+        const s = await c.get(a);
+        if (live_only && s.phase !== "gtd" && s.phase !== "bidding") continue;
+        out.push(await dropView(s));
+      }
+      return { total: all.length, drops: out };
+    }),
+  );
+
+  server.registerTool(
+    "get_drop",
+    {
+      title: "Drop details",
+      description: "One NFT drop or WL spot sale: phase, timing, floor, WL boost, results once settled, whether a wallet is on its GTD list or WL, and for a spot sale the whitelist so far.",
+      inputSchema: { drop: addr, wallet: addr.optional().describe("A wallet to check against the drop's GTD list and WL") },
+      annotations: READ,
+    },
+    safe(async ({ drop, wallet: w }: { drop: string; wallet?: string }) => {
+      if (!isAddress(drop)) throw new Error("That isn't a drop address.");
+      const c = dropsFor();
+      const s = await c.get(drop as Address);
+      const view = await dropView(s);
+      const who = (w && isAddress(w) ? w : account?.address) as Address | undefined;
+      const listed = who ? await c.listed(s.address, who) : null;
+      const sp = spotsFor();
+      const sale = sp ? await sp.sale(s.address) : null;
+      const whitelist = sale && s.phase === "settled" && !s.failed ? (await sp!.winners(s.address)).flatMap((x) => Array.from({ length: x.spots }, (_, i) => ({ bid: x.bidId.toString(), wallet: x.wallets[i] ?? "not named yet" }))) : undefined;
+      return {
+        ...view,
+        ...(listed && who ? { listing: { wallet: who, onWl: listed.wl, gtdSpots: listed.gtdSpots, gtdMinted: listed.gtdMinted } } : {}),
+        ...(whitelist ? { whitelist } : {}),
+        ...(s.phase === "bidding" ? { note: "Bids are sealed: nobody can see demand until bidding closes." } : {}),
+      };
     }),
   );
 
@@ -1105,6 +1201,119 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         await receipt(h);
         spending.record(c.budget, c.value);
         return { paid: fmtAmt(a, units), to: r.to, ...(r.note ? { for: r.note } : {}), tx: link(h), privateBalance: fmtAmt(a, await p.balance(a.pool)) };
+      });
+    }),
+  );
+
+  server.registerTool(
+    "place_drop_bid",
+    {
+      title: "Bid on an NFT drop",
+      description: "Seal a bid on an NFT drop or WL spot sale: up to max_price HYPE each for quantity NFTs (or spots). Nobody can read it until bidding closes; it opens by itself afterwards. A wallet on the drop's WL bids with its boost automatically. Spends the deposit from the wallet; whatever isn't paid at the clearing price comes back.",
+      inputSchema: { drop: addr, max_price: amt("Most you'd pay for each, in HYPE (at least the floor)"), quantity: z.number().int().min(1).max(20).optional().describe("How many (default 1)"), dry_run: dry },
+      annotations: WRITE,
+    },
+    safe(async ({ drop, max_price, quantity, dry_run }: { drop: string; max_price: string; quantity?: number; dry_run?: boolean }) => {
+      const { wallet: w, account, spending } = needWallet();
+      if (!isAddress(drop)) throw new Error("That isn't a drop address.");
+      const c = dropsFor(w);
+      const s = await c.get(drop as Address);
+      if (s.phase !== "bidding") throw new Error(s.phase === "gtd" ? `Bidding opens at ${iso(s.gtdEnd)}, when the GTD window closes.` : "Bidding on this drop has closed.");
+      const price = amountOf(max_price, 18);
+      if (price === null) throw new Error(`"${max_price}" isn't an amount of HYPE.`);
+      if (price < s.floor) throw new Error(`Bid at least the floor, ${formatEther(s.floor)} HYPE.`);
+      const qty = quantity ?? 1;
+      if (qty > s.maxPerBid) throw new Error(`This drop takes at most ${s.maxPerBid} per bid.`);
+      const tick = CloakDrops.tickFor(s, price);
+      const level = CloakDrops.priceAt(s, tick);
+      const deposit = level * BigInt(qty);
+      const { wl } = await c.listed(s.address, account.address);
+      spending.check("hype", deposit);
+      const plan = { drop: s.address, quantity: qty, bidLevel: `${formatEther(level)} HYPE each${level < price ? ` (your ${max_price} snaps down to the nearest level)` : ""}`, deposit: hype(deposit), wl, ...(wl ? { ranksAs: `${formatEther((level * BigInt(10_000 + s.wlBoostBps)) / 10_000n)} HYPE each` } : {}), biddingEnds: iso(s.commitEnd) };
+      if (isDry(dry_run)) return { dryRun: true, wouldBid: plan };
+      return exclusive(async () => {
+        const b = await c.bid(s.address, { price: level, quantity: qty, wl });
+        spending.record("hype", deposit);
+        return { placed: true, bidId: b.id.toString(), ...plan, tx: link(b.txHash), next: "The bid opens by itself after bidding closes. Check results with get_drop or my_drop_bids, then claim_drop." };
+      });
+    }),
+  );
+
+  server.registerTool(
+    "my_drop_bids",
+    { title: "My drop bids", description: "This wallet's bids on a drop: sealed or opened, and once settled what each won, paid and gets back.", inputSchema: { drop: addr }, annotations: READ },
+    safe(async ({ drop }: { drop: string }) => {
+      const { account } = needWallet();
+      if (!isAddress(drop)) throw new Error("That isn't a drop address.");
+      const c = dropsFor();
+      const s = await c.get(drop as Address);
+      const mine = await c.bids(s.address, account.address);
+      const held = s.settled ? await c.refundOwed(s.address, account.address) : 0n;
+      return { drop: s.address, phase: dropPhase(s), bids: mine.map((b) => bidView(b, s.phase === "settled")), ...(held > 0n ? { refundWaiting: hype(held) } : {}) };
+    }),
+  );
+
+  server.registerTool(
+    "claim_drop",
+    {
+      title: "Claim from a drop",
+      description: "Once a drop settles, take this wallet's NFTs and refunds now instead of waiting for the keeper (which delivers about an hour after settling). to sends the NFTs to another wallet, a fresh one say; refunds always come back to the bidding wallet.",
+      inputSchema: { drop: addr, to: addr.optional().describe("Where the NFTs go (default: this wallet)"), dry_run: dry },
+      annotations: WRITE,
+    },
+    safe(async ({ drop, to, dry_run }: { drop: string; to?: string; dry_run?: boolean }) => {
+      const { wallet: w, account } = needWallet();
+      if (!isAddress(drop)) throw new Error("That isn't a drop address.");
+      if (to && !isAddress(to)) throw new Error(`${to} isn't a wallet address.`);
+      const c = dropsFor(w);
+      const s = await c.get(drop as Address);
+      if (s.phase !== "settled") throw new Error("This drop hasn't settled yet. Bids open by themselves after bidding closes, then it settles.");
+      const open = (await c.bids(s.address, account.address)).filter((b) => !b.claimed);
+      const held = await c.refundOwed(s.address, account.address);
+      if (!open.length && held === 0n) return { nothingToClaim: true, note: "Every bid from this wallet has already been delivered." };
+      const plan = { bids: open.map((b) => ({ id: b.id.toString(), nfts: b.nfts, refund: hype(b.refund) })), nftsTo: to ?? account.address, ...(held > 0n ? { heldRefund: hype(held) } : {}) };
+      if (isDry(dry_run)) return { dryRun: true, wouldClaim: plan };
+      return exclusive(async () => {
+        const txs: string[] = [];
+        for (const b of open) txs.push(link(to && b.nfts > 0 ? await c.claimTo(s.address, b.id, to as Address) : await c.claim(s.address, b.id)));
+        if (held > 0n) txs.push(link(await c.withdrawRefund(s.address, account.address)));
+        return { claimed: true, ...plan, txs };
+      });
+    }),
+  );
+
+  server.registerTool(
+    "set_whitelist_wallets",
+    {
+      title: "Name wallets for WL spots",
+      description: "In a WL spot sale this wallet won, name the Elysium wallets to whitelist, one per spot won (a fresh wallet is fine). Calling again replaces them, until the sale's deadline.",
+      inputSchema: { drop: addr, wallets: z.array(z.string()).min(1).max(20).describe("One 0x wallet per spot won, in order"), dry_run: dry },
+      annotations: WRITE,
+    },
+    safe(async ({ drop, wallets, dry_run }: { drop: string; wallets: string[]; dry_run?: boolean }) => {
+      const { wallet: w, account } = needWallet();
+      if (!isAddress(drop)) throw new Error("That isn't a drop address.");
+      const sp = spotsFor(w);
+      if (!sp) throw new Error("WL spot sales aren't deployed on this network yet.");
+      const sale = await sp.sale(drop as Address);
+      if (!sale) throw new Error("This drop isn't a WL spot sale.");
+      const s = await sp.drops.get(drop as Address);
+      if (s.phase !== "settled") throw new Error("Wallets can be named once the sale settles.");
+      if (Date.now() / 1000 >= sale.deadline) throw new Error(`The deadline to name wallets passed at ${iso(sale.deadline)}, so the whitelist is final.`);
+      const wins = (await sp.drops.bids(s.address, account.address)).filter((b) => b.nfts > 0);
+      const spots = wins.reduce((a, b) => a + b.nfts, 0);
+      if (!spots) throw new Error("This wallet didn't win a spot in this sale.");
+      const bad = wallets.find((x) => !isAddress(x.trim()));
+      if (bad !== undefined) throw new Error(`${bad} isn't a wallet address.`);
+      if (wallets.length !== spots) throw new Error(`This wallet won ${spots} spot${spots > 1 ? "s" : ""}: name exactly ${spots} wallet${spots > 1 ? "s" : ""}.`);
+      if (new Set(wallets.map((x) => x.trim().toLowerCase())).size !== wallets.length) throw new Error("Each spot needs a different wallet.");
+      let k = 0;
+      const plan = wins.map((b) => ({ bid: b.id.toString(), wallets: wallets.slice(k, (k += b.nfts)).map((x) => x.trim()) }));
+      if (isDry(dry_run)) return { dryRun: true, partner: sale.partner, wouldName: plan, deadline: iso(sale.deadline) };
+      return exclusive(async () => {
+        const txs: string[] = [];
+        for (const p of plan) txs.push(link(await sp.setWallets(s.address, BigInt(p.bid), p.wallets)));
+        return { named: true, partner: sale.partner, wallets: plan, deadline: iso(sale.deadline), txs, note: "Change them any time before the deadline by calling this again." };
       });
     }),
   );

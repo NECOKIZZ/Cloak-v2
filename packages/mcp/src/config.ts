@@ -36,8 +36,9 @@ const NETWORKS: Record<string, { chain: Chain }> = {
 };
 
 /** A deployment file (`CLOAK_DEPLOYMENT_FILE`) for a local chain or a private test deployment. */
-interface DeploymentFile extends Omit<CloakDeployment, "routerBlock" | "factoryBlock" | "vaultsBlock" | "version" | "assets" | "previous"> {
+interface DeploymentFile extends Omit<CloakDeployment, "routerBlock" | "factoryBlock" | "vaultsBlock" | "version" | "assets" | "previous" | "dropFactoryBlock"> {
   rpcUrl: string;
+  dropFactoryBlock?: string | number;
   routerBlock: string | number;
   vaultsBlock?: string | number;
   version?: number;
@@ -66,6 +67,7 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
       factoryBlock: launchesFromBlock,
       routerBlock: BigInt(f.routerBlock),
       vaultsBlock: f.vaultsBlock === undefined ? undefined : BigInt(f.vaultsBlock),
+      dropFactoryBlock: f.dropFactoryBlock === undefined ? undefined : BigInt(f.dropFactoryBlock),
       assets: f.assets?.map((a) => ({ ...a, fromBlock: BigInt(a.fromBlock) })),
     };
   } else {

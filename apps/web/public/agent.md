@@ -99,6 +99,10 @@ from private HYPE, so keep a little HYPE in the private balance. `batch_order` w
 Launches: `list_launches`, `get_launch`, `quote_bid`, `place_sealed_bid` (bids stay sealed until bidding closes),
 `my_bids`, `claim` (private by default), `create_launch`.
 
+NFT drops and WL spot sales: `list_drops`, `get_drop`, `place_drop_bid` (sealed, the floor or more, WL boost
+automatic), `my_drop_bids`, `claim_drop` (NFTs to any wallet, refunds now), `set_whitelist_wallets` (for a WL spot
+sale you won: one Elysium wallet per spot, changeable until the deadline).
+
 Good to know:
 
 - Amounts are whole units (`"0.1"` HYPE). Send, sell and withdraw accept `"max"`.

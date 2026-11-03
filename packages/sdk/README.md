@@ -105,6 +105,31 @@ console.log(await shared.balances());                 // every token this accoun
 
 The private account comes from one EIP-712 signature bound to the chain only (never to a contract), so it and the `cloak:` address never change. The same wallet always restores it, and nothing is stored on a server. In Node, read the circuit files yourself and pass them to `createProver(wasm, zkey)`.
 
+## NFT drops and WL spot sales
+
+```ts
+import { CloakDrops, CloakSpots, deploymentFor, elysiumTestnet, parseEther } from "@cloakely/sdk";
+const dep = deploymentFor(elysiumTestnet.id);
+const drops = new CloakDrops(publicClient, walletClient, dep.dropFactory!, dep.dropFactoryBlock);
+
+const { drop } = await drops.create({ name: "Moonfoxes", symbol: "MOON", baseURI: "", supply: 1000, floor: parseEther("0.5"),
+  gtd: { list: [{ wallet: "0x…", spots: 2 }], price: parseEther("0.4"), durationSecs: 86400 },
+  wl: { list: ["0x…"], boostBps: 2000 }, biddingSecs: 86400 });
+await drops.bid(drop, { price: parseEther("0.7"), quantity: 1 });   // sealed to a drand round; WL wallets pass wl: true
+await drops.claim(drop, bidId);                                      // or claimTo(drop, bidId, freshWallet)
+
+// sell a partner collection's WL spots: winners name the wallet to whitelist
+const spots = new CloakSpots(drops, dep.spotBook!);
+const sale = await spots.create({ name: "Moonfoxes WL spots", symbol: "MOONWL", supply: 5, floor: parseEther("0.5"), biddingSecs: 86400, partner: "Moonfoxes" });
+await spots.setWallets(sale.drop, bidId, ["0x…"]);                   // one per spot won, until the deadline
+const csv = CloakSpots.csv(await spots.winners(sale.drop));          // the list for the partner
+```
+
+The creator's price is the floor. Bids rank by price (WL bids by price × (1 + boost)), every winner pays one clearing
+price (WL winners pay it ÷ (1 + boost), never under the floor), ties are drawn from every bid's sealed salt, and a drop
+settles as soon as every bid is open. Every bid must cover one NFT at the floor; a bid still sealed at the end of the
+reveal window loses 10%.
+
 ## Fees (testnet beta)
 
 | Action | Fee |
@@ -122,6 +147,8 @@ Rules live in the on-chain `CloakConfig`, and no function in any Cloak contract 
 |---|---|
 | `Cloak` | Launches: `createLaunch`, `bid`, `revealAll`, `settle`, `claimAll`, `payOut`, `getAuction`, `listLaunches` |
 | `CloakPrivate` | Private balances: `shieldHype`, `shieldToken`, `buy`, `sell`, `batch`, `send`, `unshieldHype`, `unshieldToken`, `addAsset`, `balance`, `maxSpendable`, `migrateFrom` |
+| `CloakDrops` | Sealed NFT drops: `create`, `get`, `details`, `listed`, `gtdMint`, `bid`, `bids`, `revealAll`, `settle`, `claim`, `claimTo`, `claimAll`, `withdrawRefund`, `payOut`, `mintUnsold` |
+| `CloakSpots` | WL spot sales: `create`, `open`, `sale`, `sales`, `winners`, `setWallets`, `CloakSpots.csv` |
 | `relayerSubmitter`, `walletSubmitter` | How private calls are submitted: through a relayer (private), or from a wallet (for tests) |
 | `loadProver`, `createProver` | The Groth16 prover, running on the device |
 | `deployments`, `deploymentFor` | Addresses, start blocks, relayer and circuit URLs per chain |
