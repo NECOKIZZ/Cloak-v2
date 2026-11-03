@@ -52,7 +52,7 @@ await page.route(`**://${host}/**`, (r) => r.abort());
 const stale = await page.locator("text=Couldn't reach the network").waitFor({ timeout: 40000 }).then(() => true, () => false);
 ok(stale, "when the network stops answering, the page says it's showing the last update");
 await page.unroute(`**://${host}/**`);
-ok(await page.locator("text=Couldn't reach the network").waitFor({ state: "detached", timeout: 40000 }).then(() => true, () => false), "and the note goes away once the network is back");
+ok(await page.locator("text=Couldn't reach the network").waitFor({ state: "detached", timeout: 60000 }).then(() => true, () => false), "and the note goes away once the network is back");
 
 // the real bid, double-clicked
 await priceIn.fill("0.002");
@@ -85,7 +85,8 @@ ok(named?.toLowerCase() === target.toLowerCase(), "a lowercase address is accept
 ok(/1 of 1 named/.test(await main()), "the public whitelist shows it");
 ok(named.toLowerCase() !== demoAddress.toLowerCase(), "the whitelisted wallet isn't the bidding wallet");
 const claimBtn = page.locator("main button", { hasText: "Claim my receipt now" });
-if (await claimBtn.isVisible().catch(() => false)) {
+// every action shares one busy label, so wait for the save to finish before looking for the button
+if (await claimBtn.waitFor({ timeout: 30000 }).then(() => true, () => false)) {
   await claimBtn.click();
   await page.locator("text=delivered").first().waitFor({ timeout: 120000 }).catch(() => {});
   ok((await c.bids(drop))[0].claimed, "the winner took its receipt itself, without waiting for the keeper");

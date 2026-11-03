@@ -57,7 +57,13 @@ export function Drop({ drop }: { drop: Address }) {
   useEffect(() => {
     load().catch((e) => setErr(friendly(e)));
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
-    const r = setInterval(() => load().then(() => setStale(false), () => setStale(true)), 15000);
+    // one refresh at a time: a slow one from a network outage must not land after a newer one and undo it
+    let inFlight = false;
+    const r = setInterval(() => {
+      if (inFlight) return;
+      inFlight = true;
+      load().then(() => setStale(false), () => setStale(true)).finally(() => (inFlight = false));
+    }, 15000);
     return () => (clearInterval(t), clearInterval(r));
   }, [drop, wallet]);
   useEffect(() => { if (s && !price) setPrice(hype(s.floor, 6).replace(/,/g, "")); }, [s]);
@@ -258,7 +264,7 @@ export function Drop({ drop }: { drop: Address }) {
                         <button className="btn btn-ink btn-block" disabled={!!busy} onClick={act("Wallets saved", async (w) => {
                           const list = typed(b);
                           const bad = list.find((a) => !isAddress(a));
-                          if (bad !== undefined) throw new Hint(bad ? `${short(bad)} isn't a wallet address.` : "Enter a wallet for every spot.");
+                          if (bad !== undefined) throw new Hint(bad ? `${bad.length > 20 ? `${bad.slice(0, 10)}…${bad.slice(-6)}` : bad} isn't a wallet address. Paste the full 0x address.` : "Enter a wallet for every spot.");
                           if (new Set(list.map((a) => a.toLowerCase())).size !== list.length) throw new Hint("Each spot needs a different wallet.");
                           const h = await spotsClient(w)!.setWallets(drop, b.id, list);
                           setNamed((x) => { const { [String(b.id)]: _, ...rest } = x; return rest; });
