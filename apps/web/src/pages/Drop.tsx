@@ -34,6 +34,8 @@ export function Drop({ drop }: { drop: Address }) {
   const [named, setNamed] = useState<Record<string, string[]>>({});
   const [held, setHeld] = useState(0n);
   const [stale, setStale] = useState(false);
+  /** The error from a failed load, so a later good refresh can clear it (an action's error stays until the next action). */
+  const loadErr = useRef("");
 
   async function load() {
     const c = dropsClient();
@@ -55,14 +57,30 @@ export function Drop({ drop }: { drop: Address }) {
     }
   }
   useEffect(() => {
-    load().catch((e) => setErr(friendly(e)));
+    load().catch((e) => {
+      loadErr.current = friendly(e);
+      setErr(loadErr.current);
+    });
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
     // one refresh at a time: a slow one from a network outage must not land after a newer one and undo it
     let inFlight = false;
     const r = setInterval(() => {
       if (inFlight) return;
       inFlight = true;
-      load().then(() => setStale(false), () => setStale(true)).finally(() => (inFlight = false));
+      // a hung request (a network switch, a stalled connection) must never block the refreshes after it
+      Promise.race([load(), new Promise((_, no) => setTimeout(() => no(new Error("refresh timed out")), 30000))])
+        .then(
+          () => {
+            setStale(false);
+            if (loadErr.current) {
+              const was = loadErr.current;
+              loadErr.current = "";
+              setErr((x) => (x === was ? "" : x));
+            }
+          },
+          (e) => { console.warn("drop refresh failed", e); setStale(true); },
+        )
+        .finally(() => (inFlight = false));
     }, 15000);
     return () => (clearInterval(t), clearInterval(r));
   }, [drop, wallet]);

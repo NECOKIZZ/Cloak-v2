@@ -1,0 +1,25 @@
+import { open } from "./harness.mjs";
+import { CloakDrops, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
+import { clients, parseEther, sleep } from "../lib.mjs";
+const dep = deploymentFor(elysiumTestnet.id);
+const d = clients(elysiumTestnet, elysiumTestnet.rpcUrls.default.http[0], process.env.DEPLOYER_PK);
+const c = new CloakDrops(d.publicClient, d.walletClient, dep.dropFactory, dep.dropFactoryBlock);
+const { drop } = await c.create({ name: "Stale Test", symbol: "STL", baseURI: "", supply: 1, floor: parseEther("0.001"), tickSize: parseEther("0.0005"), numTicks: 10, biddingSecs: 600, description: "stale test, testnet" });
+const { browser, ctx, page } = await open({ base: "http://localhost:4173" });
+const base = "http://localhost:4173";
+await ctx.addInitScript(() => { localStorage.setItem("cloak.welcomed", "1"); localStorage.setItem("cloak.guide", JSON.stringify({ done: [], hidden: true, shown: true })); });
+let armed = false;
+page.on("console", (m) => { if (armed && /refresh failed/.test(m.text())) console.log("WARN", m.text().slice(0, 600)); });
+await page.goto(`${base}/app/drop/${drop}`, { waitUntil: "networkidle" });
+for (let i = 0; i < 60 && !(await page.locator("text=Place a sealed bid").isVisible().catch(() => false)); i++) { await sleep(3000); await page.reload({ waitUntil: "networkidle" }); }
+await page.locator("main button.btn-ink.btn-lg").first().click();
+const bw = page.locator(".wm-item", { hasText: "Browser wallet" }); if (await bw.isVisible({ timeout: 8000 }).catch(() => false)) await bw.click();
+await page.waitForFunction(() => /Seal a bid/.test(document.querySelector("main button.btn-ink.btn-lg")?.textContent ?? ""), null, { timeout: 120000 });
+const h = "testnet-rpc.elysium.kinetiq.xyz";
+await page.route(`**://${h}/**`, (r) => r.abort());
+await page.locator("text=Couldn't reach the network").waitFor({ timeout: 60000 });
+await page.unroute(`**://${h}/**`);
+await sleep(3000); armed = true;
+await sleep(35000);
+console.log("still stale", await page.locator("text=Couldn't reach the network").isVisible());
+await browser.close(); process.exit(0);

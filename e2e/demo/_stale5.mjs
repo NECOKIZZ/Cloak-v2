@@ -1,0 +1,24 @@
+import { open } from "./harness.mjs";
+import { CloakDrops, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
+import { clients, parseEther, sleep } from "../lib.mjs";
+const dep = deploymentFor(elysiumTestnet.id);
+const d = clients(elysiumTestnet, elysiumTestnet.rpcUrls.default.http[0], process.env.DEPLOYER_PK);
+const c = new CloakDrops(d.publicClient, d.walletClient, dep.dropFactory, dep.dropFactoryBlock);
+const drop = (await c.list()).at(-1); // the stale-test drop, still bidding
+const base = "http://localhost:4173";
+const { browser, ctx, page } = await open({ base });
+await ctx.addInitScript(() => { localStorage.setItem("cloak.welcomed", "1"); localStorage.setItem("cloak.guide", JSON.stringify({ done: [], hidden: true, shown: true })); });
+const t0 = Date.now(); const T = () => ((Date.now() - t0) / 1000).toFixed(1);
+page.on("console", (m) => { if (/refresh failed/.test(m.text())) console.log(T(), "WARN", m.text().slice(0, 200)); });
+await page.goto(`${base}/app/drop/${drop}`, { waitUntil: "networkidle" });
+await page.locator("main button.btn-ink.btn-lg").first().click();
+const bw = page.locator(".wm-item", { hasText: "Browser wallet" }); if (await bw.isVisible({ timeout: 8000 }).catch(() => false)) await bw.click();
+await page.waitForFunction(() => /Seal a bid/.test(document.querySelector("main button.btn-ink.btn-lg")?.textContent ?? ""), null, { timeout: 120000 });
+const h = "testnet-rpc.elysium.kinetiq.xyz";
+await page.route(`**://${h}/**`, (r) => r.abort());
+await page.locator("text=Couldn't reach the network").waitFor({ timeout: 60000 });
+console.log(T(), "stale shown, unrouting");
+await page.unroute(`**://${h}/**`);
+const gone = await page.locator("text=Couldn't reach the network").waitFor({ state: "detached", timeout: 90000 }).then(() => true, () => false);
+console.log(T(), "gone", gone);
+await browser.close(); process.exit(0);

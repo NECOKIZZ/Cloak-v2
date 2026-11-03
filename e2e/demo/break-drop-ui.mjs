@@ -49,10 +49,10 @@ ok(await page.locator("text=Highest level in this drop").isVisible({ timeout: 50
 // a dead network for a while: the page says it's showing the last update, then recovers
 const host = new URL(RPC).host;
 await page.route(`**://${host}/**`, (r) => r.abort());
-const stale = await page.locator("text=Couldn't reach the network").waitFor({ timeout: 40000 }).then(() => true, () => false);
+const stale = await page.locator("text=Showing the last update").waitFor({ timeout: 40000 }).then(() => true, () => false);
 ok(stale, "when the network stops answering, the page says it's showing the last update");
 await page.unroute(`**://${host}/**`);
-ok(await page.locator("text=Couldn't reach the network").waitFor({ state: "detached", timeout: 60000 }).then(() => true, () => false), "and the note goes away once the network is back");
+ok(await page.locator("text=Showing the last update").waitFor({ state: "detached", timeout: 60000 }).then(() => true, () => false), "and the note goes away once the network is back");
 
 // the real bid, double-clicked
 await priceIn.fill("0.002");
