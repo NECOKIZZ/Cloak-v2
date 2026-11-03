@@ -33,6 +33,8 @@ export async function GET(req) {
     return new Response(Buffer.from(m[2], "base64"), { headers: { "content-type": m[1], "cache-control": "public, max-age=86400" } });
   }
   const image = img.startsWith("data:image/") ? `${SITE}/api/nft/${drop}/${id}?img=1` : img.startsWith("https://") || img.startsWith("ipfs://") ? img : `${SITE}/og.jpg`;
-  const meta = { name: `${name} #${id}`, description: details.description ?? `${name}, a sealed drop on Cloak.`, image, external_url: `${SITE}/app/drop/${drop}` };
+  const meta = details.spots
+    ? { name: `${name} #${id}`, description: details.description ?? `A receipt for a ${details.spots.partner} WL spot won in a sealed sale on Cloak.`, image, external_url: `${SITE}/app/drop/${drop}`, attributes: [{ trait_type: "Partner", value: details.spots.partner }, { trait_type: "Kind", value: "WL spot receipt" }] }
+    : { name: `${name} #${id}`, description: details.description ?? `${name}, a sealed drop on Cloak.`, image, external_url: `${SITE}/app/drop/${drop}` };
   return new Response(JSON.stringify(meta), { headers: { "content-type": "application/json", "cache-control": "public, s-maxage=300", "access-control-allow-origin": "*" } });
 }

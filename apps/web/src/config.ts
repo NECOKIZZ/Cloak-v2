@@ -73,6 +73,8 @@ export const SHARED_BATCHER = D?.sharedBatcher;
 /** Sealed NFT drops (CloakDropFactory). */
 export const DROP_FACTORY = (D?.dropFactory || undefined) as Address | undefined;
 export const DROP_FACTORY_BLOCK = D?.dropFactoryBlock ?? 0n;
+/** WL spot sales (CloakSpotBook): drops that sell a partner collection's whitelist spots. */
+export const SPOT_BOOK = (D?.spotBook || undefined) as Address | undefined;
 export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[] = D?.assets ?? [];
 
 /** $CLOAK, Cloak's own launch token: shieldable from a wallet next to HYPE and USDC. */

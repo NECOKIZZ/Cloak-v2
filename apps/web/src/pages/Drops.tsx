@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { DropDetails, DropState } from "@cloakely/sdk";
-import { DROP_FACTORY } from "../config";
+import { DROP_FACTORY, SPOT_BOOK } from "../config";
 import { dropsClient, imageSrc, pct } from "../drops";
 import { friendly } from "../errors";
 import { duration, hype } from "../format";
@@ -33,7 +33,7 @@ function Card({ s, now }: { s: Row; now: number }) {
       <DropArt details={s.details} name={s.name} size={48} />
       <div className="tcard-id">
         <b>{s.name}</b>
-        <span className="mute">{s.supply.toLocaleString()} NFTs{s.hasWl && s.wlBoostBps ? ` · WL +${pct(s.wlBoostBps)}` : ""}</span>
+        <span className="mute">{s.details.spots ? `${s.supply.toLocaleString()} WL spot${s.supply > 1 ? "s" : ""} · ${s.details.spots.partner}` : `${s.supply.toLocaleString()} NFTs`}{s.hasWl && s.wlBoostBps ? ` · WL +${pct(s.wlBoostBps)}` : ""}</span>
       </div>
       <div className="tcard-price">
         <span className="xs mute">{s.settled && !s.failed ? "Sold at" : "From"}</span>
@@ -70,9 +70,12 @@ export function Drops() {
       <div className="page-head">
         <div>
           <h1>NFT drops</h1>
-          <p>Sealed mints with no race, no bots and no gas war. Bid what you'd pay above the creator's price; every winner pays one price, and WL bids get a boost.</p>
+          <p>Sealed mints with no race, no bots and no gas war. Bid what you'd pay above the creator's price; every winner pays one price, and WL bids get a boost. Partner WL spots sell the same way.</p>
         </div>
-        <Link to="/app/drops/create" className="btn btn-ink"><Icon.plus size={16} />Create a drop</Link>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {SPOT_BOOK && <Link to="/app/drops/create?spots" className="btn btn-ghost">Sell WL spots</Link>}
+          <Link to="/app/drops/create" className="btn btn-ink"><Icon.plus size={16} />Create a drop</Link>
+        </div>
       </div>
       {err && <div className="err">{err}</div>}
       {!list ? (

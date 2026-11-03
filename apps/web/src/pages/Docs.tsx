@@ -19,7 +19,7 @@ const ADDR = {
 
 const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
-  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"], ["nft-drops", "NFT drops"]]],
+  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"], ["nft-drops", "NFT drops"], ["wl-spots", "WL spot sales"]]],
   ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["payment-links", "Payment links"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
   ["Build", [["sdk", "SDK"], ["agents", "AI agents (MCP)"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["rules", "All the rules"], ["governance", "Who can change what"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
@@ -145,6 +145,15 @@ export function Docs() {
           </ol>
           <p>A creator who wants a fixed price sets it as the floor: when demand sits at the floor, everyone pays exactly that. Each drop is one ERC-721 contract with ERC-2981 royalties; with no metadata folder of its own, Cloak serves each token's name and the collection image.</p>
 
+          <h2 id="wl-spots">WL spot sales</h2>
+          <p>When a partner collection gives out whitelist spots, they can be sold the same way: a drop whose supply is the number of spots, marked as a spot sale in <b>CloakSpotBook</b>. One book serves every sale. <Link to="/app/drops/create?spots" className="link">Sell WL spots</Link>.</p>
+          <ol>
+            <li><b>Bid</b>: the sealed auction, floor, WL boost, ties and refunds work exactly as in any drop.</li>
+            <li><b>Name wallets</b>: once the bids open and settle, each winning bid names the Elysium wallet to whitelist, one per spot it won. It can be a different wallet from the one that bid, and it can be changed until the deadline the seller set (1 to 90 days after the bids open).</li>
+            <li><b>Hand over the list</b>: the sale page shows the whitelist as it fills, with a CSV download, and anyone can read it from the book on chain. Winners also get a receipt NFT.</li>
+          </ol>
+          <p>The book only takes wallets from the wallet that placed a winning bid, one wallet per spot, and a wallet can hold only one spot per sale, so the list can't be padded or faked. Only drops made by Cloak's drop factory can be sales. Naming a wallet is a public transaction from the bidding wallet, so the link between the two is visible on chain to anyone who looks; the partner's list itself shows only the whitelisted wallets.</p>
+
           <div className="crumb" style={{ marginTop: 60 }}>Privacy</div>
           <h2 id="private-trading">Private trading</h2>
           <p>Cloak runs one <b>shielded vault</b> per asset: WHYPE, plus each launch token. A balance is a set of encrypted notes. To spend one, your browser makes a zero-knowledge proof (Groth16, 2-in/2-out) that says "the owner of some notes here approves this," without saying which notes or whose.</p>
@@ -231,6 +240,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>CloakConfig (rules and the list of every Cloak contract)</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
               <tr><td>CloakVaults (the permanent vaults)</td><td><a href={A(ADDR.vaults)} target="_blank" rel="noreferrer"><code>{ADDR.vaults}</code></a></td></tr>
               {DEPLOYMENT?.dropFactory && <tr><td>CloakDropFactory (sealed NFT drops)</td><td><a href={A(DEPLOYMENT.dropFactory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.dropFactory}</code></a></td></tr>}
+              {DEPLOYMENT?.spotBook && <tr><td>CloakSpotBook (WL spot sales)</td><td><a href={A(DEPLOYMENT.spotBook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.spotBook}</code></a></td></tr>}
               {DEPLOYMENT?.feeLocker && <tr><td>CloakFeeLocker (LP locked forever, trading fees to creators)</td><td><a href={A(DEPLOYMENT.feeLocker)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.feeLocker}</code></a></td></tr>}
               <tr><td>CloakFactory (launches open a Uniswap V2 pool)</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
               {ADDR.seeder && <tr><td>CloakSeeder (opens each pool at the clearing price)</td><td><a href={A(ADDR.seeder)} target="_blank" rel="noreferrer"><code>{ADDR.seeder}</code></a></td></tr>}

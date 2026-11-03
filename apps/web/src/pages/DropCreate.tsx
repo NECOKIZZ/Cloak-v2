@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAddress, isAddress, parseEther, type Address } from "viem";
 import { DROP_LIST_MAX, DROP_MAX_SUPPLY, type GtdEntry } from "@cloakely/sdk";
-import { dropsClient, pct } from "../drops";
+import { dropsClient, pct, spotsClient } from "../drops";
 import { friendly, Hint } from "../errors";
 import { hype } from "../format";
 import { Link, navigate } from "../router";
@@ -9,6 +9,7 @@ import { useApp } from "../state";
 import { compressImage } from "../tokenMeta";
 import { Icon } from "../ui";
 
+const WALLET_DAYS = [1, 2, 3, 7, 14];
 const DURATIONS: [string, number][] = [["10 minutes", 600], ["1 hour", 3600], ["6 hours", 21600], ["24 hours", 86400], ["3 days", 259200]];
 
 /** Wallets from pasted text: one per line, or separated by commas or spaces. GTD lines may end in a spot count. */
@@ -48,14 +49,23 @@ function wei(v: string): bigint | null {
 
 /** Set up a sealed NFT drop: the collection, an optional GTD list and WL, the price and the bidding window. */
 export function DropCreate() {
-  const { wallet, connect } = useApp();
+  const { wallet, connect, toast } = useApp();
+  const canSpots = !!spotsClient();
+  const [spots, setSpots] = useState(() => canSpots && typeof location !== "undefined" && /[?&]spots\b/.test(location.search));
+  const [partner, setPartner] = useState("");
+  const [walletDays, setWalletDays] = useState(3);
   const [f, setF] = useState({ name: "", symbol: "", supply: "1000", price: "0.5", maxPerBid: "2", royalty: "5", baseURI: "", description: "", gtdOn: false, gtdList: "", gtdPrice: "0.4", gtdSecs: 86400, wlOn: false, wlList: "", boost: 20, biddingSecs: 86400 });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
   const [image, setImage] = useState("");
   const [imgBusy, setImgBusy] = useState(false);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
-  useEffect(() => { document.title = "Cloak · Create a drop"; }, []);
+  useEffect(() => { document.title = spots ? "Cloak · Sell WL spots" : "Cloak · Create a drop"; }, [spots]);
+  /** Switch between selling NFTs and selling a partner's WL spots, with defaults that fit each. */
+  function mode(on: boolean) {
+    setSpots(on);
+    setF((x) => (on ? { ...x, supply: x.supply === "1000" ? "5" : x.supply, maxPerBid: "1", gtdOn: false, royalty: "0", baseURI: "" } : { ...x, supply: x.supply === "5" ? "1000" : x.supply, maxPerBid: "2", royalty: "5" }));
+  }
 
   const plan = useMemo(() => {
     const supply = Number(f.supply);
@@ -65,8 +75,10 @@ export function DropCreate() {
     const gtdSpots = gtd.gtd.reduce((a, e) => a + e.spots, 0);
     const gtdPrice = f.gtdOn ? (f.gtdPrice.trim() === "0" ? 0n : wei(f.gtdPrice)) : 0n;
     let problem = "";
-    if (!f.name.trim()) problem = "Name the collection.";
+    if (spots && !partner.trim()) problem = "Name the partner collection giving the spots.";
+    else if (!f.name.trim()) problem = spots ? "Name the sale, like Moonfoxes WL spots." : "Name the collection.";
     else if (!f.symbol.trim()) problem = "Give it a short symbol, like MOON.";
+    else if (spots && (!Number.isInteger(supply) || supply < 1 || supply > 1000)) problem = "Sell 1 to 1,000 spots.";
     else if (!Number.isInteger(supply) || supply < 1 || supply > DROP_MAX_SUPPLY) problem = `Supply is 1 to ${DROP_MAX_SUPPLY.toLocaleString()}.`;
     else if (!price) problem = "Set your price in HYPE, above zero.";
     else if (gtd.bad.length) problem = `This GTD line isn't a wallet and spot count: ${gtd.bad[0].slice(0, 60)}`;
@@ -78,7 +90,7 @@ export function DropCreate() {
     else if (f.gtdOn && gtdPrice === null) problem = "Set the GTD price (0 for free).";
     else if (f.baseURI.trim() && !/^(ipfs|https):\/\/\S+$/.test(f.baseURI.trim())) problem = "The metadata folder starts with ipfs:// or https://.";
     return { supply, price, gtd: gtd.gtd, wl: wl.wl, gtdSpots, gtdPrice: gtdPrice ?? 0n, problem };
-  }, [f]);
+  }, [f, spots, partner]);
 
   async function pick(file?: File) {
     if (!file) return;
@@ -99,7 +111,7 @@ export function DropCreate() {
       if (plan.problem) throw new Hint(plan.problem);
       const w = wallet ?? (await connect());
       if (!w) return;
-      setBusy("Confirm in your wallet…");
+      setBusy(spots ? "Confirm 1 of 2 in your wallet…" : "Confirm in your wallet…");
       const { drop } = await dropsClient(w).create({
         name: f.name.trim(),
         symbol: f.symbol.trim().toUpperCase(),
@@ -113,7 +125,19 @@ export function DropCreate() {
         biddingSecs: f.biddingSecs,
         image: image || undefined,
         description: f.description.trim() || undefined,
+        spots: spots ? { partner: partner.trim() } : undefined,
       });
+      if (spots) {
+        // the drop exists now; mark it as a spot sale (if this step fails, the drop page offers it again)
+        try {
+          setBusy("Confirm 2 of 2: mark it as a WL spot sale…");
+          const sp = spotsClient(w)!;
+          const st = await sp.drops.get(drop);
+          await sp.open(drop, partner.trim(), st.revealEnd + walletDays * 86400);
+        } catch (e) {
+          toast(`The sale was created but not marked as a WL spot sale yet: ${friendly(e)}`);
+        }
+      }
       navigate(`/app/drop/${drop}`);
     } catch (e) {
       setErr(friendly(e));
@@ -128,13 +152,36 @@ export function DropCreate() {
       <Link to="/app/drops" className="back-btn"><span aria-hidden>←</span>All drops</Link>
       <div className="page-head">
         <div>
-          <h1>Create a drop</h1>
-          <p>Your price is the floor. GTD wallets mint first; everyone else bids sealed, and every winner pays one price. If demand is higher than your price, you earn the difference instead of flippers.</p>
+          <h1>{spots ? "Sell WL spots" : "Create a drop"}</h1>
+          {spots ? <p>A partner collection gave you whitelist spots. Sell them in a sealed auction: your price is the floor, the highest bids win, every winner pays one price, and each winner names the wallet to whitelist. You hand the partner the list.</p> : <p>Your price is the floor. GTD wallets mint first; everyone else bids sealed, and every winner pays one price. If demand is higher than your price, you earn the difference instead of flippers.</p>}
         </div>
       </div>
       <div className="drop-grid">
         <div className="card">
-          <div className="card-head"><h3>Collection</h3></div>
+          {canSpots && (
+            <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>
+              <button role="tab" aria-selected={!spots} className={`tab ${!spots ? "on" : ""}`} onClick={() => mode(false)}>Sell NFTs</button>
+              <button role="tab" aria-selected={spots} className={`tab ${spots ? "on" : ""}`} onClick={() => mode(true)}>Sell WL spots</button>
+            </div>
+          )}
+          {spots && (
+            <>
+              <div className="card-head"><h3>Partner</h3></div>
+              <div className="field"><label><span>Partner collection</span><span>who gave the spots</span></label><input className="input" value={partner} maxLength={200} onChange={(e) => {
+                const v = e.target.value;
+                const sym = (t: string) => (t.replace(/[^A-Za-z0-9]/g, "").slice(0, 6).toUpperCase() + "WL").slice(0, 16);
+                setPartner(v);
+                // keep the sale's name and symbol following the partner until the creator edits them
+                setF((x) => ({
+                  ...x,
+                  name: !x.name || x.name === `${partner.trim()} WL spots` ? (v.trim() ? `${v.trim()} WL spots`.slice(0, 64) : "") : x.name,
+                  symbol: !x.symbol || x.symbol === sym(partner) ? (v.trim() ? sym(v) : "") : x.symbol,
+                }));
+              }} placeholder="Moonfoxes" /></div>
+              <div className="field"><label><span>Time for winners to name wallets</span><span>after the bids open</span></label><select className="input" value={walletDays} onChange={(e) => setWalletDays(Number(e.target.value))}>{WALLET_DAYS.map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></div>
+            </>
+          )}
+          <div className="card-head"><h3>{spots ? "Sale" : "Collection"}</h3></div>
           <div className="field-row">
             <div className="field"><label><span>Name</span></label><input className="input" value={f.name} maxLength={64} onChange={(e) => set("name", e.target.value)} placeholder="Moonfoxes" /></div>
             <div className="field"><label><span>Symbol</span></label><input className="input" value={f.symbol} maxLength={16} onChange={(e) => set("symbol", e.target.value.replace(/\s/g, ""))} placeholder="MOON" /></div>
@@ -142,19 +189,20 @@ export function DropCreate() {
           <label style={{ marginBottom: 14 }} className={`img-drop ${image ? "has" : ""}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pick(e.dataTransfer.files[0]); }}>
             <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
             {image ? <img src={image} alt="Collection image preview" /> : <span className="img-ph">{(f.symbol || "?").slice(0, 2).toUpperCase()}</span>}
-            <span className="small"><b>{imgBusy ? "Preparing image…" : image ? "Change the collection image" : "Upload the collection image"}</b><br /><span className="xs mute">Stored on chain, shown on the drop page and on every NFT unless you link your own metadata.</span></span>
+            <span className="small"><b>{imgBusy ? "Preparing image…" : image ? "Change the image" : spots ? "Upload the partner's image" : "Upload the collection image"}</b><br /><span className="xs mute">{spots ? "Shown on the sale page and on each winner's receipt NFT." : "Stored on chain, shown on the drop page and on every NFT unless you link your own metadata."}</span></span>
           </label>
           <div className="field"><label><span>Description</span><span>optional</span></label><textarea className="input" rows={2} maxLength={1000} value={f.description} onChange={(e) => set("description", e.target.value)} placeholder="What the collection is" /></div>
           <div className="field-row">
-            <div className="field"><label><span>Supply</span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
+            <div className="field"><label><span>{spots ? "WL spots" : "Supply"}</span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
             <div className="field"><label><span>Your price (floor)</span><span>HYPE</span></label><input className="input" inputMode="decimal" value={f.price} onChange={(e) => set("price", e.target.value)} /></div>
           </div>
           <div className="field-row">
-            <div className="field"><label><span>Max per bid</span></label><select className="input" value={f.maxPerBid} onChange={(e) => set("maxPerBid", e.target.value)}>{[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
-            <div className="field"><label><span>Royalty</span><span>%</span></label><select className="input" value={f.royalty} onChange={(e) => set("royalty", e.target.value)}>{[0, 2.5, 5, 7.5, 10].map((n) => <option key={n} value={n}>{n}%</option>)}</select></div>
+            <div className="field"><label><span>{spots ? "Spots per bid" : "Max per bid"}</span></label><select className="input" value={f.maxPerBid} onChange={(e) => set("maxPerBid", e.target.value)}>{[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
+            {!spots && <div className="field"><label><span>Royalty</span><span>%</span></label><select className="input" value={f.royalty} onChange={(e) => set("royalty", e.target.value)}>{[0, 2.5, 5, 7.5, 10].map((n) => <option key={n} value={n}>{n}%</option>)}</select></div>}
           </div>
-          <div className="field"><label><span>Metadata folder</span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /></div>
+          {!spots && <div className="field"><label><span>Metadata folder</span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /></div>}
 
+          {!spots && <>
           <div className="card-head" style={{ marginTop: 18 }}><h3>GTD</h3></div>
           <label className="check"><input type="checkbox" checked={f.gtdOn} onChange={(e) => set("gtdOn", e.target.checked)} /> Guaranteed spots for a list of wallets, minted before the auction</label>
           {f.gtdOn && (
@@ -166,6 +214,7 @@ export function DropCreate() {
               </div>
             </>
           )}
+          </>}
 
           <div className="card-head" style={{ marginTop: 18 }}><h3>WL</h3></div>
           <label className="check"><input type="checkbox" checked={f.wlOn} onChange={(e) => set("wlOn", e.target.checked)} /> A WL whose bids get a boost</label>
@@ -187,16 +236,18 @@ export function DropCreate() {
         <div className="card">
           <div className="card-head"><h3>Summary</h3></div>
           <div className="summary">
-            <div className="row"><span className="mute">NFTs</span><span className="mono">{Number.isFinite(plan.supply) ? plan.supply.toLocaleString() : "?"}</span></div>
+            {spots && <div className="row"><span className="mute">Partner</span><span style={{ overflowWrap: "anywhere" }}>{partner.trim() || "?"}</span></div>}
+            <div className="row"><span className="mute">{spots ? "WL spots" : "NFTs"}</span><span className="mono">{Number.isFinite(plan.supply) ? plan.supply.toLocaleString() : "?"}</span></div>
             {f.gtdOn && <div className="row"><span className="mute">GTD spots</span><span className="mono">{plan.gtdSpots} at {hype(plan.gtdPrice)} HYPE</span></div>}
             <div className="row"><span className="mute">In the sealed auction</span><span className="mono">{auction >= 0 ? auction.toLocaleString() : "?"} or more</span></div>
             <div className="row"><span className="mute">Floor (your price)</span><span className="mono">{plan.price ? hype(plan.price) : "?"} HYPE</span></div>
             {f.wlOn && <div className="row"><span className="mute">WL boost</span><span className="mono">{pct(f.boost * 100)}</span></div>}
             <div className="row"><span className="mute">Bidding</span><span>{DURATIONS.find(([, s]) => s === f.biddingSecs)?.[0]}{f.gtdOn ? `, after ${DURATIONS.find(([, s]) => s === f.gtdSecs)?.[0]} of GTD` : ""}</span></div>
+            {spots && <div className="row"><span className="mute">Winners name wallets</span><span>for {walletDays} day{walletDays > 1 ? "s" : ""}</span></div>}
             <div className="row"><span className="mute">Cloak fee</span><span>1.5% of sales</span></div>
           </div>
-          <p className="note">Bids are sealed to a drand round: nobody, Cloak included, can read one before bidding closes. Cloak's keeper opens them, settles, and delivers NFTs and refunds. Unused GTD spots roll into the auction, and anything left unsold is yours to mint.</p>
-          <button className="btn btn-ink btn-lg btn-block" style={{ marginTop: 12 }} disabled={!!busy || imgBusy} onClick={create}>{busy || (wallet ? "Create the drop" : "Connect wallet and create")}</button>
+          {spots ? <p className="note">Bids are sealed to a drand round: nobody, Cloak included, can read one before bidding closes. Once the bids open, each winner names the Elysium wallet to whitelist, one per spot, and gets a receipt NFT. The sale page shows the list as it fills, with a CSV for the partner. Creating a sale takes two confirmations.</p> : <p className="note">Bids are sealed to a drand round: nobody, Cloak included, can read one before bidding closes. Cloak's keeper opens them, settles, and delivers NFTs and refunds. Unused GTD spots roll into the auction, and anything left unsold is yours to mint.</p>}
+          <button className="btn btn-ink btn-lg btn-block" style={{ marginTop: 12 }} disabled={!!busy || imgBusy} onClick={create}>{busy || (wallet ? (spots ? "Create the WL spot sale" : "Create the drop") : "Connect wallet and create")}</button>
           {err && <div className="err">{err}</div>}
           {!err && plan.problem && <p className="xs mute" style={{ marginTop: 8 }}>{plan.problem}</p>}
         </div>

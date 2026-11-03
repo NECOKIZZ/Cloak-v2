@@ -75,6 +75,8 @@ export interface DropDetails {
   description?: string;
   gtd?: GtdEntry[];
   wl?: Address[];
+  /** Set when the drop sells WL spots for a partner collection (see CloakSpots). */
+  spots?: { partner: string };
 }
 
 export interface CreateDropOptions {
@@ -98,6 +100,8 @@ export interface CreateDropOptions {
   revealSecs?: number;
   image?: string;
   description?: string;
+  /** A WL spot sale: published with the drop so its pages and metadata say so. */
+  spots?: { partner: string };
 }
 
 export type DropPhase = "gtd" | "bidding" | "reveal" | "settle" | "numbering" | "settled";
@@ -228,7 +232,7 @@ export class CloakDrops {
       gtdRoot: merkleTree(gtdList.map((e) => gtdLeaf(e.wallet, e.spots))).root,
       wlRoot: merkleTree(wlList.map(wlLeaf)).root,
     };
-    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(gtdList.length ? { gtd: gtdList } : {}), ...(wlList.length ? { wl: wlList } : {}) };
+    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(gtdList.length ? { gtd: gtdList } : {}), ...(wlList.length ? { wl: wlList } : {}), ...(o.spots ? { spots: { partner: o.spots.partner.slice(0, 200) } } : {}) };
     const { result, request } = await this.publicClient.simulateContract({
       address: this.factory,
       abi: cloakDropFactoryAbi,
@@ -251,6 +255,7 @@ export class CloakDrops {
         description: typeof d.description === "string" ? d.description : undefined,
         gtd: Array.isArray(d.gtd) ? d.gtd.filter((e: GtdEntry) => isAddress(e?.wallet) && Number.isInteger(e?.spots)) : undefined,
         wl: Array.isArray(d.wl) ? d.wl.filter((a: string) => isAddress(a)) : undefined,
+        spots: typeof d.spots?.partner === "string" ? { partner: d.spots.partner } : undefined,
       };
     } catch {
       return {};

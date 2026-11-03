@@ -55,6 +55,8 @@ export interface CloakDeployment {
   dropFactory?: Address;
   /** Block the drop factory was deployed in: scan drop events from here. */
   dropFactoryBlock?: bigint;
+  /** CloakSpotBook: WL spot sales on top of drops; winners name the wallets to whitelist. */
+  spotBook?: Address;
   hypePool: Address;
   whype: Address;
   /** Hosted relayer (POST /relay, GET /quote). */
@@ -92,6 +94,7 @@ export const deployments: Record<number, CloakDeployment> = {
     // sealed NFT drops (Nov 3): GTD, then a sealed auction with the creator's price as the floor and a WL bid boost
     dropFactory: "0xa679e1a41c3dea1deae16be2806c9969923ed059",
     dropFactoryBlock: 22228835n,
+    spotBook: "0xf33b77307d5446409ffc4065c98551829366016d",
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",

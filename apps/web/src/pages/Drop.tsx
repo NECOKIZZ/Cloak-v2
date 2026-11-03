@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { isAddress, parseEther, type Address, type Hex } from "viem";
-import { CloakDrops, type DropBid, type DropDetails, type DropState } from "@cloakely/sdk";
+import { CloakDrops, CloakSpots, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
 import { addrLink, txLink } from "../config";
-import { dropsClient, pct } from "../drops";
+import { dropsClient, pct, spotsClient } from "../drops";
 import { checked, friendly, Hint } from "../errors";
 import { duration, hype, short } from "../format";
 import { Link } from "../router";
@@ -28,12 +28,18 @@ export function Drop({ drop }: { drop: Address }) {
   const [gtdQty, setGtdQty] = useState(1);
   const [to, setTo] = useState("");
   const [tx, setTx] = useState<{ hash: Hex; what: string } | null>(null);
+  const [sale, setSale] = useState<SpotSale | null>(null);
+  const [winners, setWinners] = useState<SpotWinner[]>([]);
+  const [named, setNamed] = useState<Record<string, string[]>>({});
 
   async function load() {
     const c = dropsClient();
-    const [st, det] = await Promise.all([c.get(drop), c.details(drop).catch(() => ({}) as DropDetails)]);
+    const sp = spotsClient();
+    const [st, det, sl] = await Promise.all([c.get(drop), c.details(drop).catch(() => ({}) as DropDetails), sp ? sp.sale(drop).catch(() => null) : null]);
     setS(st);
     setDetails(det);
+    setSale(sl);
+    if (sp && sl && st.phase === "settled" && !st.failed) setWinners(await sp.winners(drop));
     document.title = `Cloak · ${st.name}`;
     if (wallet) {
       const [l, b] = await Promise.all([c.listed(drop, wallet.account.address), c.bids(drop, wallet.account.address)]);
@@ -87,6 +93,21 @@ export function Drop({ drop }: { drop: Address }) {
   const ranks = wlBid ? (level * BigInt(10_000 + s.wlBoostBps)) / 10_000n : level;
   const gtdLeft = me ? me.gtdSpots - me.gtdMinted : 0;
   const left = s.supply - s.gtdMinted - s.sold;
+  const myWins = sale ? mine.filter((b) => b.nfts > 0) : [];
+  const walletsOpen = !!sale && now < sale.deadline;
+  const totalSpots = winners.reduce((a, w) => a + w.spots, 0);
+  const namedSpots = winners.reduce((a, w) => a + Math.min(w.wallets.length, w.spots), 0);
+  /** The wallets typed for a bid, falling back to what it has already named. */
+  const typed = (b: DropBid) => named[String(b.id)] ?? Array.from({ length: b.nfts }, (_, i) => winners.find((w) => w.bidId === b.id)?.wallets[i] ?? "");
+  const unit = sale ? "spot" : "NFT";
+  function downloadCsv() {
+    const url = URL.createObjectURL(new Blob([CloakSpots.csv(winners)], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(sale?.partner || s!.name).replace(/[^A-Za-z0-9]+/g, "-").toLowerCase()}-whitelist.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   return (
     <div>
@@ -95,11 +116,12 @@ export function Drop({ drop }: { drop: Address }) {
         <DropArt details={details} name={s.name} size={220} />
         <div style={{ minWidth: 0 }}>
           <span className={`pill ${p.live ? "ok" : ""}`}>{p.live && <span className="dot live" />}{p.text}</span>
+          {sale && <span className="pill" style={{ marginLeft: 6 }}>WL spots · {sale.partner}</span>}
           <h1 style={{ marginTop: 10 }}>{s.name} <span className="mute" style={{ fontSize: "0.5em" }}>{s.symbol}</span></h1>
           {details.description && <p className="mute" style={{ marginTop: 8, overflowWrap: "anywhere" }}>{details.description}</p>}
           <p className="xs mute" style={{ marginTop: 6 }}>by {addrLink(s.creator) ? <a className="link mono" href={addrLink(s.creator)} target="_blank" rel="noreferrer">{short(s.creator)}</a> : <span className="mono">{short(s.creator)}</span>} · contract <a className="link mono" href={addrLink(s.address)} target="_blank" rel="noreferrer">{short(s.address)}</a></p>
           <div className="drop-stats">
-            <div><span className="xs mute">Supply</span><b>{s.supply.toLocaleString()}</b></div>
+            <div><span className="xs mute">{sale ? "WL spots" : "Supply"}</span><b>{s.supply.toLocaleString()}</b></div>
             <div><span className="xs mute">Floor</span><b>{hype(s.floor)} HYPE</b></div>
             {s.hasGtd && <div><span className="xs mute">GTD minted</span><b>{s.gtdMinted} at {hype(s.gtdPrice)}</b></div>}
             {s.hasWl && <div><span className="xs mute">WL bid boost</span><b>{pct(s.wlBoostBps)}</b></div>}
@@ -133,7 +155,7 @@ export function Drop({ drop }: { drop: Address }) {
               <div className="card-head"><h3>Place a sealed bid</h3><span className="pill ok"><Icon.lock size={12} />sealed</span></div>
               <div className="field-row">
                 <div className="field"><label><span>Most you'd pay, each</span><span>HYPE, at least {hype(s.floor)}</span></label><input className="input mono" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} /></div>
-                <div className="field"><label><span>How many</span></label><select className="input" value={qty} onChange={(e) => setQty(Number(e.target.value))}>{Array.from({ length: s.maxPerBid }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select></div>
+                <div className="field"><label><span>{sale ? "Spots" : "How many"}</span></label><select className="input" value={qty} onChange={(e) => setQty(Number(e.target.value))}>{Array.from({ length: s.maxPerBid }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select></div>
               </div>
               <div className="summary">
                 <div className="row"><span className="mute">Your bid level</span><span className="mono">{hype(level)} HYPE</span></div>
@@ -182,13 +204,41 @@ export function Drop({ drop }: { drop: Address }) {
                   <div key={String(b.id)}>
                     <span className="small"><span className="mono">{b.revealed ? `${b.quantity} × ${hype(b.price)} HYPE` : `Sealed bid · ${hype(b.deposit)} HYPE deposit`}</span>{b.wl && <span className="pill ok" style={{ marginLeft: 6 }}>WL</span>}</span>
                     <span className="small mute">
-                      {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : b.nfts ? `won ${b.nfts} · paid ${hype(b.paid)}` : "not won"}
+                      {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : b.nfts ? `won ${b.nfts}${sale ? ` spot${b.nfts > 1 ? "s" : ""}` : ""} · paid ${hype(b.paid)}` : "not won"}
                       {s.phase === "settled" && (b.claimed ? " · delivered" : b.refund > 0n ? ` · ${hype(b.refund)} back` : "")}
                     </span>
                   </div>
                 ))}
               </div>
-              {s.phase === "settled" && mine.some((b) => !b.claimed && b.nfts > 0) && (
+              {s.phase === "settled" && myWins.length > 0 && (
+                <>
+                  <div className="card-head" style={{ marginTop: 18 }}><h3>Wallets to whitelist</h3>{walletsOpen && <span className="pill">{duration(sale!.deadline - now)} left</span>}</div>
+                  <p className="xs mute">Name the Elysium wallet {sale!.partner} should whitelist, one per spot. It can be a different wallet from the one you bid with. You can change it until the deadline.</p>
+                  {myWins.map((b) => (
+                    <div key={String(b.id)}>
+                      {typed(b).map((v, i) => (
+                        <div className="field" key={i}>
+                          <label><span>Spot {i + 1}{myWins.length > 1 ? ` · bid #${b.id}` : ""}</span>{winners.find((w) => w.bidId === b.id)?.wallets[i] ? <span style={{ color: "var(--signal)" }}>named</span> : <span>not named yet</span>}</label>
+                          <input className="input mono" value={v} disabled={!walletsOpen} placeholder="0x… wallet to whitelist" onChange={(e) => { const next = [...typed(b)]; next[i] = e.target.value.trim(); setNamed((x) => ({ ...x, [String(b.id)]: next })); }} />
+                        </div>
+                      ))}
+                      {walletsOpen && (
+                        <button className="btn btn-ink btn-block" disabled={!!busy} onClick={act("Wallets saved", async (w) => {
+                          const list = typed(b);
+                          const bad = list.find((a) => !isAddress(a));
+                          if (bad !== undefined) throw new Hint(bad ? `${short(bad)} isn't a wallet address.` : "Enter a wallet for every spot.");
+                          if (new Set(list.map((a) => a.toLowerCase())).size !== list.length) throw new Hint("Each spot needs a different wallet.");
+                          const h = await spotsClient(w)!.setWallets(drop, b.id, list);
+                          setNamed((x) => { const { [String(b.id)]: _, ...rest } = x; return rest; });
+                          return h;
+                        })}>{busy || (winners.find((w) => w.bidId === b.id)?.wallets.length ? "Update wallets" : "Save wallets")}</button>
+                      )}
+                    </div>
+                  ))}
+                  {!walletsOpen && <p className="small mute">The deadline has passed, so the whitelist is final.</p>}
+                </>
+              )}
+              {s.phase === "settled" && !sale && mine.some((b) => !b.claimed && b.nfts > 0) && (
                 <>
                   <p className="xs mute" style={{ marginTop: 8 }}>Cloak delivers to the wallet that bid within the hour. To keep them apart from that wallet, send your NFTs to a fresh one now.</p>
                   <div className="field"><label><span>Send my NFTs to</span></label><input className="input mono" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder="0x… a fresh wallet" /></div>
@@ -200,7 +250,7 @@ export function Drop({ drop }: { drop: Address }) {
                   })}>{busy || "Claim to that wallet"}</button>
                 </>
               )}
-              {s.phase === "settled" && myWon > 0 && <p className="okmsg small" style={{ marginTop: 8 }}><Icon.check size={14} /> You won {myWon} NFT{myWon > 1 ? "s" : ""}.</p>}
+              {s.phase === "settled" && myWon > 0 && <p className="okmsg small" style={{ marginTop: 8 }}><Icon.check size={14} /> You won {myWon} {unit}{myWon > 1 ? "s" : ""}.{sale ? " A receipt NFT comes to your bidding wallet." : ""}</p>}
             </>
           )}
           {err && <div className="err">{err}</div>}
@@ -208,7 +258,16 @@ export function Drop({ drop }: { drop: Address }) {
         </div>
 
         <div className="card">
-          <div className="card-head"><h3>How this drop works</h3></div>
+          <div className="card-head"><h3>How this {sale ? "sale" : "drop"} works</h3></div>
+          {sale ? (
+          <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+            <li>{sale.partner} gave {s.supply} WL spot{s.supply > 1 ? "s" : ""}. Bid sealed, at {hype(s.floor)} HYPE or more per spot. Nobody sees any bid until bidding closes.</li>
+            {s.hasWl && <li>WL bids rank {pct(s.wlBoostBps)} higher, and WL winners pay {pct(s.wlBoostBps)} less, never under the floor.</li>}
+            <li>The highest bids win, and every winner pays one price: the lowest winning bid. Ties at that price are drawn at random.</li>
+            <li>Winners name the wallet to whitelist, one per spot, until {new Date(sale.deadline * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}. Everyone else gets their deposit back.</li>
+            <li>The list below is the whitelist {sale.partner} receives.</li>
+          </ol>
+          ) : (
           <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
             {s.hasGtd && <li>GTD wallets mint their spots at {hype(s.gtdPrice)} HYPE. Unused spots roll into the auction.</li>}
             <li>Everyone else bids sealed, at {hype(s.floor)} HYPE or more. Nobody sees any bid until bidding closes.</li>
@@ -216,8 +275,31 @@ export function Drop({ drop }: { drop: Address }) {
             <li>The highest bids win, and every winner pays one price: the lowest winning bid. Ties at that price are drawn at random.</li>
             <li>Winners get their NFTs, everyone else gets their deposit back, automatically.</li>
           </ol>
+          )}
+          {sale && s.phase === "settled" && !s.failed && (
+            <>
+              <div className="card-head" style={{ marginTop: 18 }}><h3>Whitelist</h3><span className="pill">{namedSpots} of {totalSpots} named</span></div>
+              <div className="drop-bids">
+                {winners.flatMap((w) => Array.from({ length: w.spots }, (_, i) => (
+                  <div key={`${w.bidId}-${i}`}>
+                    <span className="small mono" style={{ overflowWrap: "anywhere" }}>{w.wallets[i] ?? "not named yet"}</span>
+                    <span className="xs mute">bid #{String(w.bidId)}</span>
+                  </div>
+                )))}
+              </div>
+              <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} disabled={!winners.length} onClick={downloadCsv}>Download the whitelist (CSV)</button>
+            </>
+          )}
+          {isCreator && !sale && details.spots && !s.settled && spotsClient() && (
+            <>
+              <div className="card-head" style={{ marginTop: 18 }}><h3>Finish setting up</h3></div>
+              <p className="small mute">This drop was made to sell {details.spots.partner} WL spots but isn't marked as a spot sale yet, so winners can't name wallets. Finish it before the bids open.</p>
+              <button className="btn btn-ink btn-block" disabled={!!busy} onClick={act("Marked as a WL spot sale", (w) => spotsClient(w)!.open(drop, details.spots!.partner, s.revealEnd + 3 * 86400))}>{busy || "Mark as a WL spot sale"}</button>
+            </>
+          )}
           {me && (me.wl || me.gtdSpots > 0) && <p className="small" style={{ marginTop: 10 }}><span className="pill ok">{me.gtdSpots ? `GTD · ${me.gtdSpots} spot${me.gtdSpots > 1 ? "s" : ""}` : ""}{me.gtdSpots && me.wl ? " · " : ""}{me.wl ? "WL" : ""}</span> This wallet is listed.</p>}
-          {isCreator && s.phase === "settled" && left > 0 && (
+          {isCreator && sale && s.phase === "settled" && left > 0 && <p className="small mute" style={{ marginTop: 10 }}>{left} spot{left > 1 ? "s" : ""} went unsold. They aren't on this list, so they're yours to give out with {sale.partner}.</p>}
+          {isCreator && !sale && s.phase === "settled" && left > 0 && (
             <>
               <div className="card-head" style={{ marginTop: 18 }}><h3>Unsold NFTs</h3></div>
               <p className="small mute">{left} NFT{left > 1 ? "s" : ""} went unsold. They're yours to mint.</p>
