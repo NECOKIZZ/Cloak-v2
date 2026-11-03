@@ -51,6 +51,10 @@ export interface CloakDeployment {
   sharedRouter?: Address;
   /** SharedBatcher: batch rounds for the shared vault's tokens. */
   sharedBatcher?: Address;
+  /** CloakDropFactory: sealed NFT drops. */
+  dropFactory?: Address;
+  /** Block the drop factory was deployed in: scan drop events from here. */
+  dropFactoryBlock?: bigint;
   hypePool: Address;
   whype: Address;
   /** Hosted relayer (POST /relay, GET /quote). */

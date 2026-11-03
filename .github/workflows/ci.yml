@@ -27,3 +27,4 @@ jobs:
           anvil --silent --balance 1000000 --block-time 1 &
           sleep 2
           node e2e/mcp.mjs
+          node e2e/drops.mjs

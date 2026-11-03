@@ -22,7 +22,7 @@ import { createServer } from "node:http";
 import { startSnapshots } from "./snapshot.mjs";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Cloak, anvilLocal, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
+import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
 
 const RPC = process.env.RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];
 const chain = RPC.includes("127.0.0.1") || RPC.includes("localhost") ? anvilLocal : elysiumTestnet;
@@ -283,10 +283,58 @@ async function unwrapFees() {
 }
 
 let ticks = 0;
+// ───────────── sealed NFT drops: open the bids, settle, number ties, deliver and pay out, as for launches ─────────────
+const knownDeployment = (() => {
+  try {
+    return deploymentFor(chain.id);
+  } catch {
+    return undefined;
+  }
+})();
+const DROP_FACTORY = process.env.DROP_FACTORY || knownDeployment?.dropFactory;
+const drops = DROP_FACTORY ? new CloakDrops(publicClient, walletClient, DROP_FACTORY, BigInt(process.env.DROP_FACTORY_BLOCK ?? knownDeployment?.dropFactoryBlock ?? 0)) : null;
+const dropsDone = new Set();
+const dropWait = new Map();
+async function tickDrops() {
+  if (!drops) return;
+  const list = await drops.list();
+  status.drops = { factory: DROP_FACTORY, count: list.length, live: {} };
+  const now = Number((await publicClient.getBlock()).timestamp);
+  for (const d of list) {
+    if (dropsDone.has(d) || now < (dropWait.get(d) ?? 0)) continue;
+    try {
+      const s = await drops.get(d);
+      status.drops.live[d] = { symbol: s.symbol, phase: s.phase, bids: s.bids, reveals: s.reveals };
+      if (s.phase === "reveal" && s.reveals < s.bids && Date.now() / 1000 >= drandRoundTime(s.tlockRound)) {
+        const r = await drops.revealAll(d, { log: (m) => log(d, m) });
+        if (r.revealed) log(d, `drop: opened ${r.revealed} bids`);
+      } else if ((s.phase === "settle" && now >= s.revealEnd) || s.phase === "numbering") {
+        for (const h of await drops.settle(d)) log(d, `drop: settled ${h}`);
+      } else if (s.phase === "settled") {
+        // winners get the same window as a launch to take their NFTs to another wallet themselves
+        if (now < s.revealEnd + CLAIM_DELAY) {
+          dropWait.set(d, s.revealEnd + CLAIM_DELAY);
+          continue;
+        }
+        const r = await drops.claimAll(d);
+        if (r.claimed) log(d, `drop: delivered ${r.claimed} bids`);
+        for (const h of await drops.payOut(d).catch(() => [])) log(d, `drop: paid out ${h}`);
+        dropsDone.add(d);
+        delete status.drops.live[d];
+      } else if (s.phase === "gtd" || s.phase === "bidding") {
+        dropWait.set(d, Math.min(s.phase === "gtd" ? s.gtdEnd : s.commitEnd, now + 60));
+      }
+    } catch (e) {
+      log(d, `drop error: ${e.shortMessage ?? e.message}`);
+    }
+  }
+}
+
 (async function loop() {
   for (;;) {
     if (ticks++ % 100 === 0) await unwrapFees().catch((e) => console.error("unwrap failed:", e.shortMessage ?? e.message));
     await tick().catch((e) => console.error("tick failed:", e.shortMessage ?? e.message));
+    await tickDrops().catch((e) => console.error("drops tick failed:", e.shortMessage ?? e.message));
     await tickBatches().catch((e) => console.error("batch tick failed:", e.shortMessage ?? e.message));
     await new Promise((r) => setTimeout(r, POLL_MS));
   }
