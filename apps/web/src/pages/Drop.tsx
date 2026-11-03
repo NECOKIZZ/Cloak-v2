@@ -70,7 +70,11 @@ export function Drop({ drop }: { drop: Address }) {
       setBusy("");
     }
   }
-  const need = async () => wallet ?? (await connect());
+  /** The first click on a signed-out page only connects, so the person sees their status and the form before money moves. */
+  const act = (what: string, f: (w: NonNullable<typeof wallet>) => Promise<Hex | void>) => () => {
+    if (!wallet) return void connect().catch((e) => setErr(friendly(e)));
+    return run(what, () => f(wallet));
+  };
 
   if (!s) return <div>{err ? <div className="err">{err}</div> : <p className="mute">Loading the drop…</p>}</div>;
   const p = phaseText(s, now);
@@ -116,7 +120,7 @@ export function Drop({ drop }: { drop: Address }) {
                 <>
                   <p className="small">You have <b>{gtdLeft}</b> guaranteed spot{gtdLeft > 1 ? "s" : ""} at <b>{hype(s.gtdPrice)} HYPE</b> each.</p>
                   <div className="field"><label><span>How many</span></label><select className="input" value={gtdQty} onChange={(e) => setGtdQty(Number(e.target.value))}>{Array.from({ length: gtdLeft }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select></div>
-                  <button className="btn btn-ink btn-lg btn-block" disabled={!!busy} onClick={() => run(`Minted ${gtdQty} GTD`, async () => dropsClient(await need()).gtdMint(drop, gtdQty))}>{busy || `Mint ${gtdQty} for ${hype(s.gtdPrice * BigInt(gtdQty))} HYPE`}</button>
+                  <button className="btn btn-ink btn-lg btn-block" disabled={!!busy} onClick={act(`Minted ${gtdQty} GTD`, (w) => dropsClient(w).gtdMint(drop, gtdQty))}>{busy || `Mint ${gtdQty} for ${hype(s.gtdPrice * BigInt(gtdQty))} HYPE`}</button>
                 </>
               ) : (
                 <p className="small mute">{me && me.gtdSpots ? "You've minted all your GTD spots." : "This wallet isn't on the GTD list."} The sealed auction opens when the GTD window closes{me?.wl ? ", and you're on the WL, so your bids get the boost" : ""}.</p>
@@ -137,11 +141,12 @@ export function Drop({ drop }: { drop: Address }) {
                 <div className="row"><span className="mute">Deposit (refunded above what you pay)</span><span className="mono">{hype(level * BigInt(qty))} HYPE</span></div>
               </div>
               <p className="note">Nobody can read your bid until bidding closes in {duration(s.commitEnd - now)}. Every winner pays one price, the lowest winning bid, so bid what it's really worth to you.{wlBid ? " You're on the WL: you pay that price ÷ " + (1 + s.wlBoostBps / 10_000).toFixed(2) + ", never under the floor." : ""}</p>
-              <button className="btn btn-ink btn-lg btn-block" disabled={!!busy} onClick={() => run("Sealed bid placed", async () => {
-                const w = await need();
-                if (!w) return;
+              <button className="btn btn-ink btn-lg btn-block" disabled={!!busy} onClick={act("Sealed bid placed", async (w) => {
                 if (priceWei < s.floor) throw new Hint(`Bid at least the creator's price, ${hype(s.floor)} HYPE.`);
-                return (await dropsClient(w).bid(drop, { price: priceWei, quantity: qty, wl: wlBid })).txHash;
+                const c = dropsClient(w);
+                // read the WL fresh: a quick click must never send a WL wallet's bid without its boost
+                const listed = await c.listed(drop, w.account.address);
+                return (await c.bid(drop, { price: priceWei, quantity: qty, wl: listed.wl })).txHash;
               })}>{busy || (wallet ? `Seal a bid for ${qty} at ${hype(level)} HYPE` : "Connect wallet to bid")}</button>
             </>
           )}
@@ -175,7 +180,7 @@ export function Drop({ drop }: { drop: Address }) {
               <div className="drop-bids">
                 {mine.map((b) => (
                   <div key={String(b.id)}>
-                    <span className="small"><span className="mono">{b.quantity} × {s.settled || b.revealed ? `${hype(b.price)} HYPE` : "sealed"}</span>{b.wl && <span className="pill ok" style={{ marginLeft: 6 }}>WL</span>}</span>
+                    <span className="small"><span className="mono">{b.revealed ? `${b.quantity} × ${hype(b.price)} HYPE` : `Sealed bid · ${hype(b.deposit)} HYPE deposit`}</span>{b.wl && <span className="pill ok" style={{ marginLeft: 6 }}>WL</span>}</span>
                     <span className="small mute">
                       {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : b.nfts ? `won ${b.nfts} · paid ${hype(b.paid)}` : "not won"}
                       {s.phase === "settled" && (b.claimed ? " · delivered" : b.refund > 0n ? ` · ${hype(b.refund)} back` : "")}
@@ -187,9 +192,7 @@ export function Drop({ drop }: { drop: Address }) {
                 <>
                   <p className="xs mute" style={{ marginTop: 8 }}>Cloak delivers to the wallet that bid within the hour. To keep them apart from that wallet, send your NFTs to a fresh one now.</p>
                   <div className="field"><label><span>Send my NFTs to</span></label><input className="input mono" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder="0x… a fresh wallet" /></div>
-                  <button className="btn btn-ink btn-block" disabled={!!busy} onClick={() => run("NFTs claimed", async () => {
-                    const w = await need();
-                    if (!w) return;
+                  <button className="btn btn-ink btn-block" disabled={!!busy} onClick={act("NFTs claimed", async (w) => {
                     const dest = checked(() => { if (!isAddress(to)) throw new Error("Enter the 0x address to send them to."); return to as Address; });
                     let h: Hex | undefined;
                     for (const b of mine.filter((x) => !x.claimed && x.nfts > 0)) h = await dropsClient(w).claimTo(drop, b.id, dest);
@@ -218,7 +221,7 @@ export function Drop({ drop }: { drop: Address }) {
             <>
               <div className="card-head" style={{ marginTop: 18 }}><h3>Unsold NFTs</h3></div>
               <p className="small mute">{left} NFT{left > 1 ? "s" : ""} went unsold. They're yours to mint.</p>
-              <button className="btn btn-ghost btn-block" disabled={!!busy} onClick={() => run(`Minted ${left} unsold`, async () => dropsClient(await need()).mintUnsold(drop, wallet!.account.address, Math.min(left, 100)))}>{busy || `Mint ${Math.min(left, 100)} to my wallet`}</button>
+              <button className="btn btn-ghost btn-block" disabled={!!busy} onClick={act(`Minted ${left} unsold`, (w) => dropsClient(w).mintUnsold(drop, w.account.address, Math.min(left, 100)))}>{busy || `Mint ${Math.min(left, 100)} to my wallet`}</button>
             </>
           )}
         </div>

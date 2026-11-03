@@ -9,7 +9,7 @@ await ctx.addInitScript(() => { try { localStorage.setItem("cloak.welcomed", "1"
 page.setDefaultTimeout(120000);
 const health = await (await fetch("https://cloak-keeper.onrender.com/health")).json();
 const launch = Object.keys(health.launches).find((a) => health.launches[a].symbol === "LANTERN") ?? Object.keys(health.launches)[0];
-const routes = ["/", "/app", "/app/portfolio/shield", "/app/portfolio/send", "/app/portfolio/withdraw", "/app/links", "/app/links#request", "/app/trade", "/app/launches", "/app/create", "/app/volume", `/app/launch/${launch}`, "/docs", "/sdk", "/agents", "/demo", "/pitch",
+const routes = ["/", "/app", "/app/portfolio/shield", "/app/portfolio/send", "/app/portfolio/withdraw", "/app/links", "/app/links#request", "/app/trade", "/app/launches", "/app/create", "/app/volume", "/app/drops", "/app/drops/create", ...(process.env.DROP ? [`/app/drop/${process.env.DROP}`] : []), `/app/launch/${launch}`, "/docs", "/sdk", "/agents", "/demo", "/pitch",
   "/claim#k=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&t=HYPE&a=0.097&f=sage&p=1&q=my+name&m=a+long+birthday+message+for+someone+special", "/pay#to=0x000000000000000000000000000000000000dEaD&amount=12.5&token=USDC&note=Invoice+0042+for+design+work&name=Robin"];
 // connect + unlock once
 await page.setViewportSize({ width: 390, height: 800 });
