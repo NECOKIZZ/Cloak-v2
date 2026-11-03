@@ -7,6 +7,11 @@ import {CloakVesting, CloakVestingDeployer} from "./CloakVesting.sol";
 import {CloakConfig} from "./CloakConfig.sol";
 import {IERC20Min} from "./CloakPair.sol";
 
+/// A seeder that can't hand LP back after a timed lock (Uniswap v4 liquidity is a position, not a token) says so.
+interface ISeederLocks {
+    function timedLocks() external view returns (bool);
+}
+
 /// @notice One call to launch a token through a sealed-bid auction. Launchpads integrate by calling `createLaunch`
 /// from their own contracts (pass `params.creator` = the project) or through the Cloak SDK.
 /// @dev A creator allocation is capped at 20% of the supply and always vests linearly (at least 30 days) from the end of
@@ -32,6 +37,11 @@ contract CloakFactory {
     }
 
     Launch[] public launches;
+    /// @notice The auctions this factory made (the v4 seeder only lists these).
+    mapping(address => bool) public isAuction;
+    /// @notice Whether launches may lock their LP until a date and then hand it to the creator. A seeder that can't
+    ///         (CloakV4Hook) allows only "burned" and "locked forever, fees to the creator".
+    bool public immutable timedLocks;
 
     event LaunchCreated(
         uint256 indexed index,
@@ -53,6 +63,11 @@ contract CloakFactory {
         vestingDeployer = vestingDeployer_;
         seeder = seeder_;
         feeLocker = feeLocker_;
+        bool timed = true;
+        try ISeederLocks(address(seeder_)).timedLocks() returns (bool t) {
+            timed = t;
+        } catch {}
+        timedLocks = timed;
     }
 
     function createLaunch(
@@ -64,9 +79,11 @@ contract CloakFactory {
         string calldata metadataURI
     ) external returns (address auction, address token) {
         if (params.creator == address(0)) params.creator = msg.sender;
+        require(timedLocks || params.lpLockUntil == 0 || params.lpLockUntil == type(uint64).max, "lock");
         uint256 sale = params.saleSupply + params.lpReserve;
         require(creatorAlloc * 10_000 <= (sale + creatorAlloc) * MAX_CREATOR_BPS, "creator share");
         CloakAuction a = new CloakAuction(params, config, seeder, feeLocker);
+        isAuction[address(a)] = true;
 
         CloakVesting v;
         uint64 vestEnd;

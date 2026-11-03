@@ -1,0 +1,31 @@
+# Cloak's Uniswap v4 contracts. Compiled like Uniswap's v4-core (solc 0.8.26, cancun) so the PoolManager built here is
+# byte-identical to the official one on Elysium mainnet; Cloak's own contracts are imported from ../contracts/src.
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.26"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+bytecode_hash = "none"
+remappings = [
+  "v4-core/=lib/v4-core/src/",
+  "@uniswap/v4-core/=lib/v4-core/",
+  "v4-periphery/=lib/v4-periphery/src/",
+  "solmate/=lib/solmate/",
+  "cloak/=../contracts/src/",
+  "forge-std/=../contracts/lib/forge-std/src/",
+]
+allow_paths = ["../contracts"]
+
+# Uniswap's own settings, for building the PoolManager that goes on testnet (must match mainnet byte for byte)
+[profile.uniswap]
+src = "lib/v4-core/src"
+out = "out-uniswap"
+optimizer_runs = 44444444
+via_ir = true
+evm_version = "cancun"
+solc_version = "0.8.26"
+bytecode_hash = "none"

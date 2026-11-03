@@ -11,6 +11,7 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: cd contracts && forge test -vv
+      - run: cd contracts-v4 && forge test -vv && FOUNDRY_PROFILE=uniswap forge build
       - run: pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/sdk test
       - run: pnpm --filter @cloakely/mcp build && pnpm --filter @cloakely/mcp test
       - run: pnpm --filter @cloakely/web build
