@@ -29,3 +29,4 @@ jobs:
           node e2e/mcp.mjs
           node e2e/drops.mjs
           node e2e/spots.mjs
+          node e2e/drops-break.mjs
