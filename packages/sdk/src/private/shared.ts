@@ -274,7 +274,10 @@ export class SharedVaultClient {
     throw new Error("too many notes to combine");
   }
 
-  /** Expected output of a swap through `token`'s Uniswap market (0.3% fee), before slippage. */
+  /**
+   * Expected output of a swap through `token`'s market, before slippage. The market prices it at its own current fee:
+   * 0.3% on a Uniswap V2 pool, and on a v4 pool whatever the hook charges now (higher just after listing, then 0.3%).
+   */
   async quoteSwap(token: Address, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
     const m = this.info(token).market;
     const [rH, rT] = await Promise.all([
@@ -282,8 +285,7 @@ export class SharedVaultClient {
       this.pub.readContract({ address: m, abi: cloakPairAbi, functionName: "reserveToken" }),
     ]);
     const [rIn, rOut] = side === "buy" ? [rH, rT] : [rT, rH];
-    const a = amountIn * 997n;
-    return (a * rOut) / (rIn * 1000n + a);
+    return this.pub.readContract({ address: m, abi: cloakPairAbi, functionName: "getAmountOut", args: [amountIn, rIn, rOut] });
   }
 
   // ───────────── public → private ─────────────

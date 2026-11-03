@@ -411,7 +411,10 @@ async function quote(kind, pool) {
   return (hype * rT) / rH + 1n;
 }
 
-const isNetworkError = (e) => /HTTP request failed|fetch failed|timed? ?out|ECONNRESET|socket hang up|429|502|503|504/i.test(`${e?.shortMessage ?? ""} ${e?.message ?? ""} ${e?.name ?? ""}`);
+// a contract that reverted answered fine: its reason must reach the user, never "the network didn't answer"
+const isNetworkError = (e) =>
+  !/reverted|execution reverted|revert reason/i.test(`${e?.shortMessage ?? ""}`) &&
+  /HTTP request failed|fetch failed|timed? ?out|ECONNRESET|socket hang up|429|502|503|504/i.test(`${e?.shortMessage ?? ""} ${e?.message ?? ""} ${e?.name ?? ""}`);
 
 // one relayed spend per nullifier at a time: a second copy is refused before it costs gas
 const inflight = new Map();
