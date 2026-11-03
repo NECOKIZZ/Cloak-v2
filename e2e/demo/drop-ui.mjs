@@ -18,7 +18,7 @@ ok(await page.locator("text=WL bid boost").isVisible(), "the WL boost is shown p
 await page.locator("main button.btn-ink.btn-lg").first().click(); // connect
 const bw = page.locator(".wm-item", { hasText: "Browser wallet" }); if (await bw.isVisible({ timeout: 8000 }).catch(() => false)) await bw.click();
 await page.waitForFunction(() => /Seal a bid/.test(document.querySelector("main button.btn-ink.btn-lg")?.textContent ?? ""), null, { timeout: 120000 });
-ok(await page.locator("text=Ranks as (WL").isVisible(), "the bid form knows this wallet is WL and shows the boosted rank");
+ok(await page.locator("text=Ranks as (WL").waitFor({ timeout: 30000 }).then(() => true, () => false), "the bid form knows this wallet is WL and shows the boosted rank");
 await page.locator("main input.mono").first().fill("0.002");
 await page.locator("main button.btn-ink.btn-lg").first().dblclick();
 await page.locator(".drop-bids").waitFor({ timeout: 180000 });
