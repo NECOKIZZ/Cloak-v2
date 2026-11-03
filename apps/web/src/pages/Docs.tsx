@@ -19,7 +19,7 @@ const ADDR = {
 
 const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
-  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"]]],
+  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"], ["nft-drops", "NFT drops"]]],
   ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["payment-links", "Payment links"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
   ["Build", [["sdk", "SDK"], ["agents", "AI agents (MCP)"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["rules", "All the rules"], ["governance", "Who can change what"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
@@ -134,6 +134,17 @@ export function Docs() {
           <p>Since Nov 2, every launch's pool is a standard <b>Uniswap V2 pool</b> (token / WHYPE, 0.3% fee) from Elysium's Uniswap V2 factory. That means the token is a normal token everywhere: anyone can trade it on Uniswap, aggregators can route to it, wallets can price it, and trackers like DexScreener can chart it once they support Elysium. The launch page links to the pool.</p>
           <p>Private trades use <b>the same pool</b>. A small adapter (<code>CloakV2Market</code>) lets Cloak's private router and batch rounds trade it, so liquidity is never split between a "public" and a "private" market. Batch rounds price against the pool's own time-weighted price. Launches from before Nov 2 keep their Cloak pool, which works the same way.</p>
 
+          <h2 id="nft-drops">NFT drops</h2>
+          <p>A drop sells an NFT collection the same way a launch sells a token: sealed, with one price for every winner. There is no race, so bots and gas wars gain nothing. <Link to="/app/drops" className="link">See the drops</Link> or <Link to="/app/drops/create" className="link">create one</Link>.</p>
+          <ol>
+            <li><b>GTD</b> (optional): wallets on the creator's guaranteed list mint their spots at the GTD price during the GTD window. Spots nobody used roll into the auction.</li>
+            <li><b>Sealed auction</b>: everyone else bids what they'd pay, at the creator's price or more. Bids are sealed to a drand round, so nobody can read one before bidding closes.</li>
+            <li><b>WL bid boost</b>: a WL bid ranks as its price × (1 + boost), and a WL winner pays the clearing price ÷ (1 + boost), never under the creator's price. The boost (0% to 30%) is public on the drop page.</li>
+            <li><b>Settle</b>: the highest-ranked bids win until the supply runs out, and every public winner pays the same price, the lowest winning bid. Bids tied at that price share what's left by a lottery whose random start comes from every bid's sealed salt, so nobody knew it in advance.</li>
+            <li><b>Claim</b>: the keeper delivers NFTs and refunds after an hour. Winners can take their NFTs to a fresh wallet before then. Anything unsold is the creator's to mint.</li>
+          </ol>
+          <p>A creator who wants a fixed price sets it as the floor: when demand sits at the floor, everyone pays exactly that. Each drop is one ERC-721 contract with ERC-2981 royalties; with no metadata folder of its own, Cloak serves each token's name and the collection image.</p>
+
           <div className="crumb" style={{ marginTop: 60 }}>Privacy</div>
           <h2 id="private-trading">Private trading</h2>
           <p>Cloak runs one <b>shielded vault</b> per asset: WHYPE, plus each launch token. A balance is a set of encrypted notes. To spend one, your browser makes a zero-knowledge proof (Groth16, 2-in/2-out) that says "the owner of some notes here approves this," without saying which notes or whose.</p>
@@ -219,6 +230,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <tbody>
               <tr><td>CloakConfig (rules and the list of every Cloak contract)</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
               <tr><td>CloakVaults (the permanent vaults)</td><td><a href={A(ADDR.vaults)} target="_blank" rel="noreferrer"><code>{ADDR.vaults}</code></a></td></tr>
+              {DEPLOYMENT?.dropFactory && <tr><td>CloakDropFactory (sealed NFT drops)</td><td><a href={A(DEPLOYMENT.dropFactory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.dropFactory}</code></a></td></tr>}
               {DEPLOYMENT?.feeLocker && <tr><td>CloakFeeLocker (LP locked forever, trading fees to creators)</td><td><a href={A(DEPLOYMENT.feeLocker)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.feeLocker}</code></a></td></tr>}
               <tr><td>CloakFactory (launches open a Uniswap V2 pool)</td><td><a href={A(ADDR.factory)} target="_blank" rel="noreferrer"><code>{ADDR.factory}</code></a></td></tr>
               {ADDR.seeder && <tr><td>CloakSeeder (opens each pool at the clearing price)</td><td><a href={A(ADDR.seeder)} target="_blank" rel="noreferrer"><code>{ADDR.seeder}</code></a></td></tr>}
