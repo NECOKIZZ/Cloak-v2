@@ -21,6 +21,28 @@ Elysium v4 as an ElysPump fork with its own PoolManager and Quoter. Crypto Brief
 Labs support has been announced", with v4 "upcoming" for testnet and mainnet on Nov 9. **None of the 17 is confirmed
 as the official Uniswap deployment.** Their owners can set protocol fees, and their pools run hooks we haven't read.
 
+### Official Uniswap v4 (verified Nov 3, on chain 99901)
+ElysPump's Launchpad v3 publishes the official Uniswap v4 contracts. They are on **chain 99901** (RPC
+`rpc-live.elysp.com`, about 294k blocks old on Nov 3), not on chain 99801 where Cloak runs today: none of these
+addresses has code on 99801.
+
+| Contract | Address | Checked on chain |
+|---|---|---|
+| PoolManager | `0xe2e105d3f7209a9da11f83ccf3e7398a753823f1` | 24,009 B, **byte-identical to Uniswap's Ethereum PoolManager** apart from its own address. Holds ~669 HYPE. |
+| Universal Router | `0x1b341fdd55d56f8e08409a2c25ddfad93eb03c1a` | 23,233 B, `poolManager()` = the PoolManager |
+| V4 Quoter | `0x379f556c5a748bd7cc9baf0f7a344094ac1814f5` | 6,118 B, `poolManager()` = the PoolManager |
+| StateView | `0x27ed73ae0652fdcf71d6793412a7525f32be9dfe` | 3,531 B, `poolManager()` = the PoolManager |
+| PositionManager | `0x1d1c51b9d07fd27d36412a2b66cc23d19eb3e518` | 19,965 B, `poolManager()` = the PoolManager |
+| ElysPump Launchpad v3 hook + factory | `0xbacf71bf02b8cfe171853c5ec4a060ba2ac1e0cc` | 22,083 B, `poolManager()` = the PoolManager. Hook flags: beforeInitialize, beforeSwap, afterSwap, beforeSwapReturnDelta, afterSwapReturnDelta |
+
+**Owner:** the PoolManager's `owner()` is `0x2179a60856e37dfeaaca0ab043b931fe224b27b6`, an ordinary wallet (32 transactions). On
+Ethereum, Base, Arbitrum and Unichain, Uniswap governance owns the PoolManager instead. Uniswap often deploys from its own
+wallet and hands ownership to governance later; we couldn't confirm this wallet is Uniswap's. The owner can only turn
+on protocol fees (capped in the contract), never move pool funds.
+
+**What it means for us:** the 17 PoolManagers on 99801 are copies. The real v4 lives on 99901, so a v4 route or v4
+launches mean deploying Cloak on 99901 (or on whichever network is mainnet) and testing there against these addresses.
+
 ### Tokenized stocks
 No Synthra sSTOCK token showed up. Synthra only mentions sSTOCKs as a pair asset on its own launchpad, with nothing yet
 tying them to Elysium. Every stock-named token in a v4 pool is a test or launchpad token:
@@ -42,7 +64,8 @@ Real stock liquidity can only be judged on mainnet. Re-scan once Synthra's contr
 
 ## 3. Plan
 
-Wait for Uniswap's official Elysium v4 addresses, or for mainnet to show which deployment the liquidity uses. Then:
+The official v4 addresses are now known (above, chain 99901). Before shipping anything on them, test rigorously: a
+fork of 99901 with the real PoolManager, Universal Router and Quoter, then live runs. Then:
 
 ### 3.1 Private router through v4 (first)
 - A v4 adapter: spend a note, swap through the PoolManager (`unlock` callback), deposit the output as a new note. The
@@ -72,7 +95,8 @@ Once a real stock token has real liquidity:
 - Pitch: "buy NVDA on Elysium without anyone seeing your position."
 
 ## 4. Open questions
-- Which PoolManager is official on mainnet, and does Uniswap Labs publish it?
+- Is chain 99901 Elysium's mainnet (or the network mainnet will be)? If so, Cloak's next deploy goes there.
+- Does Uniswap publish these addresses itself, and when does PoolManager ownership move to governance?
 - Synthra's sSTOCK contract addresses, and how they are backed (custody, oracle, synthetic).
 - Do any stock tokens restrict who can hold them? If so, they stay out of the vaults.
 
