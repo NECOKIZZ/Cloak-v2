@@ -29,7 +29,8 @@ export function Drop({ drop }: { drop: Address }) {
   const [to, setTo] = useState("");
   const [tx, setTx] = useState<{ hash: Hex; what: string } | null>(null);
   const [sale, setSale] = useState<SpotSale | null>(null);
-  const [winners, setWinners] = useState<SpotWinner[]>([]);
+  const [winnersRaw, setWinners] = useState<SpotWinner[] | null>(null);
+  const winners = winnersRaw ?? [];
   const [named, setNamed] = useState<Record<string, string[]>>({});
 
   async function load() {
@@ -105,7 +106,11 @@ export function Drop({ drop }: { drop: Address }) {
     const a = document.createElement("a");
     a.href = url;
     a.download = `${(sale?.partner || s!.name).replace(/[^A-Za-z0-9]+/g, "-").toLowerCase()}-whitelist.csv`;
+    // attached to the page: some browsers (Safari, Firefox) ignore a click on a detached link
+    a.style.display = "none";
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
@@ -278,7 +283,7 @@ export function Drop({ drop }: { drop: Address }) {
           )}
           {sale && s.phase === "settled" && !s.failed && (
             <>
-              <div className="card-head" style={{ marginTop: 18 }}><h3>Whitelist</h3><span className="pill">{namedSpots} of {totalSpots} named</span></div>
+              <div className="card-head" style={{ marginTop: 18 }}><h3>Whitelist</h3><span className="pill">{winnersRaw ? `${namedSpots} of ${totalSpots} named` : "loading…"}</span></div>
               <div className="drop-bids">
                 {winners.flatMap((w) => Array.from({ length: w.spots }, (_, i) => (
                   <div key={`${w.bidId}-${i}`}>

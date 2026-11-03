@@ -61,6 +61,8 @@ export function DropCreate() {
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   useEffect(() => { document.title = spots ? "Cloak · Sell WL spots" : "Cloak · Create a drop"; }, [spots]);
+  // opened straight in WL spots mode (/app/drops/create?spots): start from the spot defaults too
+  useEffect(() => { if (spots) mode(true); }, []);
   /** Switch between selling NFTs and selling a partner's WL spots, with defaults that fit each. */
   function mode(on: boolean) {
     setSpots(on);
@@ -191,7 +193,7 @@ export function DropCreate() {
             {image ? <img src={image} alt="Collection image preview" /> : <span className="img-ph">{(f.symbol || "?").slice(0, 2).toUpperCase()}</span>}
             <span className="small"><b>{imgBusy ? "Preparing image…" : image ? "Change the image" : spots ? "Upload the partner's image" : "Upload the collection image"}</b><br /><span className="xs mute">{spots ? "Shown on the sale page and on each winner's receipt NFT." : "Stored on chain, shown on the drop page and on every NFT unless you link your own metadata."}</span></span>
           </label>
-          <div className="field"><label><span>Description</span><span>optional</span></label><textarea className="input" rows={2} maxLength={1000} value={f.description} onChange={(e) => set("description", e.target.value)} placeholder="What the collection is" /></div>
+          <div className="field"><label><span>Description</span><span>optional</span></label><textarea className="input" rows={2} maxLength={1000} value={f.description} onChange={(e) => set("description", e.target.value)} placeholder={spots ? "What winners get, from the partner" : "What the collection is"} /></div>
           <div className="field-row">
             <div className="field"><label><span>{spots ? "WL spots" : "Supply"}</span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
             <div className="field"><label><span>Your price (floor)</span><span>HYPE</span></label><input className="input" inputMode="decimal" value={f.price} onChange={(e) => set("price", e.target.value)} /></div>
@@ -230,7 +232,7 @@ export function DropCreate() {
           )}
 
           <div className="card-head" style={{ marginTop: 18 }}><h3>Bidding</h3></div>
-          <div className="field"><label><span>Sealed bidding window</span><span>opens when GTD closes</span></label><select className="input" value={f.biddingSecs} onChange={(e) => set("biddingSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select></div>
+          <div className="field"><label><span>Sealed bidding window</span><span>{spots ? "opens about a minute after you create" : "opens when GTD closes"}</span></label><select className="input" value={f.biddingSecs} onChange={(e) => set("biddingSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select></div>
         </div>
 
         <div className="card">
@@ -239,7 +241,7 @@ export function DropCreate() {
             {spots && <div className="row"><span className="mute">Partner</span><span style={{ overflowWrap: "anywhere" }}>{partner.trim() || "?"}</span></div>}
             <div className="row"><span className="mute">{spots ? "WL spots" : "NFTs"}</span><span className="mono">{Number.isFinite(plan.supply) ? plan.supply.toLocaleString() : "?"}</span></div>
             {f.gtdOn && <div className="row"><span className="mute">GTD spots</span><span className="mono">{plan.gtdSpots} at {hype(plan.gtdPrice)} HYPE</span></div>}
-            <div className="row"><span className="mute">In the sealed auction</span><span className="mono">{auction >= 0 ? auction.toLocaleString() : "?"} or more</span></div>
+            <div className="row"><span className="mute">In the sealed auction</span><span className="mono">{auction >= 0 ? auction.toLocaleString() : "?"}{f.gtdOn ? " or more" : ""}</span></div>
             <div className="row"><span className="mute">Floor (your price)</span><span className="mono">{plan.price ? hype(plan.price) : "?"} HYPE</span></div>
             {f.wlOn && <div className="row"><span className="mute">WL boost</span><span className="mono">{pct(f.boost * 100)}</span></div>}
             <div className="row"><span className="mute">Bidding</span><span>{DURATIONS.find(([, s]) => s === f.biddingSecs)?.[0]}{f.gtdOn ? `, after ${DURATIONS.find(([, s]) => s === f.gtdSecs)?.[0]} of GTD` : ""}</span></div>
