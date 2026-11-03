@@ -48,6 +48,20 @@ const FACTORY = env("FACTORY") ?? reg?.factory;
 const EARLIER = reg?.earlierFactories ?? [];
 const firstFactoryBlock = reg ? reg.entries.filter((e) => e.kind === "factory" && e.version === reg.version).reduce((m, e) => (e.startBlock < m ? e.startBlock : m), reg.factoryBlock) : undefined;
 const START_BLOCK = BigInt(env("START_BLOCK") ?? firstFactoryBlock ?? 0);
+// a new factory or vault registered while running (e.g. the Uniswap v4 factory) is picked up by restarting: the host
+// starts the keeper again, and it reads the registry afresh
+if (reg) {
+  const seen = JSON.stringify(reg.entries.map((e) => [e.kind, e.addr.toLowerCase()]));
+  setInterval(async () => {
+    try {
+      const now = await readRegistry(publicClient, process.env.CONFIG);
+      if (JSON.stringify(now.entries.map((e) => [e.kind, e.addr.toLowerCase()])) !== seen) {
+        console.error("the registry changed: restarting to load it");
+        process.exit(0);
+      }
+    } catch {}
+  }, Number(process.env.REGISTRY_CHECK_MS ?? 300_000)).unref();
+}
 const ROUTER = env("ROUTER") ?? reg?.router; // enables POST /relay for private trades
 const BATCHER = env("BATCHER") ?? reg?.batcher; // enables batch-auction orders + settles/claims rounds
 const BATCHER_BLOCK = BigInt(env("BATCHER_BLOCK") ?? reg?.batcherBlock ?? START_BLOCK);

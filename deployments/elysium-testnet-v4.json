@@ -7,8 +7,8 @@
   "poseidon3": "0xc36ae84e30a13c9463e00f350ee5e507f5f45564",
   "vaults": "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
   "vaultsBlock": "19485039",
-  "factory": "0xd179bad69715f4bd4796dd7a4103be143fba02ad",
-  "factoryBlock": "21312271",
+  "factory": "0x1b0072684e98d9e23018e2d107ed8166ef84c077",
+  "factoryBlock": "22661576",
   "router": "0x343ab9a7aac93cee28321410510ea24417cc6386",
   "routerBlock": "19485063",
   "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
@@ -110,11 +110,12 @@
   ],
   "deployCost": "0.0036757640369 HYPE",
   "earlierFactories": [
+    "0xD179bAD69715F4bd4796DD7A4103Be143fBa02AD",
     "0xeAC84944F5A8343EDf49Cde8EF74d71f4908A656",
     "0xA88DF63D7D44acc66052e5CBE5ba9503bF940993"
   ],
   "firstFactoryBlock": "19484794",
-  "seeder": "0x633aa82b806dafc0ae4c84418d23f3726139a88d",
+  "seeder": "0xcDC11340C5ce0b3dCbD9A5e8f7838E8A8bBaaA80",
   "uniswap": {
     "v2Factory": "0xb2f8ad730e9d05d333c7861184aad0bff1785dd0",
     "whype": "0xcd57f65c2b0e5881cfc2e609f7cd53b746e1f234",
@@ -133,5 +134,13 @@
   "sharedBatcherBlock": "21495522",
   "dropFactory": "0x2afb7d9a5baa02a2d72a7c761521fc66dce9d783",
   "dropFactoryBlock": 22329730,
-  "spotBook": "0x91806d96814cc205d4b642e280023a1c7b361fc8"
+  "spotBook": "0x91806d96814cc205d4b642e280023a1c7b361fc8",
+  "uniswapV4": {
+    "poolManager": "0x51027076df8416e42ea8438b27a0c433d9662e68",
+    "hook": "0xcDC11340C5ce0b3dCbD9A5e8f7838E8A8bBaaA80",
+    "baseFee": "0.3%",
+    "antiSnipe": "10% falling to the base over 300s",
+    "poolManagerOwner": "0x6616C2566baD950FcDD420159a51fDdfFa220E8e"
+  },
+  "v4DeployCost": "0.00138548226406 HYPE"
 }

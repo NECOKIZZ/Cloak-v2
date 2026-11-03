@@ -35,6 +35,10 @@ export interface CloakDeployment {
   firstFactoryBlock?: bigint;
   /** CloakSeeder: opens each settled launch's market (a Uniswap V2 pool where the chain has one). */
   seeder?: Address;
+  /** Uniswap v4's PoolManager (on testnet, Cloak's deployment of Uniswap's exact build; on mainnet, Uniswap's own). */
+  poolManager?: Address;
+  /** CloakV4Hook: seeds and looks after every v4 launch's pool. */
+  v4Hook?: Address;
   /** CloakFeeLocker: holds "locked forever" LP and pays its trading fees to the creator. */
   feeLocker?: Address;
   router: Address;
@@ -78,13 +82,17 @@ export const deployments: Record<number, CloakDeployment> = {
     config: "0x9fdf166f0671166148ea98cdd3ef0118d256167f",
     vaults: "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
     vaultsBlock: 19485039n,
-    // the creator-fee launch factory (Nov 2): every launch opens a Uniswap V2 pool at its clearing price, and its LP can
-    // be locked forever with the trading fees going to the creator
-    factory: "0xd179bad69715f4bd4796dd7a4103be143fba02ad",
-    factoryBlock: 21312271n,
-    earlierFactories: ["0xeac84944f5a8343edf49cde8ef74d71f4908a656", "0xa88df63d7d44acc66052e5cbe5ba9503bf940993"],
+    // the Uniswap v4 launch factory (Nov 3): every launch opens a v4 pool (native HYPE / token) at its clearing price
+    // through CloakV4Hook, which keeps the liquidity forever, pays trading fees to the creator and charges an anti-snipe
+    // fee for 5 minutes after listing. The PoolManager is Uniswap's, built byte for byte like mainnet's.
+    factory: "0x1b0072684e98d9e23018e2d107ed8166ef84c077",
+    factoryBlock: 22661576n,
+    // the creator-fee V2 factory (Nov 2), then v4's first two
+    earlierFactories: ["0xd179bad69715f4bd4796dd7a4103be143fba02ad", "0xeac84944f5a8343edf49cde8ef74d71f4908a656", "0xa88df63d7d44acc66052e5cbe5ba9503bf940993"],
     firstFactoryBlock: 19484794n,
-    seeder: "0x633aa82b806dafc0ae4c84418d23f3726139a88d",
+    seeder: "0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80",
+    poolManager: "0x51027076df8416e42ea8438b27a0c433d9662e68",
+    v4Hook: "0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80",
     feeLocker: "0x3b74062a72b16f9a221d63515518a635414501d8",
     // the shared launch-token vault (Nov 2, testnet experiment): new Uniswap launches keep their private balances here
     shared: "0x0ce2ecb0195e07899377e3d7b01e927ab3f87610",
