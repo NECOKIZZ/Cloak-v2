@@ -10,6 +10,12 @@ for (const n of names) {
   const { abi } = JSON.parse(readFileSync(`${root}contracts/out/${fileOf(n)}/${n}.json`, "utf8"));
   out += `\nexport const ${n === n.toUpperCase() ? n.toLowerCase() : n[0].toLowerCase() + n.slice(1)}Abi = ${JSON.stringify(abi, null, 2)} as const;\n`;
 }
+// Uniswap v4: Cloak's hook and market (contracts-v4), and the PoolManager built with Uniswap's settings
+const v4 = { CloakV4Hook: `${root}contracts-v4/out/CloakV4Hook.sol/CloakV4Hook.json`, CloakV4Market: `${root}contracts-v4/out/CloakV4Market.sol/CloakV4Market.json`, PoolManager: `${root}contracts-v4/out-uniswap/PoolManager.sol/PoolManager.json` };
+for (const [n, file] of Object.entries(v4)) {
+  const { abi } = JSON.parse(readFileSync(file, "utf8"));
+  out += `\nexport const ${n[0].toLowerCase() + n.slice(1)}Abi = ${JSON.stringify(abi, null, 2)} as const;\n`;
+}
 writeFileSync(`${root}packages/sdk/src/abis.ts`, out);
 
 // bytecode for deploy scripts / e2e
@@ -19,6 +25,7 @@ const bytecode = Object.fromEntries(
 for (const [n, file] of Object.entries(extra)) {
   bytecode[n] = JSON.parse(readFileSync(`${root}contracts/out/${file}/${n}.json`, "utf8")).bytecode.object;
 }
+for (const [n, file] of Object.entries(v4)) bytecode[n] = JSON.parse(readFileSync(file, "utf8")).bytecode.object;
 // circomlibjs Poseidon contracts (same constants as the circuit)
 bytecode.Poseidon2 = readFileSync(`${root}contracts/test/fixtures/poseidon2.hex`, "utf8").trim();
 bytecode.Poseidon3 = readFileSync(`${root}contracts/test/fixtures/poseidon3.hex`, "utf8").trim();

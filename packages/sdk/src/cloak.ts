@@ -12,7 +12,7 @@ import {
   parseEventLogs,
   toHex,
 } from "viem";
-import { cloakAuctionAbi, cloakFactoryAbi, cloakFeeLockerAbi, cloakPairAbi, cloakTokenAbi } from "./abis.js";
+import { cloakAuctionAbi, cloakFactoryAbi, cloakFeeLockerAbi, cloakPairAbi, cloakTokenAbi, cloakV4HookAbi } from "./abis.js";
 
 /** `lpLockUntil` for "locked forever, the creator earns the pool's trading fees". */
 export const LOCK_FOREVER_FEES = 2n ** 64n - 1n;
@@ -80,8 +80,12 @@ export interface AuctionState {
   raised: bigint;
   /** The market Cloak trades: a CloakV2Market in front of a Uniswap V2 pool, or (earlier launches) a CloakPair. */
   pair: Address;
-  /** The launch's Uniswap V2 pool (token / WHYPE), tradable and tracked everywhere. Zero for a CloakPair market. */
+  /** The launch's Uniswap pool: a V2 pool (token / WHYPE), or for a v4 launch its CloakV4Market. Zero for a CloakPair. */
   uniPair: Address;
+  /** Which market the launch opens: a Uniswap v4 pool with Cloak's hook, a Uniswap V2 pool, or (earlier launches) a CloakPair. */
+  pool: "v4" | "v2" | "cloak";
+  /** For a v4 launch: the hook that seeds and looks after its pool. */
+  hook?: Address;
   /** The LP is locked forever and the creator earns its trading fees (see `creatorFees`). */
   creatorFees: boolean;
   tokenName: string;
@@ -204,6 +208,7 @@ export class Cloak {
     if (!this.factory) throw new Error("Cloak: factory address required");
     const w = this.wallet();
     const lock = p.lpLockUntil === undefined || p.lpLockUntil === "burn" ? 0n : p.lpLockUntil === "fees" ? LOCK_FOREVER_FEES : BigInt(p.lpLockUntil);
+    if (lock !== 0n && lock !== LOCK_FOREVER_FEES && !(await this.timedLocks())) throw new Error("Launches from this factory open a Uniswap v4 pool, whose liquidity stays locked: choose \"burn\" or \"fees\" (locked forever, trading fees to the creator), not a lock date.");
     const params = {
       creator: p.creator ?? w.account.address,
       saleSupply: p.saleSupply,
@@ -227,6 +232,12 @@ export class Cloak {
     const r = await this.send(txHash);
     const [ev] = parseEventLogs({ abi: cloakFactoryAbi, logs: r.logs, eventName: "LaunchCreated" });
     return { auction: ev.args.auction, token: ev.args.token, txHash, block: r.blockNumber };
+  }
+
+  /** Whether this factory's launches may lock LP until a date (false for Uniswap v4 launches). */
+  async timedLocks(): Promise<boolean> {
+    if (!this.factory) return true;
+    return this.publicClient.readContract({ address: this.factory, abi: cloakFactoryAbi, functionName: "timedLocks" }).catch(() => true);
   }
 
   /**
@@ -297,6 +308,9 @@ export class Cloak {
         r.readContract({ ...c, functionName: "uniPair" }).catch(() => zeroAddress),
         r.readContract({ ...c, functionName: "creatorFees" }).catch(() => false),
       ]);
+    // a v4 launch's seeder is CloakV4Hook, the only seeder that says it can't hand LP back after a timed lock
+    const seeder = await r.readContract({ ...c, functionName: "seeder" }).catch(() => zeroAddress);
+    const v4 = seeder !== zeroAddress && (await r.readContract({ address: seeder, abi: cloakV4HookAbi, functionName: "timedLocks" }).then((t) => t === false, () => false));
     const [creator, saleSupply, lpReserve, minPrice, tickSize, numTicks, commitEnd, revealEnd, lpBps, noRevealPenaltyBps, lpLockUntil, tlockRound] =
       params;
     const [tokenName, tokenSymbol] = await Promise.all([
@@ -331,7 +345,10 @@ export class Cloak {
       raised,
       pair,
       uniPair,
-      creatorFees,
+      pool: v4 ? "v4" : uniPair !== zeroAddress ? "v2" : "cloak",
+      ...(v4 ? { hook: seeder } : {}),
+      // a v4 launch "locked forever" pays its creator through the hook rather than the V2 fee locker
+      creatorFees: creatorFees || (v4 && BigInt(lpLockUntil) === LOCK_FOREVER_FEES),
       tokenName,
       tokenSymbol,
       launchFeeBps,
@@ -348,6 +365,17 @@ export class Cloak {
    */
   async creatorFees(auction: Address): Promise<{ locker: Address; position: bigint; beneficiary: Address; claimableLp: bigint; tokens: bigint; whype: bigint } | null> {
     const c = { address: auction, abi: cloakAuctionAbi } as const;
+    const s = await this.getAuction(auction);
+    if (s.pool === "v4") {
+      if (!s.creatorFees || !s.hook || s.uniPair === zeroAddress) return null;
+      // what collectFees would pay right now, without sending anything
+      const [{ result }, launch] = await Promise.all([
+        this.publicClient.simulateContract({ address: s.hook, abi: cloakV4HookAbi, functionName: "collectFees", args: [s.token] }),
+        this.publicClient.readContract({ address: s.hook, abi: cloakV4HookAbi, functionName: "launchOf", args: [s.token] }),
+      ]);
+      const [h, t] = result;
+      return { locker: s.hook, position: 0n, beneficiary: launch.feeTo, claimableLp: h + t > 0n ? 1n : 0n, tokens: t, whype: h };
+    }
     const on = await this.publicClient.readContract({ ...c, functionName: "creatorFees" }).catch(() => false);
     if (!on) return null;
     const [locker, position, token, uniPair] = await Promise.all([
@@ -372,6 +400,8 @@ export class Cloak {
     const f = await this.creatorFees(auction);
     if (!f) throw new Error("this launch has no creator fees");
     if (f.claimableLp === 0n) throw new Error("no fees earned yet");
+    const s = await this.getAuction(auction);
+    if (s.pool === "v4") return this.send(await this.wallet().writeContract({ address: f.locker, abi: cloakV4HookAbi, functionName: "collectFees", args: [s.token] })).then((r) => r.transactionHash);
     return this.send(await this.wallet().writeContract({ address: f.locker, abi: cloakFeeLockerAbi, functionName: "claim", args: [f.position] })).then((r) => r.transactionHash);
   }
 

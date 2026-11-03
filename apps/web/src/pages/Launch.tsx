@@ -164,7 +164,7 @@ export function Launch({ auction }: { auction: Address }) {
               {short(s.token)} <Icon.copy size={13} />
             </button>
             {addrLink(s.token) && <a href={addrLink(s.token)} target="_blank" rel="noreferrer" className="link">Explorer ↗</a>}
-            {uni && trading && <a href={addrLink(s.uniPair)} target="_blank" rel="noreferrer" className="link">Uniswap pool ↗</a>}
+            {uni && trading && <a href={addrLink(s.uniPair)} target="_blank" rel="noreferrer" className="link">{s.pool === "v4" ? "Uniswap v4 pool ↗" : "Uniswap pool ↗"}</a>}
           </div>
           {meta?.description && <p className="token-card-desc">{meta.description}</p>}
         </div>

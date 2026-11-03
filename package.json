@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter @cloakely/sdk build",
-    "abis": "cd contracts && forge build && cd .. && node scripts/gen-abis.mjs",
+    "abis": "cd contracts && forge build && cd ../contracts-v4 && forge build && FOUNDRY_PROFILE=uniswap forge build && cd .. && node scripts/gen-abis.mjs",
     "test": "cd contracts && forge test && cd .. && pnpm --filter @cloakely/sdk test",
     "e2e": "node e2e/run.mjs",
     "deploy:factory": "node e2e/deploy.mjs",

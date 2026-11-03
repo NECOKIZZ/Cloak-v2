@@ -84,12 +84,12 @@ contract CloakV4Test is Test {
 
     /// The hook must live at an address whose low 14 bits are exactly its permissions: mine a CREATE2 salt.
     function _deployHook(uint24 base, uint24 start, uint32 decay) internal returns (CloakV4Hook h) {
-        bytes memory init = abi.encodePacked(type(CloakV4Hook).creationCode, abi.encode(address(pm), base, start, decay));
+        bytes memory init = abi.encodePacked(type(CloakV4Hook).creationCode, abi.encode(address(pm), address(this), base, start, decay));
         bytes32 ih = keccak256(init);
         for (uint256 s; s < 500_000; ++s) {
             address a = vm.computeCreate2Address(bytes32(s), ih, address(this));
             if (uint160(a) & ((1 << 14) - 1) == FLAGS) {
-                h = new CloakV4Hook{salt: bytes32(s)}(IPoolManager(address(pm)), base, start, decay);
+                h = new CloakV4Hook{salt: bytes32(s)}(IPoolManager(address(pm)), address(this), base, start, decay);
                 require(address(h) == a, "create2");
                 return h;
             }
@@ -188,6 +188,11 @@ contract CloakV4Test is Test {
         Direct d = new Direct(IPoolManager(address(pm)));
         vm.expectRevert();
         d.addLiquidity(key);
+    }
+
+    function test_adminIsWhoTheDeployerNames() public {
+        // deployed through a CREATE2 factory, the admin must still be the named one, not the factory
+        assertEq(hook.deployer(), address(this));
     }
 
     function test_hookCanOnlyBeSetUpOnce() public {

@@ -104,10 +104,12 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
         _;
     }
 
-    constructor(IPoolManager poolManager_, uint24 baseFee_, uint24 startFee_, uint32 decaySecs_) {
+    /// @param admin_ who may name the launch factory, once (deployed through a CREATE2 deployer, msg.sender isn't us)
+    constructor(IPoolManager poolManager_, address admin_, uint24 baseFee_, uint24 startFee_, uint32 decaySecs_) {
         require(baseFee_ <= startFee_ && startFee_ <= 500_000, "fees"); // never more than 50%
+        require(admin_ != address(0), "admin");
         poolManager = poolManager_;
-        deployer = msg.sender;
+        deployer = admin_;
         baseFee = baseFee_;
         startFee = startFee_;
         decaySecs = decaySecs_;

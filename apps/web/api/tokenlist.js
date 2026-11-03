@@ -55,14 +55,15 @@ export async function GET(req) {
       decimals: 18,
       logoURI: logo(l) ?? null,
       description: meta.get(l.address.toLowerCase())?.description ?? null,
-      uniswapV2Pool: l.uniPair && !zero.test(l.uniPair) ? l.uniPair : null,
+      uniswapV2Pool: l.pool !== "v4" && l.uniPair && !zero.test(l.uniPair) ? l.uniPair : null,
+      ...(l.pool === "v4" ? { uniswapV4: { hook: l.hook ?? null, market: l.pair } } : {}),
       market: l.pair,
-      quote: "WHYPE",
+      quote: l.pool === "v4" ? "HYPE" : "WHYPE",
       launchedAt: new Date(l.revealEnd * 1000).toISOString(),
       clearingPriceHype: formatEther(l.clearingPrice),
       launchPage: `${SITE}/app/launch/${l.address}`,
       auction: l.address,
-      lp: l.lpLockUntil === 0 ? "burned" : `locked until ${new Date(l.lpLockUntil * 1000).toISOString()}`,
+      lp: l.lpLockUntil === 0 ? "burned" : l.lpLockUntil >= 2 ** 63 ? "locked forever, trading fees to the creator" : `locked until ${new Date(l.lpLockUntil * 1000).toISOString()}`,
     }));
     return new Response(JSON.stringify({ chainId: CHAIN_ID, updated: new Date(snap.at).toISOString(), count: tokens.length, tokens }, null, 2), { headers });
   }

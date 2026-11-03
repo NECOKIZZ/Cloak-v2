@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { parseEther, type Address } from "viem";
 import { Cloak, type Wallet } from "@cloakely/sdk";
 import { FACTORY } from "../config";
@@ -6,7 +6,7 @@ import { hype, tokens } from "../format";
 import { friendly } from "../errors";
 import { useApp } from "../state";
 import { compressImage, encodeMeta, loadAllMeta } from "../tokenMeta";
-import { publicClient } from "../wallet";
+import { publicClient, readCloak } from "../wallet";
 
 /**
  * Create a launch: a preset for most people, every technical setting for those who want them, and a live summary of
@@ -62,6 +62,11 @@ const mins = (m: number) => (m >= 1440 && m % 1440 === 0 ? `${m / 1440} day${m =
 export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCreated: (a: Address) => void }) {
   const { connect } = useApp();
   const [name, setName] = useState("");
+  // Uniswap v4 launches keep their liquidity with Cloak's hook, so they can't be "locked until a date"
+  const [timed, setTimed] = useState(true);
+  useEffect(() => {
+    readCloak.timedLocks().then(setTimed).catch(() => {});
+  }, []);
   const [symbol, setSymbol] = useState("");
   const [desc, setDesc] = useState("");
   const [image, setImage] = useState("");
@@ -153,7 +158,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
         commitEnd,
         revealEnd,
         lpBps: Number(plan.lpBps),
-        lpLockUntil: f.lp === "fees" ? "fees" : f.lp === "burn" ? "burn" : revealEnd + Number(f.lockDays) * 86400,
+        lpLockUntil: f.lp === "fees" || (!timed && f.lp === "date") ? "fees" : f.lp === "burn" ? "burn" : revealEnd + Number(f.lockDays) * 86400,
         noRevealPenaltyBps: Math.round(Number(f.penaltyPct) * 100),
         creatorAlloc: plan.creatorAlloc,
         creatorVestSecs: Number(f.vestDays) * 86400,
@@ -246,12 +251,15 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
               <b>Burned forever</b>
               <span className="xs mute">The pool can never be emptied and nobody collects its fees. They stay in the pool and deepen it.</span>
             </button>
-            <button type="button" className={`choice ${f.lp === "date" ? "on" : ""}`} onClick={() => setF({ ...f, lp: "date" })}>
-              <b>Locked until a date</b>
-              <span className="xs mute">After the date, the pool's liquidity is yours to keep or withdraw. Bidders will see when.</span>
-            </button>
+            {timed && (
+              <button type="button" className={`choice ${f.lp === "date" ? "on" : ""}`} onClick={() => setF({ ...f, lp: "date" })}>
+                <b>Locked until a date</b>
+                <span className="xs mute">After the date, the pool's liquidity is yours to keep or withdraw. Bidders will see when.</span>
+              </button>
+            )}
           </div>
-          {f.lp === "date" && (
+          {!timed && <p className="xs mute" style={{ marginTop: 10 }}>Your launch opens a Uniswap v4 pool at the clearing price. For the first 5 minutes after it opens, trades pay a higher fee (10%, falling to 0.3%) that goes to you, so sniping the listing costs the sniper.</p>}
+          {timed && f.lp === "date" && (
             <div className="field" style={{ marginTop: 12, marginBottom: 0 }}>
               <label><span>Lock for</span><span>days after the auction</span></label>
               <input className="input" value={f.lockDays} onChange={set("lockDays")} inputMode="numeric" />

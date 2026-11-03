@@ -8,19 +8,22 @@
 // Fork (spawns a local keeper):  anvil --fork-url https://testnet-rpc.elysium.kinetiq.xyz --chain-id 31337 &
 //   DEPLOYER_PK=0x… RPC_URL=http://127.0.0.1:8545 node e2e/deploy-shared.mjs && DEPLOYER_PK=0x… RPC_URL=http://127.0.0.1:8545 node e2e/shared.mjs
 // Live testnet (hosted keeper):  DEPLOYER_PK=0x… node e2e/shared.mjs
+// POOL=v4: the same run on the Uniswap v4 factory (fork: deploy with e2e/deploy-v4pools.mjs first), plus v4 checks:
+//   the pool lists at the clearing price, the anti-snipe fee, and the creator collecting trading fees through the hook.
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { decodeEventLog, defineChain, parseAbi } from "viem";
 import { generatePrivateKey } from "viem/accounts";
 import {
-  Cloak, CloakPrivate, SharedVaultClient, cloakVaultsAbi, createProver, createSharedProver, elysiumTestnet, readRegistry, relayerSubmitter, sharedRelayerSubmitter, sharedVaultAbi,
+  cloakV4MarketAbi, Cloak, CloakPrivate, SharedVaultClient, cloakVaultsAbi, createProver, createSharedProver, elysiumTestnet, readRegistry, relayerSubmitter, sharedRelayerSubmitter, sharedVaultAbi,
 } from "@cloakely/sdk";
 import { clients, fmt, parseEther, sleep } from "./lib.mjs";
 
 const RPC = process.env.RPC_URL || elysiumTestnet.rpcUrls.default.http[0];
 const local = RPC.includes("127.0.0.1") || RPC.includes("localhost");
 const root = new URL("..", import.meta.url).pathname;
-const v4 = JSON.parse(readFileSync(`${root}deployments/elysium-testnet-v4${local ? "-shared.fork" : ""}.json`, "utf8"));
+const V4POOLS = process.env.POOL === "v4";
+const v4 = JSON.parse(readFileSync(`${root}deployments/elysium-testnet-v4${local ? (V4POOLS ? "-v4pools.fork" : "-shared.fork") : ""}.json`, "utf8"));
 const chain = local ? defineChain({ ...elysiumTestnet, id: 31337, rpcUrls: { default: { http: [RPC] } } }) : elysiumTestnet;
 const S = local ? 1000n : 1n;
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function approve(address,uint256) returns (bool)"]);
@@ -119,6 +122,14 @@ try {
     return st.settled && (await admitted(st.token)) ? st : undefined;
   });
   ok(!s.failed && BigInt(s.uniPair) !== 0n, `settled into Uniswap pool ${s.uniPair}`);
+  if (V4POOLS) {
+    ok(s.pool === "v4" && s.creatorFees, `it's a Uniswap v4 pool with Cloak's hook ${s.hook}, fees to the creator`);
+    const m = { address: s.pair, abi: cloakV4MarketAbi };
+    const [px, fee] = await Promise.all([pub.readContract({ ...m, functionName: "price" }), pub.readContract({ ...m, functionName: "feePips" })]);
+    const err = px > s.clearingPrice ? px - s.clearingPrice : s.clearingPrice - px;
+    ok(err * 1_000_000n <= s.clearingPrice, `the v4 pool opened at the clearing price (${fmt(px, 12)} vs ${fmt(s.clearingPrice, 12)})`);
+    ok(fee > 3000, `right after listing the anti-snipe fee is ${Number(fee) / 1e4}% (it falls to 0.3%)`);
+  }
   const own = await pub.readContract({ address: v4.vaults, abi: cloakVaultsAbi, functionName: "poolOf", args: [s.token] });
   ok(BigInt(own) === 0n, "the keeper admitted the token to the shared vault and opened no vault of its own");
   ok((await pub.readContract({ address: v4.shared, abi: sharedVaultAbi, functionName: "tokensCount" })) === tokensBefore + 1n, "only this new launch was admitted (earlier launches keep their own vaults)");
@@ -180,6 +191,16 @@ try {
     forged = true;
   }
   ok(forged && (await pub.readContract({ address: s.token, abi: ERC20, functionName: "balanceOf", args: [fresh] })) === got, "a tampered proof is refused and moves nothing");
+  if (V4POOLS) {
+    // ── 6. the creator's trading fees, through the hook ──
+    const fees = await creator.creatorFees(l.auction);
+    ok(fees && fees.whype + fees.tokens > 0n, `the private trades earned the creator ${fmt(fees?.whype ?? 0n, 8)} HYPE and ${fmt(fees?.tokens ?? 0n, 0)} SSHADE in fees`);
+    const c0 = await pub.getBalance({ address: C.account.address });
+    await new Cloak(pub, A.walletClient).claimCreatorFees(l.auction); // anyone can trigger it; it always pays the creator
+    const c1 = await pub.getBalance({ address: C.account.address });
+    ok(c1 - c0 === fees.whype, "someone else triggered the payout, and the creator received exactly those HYPE fees");
+    ok((await creator.creatorFees(l.auction)).claimableLp === 0n, "nothing left to collect right after");
+  }
   console.log(`\n    launch page: https://cloak.boblabs.tech/app/launch/${l.auction}`);
 } finally {
   keeper?.kill();

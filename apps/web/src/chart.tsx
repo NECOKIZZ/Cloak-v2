@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther, type Address } from "viem";
-import { cloakAuctionAbi, cloakPairAbi, type AuctionState } from "@cloakely/sdk";
+import { cloakAuctionAbi, cloakPairAbi, cloakV4MarketAbi, poolManagerAbi, type AuctionState } from "@cloakely/sdk";
 import { DEPLOYMENT } from "./config";
 import { hype } from "./format";
 import { publicClient } from "./wallet";
@@ -27,7 +27,16 @@ export async function priceHistory(s: AuctionState): Promise<PricePoint[]> {
   if (start === undefined) return [];
   const raw: { block: bigint; p: number }[] = [{ block: start, p: Number(formatEther(s.clearingPrice)) }];
   const uni = s.uniPair && BigInt(s.uniPair) !== 0n;
-  if (uni) {
+  if (s.pool === "v4" && uni) {
+    // every trade on the v4 pool, through Cloak or not, is a PoolManager Swap carrying the price after it
+    const m = { address: s.pair as Address, abi: cloakV4MarketAbi } as const;
+    const [pm, id] = await Promise.all([publicClient.readContract({ ...m, functionName: "poolManager" }), publicClient.readContract({ ...m, functionName: "poolId" })]);
+    const swaps = await publicClient.getContractEvents({ address: pm, abi: poolManagerAbi, eventName: "Swap", args: { id }, fromBlock: start, strict: true });
+    for (const e of swaps) {
+      const sp = e.args.sqrtPriceX96;
+      if (sp > 0n) raw.push({ block: e.blockNumber, p: Number(formatEther(((1n << 192n) * WAD) / (sp * sp))) });
+    }
+  } else if (uni) {
     const [token0, syncs] = await Promise.all([
       publicClient.readContract({ address: s.uniPair, abi: uniPairAbi, functionName: "token0" }),
       publicClient.getContractEvents({ address: s.uniPair, abi: uniPairAbi, eventName: "Sync", fromBlock: start, strict: true }),

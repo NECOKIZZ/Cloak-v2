@@ -549,6 +549,7 @@ async function relayShared(body) {
     gas = await publicClient.estimateContractGas({ ...call, account: account.address });
   } catch (e) {
     keys.forEach((k) => inflight.delete(k));
+    if (isNetworkError(e)) console.error(`relay ${kind}: simulation failed on the network: ${(e.shortMessage ?? e.message ?? "").slice(0, 300)}`);
     throw isNetworkError(e) ? err("The network didn't answer. Nothing was sent, so try again in a moment.", 503) : e;
   }
   try {

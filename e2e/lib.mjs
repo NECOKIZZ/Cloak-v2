@@ -160,3 +160,47 @@ export async function exempt(publicClient, walletClient, config, addrs) {
     await publicClient.waitForTransactionReceipt({ hash });
   }
 }
+
+// ───────────── Uniswap v4 ─────────────
+import { concat, encodeAbiParameters, getContractAddress, keccak256 as k256, pad, toHex as hx } from "viem";
+import { cloakV4HookAbi, poolManagerAbi } from "@cloakely/sdk";
+
+/** The standard CREATE2 deployer (Arachnid's), on Elysium testnet and every anvil chain. */
+export const CREATE2_DEPLOYER = "0x4e59b44847b379578588920ca78fbf26c0b4956c";
+/** CloakV4Hook's permissions, as the low bits of its address: beforeInitialize, beforeAdd/RemoveLiquidity, beforeSwap. */
+export const V4_HOOK_FLAGS = (1n << 13n) | (1n << 11n) | (1n << 9n) | (1n << 7n);
+
+/** A CREATE2 salt that puts `initCode` at an address with exactly `flags` in its low 14 bits. */
+export function mineHookSalt(initCode, flags = V4_HOOK_FLAGS, deployer = CREATE2_DEPLOYER) {
+  const bytecodeHash = k256(initCode);
+  for (let i = 0n; i < 5_000_000n; i++) {
+    const salt = pad(hx(i), { size: 32 });
+    const a = getContractAddress({ from: deployer, salt, bytecodeHash, opcode: "CREATE2" });
+    if ((BigInt(a) & 0x3fffn) === flags) return { salt, address: a };
+  }
+  throw new Error("no salt found");
+}
+
+/**
+ * Uniswap v4 launches: a PoolManager (unless `poolManager` names one, as on mainnet), the CloakV4Hook at a flagged
+ * address, and a CloakFactory whose seeder is the hook (no fee locker: the hook pays creators itself).
+ * Hook defaults: 0.3% base fee, 10% at listing falling to it over 5 minutes.
+ */
+export async function deployV4(publicClient, walletClient, { config, vestingDeployer, poolManager, baseFee = 3000, startFee = 100000, decaySecs = 300 } = {}) {
+  const wait = async (hash) => {
+    const r = await publicClient.waitForTransactionReceipt({ hash });
+    if (r.status !== "success") throw new Error(`reverted ${hash}`);
+    return r;
+  };
+  if (!poolManager) {
+    const r = await wait(await walletClient.deployContract({ abi: poolManagerAbi, bytecode: bytecode.PoolManager, args: [walletClient.account.address] }));
+    poolManager = r.contractAddress;
+  }
+  const initCode = concat([bytecode.CloakV4Hook, encodeAbiParameters([{ type: "address" }, { type: "address" }, { type: "uint24" }, { type: "uint24" }, { type: "uint32" }], [poolManager, walletClient.account.address, baseFee, startFee, decaySecs])]);
+  const { salt, address: hook } = mineHookSalt(initCode);
+  if ((await publicClient.getCode({ address: hook })) === undefined) await wait(await walletClient.sendTransaction({ to: CREATE2_DEPLOYER, data: concat([salt, initCode]) }));
+  if (!(await publicClient.getCode({ address: hook }))) throw new Error("hook not deployed");
+  const f = await deployFactory(publicClient, walletClient, { config, vestingDeployer, seeder: hook, feeLocker: "0x0000000000000000000000000000000000000000" });
+  await wait(await walletClient.writeContract({ address: hook, abi: cloakV4HookAbi, functionName: "setFactory", args: [f.factory] }));
+  return { ...f, poolManager, hook };
+}

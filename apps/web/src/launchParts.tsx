@@ -124,7 +124,7 @@ export function CreatorFeesCard({ s, wallet }: { s: AuctionState; wallet: Wallet
   return (
     <div className="card">
       <div className="card-head"><h3>Creator fees</h3><span className="pill ok">liquidity locked forever</span></div>
-      <p className="small soft" style={{ marginTop: 0 }}>The pool can never be emptied. The creator earns its 0.3% trading fee instead.</p>
+      <p className="small soft" style={{ marginTop: 0 }}>{s.pool === "v4" ? "The Uniswap v4 pool can never be emptied. The creator earns its trading fee instead: 0.3%, and more in the first minutes after listing." : "The pool can never be emptied. The creator earns its 0.3% trading fee instead."}</p>
       <div className="summary">
         <div className="row"><span className="mute">Earned so far</span><span className="mono">{earned ? [f.whype > 0n && `${amt(f.whype, (v) => hype(v))} HYPE`, f.tokens > 0n && `${amt(f.tokens, tokens)} ${s.tokenSymbol}`].filter(Boolean).join(" + ") : "nothing yet"}</span></div>
         <div className="row"><span className="mute">Paid to</span><span className="mono">{mine ? "you" : short(f.beneficiary)}</span></div>
