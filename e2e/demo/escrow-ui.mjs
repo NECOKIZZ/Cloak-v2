@@ -103,6 +103,14 @@ const won = [...(await drops.tokensOf(drop, bids[0].id)), ...(await drops.tokens
 ok(won.length === 2 && won[0] !== won[1], `the two bids won tokens ${won.map((x) => `#${x}`).join(" and ")}`);
 await page.reload({ waitUntil: "networkidle" });
 await page.click("role=tab[name=Mint]");
+// after a reload the page may be signed out: the hint connects the owner's wallet
+const hint = page.locator("button", { hasText: "connect the creator's wallet" });
+if (await hint.isVisible({ timeout: 20000 }).catch(() => false)) {
+  ok(true, "signed out, the page tells the owner to connect to take back the unsold token");
+  await hint.click();
+  const bw2 = page.locator(".wm-item", { hasText: "Browser wallet" });
+  if (await bw2.isVisible({ timeout: 8000 }).catch(() => false)) await bw2.click();
+}
 const back = page.locator("button", { hasText: /Take back 1 to my wallet/ });
 await back.waitFor({ timeout: 90000 });
 await back.click();

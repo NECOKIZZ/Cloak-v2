@@ -529,6 +529,9 @@ export function Drop({ drop }: { drop: Address }) {
               )}
               {me && (me.wl || me.gtdSpots > 0) && <p className="small" style={{ marginTop: 10 }}><span className="pill ok">{me.gtdSpots ? `GTD · ${me.gtdSpots} spot${me.gtdSpots > 1 ? "s" : ""}` : ""}{me.gtdSpots && me.wl ? " · " : ""}{me.wl ? "WL" : ""}</span> This wallet is listed.</p>}
               {isCreator && sale && s.phase === "settled" && left > 0 && <p className="small mute" style={{ marginTop: 10 }}>{left} spot{left > 1 ? "s" : ""} went unsold. They aren't on this list, so they're yours to give out with {sale.partner}.</p>}
+              {!wallet && !sale && s.phase === "settled" && left > 0 && (
+                <p className="small mute" style={{ marginTop: 14 }}>{left} {esc ? "token" : "NFT"}{left > 1 ? "s" : ""} went unsold. {esc ? "The owner can take them back" : "The creator can mint them"}: <button className="link small" onClick={() => connect().catch(() => {})}>connect the creator's wallet</button>.</p>
+              )}
               {isCreator && !sale && s.phase === "settled" && left > 0 && (
                 <>
                   <div className="card-head" style={{ marginTop: 18 }}><h3>Unsold {esc ? "tokens" : "NFTs"}</h3></div>
