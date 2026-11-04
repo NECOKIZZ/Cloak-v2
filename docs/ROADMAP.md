@@ -173,8 +173,8 @@ Selective disclosure, applied to tokens.
 ## This week · NFT partnerships
 
 - **Outreach to Elysium NFT collections:** run part or all of a mint as a sealed drop, or auction a batch of their WL spots.
-- **Next for drops:** MCP tools for drops, link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
-- **`@cloakely/sdk` 0.8.2** with drops and WL spot sales, once approved.
+- **Next for drops:** link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
+- **`@cloakely/sdk` and `@cloakely/mcp` 0.8.3** are on npm with drops, WL spot sales, drop tools in the MCP, and Uniswap v4 launches (pool type, creator fees through the hook, quotes at the pool's current fee).
 
 ---
 
