@@ -33,6 +33,8 @@ const ERC721_ABI = [
   { type: "function", name: "tokenURI", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "string" }] },
   { type: "function", name: "name", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "tokenOfOwnerByIndex", stateMutability: "view", inputs: [{ type: "address" }, { type: "uint256" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "supportsInterface", stateMutability: "view", inputs: [{ type: "bytes4" }], outputs: [{ type: "bool" }] },
 ] as const;
 export { ERC721_ABI as erc721Abi };
@@ -498,20 +500,51 @@ export class CloakDrops {
    * enumeration needed). Capped at `max`.
    */
   async ownedTokens(collection: Address, owner: Address, opts: { max?: number; fromBlock?: bigint } = {}): Promise<bigint[]> {
+    const max = opts.max ?? ESCROW_MAX_TOKENS;
+    const c = { address: collection, abi: ERC721_ABI } as const;
+    // ERC-721 Enumerable: read the wallet's tokens straight from the collection
+    const enumerable = await this.publicClient.readContract({ ...c, functionName: "supportsInterface", args: ["0x780e9d63"] }).catch(() => false);
+    if (enumerable) {
+      const n = Number(await this.publicClient.readContract({ ...c, functionName: "balanceOf", args: [owner] }));
+      const ids = (await this.reads(Array.from({ length: Math.min(n, max) }, (_, i) => ({ ...c, functionName: "tokenOfOwnerByIndex", args: [owner, BigInt(i)] })))) as bigint[];
+      return ids.sort((x, y) => (x < y ? -1 : 1));
+    }
+    // otherwise, the collection's Transfer events to the wallet, from the block it was deployed in
     const ev = { type: "event", name: "Transfer", inputs: [{ type: "address", name: "from", indexed: true }, { type: "address", name: "to", indexed: true }, { type: "uint256", name: "tokenId", indexed: true }] } as const;
-    const seen = new Set<bigint>();
     const latest = await this.publicClient.getBlockNumber();
-    const from = opts.fromBlock ?? 0n;
-    const step = 100_000n;
-    for (let a = from; a <= latest; a += step) {
-      const b = a + step - 1n > latest ? latest : a + step - 1n;
-      const logs = await this.publicClient.getLogs({ address: collection, event: ev, args: { to: owner }, fromBlock: a, toBlock: b }).catch(() => []);
-      for (const l of logs) if (l.args.tokenId !== undefined) seen.add(l.args.tokenId);
+    const from = opts.fromBlock ?? (await this.deployBlock(collection, latest));
+    const seen = new Set<bigint>();
+    const get = (a: bigint, b: bigint) => this.publicClient.getLogs({ address: collection, event: ev, args: { to: owner }, fromBlock: a, toBlock: b });
+    try {
+      for (const l of await get(from, latest)) if (l.args.tokenId !== undefined) seen.add(l.args.tokenId);
+    } catch {
+      for (let a = from; a <= latest; a += 100_000n) {
+        const b = a + 99_999n > latest ? latest : a + 99_999n;
+        for (const l of await get(a, b).catch(() => [])) if (l.args.tokenId !== undefined) seen.add(l.args.tokenId);
+      }
     }
     const ids = [...seen].sort((a, b) => (a < b ? -1 : 1));
-    const owners = await this.reads(ids.map((id) => ({ address: collection, abi: ERC721_ABI, functionName: "ownerOf", args: [id] }))).catch(() => ids.map(() => null));
-    return ids.filter((_, i) => String(owners[i]).toLowerCase() === owner.toLowerCase()).slice(0, opts.max ?? ESCROW_MAX_TOKENS);
+    const owners = await this.reads(ids.map((id) => ({ ...c, functionName: "ownerOf", args: [id] }))).catch(() => ids.map(() => null));
+    return ids.filter((_, i) => String(owners[i]).toLowerCase() === owner.toLowerCase()).slice(0, max);
   }
+
+  /** The block a contract was deployed in, by binary search on its code (0 if the node can't tell). */
+  private async deployBlock(address: Address, latest: bigint): Promise<bigint> {
+    try {
+      let lo = 0n;
+      let hi = latest;
+      if (!(await this.publicClient.getCode({ address, blockNumber: hi }))) return 0n;
+      while (lo < hi) {
+        const mid = (lo + hi) / 2n;
+        if (await this.publicClient.getCode({ address, blockNumber: mid })) hi = mid;
+        else lo = mid + 1n;
+      }
+      return lo;
+    } catch {
+      return 0n;
+    }
+  }
+
 
   /** The bid level for a price: the highest level at or below it (bids snap down, never up). */
   static tickFor(s: Pick<DropState, "floor" | "tickSize" | "numTicks">, price: bigint): number {

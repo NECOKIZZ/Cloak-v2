@@ -9,6 +9,7 @@ import { getProver, getSharedProver, useApp } from "../state";
 import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { quote, useFeePct, useMarkets, type Market } from "./markets";
+import { isHidden } from "../hidden";
 
 function TokenSel({ label, token, onPick, markets }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -21,7 +22,7 @@ function TokenSel({ label, token, onPick, markets }: { label: string; token?: st
       </button>
       {open && markets && (
         <div className="menu">
-          {markets.map((m) => (
+          {markets.filter((m) => !isHidden(m.token) || m.token.toLowerCase() === token?.toLowerCase()).map((m) => (
             <button key={m.token} onClick={() => { onPick?.(m); setOpen(false); }}>
               <TokenIcon symbol={m.symbol} token={m.token} />
               <span style={{ textAlign: "left" }}>{m.symbol}<div className="xs mute">{m.name}</div></span>
@@ -54,7 +55,7 @@ export function Trade() {
   useEffect(() => {
     if (!markets?.length || market) return;
     const want = query.get("token")?.toLowerCase();
-    setMarket(markets.find((m) => m.token.toLowerCase() === want) ?? markets[0]);
+    setMarket(markets.find((m) => m.token.toLowerCase() === want) ?? markets.find((m) => !isHidden(m.token)) ?? markets[0]);
   }, [markets]);
 
   const amountIn = useMemo(() => {

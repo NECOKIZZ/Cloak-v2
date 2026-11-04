@@ -19,7 +19,7 @@ const ADDR = {
 
 const NAV: [string, [string, string][]][] = [
   ["Start here", [["overview", "Overview"], ["quickstart", "Quickstart"], ["what-works", "What works today"]]],
-  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"], ["nft-drops", "NFT drops"], ["wl-spots", "WL spot sales"]]],
+  ["Launches", [["sealed-launches", "Sealed launches"], ["clearing-price", "The clearing price"], ["liquidity", "Locked liquidity"], ["uniswap", "Trading on Uniswap"], ["nft-drops", "NFT drops"], ["existing-nfts", "Auctions of existing NFTs"], ["wl-spots", "WL spot sales"]]],
   ["Privacy", [["private-trading", "Private trading"], ["batch-auctions", "Batch auctions"], ["private-send", "Private send"], ["payment-links", "Payment links"], ["private-usdc", "Private USDC"], ["what-stays-private", "What stays private"]]],
   ["Build", [["sdk", "SDK"], ["agents", "AI agents (MCP)"], ["contracts", "Contracts"], ["fees", "Fees & caps"], ["rules", "All the rules"], ["governance", "Who can change what"], ["keeper", "Keeper & relayer"], ["limits", "Limits & threat model"]]],
 ];
@@ -154,6 +154,17 @@ export function Docs() {
           </ol>
           <p>A creator who wants a fixed price sets it as the floor: when demand sits at the floor, everyone pays exactly that. Each drop is one ERC-721 contract with ERC-2981 royalties; with no metadata folder of its own, Cloak serves each token's name and the collection image.</p>
 
+          <h2 id="existing-nfts">Auctions of existing NFTs</h2>
+          <p>Holders of any Elysium collection can auction tokens they already own the same way, with no new collection: a treasury sale, rare pieces, or a batch of a collection's leftovers. <Link to="/app/drops/create?existing" className="link">Auction your NFTs</Link>.</p>
+          <ul>
+            <li><b>Escrow</b>: <b>CloakEscrowDropFactory</b> moves every listed token from the owner into the auction contract in the same transaction that creates it, and bidding can't open unless the contract holds every one. The drop page checks it on chain and shows the tokens with their own metadata and traits.</li>
+            <li><b>Bidding</b>: the same sealed auction as a drop: bids are sealed to a drand round, an optional WL gets a boost, the highest bids win and every winner pays one price. Up to 500 tokens per auction.</li>
+            <li><b>Which token goes to whom</b>: after settling, every winning bid gets its run of slots in bid order, and slot s is the token at (s + r) mod supply, where r comes from every bid's sealed salt. Nobody knew r before the bids opened, and the order bids are claimed in can't change who gets which token.</li>
+            <li><b>A collection that misbehaves</b>: each token transfer has a gas limit and is checked on arrival. If a collection refuses or fakes a transfer, the winner gets its money back for that token and the owner can take the token back, so nobody's refund is ever stuck.</li>
+            <li><b>Unsold</b>: whatever nobody bought (everything, if nobody bid) goes back to the owner. The collection's own royalties apply on resale; Cloak takes its usual fee on sales.</li>
+          </ul>
+          <p>A Cloak auction can only vouch for what it holds, not for the collection itself: check the collection's address on the drop page before you bid.</p>
+
           <h2 id="wl-spots">WL spot sales</h2>
           <p>When a partner collection gives out whitelist spots, they can be sold the same way: a drop whose supply is the number of spots, marked as a spot sale in <b>CloakSpotBook</b>. One book serves every sale. <Link to="/app/drops/create?spots" className="link">Sell WL spots</Link>.</p>
           <ol>
@@ -249,6 +260,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>CloakConfig (rules and the list of every Cloak contract)</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
               <tr><td>CloakVaults (the permanent vaults)</td><td><a href={A(ADDR.vaults)} target="_blank" rel="noreferrer"><code>{ADDR.vaults}</code></a></td></tr>
               {DEPLOYMENT?.dropFactory && <tr><td>CloakDropFactory (sealed NFT drops)</td><td><a href={A(DEPLOYMENT.dropFactory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.dropFactory}</code></a></td></tr>}
+              {DEPLOYMENT?.escrowDropFactory && <tr><td>CloakEscrowDropFactory (auctions of existing NFTs)</td><td><a href={A(DEPLOYMENT.escrowDropFactory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.escrowDropFactory}</code></a></td></tr>}
               {DEPLOYMENT?.spotBook && <tr><td>CloakSpotBook (WL spot sales)</td><td><a href={A(DEPLOYMENT.spotBook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.spotBook}</code></a></td></tr>}
               {DEPLOYMENT?.v4Hook && <tr><td>CloakV4Hook (Uniswap v4 launches: seeds the pool, keeps the liquidity, creator fees, anti-snipe fee)</td><td><a href={A(DEPLOYMENT.v4Hook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.v4Hook}</code></a></td></tr>}
               {DEPLOYMENT?.poolManager && <tr><td>Uniswap v4 PoolManager</td><td><a href={A(DEPLOYMENT.poolManager)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.poolManager}</code></a></td></tr>}

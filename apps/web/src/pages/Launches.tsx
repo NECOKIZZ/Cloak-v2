@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatEther, type Address } from "viem";
 import { cloakPairAbi, type AuctionState } from "@cloakely/sdk";
+import { isHidden } from "../hidden";
 import { FACTORY } from "../config";
 import { duration, hype, pctChange } from "../format";
 import { Link } from "../router";
@@ -94,7 +95,7 @@ export function Launches() {
     if (!FACTORY) return;
     (async () => {
       const snap = await getSnapshot();
-      const states = (snap?.launches as AuctionState[] | undefined) ?? (await Promise.all((await readCloak.listLaunches()).map((l) => readCloak.getAuction(l.auction as Address)))).reverse();
+      const states = ((snap?.launches as AuctionState[] | undefined) ?? (await Promise.all((await readCloak.listLaunches()).filter((l) => !isHidden(l.auction)).map((l) => readCloak.getAuction(l.auction as Address)))).reverse()).filter((x) => !isHidden(x.address) && !isHidden(x.token));
       setList(states);
       save("launches", states);
       setPrices(await pricesNow(states));

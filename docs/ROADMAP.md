@@ -174,7 +174,8 @@ Selective disclosure, applied to tokens.
 
 - **Outreach to Elysium NFT collections:** run part or all of a mint as a sealed drop, or auction a batch of their WL spots.
 - **Drop pages redesigned (Nov 4):** banner, collection picture, links, category, an items tab that previews the collection's own metadata and traits, a mint schedule and progress bar; a gallery list with a featured drop.
-- **Next for drops:** auctions of NFTs that already exist (escrowed, not minted), link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
+- **Auctions of existing NFTs (Nov 4):** any holder lists tokens from any Elysium collection; they sit in escrow in the auction contract, sell in a sealed auction, and winners get tokens by a draw fixed when the bids open. Unsold tokens go back.
+- **Next for drops:** link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
 - **`@cloakely/sdk` and `@cloakely/mcp` 0.8.3** are on npm with drops, WL spot sales, drop tools in the MCP, and Uniswap v4 launches (pool type, creator fees through the hook, quotes at the pool's current fee).
 
 ---

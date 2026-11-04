@@ -6,6 +6,7 @@ import { friendly } from "../errors";
 import { duration, hype, short } from "../format";
 import { Link } from "../router";
 import { Icon } from "../ui";
+import { isHidden } from "../hidden";
 
 export type Row = DropState & { details: DropDetails };
 
@@ -126,7 +127,7 @@ export function Drops() {
     if (!DROP_FACTORY) return setList([]);
     const c = dropsClient();
     c.list()
-      .then((as) => Promise.all(as.reverse().map(async (a) => ({ ...(await c.get(a)), details: await c.details(a).catch(() => ({})) }))))
+      .then((as) => Promise.all(as.reverse().filter((a) => !isHidden(a)).map(async (a) => ({ ...(await c.get(a)), details: await c.details(a).catch(() => ({})) }))))
       .then(setList)
       .catch((e) => setErr(friendly(e)));
   }, []);

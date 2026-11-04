@@ -4,6 +4,10 @@
 //   /api/tokenlist?feed=1  the same launches with their pool, launch page, clearing price and description, for partners
 //                          that list new tokens automatically
 import { formatEther } from "viem";
+import hidden from "../src/hidden.json" with { type: "json" };
+
+// Cloak's own test and demo launches stay off the list (src/hidden.json)
+const HIDDEN = new Set(hidden.launches.flatMap(([, a, t]) => [a, t]).map((x) => x.toLowerCase()));
 
 export const config = { maxDuration: 15 };
 
@@ -38,7 +42,7 @@ export async function GET(req) {
   const meta = new Map((snap.meta ?? []).map((m) => [m.auction.toLowerCase(), parseMeta(m.metadataURI)]));
   const zero = /^0x0{40}$/i;
   const launched = (snap.launches ?? [])
-    .filter((l) => l.settled && !l.failed && l.pair && !zero.test(l.pair))
+    .filter((l) => l.settled && !l.failed && l.pair && !zero.test(l.pair) && !HIDDEN.has(l.address.toLowerCase()) && !HIDDEN.has(String(l.token).toLowerCase()))
     .sort((a, b) => a.revealEnd - b.revealEnd);
   const logo = (l) => {
     const img = meta.get(l.address.toLowerCase())?.image;
