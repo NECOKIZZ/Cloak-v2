@@ -100,6 +100,12 @@ export function EscrowCreate() {
   }, [f.wlOn, f.wlList]);
   const price = wei(f.price);
   const cover = owned?.find((m) => picked.has(m.id) && imageSrc(m.image))?.image;
+  // publish the original link (ipfs://… or https://…), not the site's media route
+  const coverUri = (() => {
+    if (!cover) return undefined;
+    const u = cover.startsWith("/api/media?") ? new URLSearchParams(cover.split("?")[1]).get("u") ?? "" : cover;
+    return /^(https|ipfs|ar):\/\//.test(u) ? u : undefined;
+  })();
   const problem = !addr
     ? "Enter the collection's contract address."
     : info === null
@@ -140,7 +146,7 @@ export function EscrowCreate() {
         maxPerBid: Number(f.maxPerBid),
         biddingSecs: f.biddingSecs,
         wl: f.wlOn ? { list: wl.list, boostBps: f.boost * 100 } : undefined,
-        image: cover && /^(https|ipfs):\/\//.test(cover) ? cover : undefined,
+        image: coverUri,
         banner: banner || undefined,
         description: f.description.trim() || undefined,
       });

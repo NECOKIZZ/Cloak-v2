@@ -17,7 +17,9 @@ export function spotsClient(wallet?: Wallet | null): CloakSpots | null {
 /** An image link a browser can show: ipfs:// through a public gateway, data: and https: as they are. */
 export function imageSrc(uri?: string): string | undefined {
   if (!uri) return undefined;
-  if (uri.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${uri.slice(7)}`;
+  // content addresses go through the site's media route: public gateways rate-limit browsers (ipfs.io answers 429)
+  if (uri.startsWith("ipfs://") || uri.startsWith("ar://")) return `/api/media?u=${encodeURIComponent(uri)}`;
+  if (uri.startsWith("/api/media?")) return uri;
   if (/^data:image\/(png|jpeg|webp|gif);/.test(uri) || uri.startsWith("https://")) return uri;
   return undefined;
 }
@@ -35,7 +37,7 @@ export interface ItemMeta {
 
 /** Fetch a link the browser can read: ipfs:// through a public gateway, https: as it is. */
 function fetchable(uri: string): string | undefined {
-  if (uri.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${uri.slice(7)}`;
+  if (uri.startsWith("ipfs://") || uri.startsWith("ar://")) return `/api/media?u=${encodeURIComponent(uri)}`;
   if (uri.startsWith("https://")) return uri;
   return undefined;
 }
@@ -79,6 +81,16 @@ export async function itemPreview(baseURI: string, n: number): Promise<ItemMeta[
 /** Read a token's metadata from its collection: tokenURI, then the JSON (https, ipfs or a data: URI). */
 export async function tokenMeta(collection: Address, id: bigint): Promise<ItemMeta> {
   const base: ItemMeta = { id: Number(id), traits: [] };
+  // the site's media route reads tokenURI and the JSON server-side, through several gateways, and caches it
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 20000);
+    const r = await fetch(`/api/media?collection=${collection}&id=${id}`, { signal: ctl.signal }).finally(() => clearTimeout(t));
+    if (r.ok && (r.headers.get("content-type") ?? "").includes("json")) {
+      const j = await r.json();
+      return { id: Number(id), name: j.name, image: j.image, traits: Array.isArray(j.traits) ? j.traits : [] };
+    }
+  } catch {}
   try {
     const uri = await publicClient.readContract({ address: collection, abi: erc721Abi, functionName: "tokenURI", args: [id] });
     let j: { name?: unknown; image?: unknown; attributes?: unknown };
@@ -111,7 +123,7 @@ export async function tokenMeta(collection: Address, id: bigint): Promise<ItemMe
 export async function tokenMetas(collection: Address, ids: bigint[], max = 60): Promise<ItemMeta[]> {
   const out: ItemMeta[] = [];
   const list = ids.slice(0, max);
-  for (let i = 0; i < list.length; i += 8) out.push(...(await Promise.all(list.slice(i, i + 8).map((id) => tokenMeta(collection, id)))));
+  for (let i = 0; i < list.length; i += 12) out.push(...(await Promise.all(list.slice(i, i + 12).map((id) => tokenMeta(collection, id)))));
   return out;
 }
 

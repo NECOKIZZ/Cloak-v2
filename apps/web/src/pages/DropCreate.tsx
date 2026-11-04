@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAddress, isAddress, parseEther, type Address } from "viem";
 import { DROP_LIST_MAX, DROP_MAX_SUPPLY, type GtdEntry } from "@cloakely/sdk";
-import { dropsClient, imageSrc, pct, spotsClient } from "../drops";
+import { dropsClient, imageSrc, itemPreview, pct, spotsClient, type ItemMeta } from "../drops";
 import { friendly, Hint } from "../errors";
 import { hype } from "../format";
 import { Link, navigate } from "../router";
@@ -61,6 +61,7 @@ export function DropCreate() {
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
   const [image, setImage] = useState("");
   const [banner, setBanner] = useState("");
+  const [folder, setFolder] = useState<{ items: ItemMeta[]; state: "" | "reading" | "none" }>({ items: [], state: "" });
   const [category, setCategory] = useState("");
   const [links, setLinks] = useState({ website: "", x: "", discord: "", telegram: "" });
   const [imgBusy, setImgBusy] = useState(false);
@@ -75,6 +76,17 @@ export function DropCreate() {
     setSpots(on);
     setF((x) => (on ? { ...x, supply: x.supply === "1000" ? "5" : x.supply, maxPerBid: "1", gtdOn: false, royalty: "0", baseURI: "" } : { ...x, supply: x.supply === "5" ? "1000" : x.supply, maxPerBid: "2", royalty: "5" }));
   }
+
+  // read the first items of a metadata folder as it's typed, to show they load (and use the first image as the cover)
+  useEffect(() => {
+    const uri = f.baseURI.trim();
+    if (!/^(ipfs|ar|https):\/\/\S+$/.test(uri)) return setFolder({ items: [], state: "" });
+    let live = true;
+    setFolder({ items: [], state: "reading" });
+    const t = setTimeout(() => itemPreview(uri, 4).then((items) => live && setFolder({ items, state: items.length ? "" : "none" })).catch(() => live && setFolder({ items: [], state: "none" })), 600);
+    return () => { live = false; clearTimeout(t); };
+  }, [f.baseURI]);
+  const folderCover = folder.items.find((m) => m.image)?.image;
 
   const plan = useMemo(() => {
     const supply = Number(f.supply);
@@ -148,7 +160,7 @@ export function DropCreate() {
         gtd: f.gtdOn ? { list: plan.gtd, price: plan.gtdPrice, durationSecs: f.gtdSecs } : undefined,
         wl: f.wlOn ? { list: plan.wl, boostBps: f.boost * 100 } : undefined,
         biddingSecs: f.biddingSecs,
-        image: image || undefined,
+        image: image || (folderCover && /^(https|ipfs|ar):\/\//.test(folderCover) ? folderCover : undefined),
         banner: banner || undefined,
         category: category || undefined,
         links: Object.fromEntries(Object.entries(links).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v)),
@@ -246,7 +258,18 @@ export function DropCreate() {
             <div className="field"><label><span>Discord</span><span>optional</span></label><input className="input" value={links.discord} onChange={(e) => setLinks((l) => ({ ...l, discord: e.target.value }))} placeholder="https://discord.gg/…" /></div>
             <div className="field"><label><span>Telegram</span><span>optional</span></label><input className="input" value={links.telegram} onChange={(e) => setLinks((l) => ({ ...l, telegram: e.target.value }))} placeholder="https://t.me/…" /></div>
           </div>
-          {!spots && <div className="field"><label><span>Metadata folder</span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /><span className="xs mute">Your own ERC-721 metadata, with each item's image and traits. The drop page previews the first items from it. Leave empty and every NFT shows the collection image.</span></div>}
+          {!spots && <div className="field"><label><span>Metadata folder</span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /><span className="xs mute">Your own ERC-721 metadata, with each item's image and traits. The drop page previews the first items from it. Leave empty and every NFT shows the collection image.</span>
+            {folder.state === "reading" && <span className="xs mute">Reading the first items…</span>}
+            {folder.state === "none" && <span className="xs" style={{ color: "var(--seal)" }}>No items could be read from {f.baseURI.trim()}1. Check the folder: token n is read from the folder followed by n.</span>}
+            {!!folder.items.length && (
+              <div className="folder-peek">
+                {folder.items.map((m) => (
+                  <div key={m.id} className="folder-item">{imageSrc(m.image) ? <img src={imageSrc(m.image)} alt="" loading="lazy" /> : <span className="drop-art-ph item-ph">#{m.id}</span>}<span className="xs">{m.name || `#${m.id}`}</span></div>
+                ))}
+                <span className="xs mute">{image ? "Loaded from your folder." : "Loaded from your folder. With no image uploaded, the first one becomes the collection image."}</span>
+              </div>
+            )}
+          </div>}
 
           {!spots && <>
           <div className="card-head" style={{ marginTop: 18 }}><h3>GTD</h3></div>
