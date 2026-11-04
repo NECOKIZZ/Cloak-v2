@@ -94,7 +94,9 @@ else await page.goto(`${base}/app/drop/${drop}`, { waitUntil: "networkidle" });
 // ── 3. a bid, the keeper, and the unsold token back ──
 for (let i = 0; i < 60 && (await drops.get(drop)).phase !== "bidding"; i++) await sleep(5000);
 // one token per bid (the form's default): two bids for one each
-const bids = [await drops.bid(drop, { price: parseEther("0.002"), quantity: 1 }), await drops.bid(drop, { price: parseEther("0.0015"), quantity: 1 })];
+const bids = (await drops.get(drop)).phase === "settled"
+  ? await drops.bids(drop, d.account.address) // resuming after the sale settled
+  : [await drops.bid(drop, { price: parseEther("0.002"), quantity: 1 }), await drops.bid(drop, { price: parseEther("0.0015"), quantity: 1 })];
 console.log("waiting for the hosted keeper to settle…");
 let s;
 for (let i = 0; i < 400 && (s = await drops.get(drop)).phase !== "settled"; i++) await sleep(5000);
