@@ -20,7 +20,7 @@
   "rules": {
     "withdrawFeeBps": 25,
     "launchFeeBps": 150,
-    "caps": "WHYPE 100/10000 HYPE; USDC 1000/50000; tokens 100/1000 bps of supply"
+    "caps": "WHYPE 100/10000 HYPE; USDC 1000/50000; tokens 1000/5000 bps of supply"
   },
   "vaultCount": 9,
   "assets": [

@@ -10,6 +10,7 @@
 // Live testnet (hosted keeper):  DEPLOYER_PK=0x… node e2e/shared.mjs
 // POOL=v4: the same run on the Uniswap v4 factory (fork: deploy with e2e/deploy-v4pools.mjs first), plus v4 checks:
 //   the pool lists at the clearing price, the anti-snipe fee, and the creator collecting trading fees through the hook.
+//   Mainnet rehearsal: DEPLOY_FILE=deployments/elysium-mainnet.fork.json on a fork of chain 99901 (e2e/deploy-mainnet.mjs).
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { decodeEventLog, defineChain, parseAbi } from "viem";
@@ -23,7 +24,7 @@ const RPC = process.env.RPC_URL || elysiumTestnet.rpcUrls.default.http[0];
 const local = RPC.includes("127.0.0.1") || RPC.includes("localhost");
 const root = new URL("..", import.meta.url).pathname;
 const V4POOLS = process.env.POOL === "v4";
-const v4 = JSON.parse(readFileSync(`${root}deployments/elysium-testnet-v4${local ? (V4POOLS ? "-v4pools.fork" : "-shared.fork") : ""}.json`, "utf8"));
+const v4 = JSON.parse(readFileSync(process.env.DEPLOY_FILE ? new URL(process.env.DEPLOY_FILE, `file://${process.cwd()}/`) : `${root}deployments/elysium-testnet-v4${local ? (V4POOLS ? "-v4pools.fork" : "-shared.fork") : ""}.json`, "utf8"));
 const chain = local ? defineChain({ ...elysiumTestnet, id: 31337, rpcUrls: { default: { http: [RPC] } } }) : elysiumTestnet;
 const S = local ? 1000n : 1n;
 const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function approve(address,uint256) returns (bool)"]);
