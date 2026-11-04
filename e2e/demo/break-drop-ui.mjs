@@ -15,7 +15,7 @@ const c = new CloakDrops(d.publicClient, d.walletClient, dep.dropFactory, dep.dr
 const sp = new CloakSpots(c, dep.spotBook);
 const { drop } = await sp.create({ name: "Break WL spots", symbol: "BRKWL", supply: 1, floor: parseEther("0.001"), tickSize: parseEther("0.0005"), numTicks: 20, biddingSecs: 240, partner: "Break Partner", walletDays: 1, description: "A break test. Testnet only." });
 console.log("sale", drop);
-const { browser, ctx, page, base } = await open();
+const { browser, ctx, page, base } = await open(process.env.BASE ? { base: process.env.BASE } : {});
 await ctx.addInitScript(() => { localStorage.setItem("cloak.welcomed", "1"); localStorage.setItem("cloak.guide", JSON.stringify({ done: [], hidden: true, shown: true })); });
 let fails = 0;
 const ok = (x, m) => { console.log(`${x ? "✓" : "✗"} ${m}`); if (!x) fails++; };

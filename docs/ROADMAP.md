@@ -173,7 +173,8 @@ Selective disclosure, applied to tokens.
 ## This week · NFT partnerships
 
 - **Outreach to Elysium NFT collections:** run part or all of a mint as a sealed drop, or auction a batch of their WL spots.
-- **Next for drops:** link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
+- **Drop pages redesigned (Nov 4):** banner, collection picture, links, category, an items tab that previews the collection's own metadata and traits, a mint schedule and progress bar; a gallery list with a featured drop.
+- **Next for drops:** auctions of NFTs that already exist (escrowed, not minted), link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
 - **`@cloakely/sdk` and `@cloakely/mcp` 0.8.3** are on npm with drops, WL spot sales, drop tools in the MCP, and Uniswap v4 launches (pool type, creator fees through the hook, quotes at the pool's current fee).
 
 ---
@@ -195,7 +196,8 @@ on Nov 9. Official Uniswap v4 is live there (see [V4-AND-STOCKS.md](V4-AND-STOCK
 - **Hand ownership to a multisig, then `endSetup()`.** After that, every loosening change waits 3 days.
 - **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
 - **Source verification** on the explorer for every contract.
-- **Rehearse the mainnet deploy** on a fork, then deploy, verify and publish the addresses.
+- **Rehearse the mainnet deploy** (done Nov 4, see [MAINNET.md](MAINNET.md)): `e2e/deploy-mainnet.mjs` deploys the whole stack from scratch against Uniswap's own PoolManager. Next: deploy, verify and publish the addresses.
+- **Our own WHYPE on mainnet.** Mainnet's WHYPE (the one Uniswap's PositionManager uses) is an upgradeable proxy, so the HYPE vault uses Cloak's fixed WHYPE instead.
 - **Vault model: one vault per asset (v4), plus a testnet experiment (Nov 2).** New Uniswap launches now share one launch-token vault with its own circuit, so a private send hides which token moved. HYPE and USDC are never in it, and the contract keeps a separate total per token. Whether mainnet keeps it is decided after the experiment ([PRIVACY-LAYER.md](PRIVACY-LAYER.md), section 6).
 - **Private USDC on mainnet:** a vault for mainnet USDC, with the same caps until the audit.
 

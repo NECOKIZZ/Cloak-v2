@@ -21,6 +21,8 @@ export const DROP_MAX_PER_BID = 20;
 export const DROP_MAX_SUPPLY = 10_000;
 /** Most entries one GTD or WL list can hold (the lists travel in one transaction). */
 export const DROP_LIST_MAX = 2_000;
+/** Most bytes a drop's published details (images, links, lists) can take: CloakDropFactory.MAX_DETAILS. */
+export const DROP_MAX_DETAILS = 96_000;
 /** How long the keeper has to open the bids at most. Settlement doesn't wait for it once every bid is open. */
 export const DROP_DEFAULT_REVEAL_SECS = 1_800;
 
@@ -71,9 +73,35 @@ export interface GtdEntry {
   spots: number;
 }
 
+export interface DropLinks {
+  website?: string;
+  x?: string;
+  discord?: string;
+  telegram?: string;
+}
+
+const LINK_KEYS = ["website", "x", "discord", "telegram"] as const;
+/** Keep only https links, at most 200 characters each. */
+export function cleanLinks(l: unknown): DropLinks | undefined {
+  if (!l || typeof l !== "object") return undefined;
+  const out: DropLinks = {};
+  for (const k of LINK_KEYS) {
+    const v = (l as Record<string, unknown>)[k];
+    if (typeof v === "string" && /^https:\/\/[^\s"<>]+$/.test(v.trim()) && v.trim().length <= 200) out[k] = v.trim();
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+const imageOk = (v: unknown): v is string => typeof v === "string" && /^(https:\/\/|ipfs:\/\/|data:image\/(png|jpeg|webp|gif);base64,)/.test(v);
+
 /** What a drop publishes about itself at creation (the DropDetails event). */
 export interface DropDetails {
   image?: string;
+  /** A wide banner for the drop page (an https:, ipfs: or small data: image). */
+  banner?: string;
+  /** Where the collection lives online. Only https links are kept. */
+  links?: DropLinks;
+  /** A category shown with the collection, like Art or PFP. */
+  category?: string;
   description?: string;
   gtd?: GtdEntry[];
   wl?: Address[];
@@ -102,6 +130,12 @@ export interface CreateDropOptions {
    * as every bid is open, so a long window only matters if the keeper is down; a bid still sealed at its end loses 10%. */
   revealSecs?: number;
   image?: string;
+  /** A wide banner for the drop page (an https:, ipfs: or small data: image). */
+  banner?: string;
+  /** Where the collection lives online. Only https links are kept. */
+  links?: DropLinks;
+  /** A category shown with the collection, like Art or PFP. */
+  category?: string;
   description?: string;
   /** A WL spot sale: published with the drop so its pages and metadata say so. */
   spots?: { partner: string };
@@ -235,12 +269,16 @@ export class CloakDrops {
       gtdRoot: merkleTree(gtdList.map((e) => gtdLeaf(e.wallet, e.spots))).root,
       wlRoot: merkleTree(wlList.map(wlLeaf)).root,
     };
-    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(gtdList.length ? { gtd: gtdList } : {}), ...(wlList.length ? { wl: wlList } : {}), ...(o.spots ? { spots: { partner: o.spots.partner.slice(0, 200) } } : {}) };
+    const links = cleanLinks(o.links);
+    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.banner && imageOk(o.banner) ? { banner: o.banner } : {}), ...(links ? { links } : {}), ...(o.category?.trim() ? { category: o.category.trim().slice(0, 32) } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(gtdList.length ? { gtd: gtdList } : {}), ...(wlList.length ? { wl: wlList } : {}), ...(o.spots ? { spots: { partner: o.spots.partner.slice(0, 200) } } : {}) };
+    const detailsJson = JSON.stringify(details);
+    if (new TextEncoder().encode(detailsJson).length > DROP_MAX_DETAILS)
+      throw new Error("The images and lists are too big to publish together. Link the banner (https:// or ipfs://) instead of uploading it, or use a smaller image.");
     const { result, request } = await this.publicClient.simulateContract({
       address: this.factory,
       abi: cloakDropFactoryAbi,
       functionName: "createDrop",
-      args: [params, o.name.trim(), o.symbol.trim(), o.baseURI.trim(), JSON.stringify(details)],
+      args: [params, o.name.trim(), o.symbol.trim(), o.baseURI.trim(), detailsJson],
       account: w.account,
     });
     const txHash = await w.writeContract(request);
@@ -255,6 +293,9 @@ export class CloakDrops {
       const d = JSON.parse(logs[0]?.args.details ?? "{}");
       return {
         image: typeof d.image === "string" ? d.image : undefined,
+        banner: imageOk(d.banner) ? d.banner : undefined,
+        links: cleanLinks(d.links),
+        category: typeof d.category === "string" ? d.category.slice(0, 32) : undefined,
         description: typeof d.description === "string" ? d.description : undefined,
         gtd: Array.isArray(d.gtd) ? d.gtd.filter((e: GtdEntry) => isAddress(e?.wallet) && Number.isInteger(e?.spots)) : undefined,
         wl: Array.isArray(d.wl) ? d.wl.filter((a: string) => isAddress(a)) : undefined,

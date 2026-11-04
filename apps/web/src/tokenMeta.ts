@@ -165,3 +165,35 @@ export async function compressImage(file: File): Promise<string> {
     URL.revokeObjectURL(url);
   }
 }
+
+/** A wide 3:1 banner from an uploaded image, small enough to publish on chain with the drop (about 24 KB). */
+export async function compressBanner(file: File, maxBytes = 24_000): Promise<string> {
+  if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) throw new Hint("Use a PNG, JPG, WebP or GIF image.");
+  if (file.size > 15_000_000) throw new Hint("That image is over 15 MB. Pick a smaller one.");
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((ok, bad) => {
+      const i = new Image();
+      i.onload = () => ok(i);
+      i.onerror = () => bad(new Hint("That image couldn't be opened. Try another file."));
+      i.src = url;
+    });
+    // centre-crop to 3:1
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const cw = Math.min(w, h * 3), ch = cw / 3;
+    for (const width of [1200, 960, 720, 540]) {
+      const c = document.createElement("canvas");
+      c.width = width;
+      c.height = Math.round(width / 3);
+      c.getContext("2d")!.drawImage(img, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, c.width, c.height);
+      for (const q of [0.72, 0.6, 0.48, 0.36]) {
+        let out = c.toDataURL("image/webp", q);
+        if (!out.startsWith("data:image/webp")) out = c.toDataURL("image/jpeg", q);
+        if (out.length <= maxBytes) return out;
+      }
+    }
+    throw new Hint("That banner is too detailed to store on chain. Link one instead (https:// or ipfs://).");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

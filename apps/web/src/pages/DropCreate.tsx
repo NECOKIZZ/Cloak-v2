@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAddress, isAddress, parseEther, type Address } from "viem";
 import { DROP_LIST_MAX, DROP_MAX_SUPPLY, type GtdEntry } from "@cloakely/sdk";
-import { dropsClient, pct, spotsClient } from "../drops";
+import { dropsClient, imageSrc, pct, spotsClient } from "../drops";
 import { friendly, Hint } from "../errors";
 import { hype } from "../format";
 import { Link, navigate } from "../router";
 import { useApp } from "../state";
-import { compressImage } from "../tokenMeta";
+import { compressBanner, compressImage } from "../tokenMeta";
 import { Icon } from "../ui";
 
 const WALLET_DAYS = [1, 2, 3, 7, 14];
@@ -57,6 +57,9 @@ export function DropCreate() {
   const [f, setF] = useState({ name: "", symbol: "", supply: "1000", price: "0.5", maxPerBid: "2", royalty: "5", baseURI: "", description: "", gtdOn: false, gtdList: "", gtdPrice: "0.4", gtdSecs: 86400, wlOn: false, wlList: "", boost: 20, biddingSecs: 86400 });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
   const [image, setImage] = useState("");
+  const [banner, setBanner] = useState("");
+  const [category, setCategory] = useState("");
+  const [links, setLinks] = useState({ website: "", x: "", discord: "", telegram: "" });
   const [imgBusy, setImgBusy] = useState(false);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -91,8 +94,11 @@ export function DropCreate() {
     else if (gtdSpots > supply) problem = `The GTD list has ${gtdSpots} spots, more than the ${supply} NFTs.`;
     else if (f.gtdOn && gtdPrice === null) problem = "Set the GTD price (0 for free).";
     else if (f.baseURI.trim() && !/^(ipfs|https):\/\/\S+$/.test(f.baseURI.trim())) problem = "The metadata folder starts with ipfs:// or https://.";
+    const badLink = Object.entries(links).find(([, v]) => v.trim() && !/^https:\/\/[^\s"<>]+$/.test(v.trim()));
+    if (!problem && badLink) problem = `The ${badLink[0] === "x" ? "X" : badLink[0]} link starts with https://.`;
+    if (!problem && banner && !/^(https:\/\/|ipfs:\/\/|data:image\/)/.test(banner)) problem = "The banner link starts with https:// or ipfs://.";
     return { supply, price, gtd: gtd.gtd, wl: wl.wl, gtdSpots, gtdPrice: gtdPrice ?? 0n, problem };
-  }, [f, spots, partner]);
+  }, [f, spots, partner, links, banner]);
 
   async function pick(file?: File) {
     if (!file) return;
@@ -100,6 +106,19 @@ export function DropCreate() {
     setErr("");
     try {
       setImage(await compressImage(file));
+    } catch (e) {
+      setErr(friendly(e));
+    } finally {
+      setImgBusy(false);
+    }
+  }
+
+  async function pickBanner(file?: File) {
+    if (!file) return;
+    setImgBusy(true);
+    setErr("");
+    try {
+      setBanner(await compressBanner(file));
     } catch (e) {
       setErr(friendly(e));
     } finally {
@@ -126,6 +145,9 @@ export function DropCreate() {
         wl: f.wlOn ? { list: plan.wl, boostBps: f.boost * 100 } : undefined,
         biddingSecs: f.biddingSecs,
         image: image || undefined,
+        banner: banner || undefined,
+        category: category || undefined,
+        links: Object.fromEntries(Object.entries(links).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v)),
         description: f.description.trim() || undefined,
         spots: spots ? { partner: partner.trim() } : undefined,
       });
@@ -193,6 +215,13 @@ export function DropCreate() {
             {image ? <img src={image} alt="Collection image preview" /> : <span className="img-ph">{(f.symbol || "?").slice(0, 2).toUpperCase()}</span>}
             <span className="small"><b>{imgBusy ? "Preparing image…" : image ? "Change the image" : spots ? "Upload the partner's image" : "Upload the collection image"}</b><br /><span className="xs mute">{spots ? "Shown on the sale page and on each winner's receipt NFT." : "Stored on chain, shown on the drop page and on every NFT unless you link your own metadata."}</span></span>
           </label>
+          <div className="card-head" style={{ marginTop: 6 }}><h3>Drop page</h3></div>
+          <label style={{ marginBottom: 14 }} className={`img-drop banner-drop ${banner ? "has" : ""}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickBanner(e.dataTransfer.files[0]); }}>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { pickBanner(e.target.files?.[0]); e.target.value = ""; }} />
+            {imageSrc(banner) ? <img src={imageSrc(banner)} alt="Banner preview" /> : <span className="img-ph banner-ph" />}
+            <span className="small"><b>{banner ? "Change the banner" : "Upload a banner"}</b> <span className="xs mute">optional · wide 3:1, shown across the top of the drop page</span></span>
+          </label>
+          <div className="field"><label><span>Or link a banner</span><span>https:// or ipfs://</span></label><input className="input mono" value={banner.startsWith("data:") ? "" : banner} onChange={(e) => setBanner(e.target.value.trim())} placeholder={banner.startsWith("data:") ? "uploaded" : "ipfs://… or https://…"} /></div>
           <div className="field"><label><span>Description</span><span>optional</span></label><textarea className="input" rows={2} maxLength={1000} value={f.description} onChange={(e) => set("description", e.target.value)} placeholder={spots ? "What winners get, from the partner" : "What the collection is"} /></div>
           <div className="field-row">
             <div className="field"><label><span>{spots ? "WL spots" : "Supply"}</span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
@@ -202,7 +231,16 @@ export function DropCreate() {
             <div className="field"><label><span>{spots ? "Spots per bid" : "Max per bid"}</span></label><select className="input" value={f.maxPerBid} onChange={(e) => set("maxPerBid", e.target.value)}>{[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
             {!spots && <div className="field"><label><span>Royalty</span><span>%</span></label><select className="input" value={f.royalty} onChange={(e) => set("royalty", e.target.value)}>{[0, 2.5, 5, 7.5, 10].map((n) => <option key={n} value={n}>{n}%</option>)}</select></div>}
           </div>
-          {!spots && <div className="field"><label><span>Metadata folder</span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /></div>}
+          {!spots && <div className="field"><label><span>Category</span><span>optional</span></label><select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>{["", "Art", "PFP", "Gaming", "Music", "Photography", "Membership", "Utility"].map((c) => <option key={c} value={c}>{c || "None"}</option>)}</select></div>}
+          <div className="field-row">
+            <div className="field"><label><span>Website</span><span>optional</span></label><input className="input" value={links.website} onChange={(e) => setLinks((l) => ({ ...l, website: e.target.value }))} placeholder="https://…" /></div>
+            <div className="field"><label><span>X</span><span>optional</span></label><input className="input" value={links.x} onChange={(e) => setLinks((l) => ({ ...l, x: e.target.value }))} placeholder="https://x.com/…" /></div>
+          </div>
+          <div className="field-row">
+            <div className="field"><label><span>Discord</span><span>optional</span></label><input className="input" value={links.discord} onChange={(e) => setLinks((l) => ({ ...l, discord: e.target.value }))} placeholder="https://discord.gg/…" /></div>
+            <div className="field"><label><span>Telegram</span><span>optional</span></label><input className="input" value={links.telegram} onChange={(e) => setLinks((l) => ({ ...l, telegram: e.target.value }))} placeholder="https://t.me/…" /></div>
+          </div>
+          {!spots && <div className="field"><label><span>Metadata folder</span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /><span className="xs mute">Your own ERC-721 metadata, with each item's image and traits. The drop page previews the first items from it. Leave empty and every NFT shows the collection image.</span></div>}
 
           {!spots && <>
           <div className="card-head" style={{ marginTop: 18 }}><h3>GTD</h3></div>
@@ -236,6 +274,13 @@ export function DropCreate() {
         </div>
 
         <div className="card">
+          <div className="create-preview">
+            <div className={`dcard-cover ${imageSrc(banner) || imageSrc(image) ? "" : "dcard-cover-ph"}`} style={imageSrc(banner) ? { backgroundImage: `url("${imageSrc(banner)}")` } : imageSrc(image) ? ({ ["--img" as string]: `url("${imageSrc(image)}")`, ["--blur" as string]: "1" } as React.CSSProperties) : {}} />
+            <div className="dcard-body">
+              {image ? <img className="drop-art dcard-avatar" src={image} alt="" width={52} height={52} style={{ width: 52, height: 52 }} /> : <span className="drop-art drop-art-ph dcard-avatar" style={{ width: 52, height: 52, fontSize: 17 }}>{(f.symbol || f.name || "?").slice(0, 2).toUpperCase()}</span>}
+              <div className="dcard-title"><b>{f.name.trim() || (spots ? "Your WL spot sale" : "Your collection")}</b><span className="xs mute">{category || "Elysium"} · {Number(f.supply || 0).toLocaleString()} {spots ? "spots" : "items"}</span></div>
+            </div>
+          </div>
           <div className="card-head"><h3>Summary</h3></div>
           <div className="summary">
             {spots && <div className="row"><span className="mute">Partner</span><span style={{ overflowWrap: "anywhere" }}>{partner.trim() || "?"}</span></div>}
