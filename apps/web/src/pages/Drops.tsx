@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DropDetails, DropState } from "@cloakely/sdk";
-import { DROP_FACTORY, SPOT_BOOK } from "../config";
+import { DROP_FACTORY, ESCROW_DROP_FACTORY, SPOT_BOOK } from "../config";
 import { dropsClient, imageSrc, pct } from "../drops";
 import { friendly } from "../errors";
 import { duration, hype, short } from "../format";
@@ -46,7 +46,7 @@ export function coverStyle(details?: DropDetails): React.CSSProperties {
 export const soldShare = (s: DropState) => Math.min(1, (s.sold + s.gtdMinted) / Math.max(1, s.supply));
 
 function kindText(s: Row) {
-  return s.details.spots ? `${s.supply.toLocaleString()} WL spot${s.supply > 1 ? "s" : ""} · ${s.details.spots.partner}` : `${s.supply.toLocaleString()} items`;
+  return s.details.spots ? `${s.supply.toLocaleString()} WL spot${s.supply > 1 ? "s" : ""} · ${s.details.spots.partner}` : s.escrow ? `${s.supply.toLocaleString()} existing NFT${s.supply > 1 ? "s" : ""}` : `${s.supply.toLocaleString()} items`;
 }
 
 function Card({ s, now }: { s: Row; now: number }) {
@@ -57,6 +57,7 @@ function Card({ s, now }: { s: Row; now: number }) {
       <div className={`dcard-cover ${imageSrc(s.details.banner) || imageSrc(s.details.image) ? "" : "dcard-cover-ph"}`} style={coverStyle(s.details)}>
         <span className={`dbadge ${b.tone}`}>{b.tone === "live" && <span className="dot live" />}{b.text}</span>
         {s.details.spots && <span className="dbadge kind">WL spots</span>}
+        {s.escrow && <span className="dbadge kind">Existing NFTs</span>}
       </div>
       <div className="dcard-body">
         <DropArt details={s.details} name={s.name} size={52} className="dcard-avatar" />
@@ -149,6 +150,7 @@ export function Drops() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {SPOT_BOOK && <Link to="/app/drops/create?spots" className="btn btn-ghost">Sell WL spots</Link>}
+          {ESCROW_DROP_FACTORY && <Link to="/app/drops/create?existing" className="btn btn-ghost">Auction your NFTs</Link>}
           <Link to="/app/drops/create" className="btn btn-ink"><Icon.plus size={16} />Create a drop</Link>
         </div>
       </div>

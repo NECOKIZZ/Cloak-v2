@@ -11,7 +11,7 @@
  * DropDetails event, so anyone can rebuild a proof; a list that doesn't match the root proves nothing.
  */
 import { encodeAbiParameters, getAddress, isAddress, keccak256, toHex, type Address, type Hex, type PublicClient } from "viem";
-import { cloakDropAbi, cloakDropFactoryAbi } from "./abis.js";
+import { cloakDropAbi, cloakDropFactoryAbi, cloakEscrowDropAbi, cloakEscrowDropFactoryAbi } from "./abis.js";
 import { commitmentOf, type Wallet } from "./cloak.js";
 import { drandRoundAt, drandRoundTime, sealBid, unsealBid } from "./seal.js";
 
@@ -23,6 +23,19 @@ export const DROP_MAX_SUPPLY = 10_000;
 export const DROP_LIST_MAX = 2_000;
 /** Most bytes a drop's published details (images, links, lists) can take: CloakDropFactory.MAX_DETAILS. */
 export const DROP_MAX_DETAILS = 96_000;
+/** Most existing NFTs one escrow drop can auction (they all move in when it's created). */
+export const ESCROW_MAX_TOKENS = 500;
+
+const ERC721_ABI = [
+  { type: "function", name: "ownerOf", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "address" }] },
+  { type: "function", name: "isApprovedForAll", stateMutability: "view", inputs: [{ type: "address" }, { type: "address" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "setApprovalForAll", stateMutability: "nonpayable", inputs: [{ type: "address" }, { type: "bool" }], outputs: [] },
+  { type: "function", name: "tokenURI", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "string" }] },
+  { type: "function", name: "name", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "supportsInterface", stateMutability: "view", inputs: [{ type: "bytes4" }], outputs: [{ type: "bool" }] },
+] as const;
+export { ERC721_ABI as erc721Abi };
 /** How long the keeper has to open the bids at most. Settlement doesn't wait for it once every bid is open. */
 export const DROP_DEFAULT_REVEAL_SECS = 1_800;
 
@@ -141,6 +154,39 @@ export interface CreateDropOptions {
   spots?: { partner: string };
 }
 
+/** An auction of NFTs that already exist (CloakEscrowDrop): the tokens move into the drop when it's created. */
+export interface CreateEscrowDropOptions {
+  /** The ERC-721 collection the tokens belong to. */
+  collection: Address;
+  /** The token ids to auction, owned by the caller (1 to 500). */
+  tokenIds: bigint[];
+  /** The auction's name, like "ELYMPUS treasury auction". */
+  name: string;
+  symbol: string;
+  floor: bigint;
+  tickSize?: bigint;
+  numTicks?: number;
+  maxPerBid?: number;
+  wl?: { list: Address[]; boostBps: number };
+  biddingSecs: number;
+  revealSecs?: number;
+  image?: string;
+  banner?: string;
+  links?: DropLinks;
+  category?: string;
+  description?: string;
+}
+
+/** Where an escrow drop's tokens come from. */
+export interface DropEscrow {
+  collection: Address;
+  tokenIds: bigint[];
+  /** How many of them the drop holds right now. */
+  held: number;
+  /** Unsold tokens already returned to the owner. */
+  returned: number;
+}
+
 export type DropPhase = "gtd" | "bidding" | "reveal" | "settle" | "numbering" | "settled";
 const PHASES: DropPhase[] = ["gtd", "bidding", "reveal", "settle", "numbering", "settled"];
 
@@ -178,6 +224,8 @@ export interface DropState {
   wlPrice: bigint;
   tieSupply: number;
   tieDemand: number;
+  /** Set for an auction of existing NFTs (CloakEscrowDrop). */
+  escrow?: DropEscrow;
 }
 
 export interface DropBid {
@@ -205,7 +253,13 @@ export class CloakDrops {
     readonly factory: Address,
     /** First block to read the factory's and drops' events from. */
     readonly fromBlock = 0n,
+    /** CloakEscrowDropFactory: auctions of NFTs that already exist, listed next to the drops. */
+    readonly escrowFactory?: Address,
   ) {}
+
+  private get factories(): Address[] {
+    return this.escrowFactory ? [this.factory, this.escrowFactory] : [this.factory];
+  }
 
   /** Many reads in one multicall where the chain has multicall3, else one by one (a local chain). */
   private async reads(contracts: readonly { address: Address; abi: unknown; functionName: string; args?: readonly unknown[] }[]): Promise<unknown[]> {
@@ -227,9 +281,12 @@ export class CloakDrops {
 
   /** Every drop the factory made, newest last. */
   async list(): Promise<Address[]> {
-    const n = Number(await this.publicClient.readContract({ address: this.factory, abi: cloakDropFactoryAbi, functionName: "dropsCount" }));
-    if (!n) return [];
-    return (await this.reads(Array.from({ length: n }, (_, i) => ({ address: this.factory, abi: cloakDropFactoryAbi, functionName: "drops", args: [BigInt(i)] })))) as Address[];
+    const out: Address[] = [];
+    for (const f of this.factories) {
+      const n = Number(await this.publicClient.readContract({ address: f, abi: cloakDropFactoryAbi, functionName: "dropsCount" }));
+      if (n) out.push(...((await this.reads(Array.from({ length: n }, (_, i) => ({ address: f, abi: cloakDropFactoryAbi, functionName: "drops", args: [BigInt(i)] })))) as Address[]));
+    }
+    return out;
   }
 
   /** Create a drop. The caller is its creator. Returns the drop's address. */
@@ -288,7 +345,7 @@ export class CloakDrops {
 
   /** A drop's published details: its image, description and the lists behind its roots. */
   async details(drop: Address): Promise<DropDetails> {
-    const logs = await this.chunked((from, to) => this.publicClient.getContractEvents({ address: this.factory, abi: cloakDropFactoryAbi, eventName: "DropDetails", args: { drop }, fromBlock: from, toBlock: to, strict: true }), true);
+    const logs = await this.chunked((from, to) => this.publicClient.getContractEvents({ address: this.factories, abi: cloakDropFactoryAbi, eventName: "DropDetails", args: { drop }, fromBlock: from, toBlock: to, strict: true }), true);
     try {
       const d = JSON.parse(logs[0]?.args.details ?? "{}");
       return {
@@ -350,7 +407,110 @@ export class CloakDrops {
       wlPrice,
       tieSupply: Number(r[14]),
       tieDemand: Number(r[15]),
+      escrow: await this.escrowOf(drop),
     };
+  }
+
+  /** Where an escrow drop's tokens come from, or undefined for a drop that mints its own. */
+  async escrowOf(drop: Address): Promise<DropEscrow | undefined> {
+    const c = { address: drop, abi: cloakEscrowDropAbi } as const;
+    const collection = await this.publicClient.readContract({ ...c, functionName: "collection" }).catch(() => undefined);
+    if (!collection) return undefined;
+    const [tokenIds, held, returned] = await Promise.all([this.publicClient.readContract({ ...c, functionName: "tokenIds" }), this.publicClient.readContract({ ...c, functionName: "held" }), this.publicClient.readContract({ ...c, functionName: "unsoldMinted" })]);
+    return { collection, tokenIds: [...tokenIds], held: Number(held), returned: Number(returned) };
+  }
+
+  /** The token ids a bid won in an escrow drop (once settled and numbered). */
+  async tokensOf(drop: Address, bidId: bigint): Promise<bigint[]> {
+    return [...(await this.publicClient.readContract({ address: drop, abi: cloakEscrowDropAbi, functionName: "tokensOf", args: [bidId] }))];
+  }
+
+  /**
+   * Auction NFTs that already exist. Needs the escrow factory. Checks the caller owns every token, approves the
+   * factory for the collection if it isn't yet (one transaction), then creates the auction, which moves every token
+   * into it. Returns the drop's address.
+   */
+  async createEscrow(o: CreateEscrowDropOptions): Promise<{ drop: Address; txHash: Hex; approvalTx?: Hex }> {
+    const w = this.wallet();
+    if (!this.escrowFactory) throw new Error("Auctions of existing NFTs aren't available on this network yet.");
+    if (!o.name.trim() || o.name.length > 64 || !o.symbol.trim() || o.symbol.length > 16) throw new Error("Give the auction a name (up to 64 characters) and a symbol (up to 16).");
+    if (!isAddress(o.collection)) throw new Error("Enter the collection's contract address.");
+    const ids = [...new Set(o.tokenIds.map((x) => BigInt(x)))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (!ids.length || ids.length > ESCROW_MAX_TOKENS) throw new Error(`List 1 to ${ESCROW_MAX_TOKENS} tokens.`);
+    if (o.floor <= 0n) throw new Error("Set a price above zero.");
+    const boost = o.wl?.boostBps ?? 0;
+    if (boost < 0 || boost > DROP_MAX_BOOST_BPS) throw new Error("The WL boost is 0% to 30%.");
+    if ((o.wl?.list.length ?? 0) > DROP_LIST_MAX) throw new Error(`A list holds up to ${DROP_LIST_MAX} wallets.`);
+    const nft = { address: getAddress(o.collection), abi: ERC721_ABI } as const;
+    const me = w.account.address.toLowerCase();
+    const owners = await this.reads(ids.map((id) => ({ ...nft, functionName: "ownerOf", args: [id] }))).catch(() => {
+      throw new Error("That contract didn't answer like an NFT collection (ERC-721). Check the address and the token ids.");
+    });
+    const notMine = ids.filter((_, i) => String(owners[i]).toLowerCase() !== me);
+    if (notMine.length) throw new Error(`This wallet doesn't own token${notMine.length > 1 ? "s" : ""} ${notMine.slice(0, 5).map(String).join(", ")}${notMine.length > 5 ? "…" : ""}.`);
+    let approvalTx: Hex | undefined;
+    if (!(await this.publicClient.readContract({ ...nft, functionName: "isApprovedForAll", args: [w.account.address, this.escrowFactory] }))) {
+      approvalTx = await w.writeContract({ ...nft, functionName: "setApprovalForAll", args: [this.escrowFactory, true], account: w.account, chain: w.chain });
+      await this.send(approvalTx);
+    }
+    const wlList = (o.wl?.list ?? []).map((a) => getAddress(a));
+    const now = Number((await this.publicClient.getBlock()).timestamp);
+    const gtdEnd = now + 90;
+    const commitEnd = gtdEnd + o.biddingSecs;
+    const tlockRound = drandRoundAt(commitEnd);
+    const revealEnd = Math.max(commitEnd + (o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS), drandRoundTime(tlockRound) + 60);
+    const zero = `0x${"0".repeat(64)}` as Hex;
+    const params = {
+      creator: w.account.address,
+      supply: ids.length,
+      maxPerBid: o.maxPerBid ?? 1,
+      numTicks: o.numTicks ?? 200,
+      wlBoostBps: wlList.length ? boost : 0,
+      royaltyBps: 0,
+      gtdEnd: BigInt(gtdEnd),
+      commitEnd: BigInt(commitEnd),
+      revealEnd: BigInt(revealEnd),
+      tlockRound: BigInt(tlockRound),
+      floor: o.floor,
+      tickSize: o.tickSize ?? (o.floor / 20n || 1n),
+      gtdPrice: 0n,
+      gtdRoot: zero,
+      wlRoot: merkleTree(wlList.map(wlLeaf)).root,
+    };
+    const links = cleanLinks(o.links);
+    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.banner && imageOk(o.banner) ? { banner: o.banner } : {}), ...(links ? { links } : {}), ...(o.category?.trim() ? { category: o.category.trim().slice(0, 32) } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(wlList.length ? { wl: wlList } : {}) };
+    const detailsJson = JSON.stringify(details);
+    if (new TextEncoder().encode(detailsJson).length > DROP_MAX_DETAILS) throw new Error("The images and lists are too big to publish together. Link the banner (https:// or ipfs://) instead of uploading it, or use a smaller image.");
+    const { result, request } = await this.publicClient.simulateContract({
+      address: this.escrowFactory,
+      abi: cloakEscrowDropFactoryAbi,
+      functionName: "createDrop",
+      args: [params, nft.address, ids, o.name.trim(), o.symbol.trim(), detailsJson],
+      account: w.account,
+    });
+    const txHash = await w.writeContract(request);
+    await this.send(txHash);
+    return { drop: result, txHash, approvalTx };
+  }
+
+  /**
+   * The token ids of `collection` a wallet holds, from the collection's Transfer events (works for any ERC-721, no
+   * enumeration needed). Capped at `max`.
+   */
+  async ownedTokens(collection: Address, owner: Address, opts: { max?: number; fromBlock?: bigint } = {}): Promise<bigint[]> {
+    const ev = { type: "event", name: "Transfer", inputs: [{ type: "address", name: "from", indexed: true }, { type: "address", name: "to", indexed: true }, { type: "uint256", name: "tokenId", indexed: true }] } as const;
+    const seen = new Set<bigint>();
+    const latest = await this.publicClient.getBlockNumber();
+    const from = opts.fromBlock ?? 0n;
+    const step = 100_000n;
+    for (let a = from; a <= latest; a += step) {
+      const b = a + step - 1n > latest ? latest : a + step - 1n;
+      const logs = await this.publicClient.getLogs({ address: collection, event: ev, args: { to: owner }, fromBlock: a, toBlock: b }).catch(() => []);
+      for (const l of logs) if (l.args.tokenId !== undefined) seen.add(l.args.tokenId);
+    }
+    const ids = [...seen].sort((a, b) => (a < b ? -1 : 1));
+    const owners = await this.reads(ids.map((id) => ({ address: collection, abi: ERC721_ABI, functionName: "ownerOf", args: [id] }))).catch(() => ids.map(() => null));
+    return ids.filter((_, i) => String(owners[i]).toLowerCase() === owner.toLowerCase()).slice(0, opts.max ?? ESCROW_MAX_TOKENS);
   }
 
   /** The bid level for a price: the highest level at or below it (bids snap down, never up). */

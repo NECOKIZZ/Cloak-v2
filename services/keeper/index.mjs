@@ -306,7 +306,8 @@ const knownDeployment = (() => {
   }
 })();
 const DROP_FACTORY = process.env.DROP_FACTORY || knownDeployment?.dropFactory;
-const drops = DROP_FACTORY ? new CloakDrops(publicClient, walletClient, DROP_FACTORY, BigInt(process.env.DROP_FACTORY_BLOCK ?? knownDeployment?.dropFactoryBlock ?? 0)) : null;
+const ESCROW_DROP_FACTORY = process.env.ESCROW_DROP_FACTORY || knownDeployment?.escrowDropFactory;
+const drops = DROP_FACTORY ? new CloakDrops(publicClient, walletClient, DROP_FACTORY, BigInt(process.env.DROP_FACTORY_BLOCK ?? knownDeployment?.dropFactoryBlock ?? 0), ESCROW_DROP_FACTORY) : null;
 const dropsDone = new Set();
 const dropWait = new Map();
 const dropSettledAt = new Map();

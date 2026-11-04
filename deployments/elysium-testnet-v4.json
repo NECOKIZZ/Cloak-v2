@@ -142,5 +142,6 @@
     "antiSnipe": "10% falling to the base over 300s",
     "poolManagerOwner": "0x6616C2566baD950FcDD420159a51fDdfFa220E8e"
   },
-  "v4DeployCost": "0.00138548226406 HYPE"
+  "v4DeployCost": "0.00138548226406 HYPE",
+  "escrowDropFactory": "0x5f3efbfd5d15440947abfbfce7f2fcfffff71079"
 }

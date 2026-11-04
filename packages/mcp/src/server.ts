@@ -482,7 +482,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
 
   const dropsFor = (w?: Wallet) => {
     if (!d.dropFactory) throw new Error("NFT drops aren't deployed on this network yet.");
-    return new CloakDrops(pub, w, d.dropFactory, d.dropFactoryBlock ?? 0n);
+    return new CloakDrops(pub, w, d.dropFactory, d.dropFactoryBlock ?? 0n, d.escrowDropFactory);
   };
   const spotsFor = (w?: Wallet) => (d.spotBook ? new CloakSpots(dropsFor(w), d.spotBook) : null);
   const dropPhase = (s: DropState) => (s.failed ? "ended with no sale (every bid refunded)" : s.phase === "gtd" ? "gtd (guaranteed list minting; bidding opens after)" : s.phase === "settle" || s.phase === "numbering" ? "settling" : s.phase);
@@ -493,7 +493,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       drop: s.address,
       name: s.name,
       symbol: s.symbol,
-      kind: sale ? `WL spot sale for ${sale.partner}` : "NFT drop",
+      kind: sale ? `WL spot sale for ${sale.partner}` : s.escrow ? "auction of existing NFTs" : "NFT drop",
+      ...(s.escrow ? { collection: s.escrow.collection, tokenIds: s.escrow.tokenIds.map(String), heldInEscrow: `${s.escrow.held} of ${s.supply}` } : {}),
       phase: dropPhase(s),
       ...(s.phase === "gtd" ? { biddingOpens: iso(s.gtdEnd) } : {}),
       biddingEnds: iso(s.commitEnd),
@@ -545,7 +546,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     "get_drop",
     {
       title: "Drop details",
-      description: "One NFT drop or WL spot sale: phase, timing, floor, WL boost, results once settled, whether a wallet is on its GTD list or WL, and for a spot sale the whitelist so far.",
+      description: "One NFT drop, WL spot sale or auction of existing NFTs: phase, timing, floor, WL boost, results once settled, whether a wallet is on its GTD list or WL, and for a spot sale the whitelist so far.",
       inputSchema: { drop: addr, wallet: addr.optional().describe("A wallet to check against the drop's GTD list and WL") },
       annotations: READ,
     },

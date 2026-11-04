@@ -61,6 +61,8 @@ export interface CloakDeployment {
   dropFactoryBlock?: bigint;
   /** CloakSpotBook: WL spot sales on top of drops; winners name the wallets to whitelist. */
   spotBook?: Address;
+  /** CloakEscrowDropFactory: sealed auctions of NFTs that already exist (listed with the drops). */
+  escrowDropFactory?: Address;
   hypePool: Address;
   whype: Address;
   /** Hosted relayer (POST /relay, GET /quote). */
@@ -103,6 +105,7 @@ export const deployments: Record<number, CloakDeployment> = {
     dropFactory: "0x2afb7d9a5baa02a2d72a7c761521fc66dce9d783",
     dropFactoryBlock: 22329730n,
     spotBook: "0x91806d96814cc205d4b642e280023a1c7b361fc8",
+    escrowDropFactory: "0x5f3efbfd5d15440947abfbfce7f2fcfffff71079",
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
     batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",

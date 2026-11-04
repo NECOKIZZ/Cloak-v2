@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { isAddress, parseEther, type Address, type Hex } from "viem";
 import { CloakDrops, CloakSpots, drandRoundTime, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
 import { addrLink, txLink } from "../config";
-import { dropsClient, imageSrc, itemPreview, pct, spotsClient, type ItemMeta } from "../drops";
+import { collectionInfo, dropsClient, imageSrc, itemPreview, pct, spotsClient, tokenMetas, type ItemMeta } from "../drops";
 import { checked, friendly, Hint } from "../errors";
 import { duration, hype, short } from "../format";
 import { Link } from "../router";
@@ -41,13 +41,26 @@ export function Drop({ drop }: { drop: Address }) {
   const loadErr = useRef("");
   const [tab, setTab] = useState<Tab>("mint");
   const [items, setItems] = useState<ItemMeta[]>([]);
+  const [colName, setColName] = useState("");
+  const [wonIds, setWonIds] = useState<Record<string, bigint[]>>({});
   // a preview of the first items, when the collection brings its own metadata folder
   useEffect(() => {
-    if (!s?.baseURI) return;
     let live = true;
-    itemPreview(s.baseURI, Math.min(24, s.supply)).then((x) => live && setItems(x)).catch(() => {});
+    if (s?.escrow) {
+      tokenMetas(s.escrow.collection, s.escrow.tokenIds, 60).then((x) => live && setItems(x)).catch(() => {});
+      collectionInfo(s.escrow.collection).then((x) => live && setColName(x?.name ?? "")).catch(() => {});
+    } else if (s?.baseURI) itemPreview(s.baseURI, Math.min(24, s.supply)).then((x) => live && setItems(x)).catch(() => {});
     return () => void (live = false);
-  }, [s?.baseURI]);
+  }, [s?.baseURI, s?.escrow?.collection]);
+  // which tokens each of my winning bids got (escrow auctions, once settled)
+  useEffect(() => {
+    if (!s?.escrow || s.phase !== "settled" || !mine.some((b) => b.nfts > 0)) return;
+    let live = true;
+    Promise.all(mine.filter((b) => b.nfts > 0).map(async (b) => [String(b.id), await dropsClient().tokensOf(drop, b.id)] as const))
+      .then((x) => live && setWonIds(Object.fromEntries(x)))
+      .catch(() => {});
+    return () => void (live = false);
+  }, [s?.phase, s?.escrow?.collection, mine.length]);
 
   async function load() {
     const c = dropsClient();
@@ -132,7 +145,8 @@ export function Drop({ drop }: { drop: Address }) {
   const wlBid = !!me?.wl;
   const ranks = wlBid ? (level * BigInt(10_000 + s.wlBoostBps)) / 10_000n : level;
   const gtdLeft = me ? me.gtdSpots - me.gtdMinted : 0;
-  const left = s.supply - s.gtdMinted - s.sold;
+  const left = s.supply - s.gtdMinted - (s.failed ? 0 : s.sold) - (s.escrow?.returned ?? 0);
+  const esc = s.escrow;
   const myWins = sale ? mine.filter((b) => b.nfts > 0) : [];
   const walletsOpen = !!sale && now < sale.deadline;
   const totalSpots = winners.reduce((a, w) => a + w.spots, 0);
@@ -180,9 +194,10 @@ export function Drop({ drop }: { drop: Address }) {
             <span className={`pill ${p.live ? "ok" : ""}`}>{p.live && <span className="dot live" />}{p.text}</span>
             {sale && <span className="pill">WL spots · {sale.partner}</span>}
             {details.category && <span className="pill">{details.category}</span>}
+            {esc && <span className={`pill ${esc.held === s.supply || s.settled ? "ok" : "warn"}`} title="Checked on chain: the tokens this auction holds">{s.settled ? `Existing NFTs · ${s.supply - esc.held} of ${s.supply} out of escrow` : `In escrow · ${esc.held} of ${s.supply}`}</span>}
           </div>
           <h1>{s.name} <span className="mute">{s.symbol}</span></h1>
-          <p className="small mute">by {addrLink(s.creator) ? <a className="link mono" href={addrLink(s.creator)} target="_blank" rel="noreferrer">{short(s.creator)}</a> : <span className="mono">{short(s.creator)}</span>} · {s.supply.toLocaleString()} {sale ? `spot${s.supply > 1 ? "s" : ""}` : "items"} · Elysium{!sale && s.royaltyBps ? ` · ${pct(s.royaltyBps)} royalty` : ""}</p>
+          <p className="small mute">by {addrLink(s.creator) ? <a className="link mono" href={addrLink(s.creator)} target="_blank" rel="noreferrer">{short(s.creator)}</a> : <span className="mono">{short(s.creator)}</span>} · {s.supply.toLocaleString()} {sale ? `spot${s.supply > 1 ? "s" : ""}` : esc ? `existing token${s.supply > 1 ? "s" : ""}${colName ? ` from ${colName}` : ""}` : "items"} · Elysium{!sale && s.royaltyBps ? ` · ${pct(s.royaltyBps)} royalty` : ""}</p>
         </div>
         {details.links && (
           <div className="dp-links">
@@ -218,7 +233,7 @@ export function Drop({ drop }: { drop: Address }) {
               </div>
             </div>
           ))}
-          <p className="xs mute" style={{ gridColumn: "1 / -1" }}>The first {items.length} of {s.supply.toLocaleString()} items, read from the collection's metadata folder. Winners get items in the order they're minted.</p>
+          <p className="xs mute" style={{ gridColumn: "1 / -1" }}>{esc ? `The ${items.length === s.supply ? "" : `first ${items.length} of the `}${s.supply.toLocaleString()} tokens in this auction, read from the collection. Which winner gets which is drawn at random once the bids open.` : `The first ${items.length} of ${s.supply.toLocaleString()} items, read from the collection's metadata folder. Winners get items in the order they're minted.`}</p>
         </div>
       )}
 
@@ -228,11 +243,14 @@ export function Drop({ drop }: { drop: Address }) {
             <h3 className="dp-h3">Details</h3>
             <div className="summary">
               <div className="row"><span className="mute">Contract</span><a className="link mono" href={addrLink(s.address)} target="_blank" rel="noreferrer">{short(s.address)} ↗</a></div>
+              {esc && <div className="row"><span className="mute">Collection</span><a className="link mono" href={addrLink(esc.collection)} target="_blank" rel="noreferrer">{colName ? `${colName} · ` : ""}{short(esc.collection)} ↗</a></div>}
+              {esc && <div className="row"><span className="mute">Held in escrow</span><span className="mono">{esc.held} of {s.supply} tokens</span></div>}
+              {esc && <div className="row"><span className="mute">Token ids</span><span className="mono" style={{ overflowWrap: "anywhere", textAlign: "right" }}>{esc.tokenIds.slice(0, 40).map((x) => `#${x}`).join(" ")}{esc.tokenIds.length > 40 ? " …" : ""}</span></div>}
               <div className="row"><span className="mute">Token standard</span><span>ERC-721{s.royaltyBps ? " · ERC-2981" : ""}</span></div>
               <div className="row"><span className="mute">Chain</span><span>Elysium</span></div>
               <div className="row"><span className="mute">Creator</span><a className="link mono" href={addrLink(s.creator)} target="_blank" rel="noreferrer">{short(s.creator)} ↗</a></div>
-              {!sale && <div className="row"><span className="mute">Royalty</span><span>{pct(s.royaltyBps)}</span></div>}
-              <div className="row"><span className="mute">Metadata</span><span className="mono" style={{ overflowWrap: "anywhere", textAlign: "right" }}>{!s.baseURI || s.baseURI.includes("/api/nft/") ? "served by Cloak" : s.baseURI}</span></div>
+              {!sale && <div className="row"><span className="mute">Royalty</span><span>{esc ? "the collection's own" : pct(s.royaltyBps)}</span></div>}
+              {!esc && <div className="row"><span className="mute">Metadata</span><span className="mono" style={{ overflowWrap: "anywhere", textAlign: "right" }}>{!s.baseURI || s.baseURI.includes("/api/nft/") ? "served by Cloak" : s.baseURI}</span></div>}
               <div className="row"><span className="mute">Bid levels</span><span className="mono">{s.numTicks} · {hype(s.tickSize)} HYPE apart</span></div>
               {s.hasGtd && <div className="row"><span className="mute">GTD list</span><span>{details.gtd?.length ?? "?"} wallets</span></div>}
               {s.hasWl && <div className="row"><span className="mute">WL</span><span>{details.wl?.length ?? "?"} wallets</span></div>}
@@ -251,10 +269,12 @@ export function Drop({ drop }: { drop: Address }) {
                 </ol>
                 ) : (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {esc && <li>These {s.supply} tokens already exist and sit in this auction's contract. The page checks on chain that it holds every one.</li>}
                   {s.hasGtd && <li>GTD wallets mint their spots at {hype(s.gtdPrice)} HYPE. Unused spots roll into the auction.</li>}
                   <li>Everyone else bids sealed, at {hype(s.floor)} HYPE or more. Nobody sees any bid until bidding closes.</li>
                   {s.hasWl && <li>WL bids rank {pct(s.wlBoostBps)} higher, and WL winners pay {pct(s.wlBoostBps)} less, never under the floor.</li>}
                   <li>The highest bids win, and every winner pays one price: the lowest winning bid. Ties at that price are drawn at random.</li>
+                  {esc ? <li>Which winner gets which token is drawn at random once the bids open, so claiming early or late changes nothing. Unsold tokens go back to their owner.</li> : null}
                   <li>Winners get their NFTs, everyone else gets their deposit back, automatically.</li>
                 </ol>
                 )}
@@ -288,10 +308,12 @@ export function Drop({ drop }: { drop: Address }) {
                 </ol>
                 ) : (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {esc && <li>These {s.supply} tokens already exist and sit in this auction's contract. The page checks on chain that it holds every one.</li>}
                   {s.hasGtd && <li>GTD wallets mint their spots at {hype(s.gtdPrice)} HYPE. Unused spots roll into the auction.</li>}
                   <li>Everyone else bids sealed, at {hype(s.floor)} HYPE or more. Nobody sees any bid until bidding closes.</li>
                   {s.hasWl && <li>WL bids rank {pct(s.wlBoostBps)} higher, and WL winners pay {pct(s.wlBoostBps)} less, never under the floor.</li>}
                   <li>The highest bids win, and every winner pays one price: the lowest winning bid. Ties at that price are drawn at random.</li>
+                  {esc ? <li>Which winner gets which token is drawn at random once the bids open, so claiming early or late changes nothing. Unsold tokens go back to their owner.</li> : null}
                   <li>Winners get their NFTs, everyone else gets their deposit back, automatically.</li>
                 </ol>
                 )}
@@ -406,7 +428,7 @@ export function Drop({ drop }: { drop: Address }) {
                       <div key={String(b.id)}>
                         <span className="small"><span className="mono">{b.revealed ? `${b.quantity} × ${hype(b.price)} HYPE` : `Sealed bid · ${hype(b.deposit)} HYPE deposit`}</span>{b.wl && <span className="pill ok" style={{ marginLeft: 6 }}>WL</span>}</span>
                         <span className="small mute">
-                          {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : !b.revealed ? "never opened · 10% kept" : b.nfts ? `won ${b.nfts}${sale ? ` spot${b.nfts > 1 ? "s" : ""}` : ""} · paid ${hype(b.paid)}` : "not won"}
+                          {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : !b.revealed ? "never opened · 10% kept" : b.nfts ? `won ${b.nfts}${sale ? ` spot${b.nfts > 1 ? "s" : ""}` : ""}${wonIds[String(b.id)]?.length ? ` (${wonIds[String(b.id)].map((x) => `#${x}`).join(", ")})` : ""} · paid ${hype(b.paid)}` : "not won"}
                           {s.phase === "settled" && (b.claimed ? " · delivered" : b.refund > 0n ? ` · ${hype(b.refund)} back` : "")}
                         </span>
                       </div>
@@ -509,9 +531,9 @@ export function Drop({ drop }: { drop: Address }) {
               {isCreator && sale && s.phase === "settled" && left > 0 && <p className="small mute" style={{ marginTop: 10 }}>{left} spot{left > 1 ? "s" : ""} went unsold. They aren't on this list, so they're yours to give out with {sale.partner}.</p>}
               {isCreator && !sale && s.phase === "settled" && left > 0 && (
                 <>
-                  <div className="card-head" style={{ marginTop: 18 }}><h3>Unsold NFTs</h3></div>
-                  <p className="small mute">{left} NFT{left > 1 ? "s" : ""} went unsold. They're yours to mint.</p>
-                  <button className="btn btn-ghost btn-block" disabled={!!busy} onClick={act(`Minted ${left} unsold`, (w) => dropsClient(w).mintUnsold(drop, w.account.address, Math.min(left, 100)))}>{busy || `Mint ${Math.min(left, 100)} to my wallet`}</button>
+                  <div className="card-head" style={{ marginTop: 18 }}><h3>Unsold {esc ? "tokens" : "NFTs"}</h3></div>
+                  <p className="small mute">{left} {esc ? "token" : "NFT"}{left > 1 ? "s" : ""} went unsold. {esc ? "Take them back to your wallet." : "They're yours to mint."}</p>
+                  <button className="btn btn-ghost btn-block" disabled={!!busy} onClick={act(esc ? `Took back ${Math.min(left, 100)} unsold` : `Minted ${left} unsold`, (w) => dropsClient(w).mintUnsold(drop, w.account.address, Math.min(left, 100)))}>{busy || (esc ? `Take back ${Math.min(left, 100)} to my wallet` : `Mint ${Math.min(left, 100)} to my wallet`)}</button>
                 </>
               )}
 

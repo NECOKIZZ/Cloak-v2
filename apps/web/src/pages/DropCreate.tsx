@@ -8,6 +8,8 @@ import { Link, navigate } from "../router";
 import { useApp } from "../state";
 import { compressBanner, compressImage } from "../tokenMeta";
 import { Icon } from "../ui";
+import { EscrowCreate } from "./EscrowCreate";
+import { ESCROW_DROP_FACTORY } from "../config";
 
 const WALLET_DAYS = [1, 2, 3, 7, 14];
 const DURATIONS: [string, number][] = [["10 minutes", 600], ["1 hour", 3600], ["6 hours", 21600], ["24 hours", 86400], ["3 days", 259200]];
@@ -52,6 +54,7 @@ export function DropCreate() {
   const { wallet, connect, toast } = useApp();
   const canSpots = !!spotsClient();
   const [spots, setSpots] = useState(() => canSpots && typeof location !== "undefined" && /[?&]spots\b/.test(location.search));
+  const [existing, setExisting] = useState(() => !!ESCROW_DROP_FACTORY && typeof location !== "undefined" && /[?&]existing\b/.test(location.search));
   const [partner, setPartner] = useState("");
   const [walletDays, setWalletDays] = useState(3);
   const [f, setF] = useState({ name: "", symbol: "", supply: "1000", price: "0.5", maxPerBid: "2", royalty: "5", baseURI: "", description: "", gtdOn: false, gtdList: "", gtdPrice: "0.4", gtdSecs: 86400, wlOn: false, wlList: "", boost: 20, biddingSecs: 86400 });
@@ -63,11 +66,12 @@ export function DropCreate() {
   const [imgBusy, setImgBusy] = useState(false);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
-  useEffect(() => { document.title = spots ? "Cloak · Sell WL spots" : "Cloak · Create a drop"; }, [spots]);
+  useEffect(() => { document.title = existing ? "Cloak · Auction your NFTs" : spots ? "Cloak · Sell WL spots" : "Cloak · Create a drop"; }, [spots, existing]);
   // opened straight in WL spots mode (/app/drops/create?spots): start from the spot defaults too
   useEffect(() => { if (spots) mode(true); }, []);
   /** Switch between selling NFTs and selling a partner's WL spots, with defaults that fit each. */
   function mode(on: boolean) {
+    setExisting(false);
     setSpots(on);
     setF((x) => (on ? { ...x, supply: x.supply === "1000" ? "5" : x.supply, maxPerBid: "1", gtdOn: false, royalty: "0", baseURI: "" } : { ...x, supply: x.supply === "5" ? "1000" : x.supply, maxPerBid: "2", royalty: "5" }));
   }
@@ -176,18 +180,20 @@ export function DropCreate() {
       <Link to="/app/drops" className="back-btn"><span aria-hidden>←</span>All drops</Link>
       <div className="page-head">
         <div>
-          <h1>{spots ? "Sell WL spots" : "Create a drop"}</h1>
-          {spots ? <p>A partner collection gave you whitelist spots. Sell them in a sealed auction: your price is the floor, the highest bids win, every winner pays one price, and each winner names the wallet to whitelist. You hand the partner the list.</p> : <p>Your price is the floor. GTD wallets mint first; everyone else bids sealed, and every winner pays one price. If demand is higher than your price, you earn the difference instead of flippers.</p>}
+          <h1>{existing ? "Auction your NFTs" : spots ? "Sell WL spots" : "Create a drop"}</h1>
+          {existing ? <p>Auction NFTs that already exist, from any Elysium collection. Your tokens go into escrow when you create the auction, bids are sealed, the highest win, and every winner pays one price. Unsold tokens come back to you.</p> : spots ? <p>A partner collection gave you whitelist spots. Sell them in a sealed auction: your price is the floor, the highest bids win, every winner pays one price, and each winner names the wallet to whitelist. You hand the partner the list.</p> : <p>Your price is the floor. GTD wallets mint first; everyone else bids sealed, and every winner pays one price. If demand is higher than your price, you earn the difference instead of flippers.</p>}
         </div>
       </div>
+      {(canSpots || ESCROW_DROP_FACTORY) && (
+        <div className="tabs create-modes" role="tablist">
+          <button role="tab" aria-selected={!spots && !existing} className={`tab ${!spots && !existing ? "on" : ""}`} onClick={() => mode(false)}>Mint a new collection</button>
+          {ESCROW_DROP_FACTORY && <button role="tab" aria-selected={existing} className={`tab ${existing ? "on" : ""}`} onClick={() => { setSpots(false); setExisting(true); }}>Auction NFTs you own</button>}
+          {canSpots && <button role="tab" aria-selected={spots && !existing} className={`tab ${spots && !existing ? "on" : ""}`} onClick={() => mode(true)}>Sell WL spots</button>}
+        </div>
+      )}
+      {existing ? <EscrowCreate /> : (
       <div className="drop-grid">
         <div className="card">
-          {canSpots && (
-            <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>
-              <button role="tab" aria-selected={!spots} className={`tab ${!spots ? "on" : ""}`} onClick={() => mode(false)}>Sell NFTs</button>
-              <button role="tab" aria-selected={spots} className={`tab ${spots ? "on" : ""}`} onClick={() => mode(true)}>Sell WL spots</button>
-            </div>
-          )}
           {spots && (
             <>
               <div className="card-head"><h3>Partner</h3></div>
@@ -299,6 +305,7 @@ export function DropCreate() {
           {!err && plan.problem && <p className="xs mute" style={{ marginTop: 8 }}>{plan.problem}</p>}
         </div>
       </div>
+      )}
     </div>
   );
 }
