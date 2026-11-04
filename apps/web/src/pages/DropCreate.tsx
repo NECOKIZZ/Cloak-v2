@@ -304,9 +304,9 @@ export function DropCreate() {
 
         <div className="card">
           <div className="create-preview">
-            <div className={`dcard-cover ${imageSrc(banner) || imageSrc(image) ? "" : "dcard-cover-ph"}`} style={imageSrc(banner) ? { backgroundImage: `url("${imageSrc(banner)}")` } : imageSrc(image) ? ({ ["--img" as string]: `url("${imageSrc(image)}")`, ["--blur" as string]: "1" } as React.CSSProperties) : {}} />
+            <div className={`dcard-cover ${imageSrc(banner) || imageSrc(image || folderCover) ? "" : "dcard-cover-ph"}`} style={imageSrc(banner) ? { backgroundImage: `url("${imageSrc(banner)}")` } : imageSrc(image || folderCover) ? ({ ["--img" as string]: `url("${imageSrc(image || folderCover)}")`, ["--blur" as string]: "1" } as React.CSSProperties) : {}} />
             <div className="dcard-body">
-              {image ? <img className="drop-art dcard-avatar" src={image} alt="" width={52} height={52} style={{ width: 52, height: 52 }} /> : <span className="drop-art drop-art-ph dcard-avatar" style={{ width: 52, height: 52, fontSize: 17 }}>{(f.symbol || f.name || "?").slice(0, 2).toUpperCase()}</span>}
+              {image || folderCover ? <img className="drop-art dcard-avatar" src={imageSrc(image || folderCover)} alt="" width={52} height={52} style={{ width: 52, height: 52 }} /> : <span className="drop-art drop-art-ph dcard-avatar" style={{ width: 52, height: 52, fontSize: 17 }}>{(f.symbol || f.name || "?").slice(0, 2).toUpperCase()}</span>}
               <div className="dcard-title"><b>{f.name.trim() || (spots ? "Your WL spot sale" : "Your collection")}</b><span className="xs mute">{category || "Elysium"} · {Number(f.supply || 0).toLocaleString()} {spots ? "spots" : "items"}</span></div>
             </div>
           </div>
