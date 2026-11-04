@@ -50,7 +50,7 @@
       "destination": "/api/mcp"
     },
     {
-      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/).*)",
+      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/|demo-nft/).*)",
       "destination": "/index.html"
     }
   ],
@@ -95,6 +95,36 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/demo-nft/([0-9]+)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/demo-nft/(.*).svg",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
         }
       ]
     }
