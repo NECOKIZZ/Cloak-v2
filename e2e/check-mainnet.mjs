@@ -21,7 +21,7 @@ const rpc = async (method, params) => {
   for (let i = 0; ; i++) {
     await sleep(400);
     const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }).then((x) => x.json());
-    if (r.error && /rate|busy/i.test(r.error.message) && i < 12) { await sleep(2000 * (i + 1)); continue; }
+    if (r.error && /rate|busy|unavailable|timed out|not ready/i.test(r.error.message) && i < 12) { await sleep(2000 * (i + 1)); continue; }
     if (r.error) throw new Error(`${method}: ${r.error.message}`);
     return r.result;
   }

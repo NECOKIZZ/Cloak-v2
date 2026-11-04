@@ -46,7 +46,8 @@ const v4 = await deployV4(pub, d.walletClient, { config, vestingDeployer, poolMa
 if ((BigInt(v4.hook) & 0x3fffn) !== 0x2a80n) throw new Error("hook address has the wrong permission bits");
 console.log(`hook ${v4.hook} · factory ${v4.factory} (block ${v4.block})`);
 
-// 3. privacy: hashers, WHYPE (mainnet's own when WHYPE= is given), vaults, HYPE vault, router; then caps
+// 3. privacy: hashers, WHYPE, vaults, HYPE vault, router; then caps. Leave WHYPE unset on mainnet: mainnet's WHYPE
+//    is an upgradeable proxy, and the HYPE vault must not hold a token someone else can change (docs/MAINNET.md).
 const p = await deployPrivacy(pub, d.walletClient, v4.factory, { config, whype: process.env.WHYPE, factoryBlock: v4.block });
 await applyRules(pub, d.walletClient, config, { withdrawFeeBps: 25, launchFeeBps: 150, treasury, caps: { assets: [[p.whype, parseEther("100"), parseEther("10000")]], defaultBps: [1000n, 5000n], auction: [parseEther("100"), parseEther("10000")] } });
 const assets = [];
