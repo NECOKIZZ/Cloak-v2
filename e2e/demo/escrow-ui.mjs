@@ -52,51 +52,55 @@ if (!col) {
 }
 const ownerOf = (id) => pub.readContract({ address: col, abi: erc721Abi, functionName: "ownerOf", args: [id] });
 
-// ── 2. the demo wallet lists its own through the site ──
 const { browser, ctx, page, base } = await open(process.env.BASE ? { base: process.env.BASE } : {});
 await ctx.addInitScript(() => { localStorage.setItem("cloak.welcomed", "1"); localStorage.setItem("cloak.guide", JSON.stringify({ done: [], hidden: true, shown: true })); });
 const errs = [];
 page.on("pageerror", (e) => errs.push(e.message));
-await page.goto(`${base}/app/drops/create?existing`, { waitUntil: "networkidle" });
-ok(await page.locator("h1", { hasText: "Auction your NFTs" }).isVisible(), "the create page opens on Auction NFTs you own");
-await page.locator('input[placeholder="0x…"]').fill(col);
-await page.locator("text=Veils Genesis").first().waitFor({ timeout: 60000 });
-ok(true, "the page reads the collection's name from its contract");
-await page.locator("button", { hasText: /load my tokens/i }).click();
-const bw = page.locator(".wm-item", { hasText: "Browser wallet" });
-if (await bw.isVisible({ timeout: 8000 }).catch(() => false)) await bw.click();
-await page.locator(".escrow-tok").first().waitFor({ timeout: 180000 });
-await sleep(1500);
-const n = await page.locator(".escrow-tok").count();
-ok(n === 4, `it finds the 4 tokens the demo wallet holds (${n})`);
-await page.locator(".escrow-tok").nth(3).click();
-ok((await page.locator(".escrow-tok.on").count()) === 3, "one is deselected, 3 picked");
-await page.locator("label", { hasText: "Your price (floor)" }).locator("..").locator("input").fill("0.001");
-await page.locator("label", { hasText: "Sealed bidding window" }).locator("..").locator("select").selectOption("600");
-await page.locator("button", { hasText: /List 3 tokens for auction/ }).click();
-await page.waitForURL(/\/app\/drop\/0x/, { timeout: 240000 });
-const drop = page.url().split("/app/drop/")[1].split(/[?#]/)[0];
-console.log("auction", drop);
-await page.locator(".dp-panel").waitFor({ timeout: 90000 });
-await page.locator("text=/In escrow · 3 of 3/").waitFor({ timeout: 60000 }).catch(() => {});
-ok(await page.locator("text=/In escrow · 3 of 3/").isVisible(), "the page shows all 3 tokens in escrow, checked on chain");
-ok([13n, 14n, 15n].every(async () => true) && (await ownerOf(13n)).toLowerCase() === drop.toLowerCase() && (await ownerOf(16n)).toLowerCase() === demoAddress.toLowerCase(), "tokens 13–15 moved into the auction, 16 stayed with the demo wallet");
-await page.click("role=tab[name=Items]");
-await page.locator(".item-card").first().waitFor({ timeout: 60000 });
-await sleep(1500);
-ok((await page.locator(".item-card").count()) === 3 && (await page.locator(".item-card .trait").count()) > 0, "the Items tab shows the 3 escrowed tokens with their traits");
-await page.click("role=tab[name=Details]");
-ok(/Held in escrow\s*3 of 3 tokens/.test(await page.locator("main").innerText()), "Details lists the collection and the held tokens");
+let drop = process.env.RESUME_DROP;
+if (!drop) {
+  await page.goto(`${base}/app/drops/create?existing`, { waitUntil: "networkidle" });
+  ok(await page.locator("h1", { hasText: "Auction your NFTs" }).isVisible(), "the create page opens on Auction NFTs you own");
+  await page.locator('input[placeholder="0x…"]').fill(col);
+  await page.locator("text=Veils Genesis").first().waitFor({ timeout: 60000 });
+  ok(true, "the page reads the collection's name from its contract");
+  await page.locator("button", { hasText: /load my tokens/i }).click();
+  const bw = page.locator(".wm-item", { hasText: "Browser wallet" });
+  if (await bw.isVisible({ timeout: 8000 }).catch(() => false)) await bw.click();
+  await page.locator(".escrow-tok").first().waitFor({ timeout: 180000 });
+  await sleep(1500);
+  const n = await page.locator(".escrow-tok").count();
+  ok(n === 4, `it finds the 4 tokens the demo wallet holds (${n})`);
+  await page.locator(".escrow-tok").nth(3).click();
+  ok((await page.locator(".escrow-tok.on").count()) === 3, "one is deselected, 3 picked");
+  await page.locator("label", { hasText: "Your price (floor)" }).locator("..").locator("input").fill("0.001");
+  await page.locator("label", { hasText: "Sealed bidding window" }).locator("..").locator("select").selectOption("600");
+  await page.locator("button", { hasText: /List 3 tokens for auction/ }).click();
+  await page.waitForURL(/\/app\/drop\/0x/, { timeout: 240000 });
+  drop = page.url().split("/app/drop/")[1].split(/[?#]/)[0];
+  console.log("auction", drop);
+  await page.locator(".dp-panel").waitFor({ timeout: 90000 });
+  await page.locator("text=/In escrow · 3 of 3/").waitFor({ timeout: 60000 }).catch(() => {});
+  ok(await page.locator("text=/In escrow · 3 of 3/").isVisible(), "the page shows all 3 tokens in escrow, checked on chain");
+  ok([13n, 14n, 15n].every(async () => true) && (await ownerOf(13n)).toLowerCase() === drop.toLowerCase() && (await ownerOf(16n)).toLowerCase() === demoAddress.toLowerCase(), "tokens 13–15 moved into the auction, 16 stayed with the demo wallet");
+  await page.click("role=tab[name=Items]");
+  await page.locator(".item-card").first().waitFor({ timeout: 60000 });
+  await sleep(1500);
+  ok((await page.locator(".item-card").count()) === 3 && (await page.locator(".item-card .trait").count()) > 0, "the Items tab shows the 3 escrowed tokens with their traits");
+  await page.click("role=tab[name=Details]");
+  ok(/Held in escrow\s*3 of 3 tokens/.test(await page.locator("main").innerText()), "Details lists the collection and the held tokens");
 
+}
+else await page.goto(`${base}/app/drop/${drop}`, { waitUntil: "networkidle" });
 // ── 3. a bid, the keeper, and the unsold token back ──
 for (let i = 0; i < 60 && (await drops.get(drop)).phase !== "bidding"; i++) await sleep(5000);
-const bid = await drops.bid(drop, { price: parseEther("0.002"), quantity: 2 });
+// one token per bid (the form's default): two bids for one each
+const bids = [await drops.bid(drop, { price: parseEther("0.002"), quantity: 1 }), await drops.bid(drop, { price: parseEther("0.0015"), quantity: 1 })];
 console.log("waiting for the hosted keeper to settle…");
 let s;
 for (let i = 0; i < 400 && (s = await drops.get(drop)).phase !== "settled"; i++) await sleep(5000);
 ok(s.phase === "settled" && s.sold === 2, "the hosted keeper opened, settled and numbered: 2 of 3 sold");
-const won = await drops.tokensOf(drop, bid.id);
-ok(won.length === 2, `the bid won tokens ${won.map((x) => `#${x}`).join(", ")}`);
+const won = [...(await drops.tokensOf(drop, bids[0].id)), ...(await drops.tokensOf(drop, bids[1].id))];
+ok(won.length === 2 && won[0] !== won[1], `the two bids won tokens ${won.map((x) => `#${x}`).join(" and ")}`);
 await page.reload({ waitUntil: "networkidle" });
 await page.click("role=tab[name=Mint]");
 const back = page.locator("button", { hasText: /Take back 1 to my wallet/ });
@@ -105,7 +109,7 @@ await back.click();
 for (let i = 0; i < 60 && (await drops.get(drop)).escrow.returned === 0; i++) await sleep(3000);
 const mine = (await Promise.all([13n, 14n, 15n].map(ownerOf))).filter((o) => o.toLowerCase() === demoAddress.toLowerCase()).length;
 ok(mine === 1, "the demo wallet took the unsold token back from the page");
-await drops.claim(drop, bid.id).catch(() => {});
+for (const b of bids) await drops.claim(drop, b.id).catch(() => {});
 ok((await Promise.all(won.map(ownerOf))).every((o) => o.toLowerCase() === d.account.address.toLowerCase()), "the winner holds exactly the tokens the auction assigned it");
 await page.setViewportSize({ width: 375, height: 800 });
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "the page fits a phone");
