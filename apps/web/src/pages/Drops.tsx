@@ -30,7 +30,8 @@ export function phaseBadge(s: DropState, now: number): { text: string; tone: "li
 export function DropArt({ details, name, size = 64, className = "" }: { details?: DropDetails; name: string; size?: number; className?: string }) {
   const src = imageSrc(details?.image);
   return src ? (
-    <img className={`drop-art ${className}`} src={src} alt="" width={size} height={size} style={{ width: size, height: size }} />
+    // small pixel art stays crisp when shown large
+    <img className={`drop-art ${className}`} src={src} alt="" width={size} height={size} style={{ width: size, height: size }} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth && i.naturalWidth <= 256 && i.naturalWidth < size) i.style.imageRendering = "pixelated"; }} />
   ) : (
     <span className={`drop-art drop-art-ph ${className}`} style={{ width: size, height: size, fontSize: size / 3 }}>{name.slice(0, 2).toUpperCase()}</span>
   );
@@ -101,7 +102,7 @@ function Featured({ s, now }: { s: Row; now: number }) {
           <div><span className="xs mute">Sealed bids</span><b className="mono">{s.bids}</b></div>
           {s.hasWl && <div><span className="xs mute">WL boost</span><b className="mono">{pct(s.wlBoostBps)}</b></div>}
         </div>
-        <span className="btn btn-ink dfeat-cta">View drop</span>
+        <span className="btn btn-ink dfeat-cta">{s.escrow ? "View auction" : "View drop"}</span>
       </div>
     </Link>
   );

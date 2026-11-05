@@ -1013,3 +1013,4 @@ button.asset-row { cursor: pointer; }
 .folder-item .xs { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .one-traits { gap: 8px; }
 .one-traits .trait { font-size: 13px; padding: 6px 10px; }
+.item-card img, .escrow-tok img, .folder-item img, .dp-thumbs img { image-rendering: auto; }

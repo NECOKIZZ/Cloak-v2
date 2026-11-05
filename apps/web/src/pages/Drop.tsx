@@ -329,7 +329,7 @@ export function Drop({ drop }: { drop: Address }) {
           <div className="dp-panel">
             <h2 className="dp-title">{sale ? `Bid on ${sale.partner} WL spots` : one?.name ? `Bid on ${one.name}` : `${s.phase === "gtd" && s.hasGtd ? "Mint" : "Bid on"} ${s.name}`}</h2>
             <div className="dp-progress">
-              <div className="row"><span className="small">{s.settled ? (sale ? "Spots sold" : "Items sold") : s.phase === "gtd" ? (s.hasGtd ? "GTD window" : "Bidding opens") : s.phase === "bidding" ? "Bidding window" : "Opening the bids"}</span><span className="small mono">{s.settled ? `${s.sold + s.gtdMinted} / ${s.supply}` : s.phase === "gtd" ? `${duration(s.gtdEnd - now)} left` : s.phase === "bidding" ? `${duration(s.commitEnd - now)} left` : `${s.reveals} of ${s.bids} open`}</span></div>
+              <div className="row"><span className="small">{s.settled ? (sale ? "Spots sold" : esc ? "Tokens sold" : "Items sold") : s.phase === "gtd" ? (s.hasGtd ? "GTD window" : "Bidding opens") : s.phase === "bidding" ? "Bidding window" : "Opening the bids"}</span><span className="small mono">{s.settled ? `${s.sold + s.gtdMinted} / ${s.supply}` : s.phase === "gtd" ? `${duration(s.gtdEnd - now)} left` : s.phase === "bidding" ? `${duration(s.commitEnd - now)} left` : `${s.reveals} of ${s.bids} open`}</span></div>
               <div className="dprog lg"><i style={{ width: `${(s.settled ? soldShare(s) : timeShare) * 100}%` }} /></div>
             </div>
             <div className="card dp-stage">
