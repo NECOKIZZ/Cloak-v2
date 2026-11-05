@@ -169,7 +169,11 @@ export function Drop({ drop }: { drop: Address }) {
 
   const b = phaseBadge(s, now);
   const sold = s.settled && !s.failed;
-  const hasPicture = !!(imageSrc(details.banner) || imageSrc(details.image));
+  // an auction of existing NFTs shows its tokens' own art when no collection image was published
+  const art: DropDetails = details.image || !esc ? details : { ...details, image: items.find((m) => m.image)?.image };
+  const one = esc && s.supply === 1 ? items[0] : undefined; // a single-token auction: that token is the star
+  const kind = sale ? "sale" : esc ? "auction" : "drop";
+  const hasPicture = !!(imageSrc(art.banner) || imageSrc(art.image));
   const opening = s.phase === "reveal" || s.phase === "settle" || s.phase === "numbering";
   const stages: { name: string; when: string; state: "done" | "live" | "next" }[] = [
     ...(s.hasGtd ? [{ name: "GTD mint", when: `${hype(s.gtdPrice)} HYPE · ends ${when(s.gtdEnd)}`, state: (s.phase === "gtd" ? "live" : "done") as "live" | "done" }] : []),
@@ -186,17 +190,18 @@ export function Drop({ drop }: { drop: Address }) {
     <div className="dp">
       <Link to="/app/drops" className="back-btn"><span aria-hidden>←</span>All drops</Link>
       {stale && <p className="xs mute" style={{ marginBottom: 8 }}>Couldn't reach the network to refresh. Showing the last update, retrying…</p>}
-      <div className={`dp-banner ${hasPicture ? "" : "dcard-cover-ph"}`} style={coverStyle(details)} />
+      <div className={`dp-banner ${hasPicture ? "" : "dcard-cover-ph"}`} style={coverStyle(art)} />
       <div className="dp-id">
-        <DropArt details={details} name={s.name} size={128} className="dp-avatar" />
+        <DropArt details={art} name={s.name} size={128} className="dp-avatar" />
         <div className="dp-name">
           <div className="dp-pills">
             <span className={`pill ${p.live ? "ok" : ""}`}>{p.live && <span className="dot live" />}{p.text}</span>
             {sale && <span className="pill">WL spots · {sale.partner}</span>}
             {details.category && <span className="pill">{details.category}</span>}
-            {esc && <span className={`pill ${esc.held === s.supply || s.settled ? "ok" : "warn"}`} title="Checked on chain: the tokens this auction holds">{s.settled ? `Existing NFTs · ${s.supply - esc.held} of ${s.supply} out of escrow` : `In escrow · ${esc.held} of ${s.supply}`}</span>}
+            {esc && <span className={`pill ${esc.held === s.supply || s.settled ? "ok" : "warn"}`} title="Checked on chain: the tokens this auction holds">{s.settled ? `NFT auction · ${s.supply - esc.held} of ${s.supply} out of escrow` : `NFT auction · ${esc.held} of ${s.supply} in escrow`}</span>}
           </div>
           <h1>{s.name} <span className="mute">{s.symbol}</span></h1>
+          {one?.name && <p className="small">{one.name}{colName ? ` from ${colName}` : ""}, token #{String(esc!.tokenIds[0])}</p>}
           <p className="small mute">by {addrLink(s.creator) ? <a className="link mono" href={addrLink(s.creator)} target="_blank" rel="noreferrer">{short(s.creator)}</a> : <span className="mono">{short(s.creator)}</span>} · {s.supply.toLocaleString()} {sale ? `spot${s.supply > 1 ? "s" : ""}` : esc ? `existing token${s.supply > 1 ? "s" : ""}${colName ? ` from ${colName}` : ""}` : "items"} · Elysium{!sale && s.royaltyBps ? ` · ${pct(s.royaltyBps)} royalty` : ""}</p>
         </div>
         {details.links && (
@@ -208,7 +213,7 @@ export function Drop({ drop }: { drop: Address }) {
       <div className="dp-stats">
         <div><span className="xs mute">Floor</span><b className="mono">{hype(s.floor)} <small>HYPE</small></b></div>
         {sold && <div><span className="xs mute">Sold at</span><b className="mono">{hype(s.publicPrice)} <small>HYPE</small></b></div>}
-        <div><span className="xs mute">{sale ? "WL spots" : "Supply"}</span><b className="mono">{s.supply.toLocaleString()}</b></div>
+        <div><span className="xs mute">{sale ? "WL spots" : esc ? "Tokens" : "Supply"}</span><b className="mono">{s.supply.toLocaleString()}</b></div>
         <div><span className="xs mute">Sealed bids</span><b className="mono">{s.bids}</b></div>
         {s.hasGtd && <div><span className="xs mute">GTD minted</span><b className="mono">{s.gtdMinted} <small>at {hype(s.gtdPrice)}</small></b></div>}
         {s.hasWl && <div><span className="xs mute">WL bid boost</span><b className="mono">{pct(s.wlBoostBps)}</b></div>}
@@ -217,8 +222,8 @@ export function Drop({ drop }: { drop: Address }) {
       {details.description && <p className="dp-desc">{details.description}</p>}
 
       <div className="tabs details-tabs dp-tabs" role="tablist">
-        {(["mint", ...(items.length ? ["items"] : []), "details"] as Tab[]).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => setTab(t)}>{t === "mint" ? (sale ? "Bid" : "Mint") : t === "items" ? "Items" : "Details"}</button>
+        {(["mint", ...(items.length && !one ? ["items"] : []), "details"] as Tab[]).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => setTab(t)}>{t === "mint" ? (sale || esc ? "Bid" : "Mint") : t === "items" ? "Items" : "Details"}</button>
         ))}
       </div>
 
@@ -258,7 +263,7 @@ export function Drop({ drop }: { drop: Address }) {
             </div>
           </div>
           <div className="card">
-                <h3 className="dp-h3">How this {sale ? "sale" : "drop"} works</h3>
+                <h3 className="dp-h3">How this {kind} works</h3>
                 {sale ? (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
                   <li>{sale.partner} gave {s.supply} WL spot{s.supply > 1 ? "s" : ""}. Bid sealed, at {hype(s.floor)} HYPE or more per spot. Nobody sees any bid until bidding closes.</li>
@@ -287,17 +292,18 @@ export function Drop({ drop }: { drop: Address }) {
         <div className="dp-main">
           <div className="dp-media">
             <div className="dp-art">
-              <DropArt details={details} name={s.name} size={560} />
+              <DropArt details={art} name={s.name} size={560} />
               <span className={`dbadge ${b.tone}`}>{b.tone === "live" && <span className="dot live" />}{b.text}</span>
             </div>
-            {!!items.length && (
+            {one && !!one.traits.length && <div className="traits one-traits">{one.traits.map((t, i) => <span key={i} className="trait"><span className="xs mute">{t.trait}</span>{t.value}</span>)}</div>}
+            {!!items.length && !one && (
               <div className="dp-thumbs">
                 {items.slice(0, 4).map((it) => imageSrc(it.image) && <img key={it.id} src={imageSrc(it.image)} alt="" loading="lazy" />)}
                 <button className="btn btn-ghost btn-sm" onClick={() => setTab("items")}>See the items</button>
               </div>
             )}
             <div className="card dp-how">
-                <h3 className="dp-h3">How this {sale ? "sale" : "drop"} works</h3>
+                <h3 className="dp-h3">How this {kind} works</h3>
                 {sale ? (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
                   <li>{sale.partner} gave {s.supply} WL spot{s.supply > 1 ? "s" : ""}. Bid sealed, at {hype(s.floor)} HYPE or more per spot. Nobody sees any bid until bidding closes.</li>
@@ -321,7 +327,7 @@ export function Drop({ drop }: { drop: Address }) {
             </div>
           </div>
           <div className="dp-panel">
-            <h2 className="dp-title">{sale ? `Bid on ${sale.partner} WL spots` : `${s.phase === "gtd" && s.hasGtd ? "Mint" : "Bid on"} ${s.name}`}</h2>
+            <h2 className="dp-title">{sale ? `Bid on ${sale.partner} WL spots` : one?.name ? `Bid on ${one.name}` : `${s.phase === "gtd" && s.hasGtd ? "Mint" : "Bid on"} ${s.name}`}</h2>
             <div className="dp-progress">
               <div className="row"><span className="small">{s.settled ? (sale ? "Spots sold" : "Items sold") : s.phase === "gtd" ? (s.hasGtd ? "GTD window" : "Bidding opens") : s.phase === "bidding" ? "Bidding window" : "Opening the bids"}</span><span className="small mono">{s.settled ? `${s.sold + s.gtdMinted} / ${s.supply}` : s.phase === "gtd" ? `${duration(s.gtdEnd - now)} left` : s.phase === "bidding" ? `${duration(s.commitEnd - now)} left` : `${s.reveals} of ${s.bids} open`}</span></div>
               <div className="dprog lg"><i style={{ width: `${(s.settled ? soldShare(s) : timeShare) * 100}%` }} /></div>
@@ -495,7 +501,7 @@ export function Drop({ drop }: { drop: Address }) {
 
             </div>
             <div className="dp-schedule">
-              <h3 className="dp-h3">{sale ? "Sale" : "Mint"} schedule</h3>
+              <h3 className="dp-h3">{sale ? "Sale" : esc ? "Auction" : "Mint"} schedule</h3>
               <ol>
                 {stages.map((st) => (
                   <li key={st.name} className={st.state}>
