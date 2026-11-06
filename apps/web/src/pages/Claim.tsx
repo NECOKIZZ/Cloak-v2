@@ -8,6 +8,8 @@ import { Link } from "../router";
 import { getProver, useApp } from "../state";
 import { Icon } from "../ui";
 import { publicClient } from "../wallet";
+import { recipientNow } from "../names";
+import { RecipientNote } from "../recipient";
 
 const fmt = (t: LinkToken, v: bigint) => {
   const s = formatUnits(v, TOKEN_DECIMALS[t]);
@@ -141,8 +143,10 @@ export function Claim() {
         if (!p) return;
         dst = await p.address();
       } else {
-        if (!isAddress(to.trim())) throw new Hint("Enter the 0x wallet address to claim to.");
-        dst = to.trim() as Address;
+        // a .ely name is looked up now: names expire and change hands
+        dst = (await recipientNow(to).catch((e) => {
+          throw new Hint(e.message);
+        })).address;
       }
       const out: { t: LinkToken; amount: bigint; tx: Hex }[] = [];
       for (const t of ["HYPE", "USDC"] as LinkToken[]) {
@@ -264,7 +268,8 @@ export function Claim() {
             {dest === "wallet" && (
               <div className="field" style={{ marginTop: 12 }}>
                 <label><span>Wallet address</span><span>a brand-new one keeps you unlinkable</span></label>
-                <input className="input mono" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder="0x…" />
+                <input className="input mono" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder="0x… or name.ely" />
+                <RecipientNote input={to} />
               </div>
             )}
             <div className="summary" style={{ marginTop: 12 }}>

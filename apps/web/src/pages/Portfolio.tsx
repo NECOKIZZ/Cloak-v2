@@ -9,6 +9,8 @@ import { friendly, Hint } from "../errors";
 import { markDone } from "../guide";
 import { Link, navigate, useRoute } from "../router";
 import { Icon, TokenIcon } from "../ui";
+import { recipientNow } from "../names";
+import { RecipientNote } from "../recipient";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { useFeePct, useMarkets, type Market } from "./markets";
 
@@ -343,9 +345,12 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
             setRes({ ok: "Sent privately. The chain can't see who paid whom, or how much.", tx });
           }
         } else {
-          if (!isAddress(to)) throw new Hint("Enter the 0x address to withdraw to. A brand-new address keeps you unlinkable.");
-          const tx = cur.key === "HYPE" ? await priv.unshieldHype(to, a, setBusy) : cur.market?.shared && shared ? await shared.unshield(cur.key as Address, a, to as Address, setBusy) : await priv.unshieldToken(cur.key, to, a, setBusy);
-          setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${to.slice(0, 6)}…${to.slice(-4)}.`, tx });
+          // a .ely name is looked up again now: names expire and change hands
+          const dest = await recipientNow(to).catch((e) => {
+            throw new Hint(isAddress(to) ? e.message : `${e.message} Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.`);
+          });
+          const tx = cur.key === "HYPE" ? await priv.unshieldHype(dest.address, a, setBusy) : cur.market?.shared && shared ? await shared.unshield(cur.key as Address, a, dest.address, setBusy) : await priv.unshieldToken(cur.key, dest.address, a, setBusy);
+          setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${dest.name ?? `${dest.address.slice(0, 6)}…${dest.address.slice(-4)}`}.`, tx });
         }
       }
       refresh();
@@ -385,7 +390,8 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
               {kind !== "shield" && (
                 <div className="field">
                   <label><span>{kind === "send" ? "Recipient cloak: address" : "To address"}</span><span>{kind === "send" ? "amount stays hidden" : "use a fresh one"}</span></label>
-                  <input className="input" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder={kind === "send" ? "cloak:…" : "0x…"} />
+                  <input className="input" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder={kind === "send" ? "cloak:…" : "0x… or name.ely"} />
+                  {kind === "withdraw" && <RecipientNote input={to} />}
                 </div>
               )}
               <button className="btn btn-ink btn-lg btn-block" disabled={!!busy || !cur} onClick={act}>
@@ -408,3 +414,4 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     </>
   );
 }
+

@@ -85,7 +85,7 @@ Private trading always starts the same way:
    - `private_swap`: buy or sell a launch token (`side: "buy"` spends HYPE, `"sell"` sells tokens).
    - `batch_order`: trade in standard sizes inside a 30 second round, which also hides the size.
    - `private_send`: pay a `cloak:` address. Sender, recipient and amount stay hidden.
-   - `withdraw`: send to a normal `0x` address, ideally a brand new one.
+   - `withdraw`: send to a normal `0x` address (ideally a brand new one) or a `.ely` name, looked up when sending.
    - `create_payment_link`: put HYPE or USDC in a link anyone can claim (into their private balance, or to any wallet
      with no gas). Optional message, passcode with a riddle, or `shares` for a red envelope that several people each
      claim one share of. `claim_payment_link` claims one (or takes back your own), `check_payment_link` shows what's

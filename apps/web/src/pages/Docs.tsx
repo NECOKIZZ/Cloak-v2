@@ -77,7 +77,7 @@ export function Docs() {
           <div className="picture">
             <div><div className="xs mute">Your wallet</div><div className="big">Public</div><div className="exp"><div className="xs mute">Explorer shows</div>1 HYPE</div><p className="xs mute" style={{ marginTop: 10 }}>Anyone can see the balance if they know the address.</p></div>
             <div><div className="xs mute">Cloak vault <span className="signal">● only you</span></div><div className="big">Private</div><div className="exp"><div className="xs mute">Explorer shows</div><span className="dots">●●●●●●</span></div><p className="xs mute" style={{ marginTop: 10 }}>You hold encrypted notes. Trades go through a relayer.</p></div>
-            <div><div className="xs mute">After withdraw</div><div className="big">Public again</div><div className="exp"><div className="xs mute">Explorer shows</div>0.4 HYPE</div><p className="xs mute" style={{ marginTop: 10 }}>Leaving the vault is public on purpose. Use a fresh address.</p></div>
+            <div><div className="xs mute">After withdraw</div><div className="big">Public again</div><div className="exp"><div className="xs mute">Explorer shows</div>0.4 HYPE</div><p className="xs mute" style={{ marginTop: 10 }}>Leaving the vault is public on purpose. Use a fresh address. You can also withdraw to a <code>.ely</code> name, which ties the withdrawal to that name.</p></div>
           </div>
 
           <h2 id="quickstart">Quickstart (2 minutes)</h2>

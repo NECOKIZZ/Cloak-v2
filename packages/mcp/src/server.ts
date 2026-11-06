@@ -52,6 +52,7 @@ import {
   type AuctionState,
   type Prover,
   type Wallet,
+  resolveRecipient,
 } from "@cloakely/sdk";
 import type { Settings } from "./config.js";
 import { Spending, show, type Budget } from "./limits.js";
@@ -970,13 +971,15 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     "withdraw",
     {
       title: "Withdraw to an address",
-      description: "Move funds from the private balance to a normal 0x address (public on purpose). A brand-new address keeps the most privacy. Cloak keeps 0.25%, and the relayer takes a small fee for gas.",
-      inputSchema: { asset: z.string().describe('"HYPE", "USDC" or a launch token'), to: addr, amount: amt('Amount, or "max"'), dry_run: dry },
+      description: "Move funds from the private balance to a normal 0x address or .ely name (public on purpose). A brand-new address keeps the most privacy. Cloak keeps 0.25%, and the relayer takes a small fee for gas.",
+      inputSchema: { asset: z.string().describe('"HYPE", "USDC" or a launch token'), to: z.string().describe("0x address or a .ely name (looked up when sending)"), amount: amt('Amount, or "max"'), dry_run: dry },
       annotations: WRITE,
     },
     safe(async ({ asset, to, amount, dry_run }: { asset: string; to: string; amount: string; dry_run?: boolean }) => {
       const { spending } = needWallet();
-      if (!isAddress(to)) throw new Error("`to` must be a 0x address.");
+      const dest = await resolveRecipient(pub, to); // a .ely name resolves now: names expire and change hands
+      const named = dest.name ? `${dest.name} (${dest.address})` : dest.address;
+      to = dest.address;
       const a = await resolve(asset);
       const p = await priv();
       const kind = a.kind === "hype" ? "unshieldHype" : "transact";
@@ -986,12 +989,12 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const c = await cost(a, x);
       spending.check(c.budget, c.value);
       const arrives = await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [x] });
-      if (isDry(dry_run)) return { dryRun: true, wouldWithdraw: fmtAmt(a, x), arrives: fmtAmt(a, arrives), to };
+      if (isDry(dry_run)) return { dryRun: true, wouldWithdraw: fmtAmt(a, x), arrives: fmtAmt(a, arrives), to: named };
       return exclusive(async () => {
         const h = a.kind === "hype" ? await p.unshieldHype(to as Address, x) : sharedTok ? await (await shared()).unshield(a.token, x, to as Address) : await p.unshieldToken(a.token, to as Address, x);
         await receipt(h);
         spending.record(c.budget, c.value);
-        return { withdrew: fmtAmt(a, x), arrived: fmtAmt(a, arrives), to, privateBalance: fmtAmt(a, await balanceOf(a)), tx: link(h) };
+        return { withdrew: fmtAmt(a, x), arrived: fmtAmt(a, arrives), to: named, privateBalance: fmtAmt(a, await balanceOf(a)), tx: link(h) };
       });
     }),
   );
@@ -1109,13 +1112,13 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     {
       title: "Claim a payment link",
       description: "Claim the money in a claim link: into this account's private balance (default), or out to any 0x address. Also how a sender takes back a link nobody claimed. The relayer submits it and takes its fee from the link, so no gas is needed. On a link split into shares, it claims one share.",
-      inputSchema: { link: z.string().describe("The claim link"), passcode: z.string().optional(), to: z.string().optional().describe('"private" (default) or a 0x address'), dry_run: dry },
+      inputSchema: { link: z.string().describe("The claim link"), passcode: z.string().optional(), to: z.string().optional().describe('"private" (default), a 0x address or a .ely name'), dry_run: dry },
       annotations: WRITE,
     },
     safe(async ({ link: url, passcode, to, dry_run }: { link: string; passcode?: string; to?: string; dry_run?: boolean }) => {
       const { l, c } = await linkClient(url, passcode);
       const out = to && to !== "private";
-      if (out && !isAddress(to)) throw new Error('`to` must be "private" or a 0x address.');
+      if (out) to = (await resolveRecipient(pub, to!)).address; // a 0x address, or a .ely name resolved now
       const held: Asset[] = [];
       let spent = 0;
       for (const sym of ["HYPE", "USDC"]) {

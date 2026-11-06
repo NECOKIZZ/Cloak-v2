@@ -409,6 +409,8 @@ select.input { font-family: var(--font-body); font-size: 14px; }
 .note { font-size: 12.5px; color: var(--mute); margin-top: 12px; line-height: 1.55; }
 .err { color: var(--danger); font-size: 13px; margin-top: 10px; word-break: break-word; }
 .okmsg { color: var(--signal); font-size: 13px; margin-top: 10px; }
+.rcpt { margin: 6px 2px 0; }
+.rcpt-bad { color: var(--danger); }
 .okmsg a, .link { color: var(--signal); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .warn-t { color: var(--seal); }
 
