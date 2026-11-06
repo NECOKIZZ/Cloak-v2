@@ -3,10 +3,11 @@ import type { DropDetails, DropState } from "@cloakely/sdk";
 import { DROP_FACTORY, ESCROW_DROP_FACTORY, SPOT_BOOK } from "../config";
 import { dropsClient, imageSrc, pct, tokenMeta } from "../drops";
 import { friendly } from "../errors";
-import { duration, hype, short } from "../format";
+import { duration, hype } from "../format";
 import { Link } from "../router";
 import { Icon } from "../ui";
 import { isHidden } from "../hidden";
+import { Who } from "../who";
 
 export type Row = DropState & { details: DropDetails };
 
@@ -65,7 +66,7 @@ function Card({ s, now }: { s: Row; now: number }) {
         <DropArt details={s.details} name={s.name} size={52} className="dcard-avatar" />
         <div className="dcard-title">
           <b>{s.name}</b>
-          <span className="xs mute">by {short(s.creator)}{s.details.category ? ` · ${s.details.category}` : ""}</span>
+          <span className="xs mute">by <Who address={s.creator} />{s.details.category ? ` · ${s.details.category}` : ""}</span>
         </div>
         <div className="dcard-stats">
           <div><span className="xs mute">{sold ? "Sold at" : "Floor"}</span><b className="mono">{hype(sold ? s.publicPrice : s.floor)} <small>HYPE</small></b></div>
@@ -95,7 +96,7 @@ function Featured({ s, now }: { s: Row; now: number }) {
         <div className="dfeat-id">
           <span className="xs mute">{s.details.category ? `${s.details.category} · ` : ""}Elysium · {kindText(s)}</span>
           <h2>{s.name}</h2>
-          <span className="small mute">by {short(s.creator)}</span>
+          <span className="small mute">by <Who address={s.creator} /></span>
         </div>
         <div className="dfeat-stats">
           <div><span className="xs mute">{sold ? "Sold at" : "Floor"}</span><b className="mono">{hype(sold ? s.publicPrice : s.floor)} <small>HYPE</small></b></div>

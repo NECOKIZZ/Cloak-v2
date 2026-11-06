@@ -9,6 +9,7 @@ import { Link } from "../router";
 import { useApp } from "../state";
 import { Icon } from "../ui";
 import { coverStyle, DropArt, phaseBadge, phaseText, soldShare } from "./Drops";
+import { Who } from "../who";
 
 type Me = { wl: boolean; gtdSpots: number; gtdMinted: number };
 type Tab = "mint" | "items" | "details";
@@ -202,7 +203,7 @@ export function Drop({ drop }: { drop: Address }) {
           </div>
           <h1>{s.name} <span className="mute">{s.symbol}</span></h1>
           {one?.name && <p className="small">{one.name}{colName ? ` from ${colName}` : ""}, token #{String(esc!.tokenIds[0])}</p>}
-          <p className="small mute">by {addrLink(s.creator) ? <a className="link mono" href={addrLink(s.creator)} target="_blank" rel="noreferrer">{short(s.creator)}</a> : <span className="mono">{short(s.creator)}</span>} · {s.supply.toLocaleString()} {sale ? `spot${s.supply > 1 ? "s" : ""}` : esc ? `existing token${s.supply > 1 ? "s" : ""}${colName ? ` from ${colName}` : ""}` : "items"} · Elysium{!sale && s.royaltyBps ? ` · ${pct(s.royaltyBps)} royalty` : ""}</p>
+          <p className="small mute">by {addrLink(s.creator) ? <a className="link" href={addrLink(s.creator)} target="_blank" rel="noreferrer"><Who address={s.creator} /></a> : <Who address={s.creator} />} · {s.supply.toLocaleString()} {sale ? `spot${s.supply > 1 ? "s" : ""}` : esc ? `existing token${s.supply > 1 ? "s" : ""}${colName ? ` from ${colName}` : ""}` : "items"} · Elysium{!sale && s.royaltyBps ? ` · ${pct(s.royaltyBps)} royalty` : ""}</p>
         </div>
         {details.links && (
           <div className="dp-links">
@@ -253,7 +254,7 @@ export function Drop({ drop }: { drop: Address }) {
               {esc && <div className="row"><span className="mute">Token ids</span><span className="mono" style={{ overflowWrap: "anywhere", textAlign: "right" }}>{esc.tokenIds.slice(0, 40).map((x) => `#${x}`).join(" ")}{esc.tokenIds.length > 40 ? " …" : ""}</span></div>}
               <div className="row"><span className="mute">Token standard</span><span>ERC-721{s.royaltyBps ? " · ERC-2981" : ""}</span></div>
               <div className="row"><span className="mute">Chain</span><span>Elysium</span></div>
-              <div className="row"><span className="mute">Creator</span><a className="link mono" href={addrLink(s.creator)} target="_blank" rel="noreferrer">{short(s.creator)} ↗</a></div>
+              <div className="row"><span className="mute">Creator</span><a className="link" href={addrLink(s.creator)} target="_blank" rel="noreferrer"><Who address={s.creator} /> ↗</a></div>
               {!sale && <div className="row"><span className="mute">Royalty</span><span>{esc ? "the collection's own" : pct(s.royaltyBps)}</span></div>}
               {!esc && <div className="row"><span className="mute">Metadata</span><span className="mono" style={{ overflowWrap: "anywhere", textAlign: "right" }}>{!s.baseURI || s.baseURI.includes("/api/nft/") ? "served by Cloak" : s.baseURI}</span></div>}
               <div className="row"><span className="mute">Bid levels</span><span className="mono">{s.numTicks} · {hype(s.tickSize)} HYPE apart</span></div>

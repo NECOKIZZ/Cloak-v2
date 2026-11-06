@@ -2,10 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { createPortal } from "react-dom";
 import { Link, useRoute } from "./router";
 import { useApp, type Theme } from "./state";
-import { short } from "./format";
 import { addElysium } from "./wallet";
 import { useTokenMeta } from "./tokenMeta";
 import { FAUCET_URL } from "./walletModal";
+import { Who } from "./who";
 
 /** The hood monogram. `size` is its height; it takes the ink color (or the light one on dark panels). */
 export function Logo({ size = 28, inverse }: { size?: number; inverse?: boolean }) {
@@ -82,14 +82,14 @@ export function WalletButton({ up }: { up?: boolean }) {
     <div className={`wallet-menu ${up ? "up" : ""}`}>
       <button className="btn btn-ghost btn-sm wallet-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
         {walletInfo?.icon ? <img src={walletInfo.icon} alt="" width={18} height={18} /> : <span className="dot" />}
-        <span className="mono">{short(addr)}</span>
+        <Who address={addr} />
         <Icon.chev size={13} />
       </button>
       {open && (
         <>
           <div className="menu-scrim" onClick={() => setOpen(false)} />
           <div className="menu wallet-dd" onClick={() => setOpen(false)}>
-            <div className="wallet-dd-head"><span className="xs mute">Connected with {walletInfo?.name ?? "wallet"}</span><span className="mono small">{short(addr)}</span></div>
+            <div className="wallet-dd-head"><span className="xs mute">Connected with {walletInfo?.name ?? "wallet"}</span><span className="small"><Who address={addr} /></span></div>
             <button onClick={() => { navigator.clipboard?.writeText(addr).catch(() => {}); toast("Address copied"); }}><Icon.copy size={15} />Copy address</button>
             {EXPLORER && <a href={`${EXPLORER}/address/${addr}`} target="_blank" rel="noreferrer"><Icon.eye size={15} />View on explorer</a>}
             {provider && <button onClick={() => addElysium(provider).then(() => toast("Elysium testnet added to your wallet")).catch(() => toast("Your wallet didn't add the network"))}><Icon.plus size={15} />Add Elysium testnet</button>}

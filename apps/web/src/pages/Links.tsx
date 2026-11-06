@@ -10,6 +10,7 @@ import { txLink } from "../config";
 import { ago } from "./Claim";
 import { useApp } from "../state";
 import { Icon } from "../ui";
+import { Who } from "../who";
 
 type Tab = "send" | "request";
 
@@ -333,7 +334,6 @@ function LinkTokenPicker({ value, onChange, bals }: { value: LinkToken; onChange
 const TOKEN_NAMES: Record<LinkToken, string> = { HYPE: "Hyperliquid", USDC: "USD Coin" };
 const trim = (s: string) => (s.includes(".") ? s.replace(/(\.\d{0,6})\d*$/, "$1").replace(/\.?0+$/, "") : s);
 
-const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 function linkPill(l: SentLink, shares: number) {
   const n = l.claims?.length ?? 0;
@@ -452,7 +452,7 @@ function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => voi
                     {l.claims.slice(0, 6).map((c) => (
                       <li key={c.tx} className="xs">
                         <span className="mono">{c.amount} {c.token}</span>
-                        <span className="mute"> {c.to === "private" ? "into a private balance" : <>to <span className="mono">{short(c.to)}</span></>} · {ago(c.at)}</span>
+                        <span className="mute"> {c.to === "private" ? "into a private balance" : <>to <Who address={c.to} /></>} · {ago(c.at)}</span>
                         {txLink(c.tx) && <a className="link" href={txLink(c.tx)} target="_blank" rel="noreferrer"> ↗</a>}
                       </li>
                     ))}

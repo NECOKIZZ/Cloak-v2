@@ -8,6 +8,7 @@ import { sharedFor, useApp } from "./state";
 import { friendly } from "./errors";
 import { markDone } from "./guide";
 import { compressImage, encodeMeta, loadAllMeta } from "./tokenMeta";
+import { Who } from "./who";
 
 const WAD = 10n ** 18n;
 const errMsg = friendly;
@@ -351,7 +352,7 @@ export function MyBids({ s, wallet, bids, onDone }: { s: AuctionState; wallet: W
         </p>
       )}
       {bids.length === 0 ? (
-        <p className="mute small" style={{ margin: 0 }}>No bids from {short(wallet.account.address)} yet.</p>
+        <p className="mute small" style={{ margin: 0 }}>No bids from <Who address={wallet.account.address} /> yet.</p>
       ) : (
         <div className="bids">
           {bids.map((b) => {
