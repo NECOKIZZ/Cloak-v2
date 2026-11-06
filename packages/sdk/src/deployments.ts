@@ -100,7 +100,7 @@ export const deployments: Record<number, CloakDeployment> = {
     shared: "0x0ce2ecb0195e07899377e3d7b01e927ab3f87610",
     sharedBlock: 21426599n,
     sharedRouter: "0xe2a0769a5acbd987c1b6725247c56187a112dc7e",
-    sharedBatcher: "0xdc725bdeb0fca923bf2dc65232f54463b0f80820",
+    sharedBatcher: "0x11598b35fabc90fdd45d8a77ac41e2057c32ea14",
     // sealed NFT drops (Nov 3): GTD, then a sealed auction with the creator's price as the floor and a WL bid boost
     dropFactory: "0x2afb7d9a5baa02a2d72a7c761521fc66dce9d783",
     dropFactoryBlock: 22329730n,
@@ -108,7 +108,8 @@ export const deployments: Record<number, CloakDeployment> = {
     escrowDropFactory: "0x5f3efbfd5d15440947abfbfce7f2fcfffff71079",
     router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
     routerBlock: 19485063n,
-    batcher: "0xc69e4bca18020ae93bc9f17093985bfb139a3203",
+    // batchers replaced Nov 6: the crossing price stays within 2% of the price when a round opened
+    batcher: "0x54a503b0683af40aa3427b99292018f4d045d43f",
     migrator: "0x86c5d8035224493f10938aaa07b179be316dadf4",
     hypePool: "0x3ACB22829bb422446caaDd8546e65ab530A53031",
     whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",

@@ -39,7 +39,7 @@ Cloak **v4** (Oct 31): **permanent vaults**. Every asset has one vault, made onc
 | **CloakSeeder** (opens each launch's pool at the clearing price) | [`0x633aa82b806dafc0ae4c84418d23f3726139a88d`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x633aa82b806dafc0ae4c84418d23f3726139a88d) |
 | **CloakFactory**, v4's first (launches until Nov 2, Cloak pools; still lists) | [`0xa88df63d7d44acc66052e5cbe5ba9503bf940993`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xa88df63d7d44acc66052e5cbe5ba9503bf940993) |
 | **PrivateRouter** (private swaps) | [`0x343ab9a7aac93cee28321410510ea24417cc6386`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x343ab9a7aac93cee28321410510ea24417cc6386) |
-| **PrivateBatcher** (batch auctions) | [`0xc69e4bca18020ae93bc9f17093985bfb139a3203`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc69e4bca18020ae93bc9f17093985bfb139a3203) |
+| **PrivateBatcher** (batch auctions) | [`0x54a503b0683af40aa3427b99292018f4d045d43f`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x54a503b0683af40aa3427b99292018f4d045d43f) |
 | **CloakMigrator** (moves v1, v2 and v3 private balances into the vaults) | [`0x86c5d8035224493f10938aaa07b179be316dadf4`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x86c5d8035224493f10938aaa07b179be316dadf4) |
 | **HYPE vault** | [`0x3ACB22829bb422446caaDd8546e65ab530A53031`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3ACB22829bb422446caaDd8546e65ab530A53031) |
 | **USDC vault** (private USDC: shield, send, withdraw) | [`0x3d5cB722490D9908a118f8B3151f83fcE943E4F0`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3d5cB722490D9908a118f8B3151f83fcE943E4F0) |
@@ -103,7 +103,7 @@ Private balances usually stop at stablecoins. Cloak extends them to **trading la
 | **PrivateRouter** | [`0x343ab9a7aac93cee28321410510ea24417cc6386`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x343ab9a7aac93cee28321410510ea24417cc6386) |
 | HYPE vault | [`0x3ACB22829bb422446caaDd8546e65ab530A53031`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x3ACB22829bb422446caaDd8546e65ab530A53031) |
 | $CLOAK vault | [`0x19EaeA4A15F407D2520588d11645796179Cab4c7`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x19EaeA4A15F407D2520588d11645796179Cab4c7) |
-| **PrivateBatcher** (30 s rounds) | [`0xc69e4bca18020ae93bc9f17093985bfb139a3203`](https://elysium.kinetiq.xyz/testnet-explorer/address/0xc69e4bca18020ae93bc9f17093985bfb139a3203) |
+| **PrivateBatcher** (30 s rounds) | [`0x54a503b0683af40aa3427b99292018f4d045d43f`](https://elysium.kinetiq.xyz/testnet-explorer/address/0x54a503b0683af40aa3427b99292018f4d045d43f) |
 
 **A real private-trading run on testnet against v2** (`e2e/private.mjs`, 19/19 checks, real proofs, fees on):
 

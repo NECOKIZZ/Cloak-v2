@@ -28,6 +28,14 @@ Please report it privately. Don't open a public issue until a fix ships.
 
 ## Review log
 
+The current testnet deployment is v4: the v2 contracts below (config, auctions, vaults, router, batchers, migrator) carried forward, plus the shared launch-token vault with its router and batcher, Uniswap v4 launches through `CloakV4Hook`, and sealed NFT drops. Every contract is source-verified on the explorer.
+
+**Nov 6, 2026, external report (KupiaSec).** Fixed in both batchers, with regression tests in `contracts/test/PrivateBatcher.t.sol` and `contracts/test/SharedVault.t.sol`. The live batchers were replaced the same day (`0x54a5…d43f` and `0x1159…ea14`).
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | In a quiet round the average price could cover only a few seconds, so a price held that long could set the crossing price and move value between the two sides of the batch | The crossing price stays within the slippage bound (2%) of the price when the round opened, the net swap fills no worse than that band or the round refunds, and a round settles only once its average covers one full round |
+
 **Oct 25, 2026, internal review (v1 → v2).** Every finding is fixed in v2 and has a regression test in `contracts/test/V2.t.sol`.
 
 | Severity | Finding | Fix in v2 |

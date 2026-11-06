@@ -156,7 +156,7 @@ HYPE, USDC and every earlier launch keep their own vaults.
 - Fees, caps and setup mode: `CloakConfig` at `0x9fdf…167f` (`withdrawFeeBps`, `launchFeeBps`, `limitOf(token)`,
   `defaultLimitBps`, `auctionLimit`, `setupMode`).
 - Every contract and its start block: `readRegistry(publicClient, config)` in `@cloakely/sdk`.
-- Batch settings: `PrivateBatcher` at `0xc69e…3203` (`roundSecs`, `maxSlippageBps`, `refundAfter`, `minOrder`).
+- Batch settings: `PrivateBatcher` at `0x54a5…d43f` (`roundSecs`, `maxSlippageBps`, `refundAfter`, `minOrder`).
 - The Uniswap settings: `CloakSeeder` at `0x633a…a88d` (`uniFactory`, `weth`, `feeNum`).
 - Creator fees: `CloakFeeLocker` at `0x3b74…01d8` (`positions(id)`, `claimable(id)`, `claimableAmounts(id)`); a launch's
   `feePosition()` is its id there.
