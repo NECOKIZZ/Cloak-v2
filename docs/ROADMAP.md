@@ -212,6 +212,8 @@ At launch:
 
 ## Partner Launchpad Vault · testnet first, then mainnet
 
+**Status: planned, on hold while we talk with Ascend.** Mainnet, the external audit and the public ceremony come first. Once the partnership is final, it is built and tested on testnet, then audited before it goes to mainnet.
+
 A second private vault for tokens from approved outside launchpads, separate from Cloak's own shared vault. **Ascend is the first partner.** Every partner launchpad shares this one vault, so their users hide in the same crowd.
 
 **How it's built**
