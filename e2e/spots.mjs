@@ -110,11 +110,14 @@ ok(![a, b, c].some((w) => named.includes(w.addr.toLowerCase())), "no bidding wal
 // ── 7. after the deadline the list is final ──
 const rpc = (method, params) => fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
 const now = Number((await d.publicClient.getBlock()).timestamp);
+// the clock jumps 2 days here; put it back after, since later tests on this chain seal bids to drand rounds by chain time
+const snap = (await (await rpc("evm_snapshot", [])).json()).result;
 await rpc("evm_increaseTime", [deadline - now + 5]);
 await rpc("evm_mine", []);
 await fails(b.spots.setWallets(drop, bid[b.addr].id, [fresh()]), /deadline passed/, "after the deadline the list is final");
 await us.drops.claimAll(drop);
 ok((await us.drops.bids(drop)).every((x) => x.claimed), "winners got their receipt NFTs and losers their refunds");
+await rpc("evm_revert", [snap]);
 console.log(`\n${checks} checks passed`);
 await sleep(10);
 process.exit(0);

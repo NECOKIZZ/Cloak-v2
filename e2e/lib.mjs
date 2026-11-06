@@ -76,6 +76,8 @@ export async function waitChainTime(publicClient, t, { mine } = {}) {
 
 export async function waitDrand(round) {
   const t = drandRoundTime(round);
+  // a round far in the future means the chain's clock ran ahead of real time (an earlier evm_increaseTime): fail, don't hang
+  if (t - Date.now() / 1000 > 900) throw new Error(`drand round ${round} is ${Math.round(t - Date.now() / 1000)}s away: the chain clock is ahead of real time`);
   while (Date.now() / 1000 < t + 1) await sleep(500);
 }
 

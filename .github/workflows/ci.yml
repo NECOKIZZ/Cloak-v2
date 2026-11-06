@@ -23,6 +23,7 @@ jobs:
           node e2e/private.mjs
           node e2e/usdc.mjs
       - name: MCP server e2e on anvil (a fresh chain whose clock runs, so the keeper reveals and settles on its own)
+        timeout-minutes: 40
         run: |
           pkill anvil || true
           anvil --silent --balance 1000000 --block-time 1 &
