@@ -11,6 +11,8 @@ const { browser, ctx, page, base } = await open(process.env.BASE ? { base: proce
 await ctx.addInitScript(() => { localStorage.setItem("cloak.welcomed", "1"); localStorage.setItem("cloak.guide", JSON.stringify({ done: [], hidden: true, shown: true })); });
 const errs = [];
 page.on("pageerror", (e) => errs.push(e.message));
+const circuits = [];
+page.on("request", (r) => /\.(zkey|wasm)$/.test(r.url()) && /transaction/.test(r.url()) && circuits.push(r.url()));
 await page.goto(`${base}/app/portfolio/withdraw`, { waitUntil: "networkidle" });
 // connect and unlock the private account if the page asks
 for (let i = 0; i < 3; i++) {
@@ -45,6 +47,7 @@ if (process.env.WITHDRAW) {
   await done.first().waitFor({ timeout: 300000 });
   const msg = await done.first().innerText();
   ok(/withdrawn to/.test(msg), `a withdrawal to a fresh 0x address still works: ${msg}`);
+  ok(circuits.length > 0 && circuits.every((u) => u.startsWith("https://cdn.jsdelivr.net/")), `the proving files came from the CDN, not the site (${circuits.map((u) => u.split("/").pop()).join(", ")})`);
 }
 await page.setViewportSize({ width: 375, height: 800 });
 ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "the page fits a phone");
