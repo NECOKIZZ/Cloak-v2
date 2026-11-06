@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { Address } from "viem";
+import { Analytics } from "@vercel/analytics/react";
 import { AppShell } from "./pages/AppShell";
 import { Create } from "./pages/Create";
 import { Docs } from "./pages/Docs";
@@ -68,6 +69,7 @@ export function App() {
   return (
     <AppProvider>
       <Routes />
+      <Analytics />
     </AppProvider>
   );
 }
