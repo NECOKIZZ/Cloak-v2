@@ -186,7 +186,11 @@ export function Volume() {
               <p className="small mute">Shielded deposits, private swap and batch volume, and sealed-bid deposits, added up.</p>
             </div>
             <div className="vol-side">
-              <div><span className="mute small">In the vault right now</span><b>{hype(s.vault, 4)} HYPE</b></div>
+              <div>
+                <span className="mute small">HYPE in the vaults</span>
+                <b>{hype(s.vaultHype, 4)} HYPE</b>
+                {s.vault > s.vaultHype && <span className="xs mute" title="Launch tokens held privately, valued at each pool's current price. Thin pools can't absorb that much selling, so this isn't cash.">+ launch tokens worth {hype(s.vault - s.vaultHype, 2)} HYPE at pool prices</span>}
+              </div>
               <div><span className="mute small">Private transactions</span><b>{s.privateTxs.toLocaleString()}</b></div>
             </div>
           </div>
