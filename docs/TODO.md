@@ -45,7 +45,7 @@ What's open, who it's waiting on, and what has to land before mainnet (Nov 9). T
 - [ ] **External audit** of the contracts. Deposit caps stay on until it and the ceremony are done.
 - [ ] **Ownership to a multisig, then `endSetup()`.** After that, every loosening change waits 3 days.
 - [ ] **A dedicated treasury wallet**, and **separate keeper and relayer keys**.
-- [ ] **Source verification** on the explorer for every contract (v2 is still in progress).
+- [x] **Source verification** on the testnet explorer: every current (v4) contract, including each launch's auction, token and v4 market (Nov 6). Mainnet contracts get verified as they deploy.
 - [x] ~~Rehearse the mainnet deploy~~: v3 was rehearsed on a fork, then deployed (Oct 30).
 - [ ] **Mainnet USDC vault**, with the same caps until the audit.
 
