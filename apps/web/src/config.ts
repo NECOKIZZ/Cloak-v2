@@ -49,6 +49,7 @@ export const VAULTS = D?.vaults;
 export const BATCHER = (D?.batcher || undefined) as Address | undefined;
 /** Moves balances from every earlier deployment into the permanent vaults. */
 export const MIGRATOR = D?.migrator;
+/** The Cloak keeper (snapshot, status): VITE_KEEPER_URL from the host's settings, else the SDK's record (keeper.boblabs.tech). */
 export const KEEPER_URL: string | undefined = env.VITE_KEEPER_URL || D?.relayerUrl || undefined;
 /** Cloak keeper with `/relay` (submits private trades so the trader's wallet never appears). */
 export const RELAYER_URL: string | undefined = env.VITE_RELAYER_URL || KEEPER_URL;

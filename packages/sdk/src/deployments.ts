@@ -113,7 +113,7 @@ export const deployments: Record<number, CloakDeployment> = {
     migrator: "0x86c5d8035224493f10938aaa07b179be316dadf4",
     hypePool: "0x3ACB22829bb422446caaDd8546e65ab530A53031",
     whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
-    relayerUrl: "https://cloak-keeper.onrender.com",
+    relayerUrl: "https://keeper.boblabs.tech",
     circuitsUrl: "https://cloak.boblabs.tech/circuits",
     assets: [
       // Elysium testnet USDC (bridged from Circle's USDC on HyperEVM): private sends and withdrawals

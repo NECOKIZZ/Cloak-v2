@@ -56,7 +56,7 @@ const fund = async (to, v) => {
 const prover = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
 
 let keeper;
-let KEEPER = "https://cloak-keeper.onrender.com";
+let KEEPER = "https://keeper.boblabs.tech";
 if (local) {
   KEEPER = "http://127.0.0.1:3996";
   keeper = spawn(process.execPath, [`${root}services/keeper/index.mjs`], {

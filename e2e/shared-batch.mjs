@@ -58,7 +58,7 @@ const prover = createProver(circ("transaction2x2.wasm"), circ("transaction2x2_fi
 const sharedProver = createSharedProver(circ("transactionMA2x2.wasm"), circ("transactionMA2x2_final.zkey"));
 
 let keeper;
-let KEEPER = "https://cloak-keeper.onrender.com";
+let KEEPER = "https://keeper.boblabs.tech";
 if (local) {
   KEEPER = "http://127.0.0.1:3994";
   keeper = spawn(process.execPath, [`${root}services/keeper/index.mjs`], {

@@ -177,6 +177,7 @@ Selective disclosure, applied to tokens.
 - **Auctions of existing NFTs (Nov 4):** any holder lists tokens from any Elysium collection; they sit in escrow in the auction contract, sell in a sealed auction, and winners get tokens by a draw fixed when the bids open. Unsold tokens go back.
 - **Next for drops:** link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
 - **`@cloakely/sdk` and `@cloakely/mcp` 0.8.4** are on npm: everything in 0.8.3 (drops, WL spot sales, drop tools in the MCP, Uniswap v4 launches), plus the fixed batchers, withdrawals to `.ely` names, and proving files from a CDN with the site as a fallback.
+- **`@cloakely/sdk` and `@cloakely/mcp` 0.8.5**: the keeper and relayer moved to a permanent address, `keeper.boblabs.tech`, so agents and apps keep working through any future hosting move.
 
 ---
 

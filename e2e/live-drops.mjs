@@ -11,7 +11,7 @@ import { clients, parseEther, sleep, waitChainTime, waitDrand } from "./lib.mjs"
 const chain = elysiumTestnet;
 const RPC = process.env.RPC_URL || chain.rpcUrls.default.http[0];
 const SITE = process.env.SITE || "https://cloak.boblabs.tech";
-const KEEPER = process.env.KEEPER_URL || "https://cloak-keeper.onrender.com";
+const KEEPER = process.env.KEEPER_URL || "https://keeper.boblabs.tech";
 const dep = deploymentFor(chain.id);
 let checks = 0;
 const ok = (c, m) => {

@@ -17,7 +17,7 @@ const RPC = elysiumTestnet.rpcUrls.default.http[0];
 const root = new URL("..", import.meta.url).pathname;
 const v4 = JSON.parse(readFileSync(`${root}deployments/elysium-testnet-v4.json`, "utf8"));
 const chain = elysiumTestnet;
-const KEEPER = "https://cloak-keeper.onrender.com";
+const KEEPER = "https://keeper.boblabs.tech";
 const PAIR = parseAbi([
   "function getReserves() view returns (uint112, uint112, uint32)",
   "function token0() view returns (address)",

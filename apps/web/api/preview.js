@@ -11,7 +11,7 @@ import { Cloak, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
 export const config = { maxDuration: 15 };
 
 const SITE = "https://cloak.boblabs.tech";
-const KEEPER = "https://cloak-keeper.onrender.com";
+const KEEPER = "https://keeper.boblabs.tech";
 const FALLBACK_IMG = `${SITE}/og.jpg`;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

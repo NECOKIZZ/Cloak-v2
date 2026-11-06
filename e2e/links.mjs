@@ -9,7 +9,7 @@ import { CloakPrivate, buildClaimLink, linkCheck, openLinkKeys, createProver, el
 
 const root = new URL("../", import.meta.url).pathname;
 const v4 = JSON.parse(readFileSync(`${root}deployments/elysium-testnet-v4.json`, "utf8"));
-const KEEPER = process.env.KEEPER_URL || "https://cloak-keeper.onrender.com";
+const KEEPER = process.env.KEEPER_URL || "https://keeper.boblabs.tech";
 const pub = createPublicClient({ chain: elysiumTestnet, transport: http(), pollingInterval: 500 });
 const circ = (f) => readFileSync(`${root}apps/web/public/circuits/${f}`);
 const prover = createProver(circ("transaction2x2.wasm"), circ("transaction2x2_final.zkey"));

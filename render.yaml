@@ -4,7 +4,12 @@ services:
     runtime: node
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cloakely/sdk build
     startCommand: node services/keeper/index.mjs
+    region: oregon
+    healthCheckPath: /health
+    # served at https://keeper.boblabs.tech (custom domain, a CNAME to this service): the site and SDK use that address
     envVars:
+      - key: NODE_VERSION
+        value: "22"
       - key: KEEPER_PK
         sync: false
       # Every contract address comes from CloakConfig's registry (Cloak v4 on Elysium testnet:
