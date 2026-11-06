@@ -210,6 +210,46 @@ At launch:
 
 ---
 
+## Partner Launchpad Vault · testnet first, then mainnet
+
+A second private vault for tokens from approved outside launchpads, separate from Cloak's own shared vault. **Ascend is the first partner.** Every partner launchpad shares this one vault, so their users hide in the same crowd.
+
+**How it's built**
+- **Same circuit and verifier as the shared vault** (`transactionMA2x2`), so no new circuit and no new ceremony.
+- **A small variant of `SharedVault`, called `PartnerVault`.** Deposits, withdrawals, proofs, the tree and the per-token totals stay the same code. Two things change, because today's `admit()` only understands Cloak's own factory and auctions, and it checks Cloak's own list of launch factories:
+  - admission goes through approved launchpad adapters instead
+  - it adds a cap per launchpad and records which launchpad each token came from
+- **Pluggable admission.** Each launchpad gets one small read-only adapter contract, like `CloakFactoryList` was. It answers whether a token came from that launchpad's factory and has graduated, and which pool it trades in. Adding another launchpad later means writing its adapter and approving it, with no redeploy.
+- **Admission rule per token:**
+  - it came from an approved launchpad's factory
+  - it has graduated to a DEX pool
+  - its liquidity is locked or burned, so liquidity that can be added and pulled right away doesn't count
+- **Approving a launchpad goes through `CloakConfig`:** instant during setup, behind the 3-day timelock after `endSetup()`. Removing one is instant and only stops new admissions. Tokens already admitted stay admitted, so withdrawals can never be blocked.
+- **Caps:** the existing per-token caps, plus a total cap per launchpad.
+- **Source on chain:** the vault records each token's launchpad, so the site can show an "Ascend" section and labels.
+- **Token review before approving any launchpad.** Check its token template for:
+  - transfer fees
+  - rebasing
+  - blacklists
+  - pausing
+  - upgradeability
+  - transfer callbacks
+
+  Any of these can break the vault's accounting or trap that token's withdrawals, so a template with them is refused or needs a specific mitigation.
+- **Markets:**
+  - Reuse `CloakV2Market` when tokens graduate to Uniswap v2 style pools. Otherwise write a market adapter.
+  - Batch rounds only for pools that record a time-weighted price, with the Nov 6 batcher bounds.
+- **Audit:** `PartnerVault` and the adapter mechanism join the external audit scope with KupiaSec.
+
+**Testnet**
+1. Read Ascend's factory and token template: how it records tokens and graduation, where they trade, and the token review above.
+2. Build `PartnerVault`, the adapter interface, the Ascend adapter and, if needed, a market adapter, with tests (including hostile tokens and a removed launchpad whose holders still withdraw).
+3. Deploy on testnet, approve Ascend during setup, then run a live end-to-end test: admit, shield, private send, swap, batch, withdraw.
+4. Site: an Ascend section and labels, then an SDK and MCP release.
+
+**Mainnet**
+- After the testnet run and the audit, on the mainnet config. After `endSetup()`, each new launchpad waits the 3-day timelock, and deposit caps stay on until the audit and the ceremony are done.
+
 ## Later · protocol (around and after mainnet)
 
 Already planned:
