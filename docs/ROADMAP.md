@@ -176,7 +176,7 @@ Selective disclosure, applied to tokens.
 - **Drop pages redesigned (Nov 4):** banner, collection picture, links, category, an items tab that previews the collection's own metadata and traits, a mint schedule and progress bar; a gallery list with a featured drop.
 - **Auctions of existing NFTs (Nov 4):** any holder lists tokens from any Elysium collection; they sit in escrow in the auction contract, sell in a sealed auction, and winners get tokens by a draw fixed when the bids open. Unsold tokens go back.
 - **Next for drops:** link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
-- **`@cloakely/sdk` and `@cloakely/mcp` 0.8.3** are on npm with drops, WL spot sales, drop tools in the MCP, and Uniswap v4 launches (pool type, creator fees through the hook, quotes at the pool's current fee).
+- **`@cloakely/sdk` and `@cloakely/mcp` 0.8.4** are on npm: everything in 0.8.3 (drops, WL spot sales, drop tools in the MCP, Uniswap v4 launches), plus the fixed batchers, withdrawals to `.ely` names, and proving files from a CDN with the site as a fallback.
 
 ---
 
@@ -201,6 +201,8 @@ on Nov 9. Official Uniswap v4 is live there (see [V4-AND-STOCKS.md](V4-AND-STOCK
 - **Our own WHYPE on mainnet.** Mainnet's WHYPE (the one Uniswap's PositionManager uses) is an upgradeable proxy, so the HYPE vault uses Cloak's fixed WHYPE instead.
 - **Vault model: one vault per asset (v4), plus a testnet experiment (Nov 2).** New Uniswap launches now share one launch-token vault with its own circuit, so a private send hides which token moved. HYPE and USDC are never in it, and the contract keeps a separate total per token. Whether mainnet keeps it is decided after the experiment ([PRIVACY-LAYER.md](PRIVACY-LAYER.md), section 6).
 - **Private USDC on mainnet:** a vault for mainnet USDC, with the same caps until the audit.
+- **`.ely` names on mainnet:** add the Elysium Name Service's mainnet contract once it's published (`ELY_NAMES` in the SDK), so withdrawals to names and names shown in place of addresses work there too.
+- **`.ely` names for agents and links:** agents can already withdraw to a name over the MCP (`withdraw 1 HYPE to bona.ely`). Next, payment links show who sent and who claimed them by name, and the MCP's read tools return names next to addresses.
 
 At launch:
 - **Deposit caps stay on** until the external audit and the public ceremony are done.
