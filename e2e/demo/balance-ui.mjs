@@ -41,16 +41,20 @@ async function watchTotal(ms) {
 
 await page.goto(`${base}/app`, { waitUntil: "networkidle" });
 await unlock();
+const t1 = Date.now();
 const first = await watchTotal(240000);
+console.log(`  first visit synced in ${((Date.now() - t1) / 1000).toFixed(1)}s after unlocking`);
 console.log("  first visit:", first.join(" → "));
 ok(first[0] === "<skeleton>", "the first visit shows a placeholder while the vaults sync");
 ok(first.filter((x) => x !== "<skeleton>").length === 1, "then the total appears once, with every vault counted (no climbing)");
 const rows = await page.locator(".asset-row").count();
 ok(rows > 0 && (await page.locator(".asset-row .skel").count()) === 0, `${rows} asset rows`);
 ok((await page.locator(".asset-row a", { hasText: "Withdraw" }).count()) === rows, "every row can be withdrawn from");
-ok(await page.evaluate(() => Object.keys(localStorage).some((k) => k.startsWith("cloak.bals.v1."))), "the balance is saved on this device");
-const blob = await page.evaluate(() => localStorage.getItem(Object.keys(localStorage).find((k) => k.startsWith("cloak.bals.v1."))));
-ok(!/HYPE|0x[0-9a-f]{40}/i.test(blob.replace(/"(iv|ct)":"0x[0-9a-f]+"/g, "")), "and it is encrypted (no token or amount readable)");
+const stored = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => /^cloak\.(balance|sync)\.v1\./.test(k)).map((k) => [k.split(".")[1], localStorage.getItem(k)])));
+ok(!!stored.balance, "the balance is saved on this device");
+ok(!!stored.sync, `and how far the vault scan got (${Math.round((stored.sync?.length ?? 0) / 1024)} KB)`);
+const opaque = (b) => { try { const o = JSON.parse(b); return Object.keys(o).join() === "iv,ct" && !/HYPE|0x[0-9a-f]{8}/i.test(atob(o.ct)); } catch { return false; } };
+ok(opaque(stored.balance) && opaque(stored.sync), "both are encrypted (no token, amount or note readable)");
 
 // second visit: the saved balance at once
 await page.reload({ waitUntil: "domcontentloaded" });
@@ -60,6 +64,8 @@ await page.locator(".wallet-total span.fade-in").waitFor({ timeout: 60000 });
 const fast = Date.now() - t;
 const shown = await page.locator(".wallet-total").innerText();
 ok(shown === first.at(-1) || /^\$/.test(shown), `the next visit shows ${shown} right after unlocking (${(fast / 1000).toFixed(1)}s, including the signature)`);
+await page.waitForFunction(() => !document.querySelector(".updating"), null, { timeout: 120000 });
+console.log(`  next visit fully synced ${((Date.now() - t) / 1000).toFixed(1)}s after unlocking (it starts from the saved scan)`);
 
 // swap out of a token from its row
 const row = page.locator(".asset-row").filter({ has: page.locator("a", { hasText: "Swap" }) }).first();

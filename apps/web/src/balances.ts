@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { keccak256, toBytes, toHex, type Address } from "viem";
-import type { CloakPrivate, SharedVaultClient } from "@cloakely/sdk";
-import { ASSETS, CHAIN_ID } from "./config";
+import { type Address } from "viem";
+import { fetchLeaves, type CloakPrivate, type SharedVaultClient } from "@cloakely/sdk";
+import { openBox, sealBox } from "./deviceBox";
+import { ASSETS, KEEPER_URL } from "./config";
 import { useApp } from "./state";
 import { useMarkets, type Market } from "./pages/markets";
 
@@ -26,38 +27,47 @@ interface Store {
   again: boolean;
   subs: Set<() => void>;
   ready: Promise<void>;
+  /** the vault scan's starting point, loaded once (see restoreSync) */
+  restored?: Promise<void>;
+  /** the sync progress last saved on this device */
+  savedSync?: string;
 }
 
 const stores = new WeakMap<CloakPrivate, Store>();
 
-// ───────────── the encrypted copy on this device ─────────────
-
-const slot = (p: CloakPrivate) => `cloak.bals.v1.${CHAIN_ID}.${keccak256(p.keys.encPub).slice(2, 18)}`;
-async function aesKey(p: CloakPrivate) {
-  const raw = toBytes(keccak256(new Uint8Array([...toBytes("cloak-balance-cache-v1"), ...p.keys.encPriv])));
-  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
-}
+// ───────────── the encrypted copies on this device ─────────────
 
 async function readSaved(p: CloakPrivate): Promise<Bals | null> {
+  const s = await openBox(p, "balance");
+  if (!s) return null;
   try {
-    const s = localStorage.getItem(slot(p));
-    if (!s) return null;
-    const { iv, ct } = JSON.parse(s);
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: toBytes(iv) }, await aesKey(p), toBytes(ct));
-    const o = JSON.parse(new TextDecoder().decode(plain)) as Record<string, string>;
-    return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, BigInt(v)]));
+    return Object.fromEntries(Object.entries(JSON.parse(s) as Record<string, string>).map(([k, v]) => [k, BigInt(v)]));
   } catch {
-    return null; // missing, blocked or from another key: just sync
+    return null;
   }
 }
+const writeSaved = (p: CloakPrivate, b: Bals) => sealBox(p, "balance", JSON.stringify(Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.toString()]))));
 
-async function writeSaved(p: CloakPrivate, b: Bals) {
-  try {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const plain = new TextEncoder().encode(JSON.stringify(Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.toString()]))));
-    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(p), plain));
-    localStorage.setItem(slot(p), JSON.stringify({ iv: toHex(iv), ct: toHex(ct) }));
-  } catch {} // full or blocked storage: the copy is only a speed-up
+/**
+ * Where the vault scan starts on unlock: this device's saved sync progress (only new blocks get scanned), else the
+ * keeper's public note list (one download instead of every vault's history, used only if it matches a root the vault
+ * knows), else the chain from the start.
+ */
+async function restoreSync(p: CloakPrivate, shared: SharedVaultClient | null, pools: Address[]) {
+  const saved = await openBox(p, "sync");
+  if (saved) {
+    try {
+      const o = JSON.parse(saved) as { p?: string; s?: string };
+      const ok = (o.p ? await p.importSync(o.p) : false) && (!shared || !o.s || (await shared.importSync(o.s)));
+      if (ok) return;
+    } catch {}
+  }
+  if (!KEEPER_URL) return;
+  const leaves = await fetchLeaves(KEEPER_URL);
+  await Promise.all([
+    ...pools.map((pool) => (leaves.get(pool.toLowerCase()) ? p.seedLeaves(pool, leaves.get(pool.toLowerCase())!).catch(() => false) : false)),
+    ...(shared && leaves.get(shared.vault.toLowerCase()) ? [shared.seedLeaves(leaves.get(shared.vault.toLowerCase())!).catch(() => false)] : []),
+  ]);
 }
 
 // ───────────── the store ─────────────
@@ -94,6 +104,7 @@ async function sync(p: CloakPrivate, shared: SharedVaultClient | null, markets: 
     let hypeOk = false;
     // hypeMarket throws while the account is still loading its markets right after unlocking
     const jobs: [string, Address][] = [["HYPE", p.hypeMarket.pool], ...markets.filter((m) => !m.shared).map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
+    await (s.restored ??= restoreSync(p, shared, jobs.map(([, pool]) => pool)).catch(() => {}));
     await Promise.all([
       ...jobs.map(([k, pool]) => p.balance(pool).then((b) => (put(k)(b), k === "HYPE" && (hypeOk = true))).catch(() => {})),
       // the shared launch-token vault: one scan, every token's balance
@@ -105,6 +116,12 @@ async function sync(p: CloakPrivate, shared: SharedVaultClient | null, markets: 
     s.loaded = true;
     s.synced = true;
     if (changed) writeSaved(p, next);
+    // and how far the scan got, so the next visit only reads new blocks
+    const st = JSON.stringify({ p: p.exportSync(), s: shared?.exportSync() });
+    if (st !== s.savedSync) {
+      s.savedSync = st;
+      sealBox(p, "sync", st);
+    }
   } catch {
   } finally {
     s.syncing = false;

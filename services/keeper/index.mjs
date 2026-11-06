@@ -20,6 +20,7 @@
 //   BATCHER_BLOCK/MIGRATOR give them directly; with CONFIG those are ignored.
 import { createServer } from "node:http";
 import { startSnapshots } from "./snapshot.mjs";
+import { startLeaves } from "./leaves.mjs";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
@@ -74,6 +75,9 @@ const SHARED_BATCHER = reg?.sharedBatcher;
 const SHARED_BATCHER_BLOCK = reg?.entries.findLast((e) => e.kind === "sharedBatcher")?.startBlock ?? SHARED_BLOCK ?? 0n;
 // v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
 const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
+
+// every vault's public note list, for an app's fast first sync (GET /leaves)
+const leaves = reg ? startLeaves(publicClient, { vaults: VAULTS, vaultsBlock: reg.vaultsBlock, shared: SHARED, sharedBlock: SHARED_BLOCK }) : null;
 
 // public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
 const snapshot = reg && process.env.SNAPSHOT !== "0"
@@ -664,6 +668,24 @@ createServer((req, res) => {
     const gz = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
     res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, max-age=10", "x-content-type-options": "nosniff", ...(gz ? { "content-encoding": "gzip" } : {}) });
     return res.end(gz ? snapshot.gz() : body);
+  }
+  if (req.method === "GET" && path === "/leaves") {
+    if (!leaves) return send(req, res, 404, { error: "not found" });
+    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
+    const pool = new URL(req.url, "http://x").searchParams.get("pool");
+    if (pool && !/^0x[0-9a-fA-F]{40}$/.test(pool)) return send(req, res, 400, { error: "bad pool" });
+    leaves
+      .get(pool)
+      .then((b) => {
+        if (!b) return send(req, res, 404, { error: "unknown vault" });
+        const origin = req.headers.origin;
+        const allow = ORIGINS.includes("*") ? "*" : origin && ORIGINS.includes(origin) ? origin : ORIGINS[0];
+        const gz = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
+        res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, max-age=10", "x-content-type-options": "nosniff", ...(gz ? { "content-encoding": "gzip" } : {}) });
+        res.end(gz ? b.gz : b.json);
+      })
+      .catch(() => send(req, res, 503, { error: "The network didn't answer. Try again in a moment." }));
+    return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
     return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, shared: SHARED ?? null, sharedRouter: SHARED_ROUTER ?? null, sharedBatcher: SHARED_BATCHER ?? null, claimDelay: CLAIM_DELAY });

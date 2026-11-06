@@ -3,6 +3,7 @@ import { cloakAuctionAbi, cloakPairAbi, sharedBatcherAbi, sharedRouterAbi, share
 import { Cloak, type Wallet } from "../cloak.js";
 import { MAIN_KEY, encryptFullMemo, encryptRouterMemo, noteCommitment, nullifierOf, parseCloakAddress, randomField, randomKeyIndex, readMemo } from "./crypto.js";
 import { MerkleTree } from "./tree.js";
+import { fromJson, leavesRoot, toJson, type PublicLeaves } from "./syncState.js";
 import type { ProofArgs, Prover } from "./prover.js";
 import { ORDER_DATA_ABI, buildTransaction, selectNotes, splitStandard, type ExtData, type OwnedNote } from "./tx.js";
 import type { CloakPrivate, RelayQuote, Status } from "./client.js";
@@ -121,6 +122,8 @@ export class SharedVaultClient {
   private scannedUpTo = 0;
   private notes: OwnedNote[] = [];
   private nextBlock: bigint;
+  /** Started from a cache rather than the chain: a gap means rescan. */
+  private seeded = false;
 
   constructor(
     readonly priv: CloakPrivate,
@@ -143,14 +146,18 @@ export class SharedVaultClient {
   async loadTokens(): Promise<SharedToken[]> {
     const c = { address: this.vault, abi: sharedVaultAbi } as const;
     const n = Number(await this.pub.readContract({ ...c, functionName: "tokensCount" }));
-    for (let i = this.tokens.length; i < n; i++) {
-      const token = await this.pub.readContract({ ...c, functionName: "tokens", args: [BigInt(i)] });
-      const [market, symbol] = await Promise.all([
-        this.pub.readContract({ ...c, functionName: "marketOf", args: [token] }),
-        this.pub.readContract({ address: token, abi: ERC20, functionName: "symbol" }).catch(() => "?"),
-      ]);
-      this.tokens.push({ token, market, symbol });
-    }
+    const from = this.tokens.length;
+    const more = await Promise.all(
+      Array.from({ length: Math.max(0, n - from) }, async (_, j) => {
+        const token = await this.pub.readContract({ ...c, functionName: "tokens", args: [BigInt(from + j)] });
+        const [market, symbol] = await Promise.all([
+          this.pub.readContract({ ...c, functionName: "marketOf", args: [token] }),
+          this.pub.readContract({ address: token, abi: ERC20, functionName: "symbol" }).catch(() => "?"),
+        ]);
+        return { token, market, symbol };
+      }),
+    );
+    if (this.tokens.length === from) this.tokens.push(...more); // a parallel call may have loaded them already
     return this.tokens;
   }
 
@@ -177,7 +184,15 @@ export class SharedVaultClient {
   }
 
   /** Pull new notes, find which are ours and which token each holds, refresh spent flags. */
+  private inflight?: Promise<OwnedNote[]>;
+
+  /** One sync at a time (callers at the same moment share it), so a new note is never counted twice. */
   async sync(): Promise<OwnedNote[]> {
+    this.inflight ??= this.syncOnce().finally(() => (this.inflight = undefined));
+    return this.inflight;
+  }
+
+  private async syncOnce(): Promise<OwnedNote[]> {
     if (!this.tokens.length) await this.loadTokens();
     const latest = await this.pub.getBlockNumber({ cacheTime: 0 });
     if (latest >= this.nextBlock) {
@@ -192,6 +207,15 @@ export class SharedVaultClient {
     }
     let n = 0;
     while (n < this.leaves.length && this.leaves[n].index === n) n++;
+    if (n < this.leaves.length && this.seeded) {
+      // the cache stopped short of where the chain picked up: forget it and scan from the start
+      this.leaves = [];
+      this.scannedUpTo = 0;
+      this.notes = [];
+      this.nextBlock = this.fromBlock;
+      this.seeded = false;
+      return this.syncOnce();
+    }
     let reloaded = false;
     for (const l of this.leaves.slice(this.scannedUpTo, n)) {
       const m = readMemo(this.priv.keys.encPriv, l.memo);
@@ -213,6 +237,47 @@ export class SharedVaultClient {
     const flags = await Promise.all(this.notes.map((x) => (x.spent ? true : this.pub.readContract({ address: this.vault, abi: sharedVaultAbi, functionName: "isSpent", args: [x.nullifier] }))));
     this.notes.forEach((x, i) => (x.spent = Boolean(flags[i])));
     return this.notes.filter((x) => !x.spent);
+  }
+
+  /** Start from public leaves (a keeper's GET /leaves) if nothing is synced yet and they hash to a root the vault knows. */
+  async seedLeaves(src: PublicLeaves): Promise<boolean> {
+    if (this.leaves.length || this.scannedUpTo) return false;
+    const root = await leavesRoot(src.leaves);
+    if (root === null) return false;
+    const known = await this.pub.readContract({ address: this.vault, abi: sharedVaultAbi, functionName: "isKnownRoot", args: [root] }).catch(() => false);
+    if (!known) return false;
+    this.leaves = src.leaves.map((l) => ({ ...l }));
+    this.nextBlock = src.block + 1n;
+    this.seeded = true;
+    return true;
+  }
+
+  /** What sync has learned, to keep on this device (encrypted) and hand back to `importSync`. No spending keys inside. */
+  exportSync(): string {
+    return toJson({ v: 1, leaves: this.leaves.map((l, i) => (i < this.scannedUpTo ? { ...l, memo: "0x" } : l)), scannedUpTo: this.scannedUpTo, nextBlock: this.nextBlock, notes: this.notes.map(({ privKey: _, ...n }) => n) });
+  }
+
+  /** Load a state from `exportSync` (ignored if anything is synced already, or if a note doesn't match this account). */
+  async importSync(data: string): Promise<boolean> {
+    if (this.leaves.length || this.scannedUpTo) return false;
+    try {
+      const o = fromJson<{ v: number; leaves: { index: number; commitment: bigint; memo: Hex }[]; scannedUpTo: number; nextBlock: bigint; notes: Omit<OwnedNote, "privKey">[] }>(data);
+      if (o.v !== 1) return false;
+      const notes: OwnedNote[] = [];
+      for (const n of o.notes) {
+        const key = await this.priv.keys.key(n.keyIndex);
+        if (key.pubKey !== n.pubKey) return false;
+        notes.push({ ...n, privKey: key.privKey } as OwnedNote);
+      }
+      this.leaves = o.leaves;
+      this.scannedUpTo = o.scannedUpTo;
+      this.nextBlock = o.nextBlock;
+      this.notes = notes;
+      this.seeded = true;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Private balance of `token` in the shared vault. */

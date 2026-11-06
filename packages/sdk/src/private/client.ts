@@ -19,6 +19,7 @@ import {
   readMemo,
 } from "./crypto.js";
 import { MerkleTree } from "./tree.js";
+import { fromJson, leavesRoot, toJson, type PublicLeaves } from "./syncState.js";
 import type { ProofArgs, Prover } from "./prover.js";
 import { MOVE_DATA_ABI, ORDER_DATA_ABI, SWAP_DATA_ABI, buildTransaction, selectNotes, splitStandard, type ExtData, type OwnedNote } from "./tx.js";
 
@@ -79,6 +80,8 @@ interface PoolState {
   scannedUpTo: number;
   fromBlock: bigint;
   notes: OwnedNote[];
+  /** Started from a cache (public leaves or this device's saved state) rather than the chain: a gap means rescan. */
+  seeded?: boolean;
 }
 
 const json = (v: unknown) => JSON.stringify(v, (_, x) => (typeof x === "bigint" ? x.toString() : x));
@@ -277,8 +280,21 @@ export class CloakPrivate {
     return s;
   }
 
-  /** Pull new leaves from the pool's events, trial-decrypt them, and refresh spent flags. */
+  private inflight = new Map<string, Promise<OwnedNote[]>>();
+
+  /** Pull new leaves from the pool's events, trial-decrypt them, and refresh spent flags. One sync per pool at a time
+   * (callers at the same moment share it), so a new note is never counted twice. */
   async sync(pool: Address): Promise<OwnedNote[]> {
+    const k = pool.toLowerCase();
+    let p = this.inflight.get(k);
+    if (!p) {
+      p = this.syncOnce(pool).finally(() => this.inflight.delete(k));
+      this.inflight.set(k, p);
+    }
+    return p;
+  }
+
+  private async syncOnce(pool: Address): Promise<OwnedNote[]> {
     const s = this.state(pool);
     const latest = await this.publicClient.getBlockNumber({ cacheTime: 0 });
     if (latest >= s.fromBlock) {
@@ -301,6 +317,11 @@ export class CloakPrivate {
     // only the contiguous prefix forms a valid tree
     let n = 0;
     while (n < s.leaves.length && s.leaves[n].index === n) n++;
+    if (n < s.leaves.length && s.seeded) {
+      // the cache stopped short of where the chain picked up: forget it and scan this vault from the start
+      this.pools.delete(pool.toLowerCase());
+      return this.syncOnce(pool);
+    }
     for (const l of s.leaves.slice(s.scannedUpTo, n)) {
       const m = readMemo(this.keys.encPriv, l.memo);
       if (!m || m.amount === 0n) continue;
@@ -316,6 +337,55 @@ export class CloakPrivate {
     );
     s.notes.forEach((x, i) => (x.spent = Boolean(flags[i])));
     return s.notes.filter((x) => !x.spent);
+  }
+
+  /**
+   * Start `pool` from public leaves (a keeper's GET /leaves) instead of scanning its history. Used only if nothing is
+   * synced yet and the leaves hash to a root the vault knows; returns whether they were used.
+   */
+  async seedLeaves(pool: Address, src: PublicLeaves): Promise<boolean> {
+    const s = this.state(pool);
+    if (s.leaves.length || s.scannedUpTo) return false;
+    const root = await leavesRoot(src.leaves);
+    if (root === null) return false;
+    const known = await this.publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "isKnownRoot", args: [root] }).catch(() => false);
+    if (!known) return false;
+    s.leaves = src.leaves.map((l) => ({ ...l }));
+    s.fromBlock = src.block + 1n;
+    s.seeded = true;
+    return true;
+  }
+
+  /**
+   * What sync has learned so far, to keep on this device (encrypted: it lists your notes) and hand back to
+   * `importSync` next time, so only new blocks are scanned. Spending keys are left out and derived again on import.
+   */
+  exportSync(): string {
+    // scanned leaves keep only their commitment (the tree needs it; the memo was already read)
+    const pools = [...this.pools].map(([k, s]) => [k, { leaves: s.leaves.map((l, i) => (i < s.scannedUpTo ? { ...l, memo: "0x" } : l)), scannedUpTo: s.scannedUpTo, fromBlock: s.fromBlock, notes: s.notes.map(({ privKey: _, ...n }) => n) }]);
+    return toJson({ v: 1, pools });
+  }
+
+  /** Load a state from `exportSync` (this account's only: notes that don't match its keys are dropped). */
+  async importSync(data: string): Promise<boolean> {
+    try {
+      const o = fromJson<{ v: number; pools: [string, Omit<PoolState, "notes"> & { notes: Omit<OwnedNote, "privKey">[] }][] }>(data);
+      if (o.v !== 1) return false;
+      for (const [k, st] of o.pools) {
+        if (this.pools.has(k)) continue;
+        const notes: OwnedNote[] = [];
+        let ok = true;
+        for (const n of st.notes) {
+          const key = await this.keys.key(n.keyIndex);
+          if (key.pubKey !== n.pubKey) ok = false;
+          notes.push({ ...n, privKey: key.privKey } as OwnedNote);
+        }
+        if (ok) this.pools.set(k, { leaves: st.leaves, scannedUpTo: st.scannedUpTo, fromBlock: st.fromBlock, notes, seeded: true });
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Every note this account has received in `pool`, spent ones included (each with `spent` and its nullifier). */
