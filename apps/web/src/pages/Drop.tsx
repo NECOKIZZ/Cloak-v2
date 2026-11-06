@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PageSkel } from "../skel";
 import { isAddress, parseEther, type Address, type Hex } from "viem";
 import { CloakDrops, CloakSpots, drandRoundTime, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
 import { addrLink, txLink } from "../config";
@@ -136,7 +137,7 @@ export function Drop({ drop }: { drop: Address }) {
     return run(what, () => f(wallet));
   };
 
-  if (!s) return <div>{err ? <div className="err">{err}</div> : <p className="mute">Loading the drop…</p>}</div>;
+  if (!s) return <div>{err ? <div className="err">{err}</div> : <PageSkel label="Loading the drop" />}</div>;
   const p = phaseText(s, now);
   const isCreator = !!wallet && wallet.account.address.toLowerCase() === s.creator.toLowerCase();
   const myWon = mine.reduce((a, b) => a + b.nfts, 0);

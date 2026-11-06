@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { PageSkel, Skel } from "../skel";
 import { formatEther, parseEther, type Address } from "viem";
 import { Cloak, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, drandRoundTime, privateRouterAbi, sharedVaultAbi, type AuctionState } from "@cloakely/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
@@ -128,7 +129,7 @@ export function Launch({ auction }: { auction: Address }) {
         <Link to="/app/launches" className="btn btn-ink" style={{ marginTop: 14 }}>See all launches</Link>
       </div>
     );
-  if (!s) return <div className="empty">Loading launch {short(auction)}…</div>;
+  if (!s) return <PageSkel label={`Loading launch ${short(auction)}`} />;
   const trading = s.settled && !s.failed;
   const status: [string, string] = s.failed ? ["Didn't fill", "warn"] : s.settled ? ["Trading", "ok"] : s.phase === "commit" ? ["Bidding open", "ok"] : ["Opening bids", "warn"];
   const hasPool = trading && s.pair !== ZERO;
@@ -275,7 +276,7 @@ function Market({ s }: { s: AuctionState }) {
           <div><span className="xs mute">Launch price</span><span className="mono">{hype(s.clearingPrice)}</span></div>
         </div>
       </div>
-      {pts === null ? <div className="chart-empty small mute">Loading the chart…</div> : <PriceChart pts={pts} clearing={s.clearingPrice} />}
+      {pts === null ? <Skel h={160} /> : <PriceChart pts={pts} clearing={s.clearingPrice} />}
     </div>
   );
 }

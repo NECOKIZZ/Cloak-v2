@@ -1017,3 +1017,17 @@ button.asset-row { cursor: pointer; }
 .one-traits .trait { font-size: 13px; padding: 6px 10px; }
 .item-card img, .escrow-tok img, .folder-item img, .dp-thumbs img { image-rendering: auto; }
 .who-name { font-weight: 500; }
+
+/* ── loading: shimmer placeholders, the last known values shown at once, fresh values fading in ── */
+.skel { display: inline-block; vertical-align: middle; border-radius: 6px; max-width: 100%; background: linear-gradient(100deg, var(--line) 30%, var(--card-2) 50%, var(--line) 70%) 0 0 / 200% 100%; animation: skel 1.4s linear infinite; }
+.skel-round { border-radius: 50%; flex: none; }
+.asset-row .nm .skel, .asset-row .amt .skel { margin: 3px 0; }
+.tcard-skel { pointer-events: none; }
+.fade-in { animation: fade-in 0.35s ease-out; }
+@keyframes fade-in { from { opacity: 0.35; } }
+.updating::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 8px; border-radius: 50%; background: var(--signal); vertical-align: middle; animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { .skel, .fade-in, .updating::after { animation: none; } }
+.asset-acts { display: flex; gap: 6px; margin-left: 8px; }
+.btn-xs { min-height: 28px; padding: 0 10px; font-size: 12px; }
+@media (max-width: 560px) { .asset-row { flex-wrap: wrap; } .asset-acts { width: 100%; margin: 4px 0 0 46px; } }

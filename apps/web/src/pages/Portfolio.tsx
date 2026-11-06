@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { CloakPrivate, shieldedPoolAbi } from "@cloakely/sdk";
 import { ASSETS, CHAIN_ID, CLOAK_TOKEN, MIGRATOR, PREVIOUS, txLink } from "../config";
@@ -13,6 +13,8 @@ import { recipientNow } from "../names";
 import { RecipientNote } from "../recipient";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { useFeePct, useMarkets, type Market } from "./markets";
+import { usePrivateBalances } from "../balances";
+import { Skel } from "../skel";
 
 type Kind = "shield" | "send" | "withdraw";
 type Key = "HYPE" | Address;
@@ -31,7 +33,14 @@ interface Asset {
 
 // ───────────── shared data ─────────────
 
-let pxCache: { at: number; px: number } | null = null;
+let pxCache: { at: number; px: number } | null = (() => {
+  try {
+    const n = Number(localStorage.getItem("cloak.hypeUsd"));
+    return n > 0 ? { at: 0, px: n } : null; // last visit's price, shown at once and refreshed right away
+  } catch {
+    return null;
+  }
+})();
 /** HYPE's dollar price (Hyperliquid's mid, the same price the relayer uses), refreshed every minute. */
 function useHypeUsd(): number | null {
   const [px, setPx] = useState<number | null>(pxCache?.px ?? null);
@@ -44,6 +53,9 @@ function useHypeUsd(): number | null {
         const n = Number((await r.json()).HYPE);
         if (n > 0) {
           pxCache = { at: Date.now(), px: n };
+          try {
+            localStorage.setItem("cloak.hypeUsd", String(n));
+          } catch {}
           if (alive) setPx(n);
         }
       } catch {}
@@ -65,41 +77,6 @@ function useAssets(): Asset[] {
     ...ASSETS.map((x): Asset => ({ key: x.token, symbol: x.symbol, name: x.symbol === "USDC" ? "USD Coin" : x.symbol, decimals: x.decimals, kind: "stable" })),
     ...(markets ?? []).map((m): Asset => ({ key: m.token, symbol: m.symbol, name: m.name, iconToken: m.token, decimals: 18, kind: "launch", market: m })),
   ];
-}
-
-/** Private balances of every asset, refreshed every 8 seconds while unlocked. Each vault's balance shows as soon as it
- * has synced, so HYPE appears first even while the launch-token vaults are still scanning. */
-function usePrivateBalances() {
-  const { priv, shared } = useApp();
-  const { markets } = useMarkets();
-  const [bals, setBals] = useState<Record<string, bigint>>({});
-  const [synced, setSynced] = useState(false);
-  const syncing = useRef(false);
-  async function refresh() {
-    if (!priv || !markets || syncing.current) return;
-    syncing.current = true;
-    try {
-      // inside the try: right after unlocking, the account may still be loading its markets (hypeMarket throws)
-      const own = markets.filter((m) => !m.shared);
-      const jobs: [string, Address][] = [["HYPE", priv.hypeMarket.pool], ...own.map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
-      const put = (k: string) => (b: bigint) => setBals((cur) => (cur[k] === b ? cur : { ...cur, [k]: b }));
-      await Promise.all([
-        ...jobs.map(([k, pool]) => priv.balance(pool).then(put(k)).catch(() => {})),
-        // the shared launch-token vault: one scan, every token's balance
-        ...(shared ? [shared.sync().then(() => Promise.all(markets.filter((m) => m.shared).map((m) => shared.balance(m.token).then(put(m.token))))).catch(() => {})] : []),
-      ]);
-      setSynced(true);
-    } catch {
-    } finally {
-      syncing.current = false;
-    }
-  }
-  useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 8000);
-    return () => clearInterval(t);
-  }, [priv, shared, markets]);
-  return { bals, refresh, loaded: bals.HYPE !== undefined, synced };
 }
 
 /** Dollar value of an amount (null when there's no price for it). */
@@ -187,9 +164,9 @@ export function Portfolio() {
       <div className="page-head"><div><h1>Portfolio</h1><p>Only you can see these balances. On-chain they're encrypted notes in shared vaults.</p></div></div>
       <div className="card wallet-hero">
         <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
-        <div className="wallet-total">{!loaded ? "…" : px === null && held.some((h) => h.a.kind !== "stable") ? "…" : dollars(total)}</div>
+        <div className="wallet-total">{!loaded || (px === null && held.some((h) => h.a.kind !== "stable")) ? <Skel w="5.5ch" /> : <span className="fade-in" key={dollars(total)}>{dollars(total)}</span>}</div>
         <p className="xs mute" style={{ margin: 0 }}>
-          {!synced ? "Syncing your private balance. The first time after unlocking can take a minute." : held.length ? `${held.length} asset${held.length > 1 ? "s" : ""}, valued at HYPE's market price${unpriced ? " (some without a price yet)" : ""}. Testnet balances are play money.` : "Nothing private yet. Shield HYPE, USDC or CLOAK to start."}
+          {!loaded ? "Syncing your private balance. The first time on a device can take a minute." : !synced ? <span className="updating">Updating from the chain</span> : held.length ? `${held.length} asset${held.length > 1 ? "s" : ""}, valued at HYPE's market price${unpriced ? " (some without a price yet)" : ""}. Testnet balances are play money.` : "Nothing private yet. Shield HYPE, USDC or CLOAK to start."}
         </p>
         <div className="wallet-actions">
           <Link to="/app/portfolio/shield" className="btn btn-ink"><Icon.plus size={16} />Shield</Link>
@@ -202,10 +179,20 @@ export function Portfolio() {
       <div className="grid">
         <div className="card">
           <div className="card-head"><h3>Assets</h3><span className="xs mute">PRIVATE</span></div>
-          {held.length === 0 ? (
+          {!loaded ? (
+            <div className="asset-list" aria-busy="true" aria-label="Loading your balances">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="asset-row">
+                  <Skel w={34} h={34} round />
+                  <div className="nm"><Skel w="6ch" /><Skel w="9ch" h={11} /></div>
+                  <div className="amt"><Skel w="8ch" /><Skel w="5ch" h={11} /></div>
+                </div>
+              ))}
+            </div>
+          ) : held.length === 0 ? (
             <div className="empty" style={{ padding: "36px 20px" }}>
-              <p style={{ margin: "0 0 14px" }}>{synced ? "Shield HYPE, USDC or CLOAK, then swap privately into any launch token." : "Syncing…"}</p>
-              {synced && <Link to="/app/portfolio/shield" className="btn btn-ink btn-sm">Shield</Link>}
+              <p style={{ margin: "0 0 14px" }}>Shield HYPE, USDC or CLOAK, then swap privately into any launch token.</p>
+              <Link to="/app/portfolio/shield" className="btn btn-ink btn-sm">Shield</Link>
             </div>
           ) : (
             <div className="asset-list">
@@ -214,6 +201,10 @@ export function Portfolio() {
                   <TokenIcon symbol={a.symbol} token={a.iconToken} size={34} />
                   <div className="nm"><b>{a.symbol}</b><span className="xs mute">{a.name}</span></div>
                   <div className="amt"><b className="mono">{amountOf(a, bal)}</b><span className="xs mute">{v === null ? a.symbol : dollars(v)}</span></div>
+                  <div className="asset-acts">
+                    {a.market && <Link to={`/app/trade?token=${a.key}&side=sell`} className="btn btn-ghost btn-xs" title={`Swap ${a.symbol} for HYPE privately`}>Swap</Link>}
+                    <Link to={`/app/portfolio/withdraw?token=${a.key}`} className="btn btn-ghost btn-xs" title={`Withdraw ${a.symbol} to a wallet`}>Withdraw</Link>
+                  </div>
                 </div>
               ))}
             </div>

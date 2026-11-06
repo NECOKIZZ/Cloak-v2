@@ -6,6 +6,7 @@ import { FACTORY } from "../config";
 import { duration, hype, pctChange } from "../format";
 import { Link } from "../router";
 import { TokenIcon } from "../ui";
+import { Skel } from "../skel";
 import { friendly } from "../errors";
 import { publicClient, readCloak } from "../wallet";
 import { getSnapshot, save, saved } from "../snapshot";
@@ -120,7 +121,21 @@ export function Launches() {
       </div>
       {err && <div className="err">{err}</div>}
       {!FACTORY && <div className="empty"><h3>Not configured</h3>Set VITE_FACTORY for this deployment.</div>}
-      {list === null && FACTORY && !err && <div className="empty">Loading launches…</div>}
+      {list === null && FACTORY && !err && (
+        <section className="tsection" aria-busy="true" aria-label="Loading launches">
+          <div className="tsection-head"><h2><Skel w="9ch" /></h2></div>
+          <div className="tgrid">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="tcard tcard-skel">
+                <Skel w={48} h={48} round />
+                <div className="tcard-id"><Skel w="10ch" /><Skel w="5ch" h={11} /></div>
+                <div className="tcard-price"><Skel w="4ch" h={11} /><Skel w="8ch" /></div>
+                <div className="tcard-foot xs"><Skel w="12ch" h={11} /></div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {list?.length === 0 && <div className="empty"><h3>No launches yet</h3>Be the first: create a sealed-bid launch.</div>}
       {!!list?.length && (
         <>

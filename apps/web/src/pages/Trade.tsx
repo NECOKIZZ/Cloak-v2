@@ -1,5 +1,5 @@
 import { markDone } from "../guide";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
 import { splitStandard } from "@cloakely/sdk";
 import { BATCHER, txLink } from "../config";
@@ -10,8 +10,10 @@ import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { quote, useFeePct, useMarkets, type Market } from "./markets";
 import { isHidden } from "../hidden";
+import { usePrivateBalances } from "../balances";
+import { Skel } from "../skel";
 
-function TokenSel({ label, token, onPick, markets }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean }) {
+function TokenSel({ label, token, onPick, markets, held }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean; held?: Record<string, bigint> }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ position: "relative" }}>
@@ -22,7 +24,8 @@ function TokenSel({ label, token, onPick, markets }: { label: string; token?: st
       </button>
       {open && markets && (
         <div className="menu">
-          {markets.filter((m) => !isHidden(m.token) || m.token.toLowerCase() === token?.toLowerCase()).map((m) => (
+          {/* test tokens stay off the list, unless you hold some: then you can always swap out */}
+          {markets.filter((m) => !isHidden(m.token) || m.token.toLowerCase() === token?.toLowerCase() || (held?.[m.token] ?? 0n) > 0n).map((m) => (
             <button key={m.token} onClick={() => { onPick?.(m); setOpen(false); }}>
               <TokenIcon symbol={m.symbol} token={m.token} />
               <span style={{ textAlign: "left" }}>{m.symbol}<div className="xs mute">{m.name}</div></span>
@@ -40,17 +43,15 @@ export function Trade() {
   const { markets, err } = useMarkets();
   const [market, setMarket] = useState<Market | null>(null);
   const feePct = useFeePct();
-  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [side, setSide] = useState<"buy" | "sell">(query.get("side") === "sell" ? "sell" : "buy");
   const [amt, setAmt] = useState("0.001");
   const [modePick, setMode] = useState<"instant" | "batch">(BATCHER ? "batch" : "instant");
   const mode = market && !market.batchable ? "instant" : modePick;
   const [q, setQ] = useState(0n);
-  const [bal, setBal] = useState<{ hype: bigint; tok: bigint } | null>(null);
   const [round, setRound] = useState<{ endsAt: number } | null>(null);
   const [now, setNow] = useState(Date.now() / 1000);
   const [busy, setBusy] = useState("");
   const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
-  const syncing = useRef(false);
 
   useEffect(() => {
     if (!markets?.length || market) return;
@@ -75,22 +76,9 @@ export function Trade() {
     };
   }, [market, side, amountIn]);
 
-  async function refreshBal() {
-    if (!priv || !market || syncing.current) return;
-    syncing.current = true;
-    try {
-      const [h, t] = await Promise.all([priv.balance(priv.hypeMarket.pool), market.shared ? (shared ? shared.balance(market.token) : Promise.resolve(0n)) : priv.balance(market.pool)]);
-      setBal({ hype: h, tok: t });
-    } catch {
-    } finally {
-      syncing.current = false;
-    }
-  }
-  useEffect(() => {
-    refreshBal();
-    const t = setInterval(refreshBal, 8000);
-    return () => clearInterval(t);
-  }, [priv, shared, market]);
+  // the same private balances as the Portfolio: last known at once, refreshed together in the background
+  const { bals, loaded: balLoaded, refresh: refreshBal } = usePrivateBalances();
+  const bal = priv && balLoaded && market ? { hype: bals.HYPE ?? 0n, tok: bals[market.token] ?? 0n } : null;
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
@@ -169,7 +157,7 @@ export function Trade() {
           <div>
             <div className="swap">
               <div className="swap-box">
-                <div className="k"><span>You pay (private)</span>{fromBal !== undefined && <span className="link" onClick={async () => {
+                <div className="k"><span>You pay (private)</span>{priv && !bal && <Skel w="9ch" />}{fromBal !== undefined && <span className="link" onClick={async () => {
                   // instant trades pay the relayer from the same balance; batch mode makes room for its own fees
                   const pool = side === "buy" ? priv?.hypeMarket.pool : market.pool;
                   const most = market.shared ? (side === "sell" && shared ? await shared.maxWithdraw(market.token, "sharedSell").catch(() => fromBal) : priv ? await priv.maxSpendable(priv.hypeMarket.pool, "privateSwap").catch(() => fromBal) : fromBal) : mode === "instant" && priv && pool ? await priv.maxSpendable(pool, "privateSwap").catch(() => fromBal) : fromBal;
@@ -177,15 +165,15 @@ export function Trade() {
                 }}>Balance {fmtIn(fromBal)}</span>}</div>
                 <div className="amt">
                   <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" aria-label="Amount" />
-                  {side === "buy" ? <TokenSel label="HYPE" hypeSide /> : <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} />}
+                  {side === "buy" ? <TokenSel label="HYPE" hypeSide /> : <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} held={bals} />}
                 </div>
               </div>
               <button className="flip" aria-label="Switch direction" onClick={() => { setSide(side === "buy" ? "sell" : "buy"); setAmt(""); setRes({}); }}><Icon.arrowDown /></button>
               <div className="swap-box">
-                <div className="k"><span>You receive (private)</span>{bal && <span>Balance {side === "buy" ? tokens(bal.tok) : hype(bal.hype)}</span>}</div>
+                <div className="k"><span>You receive (private)</span>{priv && !bal && <Skel w="9ch" />}{bal && <span>Balance {side === "buy" ? tokens(bal.tok) : hype(bal.hype)}</span>}</div>
                 <div className="amt">
                   <input value={q ? fmtOut(q).replace(/,/g, "") : ""} readOnly placeholder="0" aria-label="Estimated output" />
-                  {side === "buy" ? <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} /> : <TokenSel label="HYPE" hypeSide />}
+                  {side === "buy" ? <TokenSel label={market.symbol} token={market.token} markets={markets!} onPick={setMarket} held={bals} /> : <TokenSel label="HYPE" hypeSide />}
                 </div>
               </div>
               {BATCHER && market.batchable && (
