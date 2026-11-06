@@ -15,6 +15,7 @@ import {CloakVaults, ILaunchFactory} from "../src/shielded/CloakVaults.sol";
 import {WHYPE} from "../src/shielded/WHYPE.sol";
 import {SharedVault, IPoseidon4, IVerifierMA, ISharedLaunchFactory, IVaultList} from "../src/shielded/SharedVault.sol";
 import {SharedRouter} from "../src/shielded/SharedRouter.sol";
+import {CloakV2Market} from "../src/CloakV2Market.sol";
 import {SharedBatcher} from "../src/shielded/SharedBatcher.sol";
 import {IPoseidon2, IPoseidon3} from "../src/shielded/interfaces/IHasher.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
@@ -483,7 +484,7 @@ contract SharedVaultTest is Test {
         uint256 buyId = _buyOrder(address(a), 1 ether);
         uint256 sellId = _sellOrder(address(a), 1000e18, uint256(uint160(address(a)))); // ~2 HYPE: net 1 HYPE of selling, well inside the 5% impact guard
         vm.warp(((t0 / 30) + 2) * 30 + 1); // round over
-        (,,,,,, uint32 n,,) = batcher.batches(address(a), batcher.currentRound() - 1);
+        (,,,,,, uint32 n,,,) = batcher.batches(address(a), batcher.currentRound() - 1);
         assertEq(n, 2);
         uint256 sharedBefore = shared.deposited(address(a));
         uint256 hypeBefore = hypePool.deposited();
@@ -499,6 +500,31 @@ contract SharedVaultTest is Test {
     }
 
     /// A round whose net trade would move the pool more than 5% can't settle, and is refunded instead.
+    /// In a quiet round the first order can land seconds before the end: settling still waits one full round after it,
+    /// and moving the pool for that whole window shifts the crossing price by at most the slippage bound.
+    function test_batch_quietRoundCrossingPriceIsBounded() public {
+        _admit(0);
+        _shieldHype(10 ether);
+        _deposit(a, 100_000e18);
+        uint256 R = ((vm.getBlockTimestamp() / 30) + 1) * 30;
+        vm.warp(R + 28);
+        uint256 open = batcher.midPrice(address(a));
+        _buyOrder(address(a), 1 ether);
+        _sellOrder(address(a), 1000e18, uint256(uint160(address(a))));
+        CloakV2Market m = CloakV2Market(payable(shared.marketOf(address(a))));
+        m.swapExactHypeForTokens{value: 500 ether}(0, address(this));
+        uint64 r = batcher.currentRound();
+        vm.warp(R + 31);
+        vm.expectRevert(SharedBatcher.TooSoon.selector);
+        batcher.settle(address(a), r);
+        vm.warp(R + 28 + 30);
+        assertGt(batcher.twapOf(address(a), r), (open * 12) / 10, "the pool's average really did move");
+        batcher.settle(address(a), r);
+        (,, uint128 tokensForBuyers,,,,,,,) = batcher.batches(address(a), r);
+        uint256 floor = (1 ether * 1e18) / ((open * (10_000 + batcher.maxSlippageBps())) / 10_000);
+        assertGe(tokensForBuyers, floor - 1, "the buyer pays at most the opening price plus the slippage bound");
+    }
+
     function test_batch_tooBigForThePoolIsRefunded() public {
         _admit(0);
         _deposit(a, 100_000e18);

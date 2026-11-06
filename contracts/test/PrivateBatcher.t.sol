@@ -142,7 +142,7 @@ contract PrivateBatcherTest is Test {
         uint64 r = _endRound();
 
         batcher.settle(address(token), r);
-        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,,, bool settled,) = batcher.batches(address(token), r);
+        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,,, bool settled,,) = batcher.batches(address(token), r);
         assertTrue(settled);
         // the seller was crossed at exactly the mid-price, with no pool fee
         assertEq(hypeForSellers, (100e18 * mid) / 1e18);
@@ -168,7 +168,7 @@ contract PrivateBatcherTest is Test {
         uint256 rT = pair.reserveToken();
         uint64 r = _endRound();
         batcher.settle(address(token), r);
-        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,,,,) = batcher.batches(address(token), r);
+        (,, uint128 tokensForBuyers, uint128 hypeForSellers,,,,,,) = batcher.batches(address(token), r);
         assertEq(tokensForBuyers, (1e17 * 1e18) / mid); // buyer filled by sellers at mid
         assertEq(pair.reserveToken() - rT, 700e18 - tokensForBuyers); // only the net sold into the pool
         assertGt(hypeForSellers, 1e17);
@@ -182,6 +182,49 @@ contract PrivateBatcherTest is Test {
         _endRound();
         batcher.settle(address(token), r);
         vm.expectRevert(PrivateBatcher.AlreadySettled.selector);
+        batcher.settle(address(token), r);
+    }
+
+    /// A round's average must cover at least one round length from its first order, even when that order lands late.
+    function test_settleWaitsOneRoundAfterTheFirstOrder() public {
+        uint64 r = batcher.currentRound();
+        vm.warp(batcher.roundEnd(r) - 2); // a quiet round: the first order lands 2s before the end
+        _order(hypePool, 1 ether);
+        vm.warp(batcher.roundEnd(r) + 1);
+        vm.expectRevert(PrivateBatcher.TooSoon.selector);
+        batcher.settle(address(token), r);
+        vm.warp(batcher.roundEnd(r) - 2 + batcher.roundSecs());
+        batcher.settle(address(token), r);
+    }
+
+    /// Moving the pool after a round's orders are in shifts the crossing price by at most maxSlippageBps from where the
+    /// round opened, even if the move is held for the whole averaging window (a net-sell round, so the rest sells into
+    /// the moved pool and the round settles).
+    function test_crossingPriceStaysWithinTheSlippageOfTheOpeningPrice() public {
+        uint64 r = batcher.currentRound();
+        vm.warp(batcher.roundEnd(r) - 2);
+        uint256 open = batcher.midPrice(address(token));
+        _order(hypePool, 1 ether);
+        _order(tokenPool, 500e18);
+        pair.swapExactHypeForTokens{value: 300 ether}(0, address(this)); // held for the whole window
+        vm.warp(batcher.roundEnd(r) - 2 + batcher.roundSecs());
+        assertGt(batcher.twapOf(address(token), r), (open * 12) / 10, "the pool's average really did move");
+        batcher.settle(address(token), r);
+        (,, uint128 tokensForBuyers,,,,,,,) = batcher.batches(address(token), r);
+        uint256 hi = (open * (10_000 + batcher.maxSlippageBps())) / 10_000;
+        assertGe(tokensForBuyers, (1 ether * 1e18) / hi - 1, "the buyer pays at most the opening price plus the slippage bound");
+    }
+
+    /// The same move with a net-buy round: the rest would have to buy into the moved pool, so the round doesn't settle
+    /// and refunds instead.
+    function test_netBuyIntoAMovedPoolDoesNotSettle() public {
+        uint64 r = batcher.currentRound();
+        vm.warp(batcher.roundEnd(r) - 2);
+        _order(hypePool, 1 ether);
+        _order(tokenPool, 100e18);
+        pair.swapExactHypeForTokens{value: 300 ether}(0, address(this));
+        vm.warp(batcher.roundEnd(r) - 2 + batcher.roundSecs());
+        vm.expectRevert();
         batcher.settle(address(token), r);
     }
 

@@ -5345,6 +5345,11 @@ export const privateBatcherAbi = [
         "name": "cancelled",
         "type": "bool",
         "internalType": "bool"
+      },
+      {
+        "name": "spotStart",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -5943,6 +5948,11 @@ export const privateBatcherAbi = [
   {
     "type": "error",
     "name": "TooEarly",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TooSoon",
     "inputs": []
   },
   {
@@ -9436,6 +9446,11 @@ export const sharedBatcherAbi = [
         "name": "cancelled",
         "type": "bool",
         "internalType": "bool"
+      },
+      {
+        "name": "spotStart",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -10137,6 +10152,11 @@ export const sharedBatcherAbi = [
   {
     "type": "error",
     "name": "TooEarly",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TooSoon",
     "inputs": []
   },
   {

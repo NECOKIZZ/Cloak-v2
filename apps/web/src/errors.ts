@@ -39,6 +39,7 @@ const CONTRACT: Record<string, string> = {
   AlreadySettled: "This has already been settled.",
   NotSettled: "This round hasn't settled yet. Give it a few seconds.",
   PriceMoved: "The pool price moved too much during this round, so it can't settle at a fair price yet.",
+  TooSoon: "This batch round settles once its price covers a full round, a few seconds after it closes. It will settle shortly.",
   TooEarly: "It's too early for that. Refunds open a while after the round ends.",
 };
 const SELECTORS: Record<string, string> = Object.fromEntries(

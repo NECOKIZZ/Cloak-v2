@@ -108,7 +108,7 @@ contract V2Test is PrivateBatcherTest {
         pair.swapExactHypeForTokens{value: 5 ether}(0, address(this)); // inside the 2% band, same block as settle
         assertGt(batcher.midPrice(address(token)), fair);
         batcher.settle(address(token), r);
-        (,, uint128 tokensForBuyers,,,,,,) = batcher.batches(address(token), r);
+        (,, uint128 tokensForBuyers,,,,,,,) = batcher.batches(address(token), r);
         assertEq(tokensForBuyers, (1 ether * 1e18) / fair); // the buyer crossed at the round's TWAP, not the pumped spot
     }
 
@@ -152,7 +152,7 @@ contract V2Test is PrivateBatcherTest {
         }
         uint64 r = _endRound();
         batcher.settle(address(token), r);
-        (,,,,,,, bool settled,) = batcher.batches(address(token), r);
+        (,,,,,,, bool settled,,) = batcher.batches(address(token), r);
         assertTrue(settled);
     }
 

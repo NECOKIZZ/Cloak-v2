@@ -55,6 +55,7 @@ contract PrivateBatcher {
         uint32 orders;
         bool settled;
         bool cancelled;
+        uint256 spotStart; // the pool's spot price when the round's first order landed: the crossing price stays within maxSlippageBps of it
     }
 
     uint16 public constant MAX_SLIPPAGE_BPS = 200;
@@ -96,6 +97,7 @@ contract PrivateBatcher {
     error NotSettled();
     error PriceMoved();
     error TooEarly();
+    error TooSoon();
     error BadConfig();
 
     modifier lock() {
@@ -179,7 +181,10 @@ contract PrivateBatcher {
 
         uint64 round = currentRound();
         Batch storage b = batches[d.token][round];
-        if (b.orders == 0) (b.cumStart, b.tStart) = pair.cumulativeNow();
+        if (b.orders == 0) {
+            (b.cumStart, b.tStart) = pair.cumulativeNow();
+            b.spotStart = midPrice(d.token);
+        }
         if (buy) b.buyHype += net;
         else b.sellTokens += net;
         b.orders += 1;
@@ -198,10 +203,18 @@ contract PrivateBatcher {
         if (b.orders == 0) return;
 
         CloakPair pair = router.pairOf(token);
+        // the average must cover at least one round, so a price has to be held that long (against arbitrage) to count
+        if (block.timestamp < uint256(b.tStart) + roundSecs) revert TooSoon();
         uint256 mid = twapOf(token, round); // the crossing price
         uint256 spot = midPrice(token);
         uint256 dev = spot > mid ? spot - mid : mid - spot;
         if (dev * 10_000 > mid * maxSlippageBps) revert PriceMoved();
+        // and it stays within maxSlippageBps of the price when the round opened, so moving the pool after orders are in
+        // can shift what the other side gets by at most that much
+        uint256 lo = (b.spotStart * (10_000 - maxSlippageBps)) / 10_000;
+        uint256 hi = (b.spotStart * (10_000 + maxSlippageBps)) / 10_000;
+        if (mid < lo) mid = lo;
+        else if (mid > hi) mid = hi;
 
         uint256 B = b.buyHype;
         uint256 S = b.sellTokens;
@@ -217,7 +230,7 @@ contract PrivateBatcher {
                 if (pair.getAmountOut(residual, pair.reserveHype(), pair.reserveToken()) == 0) {
                     extraForSellers = residual; // dust: too small to trade, so it stays with the crossed side
                 } else {
-                    uint256 minOut = (residual * 1e18 / spot) * (10_000 - MAX_IMPACT_BPS) / 10_000;
+                    uint256 minOut = (residual * 1e18 / (spot < hi ? spot : hi)) * (10_000 - MAX_IMPACT_BPS) / 10_000; // never above the band
                     whype.withdraw(residual);
                     fromPool = pair.swapExactHypeForTokens{value: residual}(minOut, address(this));
                 }
@@ -233,7 +246,7 @@ contract PrivateBatcher {
             if (pair.getAmountOut(residual, pair.reserveToken(), pair.reserveHype()) == 0) {
                 matchedTokens = S; // dust: too small to trade, so it stays with the crossed side
             } else {
-                uint256 minOut = (residual * spot / 1e18) * (10_000 - MAX_IMPACT_BPS) / 10_000;
+                uint256 minOut = (residual * (spot > lo ? spot : lo) / 1e18) * (10_000 - MAX_IMPACT_BPS) / 10_000; // never below the band
                 IERC20Approve(token).approve(address(pair), residual);
                 fromPool = pair.swapExactTokensForHype(residual, minOut, address(this));
                 whype.deposit{value: fromPool}();

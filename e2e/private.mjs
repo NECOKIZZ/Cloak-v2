@@ -186,6 +186,8 @@ for (const r of rounds) {
   await sleep(local ? 0 : 8000); // a hosted keeper may settle first
   const st = await d.publicClient.readContract({ ...bc, functionName: "batches", args: [token, r] });
   if (st[7]) continue; // already settled by a keeper
+  // the batch's average must cover one round from its first order before it can settle
+  await waitChainTime(d.publicClient, Number(st[5] + roundSecs), { mine });
   // like the keeper: if an earlier round's net swap just moved the pool, wait for this round's TWAP to catch up
   for (let tries = 0; ; tries++) {
     try {
