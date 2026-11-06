@@ -280,6 +280,11 @@ New:
 - **Private positions on HyperCore** through Elysium's link to it, which hides liquidation prices (the "whale hunting" problem).
 - **More chains** that share the same contracts. The SDK, MCP server and widget already take a chain id.
 
+Compliance (after mainnet, before caps lift):
+- **Sanctions screening:** check depositing wallets and withdrawal addresses against public sanctions lists (OFAC) in the app and the relayer.
+- **Clean-funds proofs:** a user proves their private balance didn't come from a list of flagged deposits, without revealing which deposit is theirs (association sets, as in Privacy Pools). This is what lets exchanges and partners integrate Cloak with confidence.
+- **A published policy** for how the hosted keeper and relayer handle flagged funds. Anyone can still run their own.
+
 ---
 
 ## Revenue model
