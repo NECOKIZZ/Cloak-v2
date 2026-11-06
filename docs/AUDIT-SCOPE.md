@@ -5,7 +5,7 @@ then doing the review. Everything listed here is source-verified on the Elysium 
 test suite in the repository.
 
 - **Repository:** https://github.com/NECOKIZZ/Cloak
-- **Commit to audit:** `255dc4c5319e5cd12f05caf4433906eb795449fa` (Nov 6, 2026). This is the last commit that changed
+- **Commit to audit:** `f15fe8a38312ac610a34af8a8e97cb02cc45bc2c` (Nov 7, 2026). This is the last commit that changed
   `contracts/`, `contracts-v4/` or `circuits/`. Later commits only touch the app, docs and tooling. If we change any
   in-scope file before the audit starts, we will send a new commit hash and a diff.
 - **Chain:** Elysium (Hyperliquid's EVM L2 by Kinetiq). Testnet chain id `99801`, mainnet chain id `99901`.
@@ -238,7 +238,7 @@ and migrators can be replaced, and the registry is append-only, with the newest 
 
 ```bash
 git clone https://github.com/NECOKIZZ/Cloak && cd Cloak
-git checkout 255dc4c5319e5cd12f05caf4433906eb795449fa
+git checkout f15fe8a38312ac610a34af8a8e97cb02cc45bc2c
 
 # core, shielded and drops (solc 0.8.24)
 cd contracts && forge build && forge test
