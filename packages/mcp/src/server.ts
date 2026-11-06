@@ -53,6 +53,7 @@ import {
   type Prover,
   type Wallet,
   resolveRecipient,
+  CIRCUITS_CDN,
 } from "@cloakely/sdk";
 import type { Settings } from "./config.js";
 import { Spending, show, type Budget } from "./limits.js";
@@ -154,13 +155,13 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     (() =>
       (proverP ??= settings.circuitsDir
         ? Promise.resolve(createProver(readFileSync(join(settings.circuitsDir, "transaction2x2.wasm")), readFileSync(join(settings.circuitsDir, "transaction2x2_final.zkey"))))
-        : loadProver(d.circuitsUrl)));
+        : loadProver([CIRCUITS_CDN, d.circuitsUrl])));
 
   let sharedProverP: Promise<Prover> | undefined;
   const sharedProver = () =>
     (sharedProverP ??= settings.circuitsDir
       ? Promise.resolve(createSharedProver(readFileSync(join(settings.circuitsDir, "transactionMA2x2.wasm")), readFileSync(join(settings.circuitsDir, "transactionMA2x2_final.zkey"))))
-      : loadSharedProver(d.circuitsUrl));
+      : loadSharedProver([CIRCUITS_CDN, d.circuitsUrl]));
   let sharedC: SharedVaultClient | undefined;
   /** The shared launch-token vault (new Uniswap launches keep their private balances there). */
   async function shared(): Promise<SharedVaultClient> {

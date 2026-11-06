@@ -105,7 +105,7 @@ export async function GET(req) {
   if (q.get("img")) {
     const m = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec(meta.image ?? "");
     if (!m) return Response.redirect(FALLBACK_IMG, 302);
-    return new Response(Buffer.from(m[2], "base64"), { headers: { "content-type": m[1], "cache-control": "public, max-age=86400" } });
+    return new Response(Buffer.from(m[2], "base64"), { headers: { "content-type": m[1], "cache-control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800" } });
   }
 
   if (!s) return Response.redirect(page, 302);

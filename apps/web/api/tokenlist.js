@@ -49,7 +49,7 @@ export async function GET(req) {
     return img?.startsWith("data:image/") ? `${SITE}/api/preview?a=${l.address.toLowerCase()}&img=1` : img?.startsWith("https://") ? img : undefined;
   };
 
-  const headers = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "cache-control": "public, s-maxage=120, stale-while-revalidate=600" };
+  const headers = { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*", "cache-control": "public, s-maxage=600, stale-while-revalidate=3600" };
   if (feed) {
     const tokens = launched.map((l) => ({
       chainId: CHAIN_ID,

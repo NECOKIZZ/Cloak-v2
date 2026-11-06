@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "../router";
 import { Nav } from "../ui";
 
-const VIDEO = "/media/cloak-demo";
+const VIDEO = "/media/cloak-demo"; // the poster image, served by the site
+// the video itself streams from a free CDN (jsDelivr, pinned to the commit that added it), not from the site's host
+const VIDEO_CDN = "https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@c33e48aa4507b70a33502db896920df5c7d8d01d/apps/web/public/media/cloak-demo";
 
 /** The walkthrough video: the real site, step by step, with a voice over. Shows a placeholder until the file is uploaded. */
 export function Demo() {
@@ -28,8 +30,10 @@ export function Demo() {
             </div>
           ) : (
             <video controls playsInline preload="metadata" poster={`${VIDEO}.jpg`}>
+              <source src={`${VIDEO_CDN}.mp4`} type="video/mp4" />
               <source src={`${VIDEO}.mp4`} type="video/mp4" />
               {/* for browsers without H.264; if neither plays, show the placeholder */}
+              <source src={`${VIDEO_CDN}.webm`} type="video/webm" />
               <source src={`${VIDEO}.webm`} type="video/webm" onError={() => setMissing(true)} />
             </video>
           )}

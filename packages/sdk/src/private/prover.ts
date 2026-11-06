@@ -68,7 +68,38 @@ export function createSharedProver(wasm: Uint8Array, zkey: Uint8Array): Prover {
 }
 
 /** Hosted circuit artifacts. */
+/**
+ * Where the circuit files are served: a free CDN (jsDelivr, pinned to the commit that last changed them, so the files
+ * never change), then Cloak's own site if the CDN can't be reached. Every download is checked against the pinned
+ * hashes, so where it came from doesn't matter for safety.
+ */
+export const CIRCUITS_CDN = "https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@f55a12a40d475561ce2b4db933ab82855419eb2d/apps/web/public/circuits";
 export const CIRCUITS_URL = "https://cloak.boblabs.tech/circuits";
+export const CIRCUITS_SOURCES = [CIRCUITS_CDN, CIRCUITS_URL];
+
+/** Download a circuit's two files from the first source that serves them with the expected hashes. */
+async function fetchCircuit(baseUrl: string | string[], names: [string, string], want: { wasm: string; zkey: string } | null, what: string): Promise<[Uint8Array, Uint8Array]> {
+  const bases = (Array.isArray(baseUrl) ? baseUrl : [baseUrl]).map((b) => b.replace(/\/$/, ""));
+  let last: unknown;
+  for (const base of bases) {
+    try {
+      const get = async (name: string) => {
+        const res = await fetch(`${base}/${name}`);
+        if (!res.ok) throw new Error(`could not download ${name} from ${base} (${res.status})`);
+        return new Uint8Array(await res.arrayBuffer());
+      };
+      const [wasm, zkey] = await Promise.all(names.map(get));
+      if (want) {
+        const [hw, hz] = await Promise.all([sha256(wasm), sha256(zkey)]);
+        if (hw !== want.wasm || hz !== want.zkey) throw new Error(`${what} files from ${base} don't match this SDK version's hashes; refusing to prove with them`);
+      }
+      return [wasm, zkey];
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last;
+}
 
 /** SHA-256 of the artifacts this SDK version was built and tested against. */
 export const CIRCUIT_HASHES = {
@@ -82,23 +113,13 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 /**
- * Fetch the circuit artifacts (12 MB, once) and build a prover. Works in browsers and Node 18+. The files are checked
+ * Fetch the circuit artifacts (15 MB, once; from the CDN, else Cloak's site, or the URL or URLs you pass) and build a prover. Works in browsers and Node 18+. The files are checked
  * against `CIRCUIT_HASHES`, so a tampered or mismatched download is refused; pass `hashes: null` to skip that when
  * serving your own build. In Node you can also read the files yourself and call `createProver`.
  */
-export async function loadProver(baseUrl: string = CIRCUITS_URL, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<Prover> {
-  const base = baseUrl.replace(/\/$/, "");
-  const get = async (name: string) => {
-    const res = await fetch(`${base}/${name}`);
-    if (!res.ok) throw new Error(`could not download ${name} from ${base} (${res.status})`);
-    return new Uint8Array(await res.arrayBuffer());
-  };
-  const [wasm, zkey] = await Promise.all([get("transaction2x2.wasm"), get("transaction2x2_final.zkey")]);
+export async function loadProver(baseUrl: string | string[] = CIRCUITS_SOURCES, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<Prover> {
   const want = opts.hashes === undefined ? CIRCUIT_HASHES : opts.hashes;
-  if (want) {
-    const [hw, hz] = await Promise.all([sha256(wasm), sha256(zkey)]);
-    if (hw !== want.wasm || hz !== want.zkey) throw new Error("circuit files don't match this SDK version's hashes; refusing to prove with them");
-  }
+  const [wasm, zkey] = await fetchCircuit(baseUrl, ["transaction2x2.wasm", "transaction2x2_final.zkey"], want, "circuit");
   return createProver(wasm, zkey);
 }
 
@@ -112,18 +133,8 @@ export const SHARED_CIRCUIT_HASHES = {
  * Fetch the shared launch-token vault's circuit (`transactionMA2x2`, 15 MB, once) and build its prover. Checked against
  * `SHARED_CIRCUIT_HASHES` like `loadProver`; pass `hashes: null` to skip that when serving your own build.
  */
-export async function loadSharedProver(baseUrl: string = CIRCUITS_URL, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<Prover> {
-  const base = baseUrl.replace(/\/$/, "");
-  const get = async (name: string) => {
-    const res = await fetch(`${base}/${name}`);
-    if (!res.ok) throw new Error(`could not download ${name} from ${base} (${res.status})`);
-    return new Uint8Array(await res.arrayBuffer());
-  };
-  const [wasm, zkey] = await Promise.all([get("transactionMA2x2.wasm"), get("transactionMA2x2_final.zkey")]);
+export async function loadSharedProver(baseUrl: string | string[] = CIRCUITS_SOURCES, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<Prover> {
   const want = opts.hashes === undefined ? SHARED_CIRCUIT_HASHES : opts.hashes;
-  if (want) {
-    const [hw, hz] = await Promise.all([sha256(wasm), sha256(zkey)]);
-    if (hw !== want.wasm || hz !== want.zkey) throw new Error("shared-vault circuit files don't match this SDK version's hashes; refusing to prove with them");
-  }
+  const [wasm, zkey] = await fetchCircuit(baseUrl, ["transactionMA2x2.wasm", "transactionMA2x2_final.zkey"], want, "shared-vault circuit");
   return createSharedProver(wasm, zkey);
 }
