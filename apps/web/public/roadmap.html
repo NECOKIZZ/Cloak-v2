@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloak Roadmap</title>
+<meta name="description" content="What Cloak has shipped, what comes with mainnet, and what comes next.">
+<link rel="icon" href="/logo.svg">
+<style>
+  :root { --ink: #10161a; --paper: #f8f7f4; --signal: #2d7388; --mute: #5b6266; --line: #e4e3df; --card: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #eef1f0; --paper: #0b1013; --signal: #6cb6cb; --mute: #9aa3a6; --line: #1d2529; --card: #11181c; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 "Inter", ui-sans-serif, system-ui, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 16px 80px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+  header img { width: 36px; height: 36px; }
+  header a { color: inherit; text-decoration: none; font-weight: 600; font-size: 18px; }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 12px; }
+  .lede { color: var(--mute); font-size: 18px; margin: 0 0 40px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; margin-bottom: 18px; }
+  h2 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; color: var(--signal); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+  ul { margin: 12px 0 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  b { font-weight: 600; }
+  footer { margin-top: 36px; color: var(--mute); font-size: 14px; }
+  footer a { color: var(--signal); }
+  @media (max-width: 520px) { h1 { font-size: 32px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><img src="/logo.svg" alt=""><a href="/">Cloak</a></header>
+  <h1>Roadmap</h1>
+  <p class="lede">Privacy for Elysium. Fair launches nobody can snipe, and trading nobody can trace.</p>
+
+  <section>
+    <span class="tag">Live on testnet</span>
+    <h2>What Cloak does today</h2>
+    <ul>
+      <li><b>Sealed-bid token launches.</b> Everyone bids privately, everyone pays one fair price, and liquidity is locked from day one.</li>
+      <li><b>Private balances.</b> Shield HYPE, USDC and launch tokens, then swap, send and withdraw without linking your wallet.</li>
+      <li><b>Batch trading.</b> Orders are grouped and settled at one price, so single trades can't be front-run or traced.</li>
+      <li><b>Payment links.</b> Send money as a link, split it into shares, or request a payment.</li>
+      <li><b>Sealed NFT drops.</b> Mint without gas wars, auction NFTs you already own, and sell whitelist spots fairly.</li>
+      <li><b>Uniswap v4 launches</b> with creator fees and anti-snipe protection.</li>
+      <li><b>For builders.</b> A TypeScript SDK and an MCP server so AI agents can use Cloak.</li>
+      <li><b>.ely names.</b> Withdraw to a name instead of an address, and see names across the app.</li>
+    </ul>
+  </section>
+
+  <section>
+    <span class="tag">Next</span>
+    <h2>Mainnet</h2>
+    <ul>
+      <li><b>Public trusted-setup ceremony</b> with outside contributors.</li>
+      <li><b>External security audit.</b></li>
+      <li><b>Multisig ownership</b>, with a public 3-day delay on any rule change.</li>
+      <li><b>Mainnet deployment</b>, with every contract source-verified.</li>
+      <li><b>Deposit caps stay on</b> until the audit and the ceremony are done.</li>
+    </ul>
+  </section>
+
+  <section>
+    <span class="tag">After mainnet</span>
+    <h2>Growing the private layer</h2>
+    <ul>
+      <li><b>Partner launchpads.</b> A shared private vault for tokens from other Elysium launchpads, so their users get the same privacy.</li>
+      <li><b>Creator dashboard</b> and launch pages that keep working after a launch ends.</li>
+      <li><b>Private holder proofs.</b> Prove you hold a token without revealing your wallet.</li>
+      <li><b>Notifications</b> for bids, fills and claims.</li>
+      <li><b>Run-your-own keeper and relayer</b>, so anyone can operate the infrastructure.</li>
+      <li><b>More names everywhere</b>, so payment links and agents show who sent and claimed.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Try it at <a href="/">cloak.boblabs.tech</a> · Follow <a href="https://x.com/cloakonelysium">@cloakonelysium</a> · Code on <a href="https://github.com/NECOKIZZ/Cloak">GitHub</a>
+  </footer>
+</div>
+</body>
+</html>

@@ -50,7 +50,11 @@
       "destination": "/api/mcp"
     },
     {
-      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/|demo-nft/).*)",
+      "source": "/roadmap",
+      "destination": "/roadmap.html"
+    },
+    {
+      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/|demo-nft/|roadmap).*)",
       "destination": "/index.html"
     }
   ],
