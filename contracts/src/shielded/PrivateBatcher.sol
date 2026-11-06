@@ -60,6 +60,9 @@ contract PrivateBatcher {
 
     uint16 public constant MAX_SLIPPAGE_BPS = 200;
     uint16 public constant MAX_IMPACT_BPS = 500;
+    /// Each side of a round (all buys, all sells) is capped at this share of the pool's depth when an order lands, so the
+    /// net swap always fits inside MAX_IMPACT_BPS and one oversized order can't make the whole round refund.
+    uint16 public constant MAX_SIDE_BPS = 400;
 
     PrivateRouter public immutable router;
     WHYPE public immutable whype;
@@ -98,6 +101,7 @@ contract PrivateBatcher {
     error PriceMoved();
     error TooEarly();
     error TooSoon();
+    error RoundFull();
     error BadConfig();
 
     modifier lock() {
@@ -188,6 +192,8 @@ contract PrivateBatcher {
         if (buy) b.buyHype += net;
         else b.sellTokens += net;
         b.orders += 1;
+        // this round has room for the order on its side; otherwise it goes in a later round
+        if (buy ? b.buyHype * 10_000 > pair.reserveHype() * MAX_SIDE_BPS : b.sellTokens * 10_000 > pair.reserveToken() * MAX_SIDE_BPS) revert RoundFull();
 
         id = orders.length;
         orders.push(Order(d.token, round, buy, false, uint128(size), net, d.outPubKey, d.outBlinding, d.outMemo));

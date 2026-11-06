@@ -187,8 +187,14 @@ contract SharedVault is MerkleTreeWithHistory {
 
         if (extData.fee > 0) {
             if (extData.relayer == address(0)) revert ZeroRelayer();
+            // the relayer's fee leaves the vault too, so it pays the same protocol fee as a withdrawal
+            uint256 pf = config.withdrawFee(extData.fee);
             deposited[token] -= extData.fee;
-            _send(token, extData.relayer, extData.fee);
+            if (pf != 0) {
+                feesOwed[token] += pf;
+                emit WithdrawFee(token, pf);
+            }
+            _send(token, extData.relayer, extData.fee - pf);
         }
         if (extData.extAmount < 0) {
             if (extData.recipient == address(0)) revert ZeroRecipient();

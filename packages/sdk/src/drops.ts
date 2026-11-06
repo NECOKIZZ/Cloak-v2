@@ -142,7 +142,7 @@ export interface CreateDropOptions {
   wl?: { list: Address[]; boostBps: number };
   biddingSecs: number;
   /** Longest time after bidding closes for the keeper to open the bids (default 30 minutes). The drop settles as soon
-   * as every bid is open, so a long window only matters if the keeper is down; a bid still sealed at its end loses 10%. */
+   * as every bid is open, so a long window only matters if the keeper is down; a bid still sealed at its end loses 25% (10% on drops made before Nov 7). */
   revealSecs?: number;
   image?: string;
   /** A wide banner for the drop page (an https:, ipfs: or small data: image). */

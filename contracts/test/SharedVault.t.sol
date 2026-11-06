@@ -212,10 +212,14 @@ contract SharedVaultTest is Test {
         shared.admit(ISharedLaunchFactory(address(pairFactory)), 0);
     }
 
-    function test_admit_rejectsTokensWithTheirOwnVault() public {
+    /// CL-05 (external review, Nov 2026): anyone could open a per-token vault for a Uniswap launch before the keeper
+    /// admitted it here, and admit then refused it forever (HasOwnVault). Now CloakVaults refuses a launch that opened
+    /// on Uniswap, so the race can't be won and the token still joins the shared vault.
+    function test_aUniswapLaunchCantBeLockedOutOfTheSharedVault() public {
+        vm.expectRevert(CloakVaults.SharedVaultToken.selector);
         vaults.createPool(ILaunchFactory(address(factory)), 0);
-        vm.expectRevert(SharedVault.HasOwnVault.selector);
         _admit(0);
+        assertTrue(shared.admitted(address(a)));
     }
 
     // ───────────────────────────── deposits ─────────────────────────────
@@ -525,22 +529,39 @@ contract SharedVaultTest is Test {
         assertGe(tokensForBuyers, floor - 1, "the buyer pays at most the opening price plus the slippage bound");
     }
 
-    function test_batch_tooBigForThePoolIsRefunded() public {
+    /// An order too big for the pool's depth never gets into a round, so it can't make the round refund for everyone.
+    function test_batch_tooBigForThePoolIsRefused() public {
         _admit(0);
         _deposit(a, 100_000e18);
         uint256 t0 = vm.getBlockTimestamp();
         vm.warp(((t0 / 30) + 1) * 30);
-        uint256 id = _sellOrder(address(a), 50_000e18, uint256(uint160(address(a)))); // ~100 HYPE into a ~985 HYPE pool
+        SharedVault.ExtData memory ext = SharedVault.ExtData(address(batcher), -int256(50_000e18), address(0), 0, hex"01", hex"02", _order(address(a)));
+        SharedVault.Proof memory pr = _sp(ext, uint256(uint160(address(a)))); // ~100 HYPE into a ~985 HYPE pool
+        vm.expectRevert(SharedBatcher.RoundFull.selector);
+        batcher.placeSell(pr, ext);
+    }
+
+    /// CL-06 (external review, Nov 2026): a whale order used to push the round's net swap past the impact guard and make
+    /// every order in the round refund (less the vault fee). Now each side of a round is capped at 4% of the pool's depth:
+    /// the oversized order is refused, and the honest orders already in the round still settle.
+    function test_batch_whaleOrderCantPoisonTheRound() public {
+        _admit(0);
+        _deposit(a, 200_000e18);
+        uint256 t0 = vm.getBlockTimestamp();
+        vm.warp(((t0 / 30) + 1) * 30);
+        uint256 honest = _sellOrder(address(a), 1_000e18, uint256(uint160(address(a))));
+        SharedVault.ExtData memory ext = SharedVault.ExtData(address(batcher), -int256(100_000e18), address(0), 0, hex"01", hex"02", _order(address(a)));
+        SharedVault.Proof memory pr = _sp(ext, uint256(uint160(address(a))));
+        vm.expectRevert(SharedBatcher.RoundFull.selector);
+        batcher.placeSell(pr, ext);
         vm.warp(((t0 / 30) + 2) * 30 + 1);
         uint64 round = batcher.currentRound() - 1;
-        vm.expectRevert();
-        batcher.settle(address(a), round);
-        uint256 before = shared.deposited(address(a));
-        vm.warp(((t0 / 30) + 2) * 30 + 601);
-        uint256[] memory ids = new uint256[](1);
-        ids[0] = id;
-        batcher.refund(ids);
-        assertEq(shared.deposited(address(a)), before + shared.afterFee(50_000e18), "the seller gets the tokens back privately");
+        batcher.settle(address(a), round); // settles: the round isn't poisoned
+        (,,, uint128 hypeForSellers,,,, bool settled, bool cancelled,) = batcher.batches(address(a), round);
+        assertTrue(settled && !cancelled, "the round settled");
+        assertGt(hypeForSellers, 0, "the honest seller is paid");
+        (address tok,,,,,,,,) = batcher.orders(honest);
+        assertEq(tok, address(a));
     }
 
     function test_batch_sellMustNameItsToken() public {

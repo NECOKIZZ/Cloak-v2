@@ -114,6 +114,7 @@ contract CloakEscrowDropTest is Test {
 
     function _settleAndNumber() internal {
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         if (!drop.failed()) drop.numberTies(1000);
     }
 
@@ -214,6 +215,7 @@ contract CloakEscrowDropTest is Test {
         _open(c, 0.6 ether, 2, sc);
         assertEq(drop.phase(), 3, "every bid open: settles early");
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         assertEq(drop.phase(), 4, "slots get numbered before claims");
         vm.expectRevert(bytes("ties not numbered"));
         drop.claim(a);
@@ -304,6 +306,7 @@ contract CloakEscrowDropTest is Test {
         _make(3);
         vm.warp(t0 + 1 days + 1 hours);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         assertTrue(drop.failed());
         assertEq(drop.phase(), 5);
         vm.prank(owner);
@@ -398,6 +401,18 @@ contract CloakEscrowDropTest is Test {
         uint256 before = _bidder(1).balance;
         drop.claim(a);
         assertEq(_bidder(1).balance - before, 0.7 ether, "it didn't arrive, so it isn't paid for");
+    }
+
+    /// A-2 (external review, Nov 2026): a collection whose ownerOf returns dirty upper bits made abi.decode revert, so
+    /// every claim failed and deposits were stuck. The whole word is compared now: the token reads as not delivered and
+    /// the winner is refunded instead.
+    function test_aDirtyOwnerOfCantBrickClaims() public {
+        (uint256 a,) = _soldTwo();
+        uint256 id = drop.tokensOf(a)[0];
+        vm.mockCall(address(nft), abi.encodeWithSignature("ownerOf(uint256)", id), abi.encode(uint256(uint160(_bidder(1))) | (uint256(1) << 200)));
+        uint256 before = _bidder(1).balance;
+        drop.claim(a);
+        assertEq(_bidder(1).balance - before, 0.7 ether, "refunded, not stuck");
     }
 
     function test_aCollectionCantReenter() public {

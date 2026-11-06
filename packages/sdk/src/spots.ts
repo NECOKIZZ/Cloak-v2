@@ -61,7 +61,7 @@ export class CloakSpots {
     const partner = o.partner.trim();
     if (!partner || partner.length > 200) throw new Error("Name the partner collection (up to 200 characters).");
     const days = o.walletDays ?? SPOT_DEFAULT_WALLET_DAYS;
-    if (!(days > 0 && days <= SPOT_MAX_WALLET_DAYS)) throw new Error(`Winners get 1 to ${SPOT_MAX_WALLET_DAYS} days to name wallets.`);
+    if (!(days >= 1 && days <= SPOT_MAX_WALLET_DAYS)) throw new Error(`Winners get 1 to ${SPOT_MAX_WALLET_DAYS} days to name wallets.`);
     const { drop, txHash } = await this.drops.create({ ...o, baseURI: o.baseURI ?? "", maxPerBid: o.maxPerBid ?? 1, spots: { partner } });
     const s = await this.drops.get(drop);
     const deadline = s.revealEnd + Math.round(days * 86400);

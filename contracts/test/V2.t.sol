@@ -221,6 +221,24 @@ contract V2Test is PrivateBatcherTest {
         assertEq(whype.balanceOf(treasury), 0.025 ether);
     }
 
+    /// CL-09 (external review, Nov 2026): a note owner could withdraw everything as a "relayer fee" to themselves
+    /// (extAmount 0, fee = the balance) and skip the withdrawal fee. The relayer's fee now pays the same rate.
+    function test_fees_aRelayerFeeToYourselfStillPaysTheFee() public {
+        config.setFees(25, 150, treasury);
+        address me = makeAddr("me as my own relayer");
+        ShieldedPool.ExtData memory ext = ShieldedPool.ExtData(address(0), 0, me, 10 ether, "", "", "");
+        ShieldedPool.Proof memory pr;
+        pr.root = hypePool.currentRoot();
+        pr.publicAmount = hypePool.calculatePublicAmount(0, 10 ether);
+        pr.extDataHash = this.hashExt(hypePool, ext);
+        pr.inputNullifiers = [uint256(971), uint256(972)];
+        pr.outputCommitments = [uint256(11), uint256(12)];
+        hypePool.transact(pr, ext);
+        assertEq(whype.balanceOf(me), 9.975 ether, "same as a normal 10 HYPE withdrawal");
+        assertEq(hypePool.feesOwed(), 0.025 ether);
+        assertEq(whype.balanceOf(address(hypePool)), hypePool.deposited() + hypePool.feesOwed());
+    }
+
     function test_fees_privateSwapPaysWithdrawalFee() public {
         config.setFees(25, 0, treasury);
         uint256 before = token.balanceOf(address(tokenPool));
@@ -559,7 +577,9 @@ contract V2Test is PrivateBatcherTest {
         pr.outputCommitments = [uint256(11), uint256(12)];
         hypePool.transact(pr, ext);
         assertEq(whype.balanceOf(address(hypePool)), hypePool.deposited() + hypePool.feesOwed());
-        assertEq(whype.balanceOf(makeAddr("to")) + hypePool.feesOwed(), amount);
+        uint256 relayerCut = config.withdrawFee(relayerFee); // the relayer's fee pays the protocol fee too
+        assertEq(whype.balanceOf(makeAddr("to")) + hypePool.feesOwed(), amount + relayerCut);
+        assertEq(whype.balanceOf(makeAddr("relayer")), relayerFee - relayerCut);
     }
 
     function testFuzz_batchSolvent(uint8 nBuys, uint8 nSells, uint8 bps, uint256 seed) public {
@@ -589,11 +609,12 @@ contract V2Test is PrivateBatcherTest {
         uint64 r = _endRound();
         batcher.settle(address(token), r);
 
+        // ~20% of the pool would be far more than 5% impact: the round has no room for it, so it never gets in (and
+        // can't make everyone else's orders refund)
         vm.warp((block.timestamp / ROUND + 1) * ROUND);
-        _order(hypePool, _std(rH / 5)); // ~20% of the pool: far more than 5% impact
-        r = _endRound();
-        vm.expectRevert(bytes("slippage"));
-        batcher.settle(address(token), r);
+        (ShieldedPool.Proof memory pr, ShieldedPool.ExtData memory ext) = _build(hypePool, _std(rH / 5), 77);
+        vm.expectRevert(PrivateBatcher.RoundFull.selector);
+        batcher.placeOrder(hypePool, pr, ext);
     }
 
     /// largest 1/2/5 × 10ⁿ at or below x

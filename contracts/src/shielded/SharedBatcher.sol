@@ -78,6 +78,9 @@ contract SharedBatcher {
 
     uint16 public constant MAX_SLIPPAGE_BPS = 200;
     uint16 public constant MAX_IMPACT_BPS = 500;
+    /// Each side of a round (all buys, all sells) is capped at this share of the pool's depth when an order lands, so the
+    /// net swap always fits inside MAX_IMPACT_BPS and one oversized order can't make the whole round refund.
+    uint16 public constant MAX_SIDE_BPS = 400;
 
     SharedVault public immutable shared;
     WHYPE public immutable whype;
@@ -116,6 +119,7 @@ contract SharedBatcher {
     error PriceMoved();
     error TooEarly();
     error TooSoon();
+    error RoundFull();
     error BadConfig();
 
     modifier lock() {
@@ -221,6 +225,9 @@ contract SharedBatcher {
         if (buy) b.buyHype += uint128(net);
         else b.sellTokens += uint128(net);
         b.orders += 1;
+        // this round has room for the order on its side; otherwise it goes in a later round
+        ISharedBatchMarket m = _market(d.token);
+        if (buy ? uint256(b.buyHype) * 10_000 > m.reserveHype() * MAX_SIDE_BPS : uint256(b.sellTokens) * 10_000 > m.reserveToken() * MAX_SIDE_BPS) revert RoundFull();
         id = orders.length;
         orders.push(Order(d.token, round, buy, false, uint128(size), uint128(net), d.outPubKey, d.outBlinding, d.outMemo));
         emit OrderPlaced(id, d.token, round, buy, size);

@@ -20,7 +20,8 @@ interface ILaunchAuction {
 
 /// @title CloakVaults — the permanent private vaults, one per asset, and the list of them.
 /// @notice Deployed once and never replaced. Each asset gets one ShieldedPool, made here and kept for good:
-///           - a launch token, by anyone, once its launch (from a factory registered in CloakConfig) settled with a pool,
+///           - a launch token, by anyone, once its launch (from a factory registered in CloakConfig) settled with a pool
+///             (a launch that opened on Uniswap goes to the SharedVault instead),
 ///           - any other token (WHYPE, USDC), by anyone, once CloakConfig approved it.
 ///         Routers, batchers and migrators come and go around these vaults; balances never have to move. A vault's
 ///         rules (verifier, fees, limits) come from CloakConfig, behind its timelock.
@@ -38,6 +39,7 @@ contract CloakVaults {
     event PoolCreated(address indexed token, address pool, address pair);
 
     error NotLaunched();
+    error SharedVaultToken();
     error UnknownFactory();
     error NotApproved();
     error PoolExists();
@@ -59,6 +61,9 @@ contract CloakVaults {
         if (!ILaunchAuction(auction).settled()) revert NotLaunched();
         CloakPair pair = ILaunchAuction(auction).pair();
         if (address(pair) == address(0)) revert NotLaunched();
+        // a launch that opened on Uniswap belongs in the SharedVault (SharedVault.admit), which refuses a token that has a
+        // vault here: so nobody can race admit and lock the token out of the shared vault's privacy
+        if (_uniPair(auction) != address(0)) revert SharedVaultToken();
         pool = _create(token);
         pairOf[token] = pair;
         emit PoolCreated(token, address(pool), address(pair));
@@ -69,6 +74,12 @@ contract CloakVaults {
         if (!config.approvedAsset(token)) revert NotApproved();
         pool = _create(token);
         emit PoolCreated(token, address(pool), address(0));
+    }
+
+    /// The launch's Uniswap pool (auctions from before Uniswap launches have no `uniPair()`: 0).
+    function _uniPair(address auction) internal view returns (address u) {
+        (bool ok, bytes memory r) = auction.staticcall(abi.encodeWithSignature("uniPair()"));
+        if (ok && r.length >= 32) u = abi.decode(r, (address));
     }
 
     function _create(address token) internal returns (ShieldedPool pool) {

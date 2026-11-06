@@ -5274,6 +5274,19 @@ export const privateBatcherAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_SIDE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_SLIPPAGE_BPS",
     "inputs": [],
     "outputs": [
@@ -5942,6 +5955,11 @@ export const privateBatcherAbi = [
   },
   {
     "type": "error",
+    "name": "RoundFull",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "RoundOpen",
     "inputs": []
   },
@@ -6513,6 +6531,11 @@ export const cloakVaultsAbi = [
   {
     "type": "error",
     "name": "PoolExists",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SharedVaultToken",
     "inputs": []
   },
   {
@@ -9375,6 +9398,19 @@ export const sharedBatcherAbi = [
   },
   {
     "type": "function",
+    "name": "MAX_SIDE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_SLIPPAGE_BPS",
     "inputs": [],
     "outputs": [
@@ -10142,6 +10178,11 @@ export const sharedBatcherAbi = [
   {
     "type": "error",
     "name": "Reentrancy",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RoundFull",
     "inputs": []
   },
   {
@@ -11382,6 +11423,19 @@ export const cloakDropAbi = [
   },
   {
     "type": "function",
+    "name": "seedBlock",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "setApprovalForAll",
     "inputs": [
       {
@@ -12340,6 +12394,19 @@ export const cloakSpotBookAbi = [
   {
     "type": "function",
     "name": "MAX_WALLET_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_WALLET_WINDOW",
     "inputs": [],
     "outputs": [
       {
@@ -13741,6 +13808,32 @@ export const cloakEscrowDropAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "seedBlock",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "seeded",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"

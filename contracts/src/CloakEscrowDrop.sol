@@ -29,7 +29,7 @@ contract CloakEscrowDrop {
     uint32 public constant MAX_SUPPLY = 500; // every token moves in at creation, in one transaction
     uint32 public constant MAX_PER_BID = 20;
     uint16 public constant MAX_BOOST_BPS = 3_000;
-    uint16 public constant NO_REVEAL_PENALTY_BPS = 1_000;
+    uint16 public constant NO_REVEAL_PENALTY_BPS = 2_500; // a bid kept sealed to steer the price costs real money
     uint256 internal constant BPS = 10_000;
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
     uint256 public constant DRAND_GENESIS = 1692803367;
@@ -81,6 +81,10 @@ contract CloakEscrowDrop {
     uint32 public tieDemand;
     uint256 public tieRandom;
     uint256 public rotation;
+    /// The block whose hash seeds the tie draw and the rotation: the one after settlement, so no bidder can know or choose
+    /// it when deciding which of their bids to open (the revealed salts alone could be steered by withholding some).
+    uint64 public seedBlock;
+    bool public seeded;
     uint256 public tieCursor;
     uint32 public tieAssigned;
     uint32 public slotsAssigned;
@@ -368,8 +372,7 @@ contract CloakEscrowDrop {
             clearingScore = uint256(_p.floor) * BPS;
             sold = uint32(totalDemand);
         }
-        if (tieSupply != 0) tieRandom = uint256(keccak256(abi.encode(saltMix, address(this))));
-        rotation = uint256(keccak256(abi.encode(saltMix, address(this), "slots"))) % supply;
+        seedBlock = uint64(block.number + 1);
         emit Settled(clearingScore, sold, tieSupply, tieDemand);
     }
 
@@ -377,6 +380,10 @@ contract CloakEscrowDrop {
     ///         a time. Anyone can call it; claims wait until it's done. The name matches CloakDrop's tie numbering.
     function numberTies(uint256 maxSteps) external {
         require(settled && !failed && !tiesReady, "nothing to number");
+        if (!seeded) {
+            if (!_drawSeed()) return; // the seed block isn't mined yet: call again
+            seeded = true;
+        }
         uint256 end = tieCursor + maxSteps;
         if (end > _bids.length) end = _bids.length;
         uint32 tickets = tieAssigned;
@@ -398,6 +405,20 @@ contract CloakEscrowDrop {
             tiesReady = true;
             emit TiesReady(tieRandom);
         }
+    }
+
+    /// The tie draw and the rotation, from the salts of every opened bid and the hash of `seedBlock`. False while that
+    /// block isn't mined yet. If nobody drew within 256 blocks the hash is gone, so a new future block is picked.
+    function _drawSeed() internal returns (bool) {
+        if (block.number <= seedBlock) return false;
+        bytes32 h = blockhash(seedBlock);
+        if (h == bytes32(0)) {
+            seedBlock = uint64(block.number + 1);
+            return false;
+        }
+        if (tieSupply != 0) tieRandom = uint256(keccak256(abi.encode(saltMix, h, address(this))));
+        rotation = uint256(keccak256(abi.encode(saltMix, h, address(this), "slots"))) % _p.supply;
+        return true;
     }
 
     /// Tokens a revealed bid wins (ties need their tickets numbered first).
@@ -545,12 +566,12 @@ contract CloakEscrowDrop {
         (bool ok,) = address(collection).call{gas: TRANSFER_GAS}(abi.encodeCall(IERC721Min.transferFrom, (address(this), to, tokenId)));
         if (!ok) return false;
         (bool ok2, bytes memory r) = address(collection).staticcall{gas: 50_000}(abi.encodeCall(IERC721Min.ownerOf, (tokenId)));
-        return ok2 && r.length >= 32 && abi.decode(r, (address)) == to;
+        return ok2 && r.length >= 32 && abi.decode(r, (uint256)) == uint256(uint160(to)); // compare the whole word: a collection returning dirty upper bits must not brick claims
     }
 
     function _ownsToken(uint256 tokenId) internal view returns (bool) {
         (bool ok, bytes memory r) = address(collection).staticcall{gas: 50_000}(abi.encodeCall(IERC721Min.ownerOf, (tokenId)));
-        return ok && r.length >= 32 && abi.decode(r, (address)) == address(this);
+        return ok && r.length >= 32 && abi.decode(r, (uint256)) == uint256(uint160(address(this)));
     }
 
     function _verify(bytes32[] calldata proof, bytes32 root, bytes32 leaf) internal pure returns (bool) {

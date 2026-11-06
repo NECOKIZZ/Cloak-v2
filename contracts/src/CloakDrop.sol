@@ -32,7 +32,8 @@ contract CloakDrop {
     uint32 public constant MAX_PER_BID = 20;
     uint16 public constant MAX_BOOST_BPS = 3_000;
     uint16 public constant MAX_ROYALTY_BPS = 1_000;
-    uint16 public constant NO_REVEAL_PENALTY_BPS = 1_000; // a bid that never opens loses 10% (burned)
+    uint16 public constant NO_REVEAL_PENALTY_BPS = 2_500; // a bid that never opens loses 25% (burned), so a ladder of bids
+    // kept sealed to move the price (a creator shilling their own drop) costs real money
     uint256 internal constant BPS = 10_000;
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
     // drand quicknet, the network bids are sealed to
@@ -108,6 +109,9 @@ contract CloakDrop {
     uint32 public tieSupply; // NFTs left for the bids tied at the clearing score
     uint32 public tieDemand; // NFTs those tied bids asked for
     uint256 public tieRandom;
+    /// The block whose hash seeds the tie draw: the one after settlement, so no bidder can know or choose it when deciding
+    /// which of their bids to open (the revealed salts alone could be steered by withholding some).
+    uint64 public seedBlock;
     uint256 public tieCursor; // next bid id to number tickets for
     uint32 public tieAssigned;
     bool public tiesReady;
@@ -394,7 +398,7 @@ contract CloakDrop {
             clearingScore = uint256(_p.floor) * BPS;
             sold = uint32(totalDemand);
         }
-        if (tieSupply != 0) tieRandom = uint256(keccak256(abi.encode(saltMix, address(this))));
+        if (tieSupply != 0) seedBlock = uint64(block.number + 1);
         emit Settled(clearingScore, sold, tieSupply, tieDemand);
     }
 
@@ -414,10 +418,23 @@ contract CloakDrop {
         }
         tieAssigned = n;
         tieCursor = end;
-        if (end == _bids.length) {
+        if (end == _bids.length && _drawSeed()) {
             tiesReady = true;
             emit TiesReady(tieRandom);
         }
+    }
+
+    /// The tie draw's random start, from the salts of every opened bid and the hash of `seedBlock`. False while that block
+    /// isn't mined yet (call again). If nobody drew within 256 blocks the hash is gone, so a new future block is picked.
+    function _drawSeed() internal returns (bool) {
+        if (block.number <= seedBlock) return false;
+        bytes32 h = blockhash(seedBlock);
+        if (h == bytes32(0)) {
+            seedBlock = uint64(block.number + 1);
+            return false;
+        }
+        tieRandom = uint256(keccak256(abi.encode(saltMix, h, address(this))));
+        return true;
     }
 
     /// Tickets [start, start + q) win where they fall in the window of `tieSupply` tickets from the random start.

@@ -38,7 +38,7 @@ Elysium testnet (chain `99801`) as of Nov 2, 2026, read from the contracts and f
 | Timelock round | Must open after bidding closes and at least **30 s** before the reveal window ends | Contract (fixed) |
 | A valid bid | Its deposit must cover price × quantity at its tick. One that doesn't fails to reveal and counts as unrevealed | Contract (fixed) |
 | Unrevealed bids | Lose the creator's penalty, at least **10%** and at most **50%** of the deposit, **burned**. No penalty if the launch fails | Contract (fixed) |
-| Clearing price | Walk from the highest tick down until demand covers the sale. Every winner pays that one price; the clearing tick fills pro rata; lower bids get everything back. If demand never covers the sale, everyone fills at the lowest revealed tick | Contract (fixed) |
+| Clearing price | Walk from the highest tick down until demand covers the sale. Every winner pays that one price; the clearing tick fills pro rata; lower bids get everything back. If demand never covers the sale, everyone fills at the lowest revealed tick, so one bid at the minimum price sets the price for everyone (standard for uniform-price sales). Creators: set a minimum you are happy to sell at | Contract (fixed) |
 | A failed launch | Only when no bid was revealed. Every deposit is refunded in full and every token goes back to the creator | Contract (fixed) |
 | Launch fee | **1.5%** of a successful raise, fixed when the launch is created. Nothing if it fails | Config (ceiling 3%) |
 | Bid caps (beta) | **100 HYPE** per bid, **10,000 HYPE** per launch, fixed when the launch is created | Config |
@@ -96,6 +96,7 @@ Elysium testnet (chain `99801`) as of Nov 2, 2026, read from the contracts and f
 | Spending | Only with a zero-knowledge proof made on the owner's device (Groth16, 2 notes in, 2 out) | Contract (fixed) |
 | Deposits and private sends | **Free** | Config |
 | Withdrawals, private swaps, batch orders | **0.25%** of the amount, kept in the vault and collected to the treasury | Config (ceiling 1%) |
+| A relayer's fee | Pays the same **0.25%**: it's value leaving the vault too (vaults deployed from Nov 7) | Contract |
 | HYPE vault caps (beta) | **100 HYPE** per deposit, **10,000 HYPE** in total | Config |
 | USDC vault caps (beta) | **1,000 USDC** per deposit, **50,000 USDC** in total | Config |
 | Launch-token vault caps (beta) | **10%** of the token's supply per deposit, **50%** in total | Config |
@@ -138,6 +139,7 @@ HYPE, USDC and every earlier launch keep their own vaults.
 | Crossing price | The pool's **time-weighted average price** over the round, which one transaction can't move. Buys and sells cross there with no pool fee; only the net trades on the pool | Contract (fixed) |
 | Price guard | A round won't settle if the pool's price is more than **2%** away from the round's average, so a settler can't move the pool first | Contract (fixed per batcher) |
 | Impact guard | The net leg may not lose more than **5%** to price impact. On a very thin pool a large round can't settle | Contract (fixed) |
+| Round capacity | Each side of a round (all buys, all sells) is capped at **4%** of the pool's depth when an order lands. An order that doesn't fit goes in a later round, so one huge order can't make a round refund for everyone (batchers deployed from Nov 7) | Contract (fixed) |
 | A round that can't settle | Every order is refundable as a private note **10 minutes** after the round ends | Contract (fixed per batcher) |
 | Settling and paying out | Anyone can. The keeper does both | Keeper |
 

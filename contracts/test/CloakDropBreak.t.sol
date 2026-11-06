@@ -121,6 +121,7 @@ contract CloakDropBreakTest is Test {
         _open(b);
         assertEq(drop.phase(), 3, "every bid open: ready to settle without waiting out the hour");
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         assertEq(drop.sold(), 2);
     }
 
@@ -130,8 +131,10 @@ contract CloakDropBreakTest is Test {
         assertEq(drop.phase(), 2, "no bids: nothing to open, but the window still runs");
         vm.expectRevert(bytes("reveal open"));
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         assertTrue(drop.failed());
     }
 
@@ -141,12 +144,13 @@ contract CloakDropBreakTest is Test {
         vm.warp(drop.params().commitEnd);
         _open(a);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         vm.expectRevert(bytes("not reveal phase"));
         drop.reveal(a.id, a.tick, a.qty, a.salt);
     }
 
     function test_aLongKeeperOutageOnlyCostsTheUnopened() public {
-        // the keeper opens one bid, then goes down past the window: only the sealed bid pays the 10%
+        // the keeper opens one bid, then goes down past the window: only the sealed bid pays the 25%
         _make(3, 0, 10, 30 minutes);
         B memory a = _bid(makeAddr("a"), 1, 1, false);
         B memory b = _bid(makeAddr("b"), 1, 1, false);
@@ -154,11 +158,12 @@ contract CloakDropBreakTest is Test {
         _open(a);
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         (,,, uint256 penA) = drop.allocationOf(a.id);
         (uint32 nB,, uint256 refB, uint256 penB) = drop.allocationOf(b.id);
         assertEq(penA, 0);
         assertEq(nB, 0);
-        assertEq(penB, drop.costOf(1, 1) / 10);
+        assertEq(penB, drop.costOf(1, 1) / 4);
         assertEq(refB + penB, drop.costOf(1, 1));
     }
 
@@ -189,6 +194,7 @@ contract CloakDropBreakTest is Test {
         _open(win);
         drop.reveal(id, 1, 1, salt);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         drop.claim(id); // the refund can't be sent, so it is held, and the claim still completes
         assertEq(drop.refundOwed(address(r)), cost);
         address to = makeAddr("to");
@@ -210,6 +216,7 @@ contract CloakDropBreakTest is Test {
         _open(win);
         drop.reveal(id, 1, 1, salt);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         uint256 before = address(drop).balance;
         drop.claim(id);
         assertEq(address(r).balance, 0, "the re-entry reverted, so nothing was sent");
@@ -225,6 +232,7 @@ contract CloakDropBreakTest is Test {
         vm.warp(drop.params().commitEnd);
         _open(a);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         vm.expectRevert(bytes("bidder"));
         drop.claimTo(a.id, makeAddr("thief"));
         vm.prank(a.who);
@@ -242,6 +250,7 @@ contract CloakDropBreakTest is Test {
         vm.warp(drop.params().commitEnd);
         for (uint256 k; k < 8; ++k) _open(bs[k]);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         vm.expectRevert(bytes("ties not numbered"));
         drop.claim(bs[0].id);
         uint256 snap = vm.snapshotState();
@@ -288,6 +297,7 @@ contract CloakDropBreakTest is Test {
         vm.warp(p.commitEnd);
         _open(a);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         assertTrue(drop.failed());
         (uint32 n, uint256 paid, uint256 refund, uint256 pen) = drop.allocationOf(a.id);
         assertEq(n + paid + pen, 0);
@@ -334,6 +344,7 @@ contract CloakDropBreakTest is Test {
         for (uint256 k; k < n; ++k) if (opened[k]) _open(bs[k]);
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         while (drop.phase() == 4) drop.numberTies(7);
 
         uint256 deposits;

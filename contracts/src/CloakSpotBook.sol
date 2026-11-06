@@ -16,6 +16,8 @@ import {CloakDrop, CloakDropFactory} from "./CloakDrop.sol";
 contract CloakSpotBook {
     uint256 public constant MAX_PARTNER = 200;
     uint256 public constant MAX_WALLET_WINDOW = 90 days;
+    /// Winners always get at least this long after bidding closes to name their wallets.
+    uint256 public constant MIN_WALLET_WINDOW = 1 days;
 
     CloakDropFactory public immutable factory;
 
@@ -49,7 +51,7 @@ contract CloakSpotBook {
         require(!_sales[drop].open, "already a sale");
         require(!d.settled(), "settled");
         require(bytes(partner).length > 0 && bytes(partner).length <= MAX_PARTNER, "partner");
-        require(deadline > p.revealEnd && deadline <= p.revealEnd + MAX_WALLET_WINDOW, "deadline");
+        require(deadline >= p.revealEnd + MIN_WALLET_WINDOW && deadline <= p.revealEnd + MAX_WALLET_WINDOW, "deadline");
         _sales[drop] = Sale(true, deadline, partner);
         sales.push(drop);
         emit SaleOpened(drop, msg.sender, partner, deadline);

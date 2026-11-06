@@ -68,7 +68,8 @@ contract PrivateRouter {
     }
 
     receive() external payable {
-        require(msg.sender == address(whype) || isPairAddress(msg.sender), "direct HYPE");
+        // during a swap, HYPE can come from the market's own payer (a Uniswap v4 market pays out from the PoolManager)
+        require(_lock == 2 || msg.sender == address(whype) || isPairAddress(msg.sender), "direct HYPE");
     }
 
     function isPairAddress(address a) internal view returns (bool) {

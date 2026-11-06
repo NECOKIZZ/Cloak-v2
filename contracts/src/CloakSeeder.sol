@@ -20,7 +20,9 @@ interface IERC20Seed {
 ///
 ///         Opening at the right price: the pool's address is known before it exists, so anyone can send tokens or
 ///         WHYPE to it, or create it and `sync`, before settlement. Stray balances are skimmed to 0x…dEaD; synced
-///         reserves are topped up so the pool still opens at the clearing price (whoever donated loses it). A pool that
+///         reserves are topped up so the pool still opens at the clearing price (whoever donated loses it). Synced
+///         WHYPE beyond what the launch can top up makes the Uniswap attempt fail, so the launch opens on a CloakPair at
+///         the clearing price instead (V2 path, testnet only: mainnet launches use CloakV4Hook, which nobody can pre-seed). A pool that
 ///         already has LP (someone minted first, which needs launch tokens before settlement) is left alone and the
 ///         launch gets a CloakPair, so nobody else's position can set the price.
 /// @dev Holds nothing between calls. The Uniswap attempt runs in a self-call with a fixed gas budget, so a failure

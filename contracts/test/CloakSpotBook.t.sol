@@ -76,6 +76,7 @@ contract CloakSpotBookTest is Test {
         for (uint256 k; k < bs.length; ++k) drop.reveal(bs[k].id, bs[k].tick, bs[k].qty, bs[k].salt);
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         if (drop.tieSupply() != 0) drop.numberTies(10_000);
     }
 
@@ -102,6 +103,12 @@ contract CloakSpotBookTest is Test {
         book.open(dropIndex, "Moonfoxes", re);
         vm.expectRevert(bytes("deadline"));
         book.open(dropIndex, "Moonfoxes", re + 91 days);
+        // CL-07 (external review, Nov 2026): a deadline a second after bidding closed left winners no time to name
+        // wallets while the creator kept the proceeds. Winners now always get at least a day.
+        vm.expectRevert(bytes("deadline"));
+        book.open(dropIndex, "Moonfoxes", re + 1);
+        vm.expectRevert(bytes("deadline"));
+        book.open(dropIndex, "Moonfoxes", re + 1 days - 1);
         address d = book.open(dropIndex, "Moonfoxes", dl);
         assertEq(d, address(drop));
         vm.expectRevert(bytes("already a sale"));
@@ -259,6 +266,7 @@ contract CloakSpotBookTest is Test {
         }
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         if (drop.tieSupply() != 0) drop.numberTies(10_000);
     }
 }

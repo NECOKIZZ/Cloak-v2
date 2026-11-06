@@ -92,6 +92,7 @@ contract CloakDropTest is Test {
     function _settle() internal {
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         if (drop.tieSupply() != 0) drop.numberTies(10_000);
     }
 
@@ -257,6 +258,7 @@ contract CloakDropTest is Test {
         _make(4, 0, false, false);
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         assertTrue(drop.failed());
         vm.prank(creator);
         drop.mintUnsold(creator, 4);
@@ -266,7 +268,7 @@ contract CloakDropTest is Test {
         drop.mintUnsold(creator, 1);
     }
 
-    function test_unrevealedBidLoses10Percent() public {
+    function test_unrevealedBidLoses25Percent() public {
         _make(4, 0, false, false);
         _toBidding();
         B memory a = _place(_bidder(1), 0.5 ether, 1, false);
@@ -275,8 +277,8 @@ contract CloakDropTest is Test {
         _open(a.id, a.who, a.price, a.qty, a.salt);
         _settle();
         (, , uint256 refund, uint256 penalty) = drop.allocationOf(b.id);
-        assertEq(penalty, 0.06 ether);
-        assertEq(refund, 0.54 ether);
+        assertEq(penalty, 0.15 ether);
+        assertEq(refund, 0.45 ether);
     }
 
     function test_invalidReveals_areRefused() public {
@@ -355,6 +357,7 @@ contract CloakDropTest is Test {
         _open(b.id, b.who, b.price, b.qty, b.salt);
         vm.warp(drop.params().revealEnd);
         drop.settle();
+        vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
         assertEq(drop.phase(), 4);
         vm.expectRevert("ties not numbered");
         drop.claim(a.id);
@@ -416,9 +419,59 @@ contract CloakDropTest is Test {
             else for (uint256 k = 4; k > 0; --k) _open(bs[k - 1].id, bs[k - 1].who, bs[k - 1].price, bs[k - 1].qty, bs[k - 1].salt);
             vm.warp(drop.params().revealEnd);
             drop.settle();
+            vm.roll(block.number + 2); // the tie draw is seeded by the block after settlement
+            drop.numberTies(10_000);
             rs[run] = drop.tieRandom();
         }
         assertEq(rs[0], rs[1]);
+    }
+
+    function _tiedPair() internal returns (B memory a, B memory b) {
+        _make(1, 0, false, false);
+        _toBidding();
+        a = _place(_bidder(1), 0.5 ether, 1, false);
+        b = _place(_bidder(2), 0.5 ether, 1, false);
+        _toReveal();
+        _open(a.id, a.who, a.price, a.qty, a.salt);
+        _open(b.id, b.who, b.price, b.qty, b.salt);
+        vm.warp(drop.params().revealEnd);
+    }
+
+    /// CL-01 (external review, Nov 2026): the tie draw came only from the salts of the bids that got opened, so a bidder
+    /// holding several sealed bids could pick which to open and steer who wins. The draw now also needs the hash of the
+    /// block after settlement, which nobody knows while bids can still be opened (or kept sealed).
+    function test_tieDrawIsSeededByABlockNobodyKnewWhenBidsOpened() public {
+        _tiedPair();
+        drop.settle();
+        assertEq(drop.tieRandom(), 0, "no draw at settlement");
+        uint64 sb = drop.seedBlock();
+        assertEq(sb, block.number + 1);
+        drop.numberTies(10); // the seed block isn't mined yet: nothing is drawn
+        assertFalse(drop.tiesReady());
+        vm.roll(block.number + 2);
+        uint256 snap = vm.snapshotState();
+        vm.setBlockhash(sb, keccak256("one future"));
+        drop.numberTies(10);
+        uint256 r1 = drop.tieRandom();
+        assertTrue(drop.tiesReady());
+        vm.revertToState(snap);
+        vm.setBlockhash(sb, keccak256("another future"));
+        drop.numberTies(10);
+        assertTrue(r1 != drop.tieRandom(), "the same opened bids give a different draw with a different block");
+    }
+
+    /// If nobody numbers the ties within 256 blocks the seed block's hash is gone, so a new future block is picked.
+    function test_tieDrawPicksANewBlockIfTheSeedIsTooOld() public {
+        _tiedPair();
+        drop.settle();
+        vm.roll(block.number + 300);
+        drop.numberTies(10);
+        assertFalse(drop.tiesReady());
+        assertEq(drop.seedBlock(), block.number + 1);
+        vm.roll(block.number + 2);
+        drop.numberTies(10);
+        assertTrue(drop.tiesReady());
+        assertTrue(drop.tieRandom() != 0);
     }
 
     function test_noFolder_usesTheFactoryDefault() public {

@@ -40,6 +40,8 @@ const CONTRACT: Record<string, string> = {
   NotSettled: "This round hasn't settled yet. Give it a few seconds.",
   PriceMoved: "The pool price moved too much during this round, so it can't settle at a fair price yet.",
   TooSoon: "This batch round settles once its price covers a full round, a few seconds after it closes. It will settle shortly.",
+  RoundFull: "This batch round is full for this token: each side of a round is capped at 4% of the pool so it always settles. Try a smaller amount, or again in the next round (about 30 seconds).",
+  SharedVaultToken: "This token opened on Uniswap, so its private balance lives in the shared vault, not a vault of its own.",
   TooEarly: "It's too early for that. Refunds open a while after the round ends.",
 };
 const SELECTORS: Record<string, string> = Object.fromEntries(

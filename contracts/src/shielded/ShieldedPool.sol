@@ -24,6 +24,7 @@ interface IERC20 {
 ///         Rules come from `CloakConfig` (setup, then a public 3-day timelock):
 ///           - Deposits and private transfers are free. Every withdrawal (a cash out, a private swap, a batch order)
 ///             keeps `withdrawFeeBps` of the amount in the pool as `feesOwed`; `collectFees()` sends it to the treasury.
+///             A relayer's fee is value leaving the pool too, so it pays the same rate.
 ///           - Deposits are capped per deposit and in total while limits are on. Withdrawals are never capped.
 /// @dev No function moves user funds: notes leave only through a proof. Invariant:
 ///      token.balanceOf(pool) >= deposited + feesOwed.
@@ -110,8 +111,15 @@ contract ShieldedPool is MerkleTreeWithHistory {
 
         if (extData.fee > 0) {
             if (extData.relayer == address(0)) revert ZeroRelayer();
+            // the relayer's fee leaves the vault too, so it pays the same protocol fee as a withdrawal: otherwise a note
+            // owner could withdraw everything as a "relayer fee" to themselves and skip the fee
+            uint256 pf = config.withdrawFee(extData.fee);
             deposited -= extData.fee;
-            _send(extData.relayer, extData.fee);
+            if (pf != 0) {
+                feesOwed += pf;
+                emit WithdrawFee(pf);
+            }
+            _send(extData.relayer, extData.fee - pf);
         }
         if (extData.extAmount < 0) {
             if (extData.recipient == address(0)) revert ZeroRecipient();

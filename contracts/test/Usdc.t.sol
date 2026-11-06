@@ -40,12 +40,13 @@ contract UsdcPoolTest is PrivateBatcherTest {
         (ShieldedPool.Proof memory pr, ShieldedPool.ExtData memory ext) = _withdraw(fresh, 200e6, 0.05e6);
         usdcPool.transact(pr, ext);
         assertEq(usdc.balanceOf(fresh), 199.5e6); // 0.25% of 200 USDC kept
-        assertEq(usdc.balanceOf(relayer), 0.05e6); // relayer paid in USDC, inside the proof
-        assertEq(usdcPool.feesOwed(), 0.5e6);
+        // relayer paid in USDC, inside the proof; its fee leaves the vault too, so it pays the same 0.25%
+        assertEq(usdc.balanceOf(relayer), 0.05e6 - 125);
+        assertEq(usdcPool.feesOwed(), 0.5e6 + 125);
         assertEq(usdcPool.deposited(), 500e6 - 200e6 - 0.05e6);
         assertGe(usdc.balanceOf(address(usdcPool)), usdcPool.deposited() + usdcPool.feesOwed());
         usdcPool.collectFees();
-        assertEq(usdc.balanceOf(treasury), 0.5e6);
+        assertEq(usdc.balanceOf(treasury), 0.5e6 + 125);
     }
 
     function test_usdc_caps() public {

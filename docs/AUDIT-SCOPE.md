@@ -187,11 +187,14 @@ and migrators can be replaced, and the registry is append-only, with the newest 
 
 10. Every winner pays the same clearing price. Every bidder gets back everything above what they owe. Withheld bids
     pay the minimum penalty.
-11. The market opens at exactly the clearing price, whatever anyone donated to or synced in the pool beforehand.
+11. The market opens at exactly the clearing price, whatever anyone donated to or synced in the pool beforehand (on the
+    V2 path a large synced donation can push the launch onto a `CloakPair` instead of Uniswap, still at the clearing price).
 12. Locked LP never shrinks. `CloakFeeLocker` and `CloakV4Hook` pay only fees, never principal, and nobody else can
     add liquidity to a Cloak v4 pool.
 13. A drop never sells more than its supply. The tie lottery and the escrow rotation could not be known or steered
-    before the bids opened. An escrowed NFT ends up with exactly one winner, or back with the owner.
+    before the bids opened: they are seeded by the opened bids' salts and the hash of the block after settlement
+    (`seedBlock`), so keeping some bids sealed can't steer them. An escrowed NFT ends up with exactly one winner, or
+    back with the owner.
 
 **Governance**
 
@@ -227,8 +230,9 @@ and migrators can be replaced, and the registry is append-only, with the newest 
   stays hidden). Batch rounds show counts of standard sizes and the net. Timing analysis is a user concern (see the
   tips in the app).
 - **Review history** is in `SECURITY.md`: the Oct 25 internal review (all fixed, regression tests in
-  `contracts/test/V2.t.sol`) and the Nov 6 external report (High, batch crossing price, fixed and redeployed, with
-  tests in `PrivateBatcher.t.sol` and `SharedVault.t.sol`).
+  `contracts/test/V2.t.sol`), the Nov 6 external report (High, batch crossing price, fixed and redeployed, with
+  tests in `PrivateBatcher.t.sol` and `SharedVault.t.sol`), and the Nov 7 AI-assisted review (CL-01 to CL-09, A-1 to
+  A-3: fixed, or accepted with reasons, in `SECURITY.md`). Please review those fixes too.
 
 ## 8. Building and testing
 

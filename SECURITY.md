@@ -30,6 +30,22 @@ Please report it privately. Don't open a public issue until a fix ships.
 
 The current testnet deployment is v4: the v2 contracts below (config, auctions, vaults, router, batchers, migrator) carried forward, plus the shared launch-token vault with its router and batcher, Uniswap v4 launches through `CloakV4Hook`, and sealed NFT drops. Every contract is source-verified on the explorer.
 
+**Nov 7, 2026, independent AI-assisted review (Haider Ali, @haiderali_eth).** Nine findings plus three in testnet-only code, all reproduced in Foundry. None let anyone take bidder deposits or private balances. Fixed in the contracts that ship to mainnet, with regression tests named after each finding. Testnet contracts deployed before Nov 7 keep the old behaviour.
+
+| Severity (theirs) | Finding | Outcome |
+|---|---|---|
+| Medium | CL-01: the NFT drop tie lottery came only from the salts of opened bids, so someone holding several sealed bids could choose which to open and steer the draw | Fixed: the draw also uses the hash of the block after settlement, which nobody knows while bids can still be opened (`CloakDrop`, and the same for `CloakEscrowDrop`'s rotation, A-3) |
+| Medium | CL-02: in an undersubscribed launch a dust bid at the minimum price sets the price for everyone | By design (uniform-price rule, documented in RULES.md). Creators set the minimum they accept |
+| Medium | CL-03: one well-funded actor can fill a launch's deposit cap | Accepted: needs the full cap (10,000 HYPE) locked per launch, and the caps are temporary until the audit and ceremony |
+| Medium-Low | CL-04: a creator can shill their own drop with bids they keep sealed | Mitigated: a sealed bid now loses 25% (was 10%) on drops and escrow drops |
+| Low-Medium | CL-05: anyone could open a per-token vault for a Uniswap launch before it was admitted to the shared vault, locking it out for good | Fixed: `CloakVaults.createPool` refuses launches that opened on Uniswap |
+| Low-Medium | CL-06: one huge batch order made the whole round refund, less the vault fee | Fixed: each side of a round is capped at 4% of the pool's depth, so the round always settles (both batchers) |
+| Low-Medium | CL-07: a WL spot sale's naming deadline could be one second after bidding closed | Fixed: winners always get at least one day |
+| Low | CL-08: `PrivateRouter` refused HYPE paid out by a Uniswap v4 market | Fixed: it accepts HYPE during its own swap (only reachable through CL-05, also fixed) |
+| Low | CL-09: a note owner could withdraw as a "relayer fee" to themselves and skip the withdrawal fee | Fixed: a relayer's fee pays the same protocol fee (`ShieldedPool`, `SharedVault`) |
+| Low (testnet only) | A-1: a large synced WHYPE donation pushes a V2-path launch onto a `CloakPair` | Documented: the market still opens at the clearing price; mainnet launches use the v4 hook |
+| Low-Medium (testnet only) | A-2: a collection returning a dirty `ownerOf` word could brick escrow claims | Fixed: the whole word is compared, so the winner is refunded instead |
+
 **Nov 6, 2026, external report (KupiaSec).** Fixed in both batchers, with regression tests in `contracts/test/PrivateBatcher.t.sol` and `contracts/test/SharedVault.t.sol`. The live batchers were replaced the same day (`0x54a5…d43f` and `0x1159…ea14`).
 
 | Severity | Finding | Fix |
