@@ -178,6 +178,7 @@ Selective disclosure, applied to tokens.
 - **Next for drops:** link previews for drop pages, bids from a private balance, and private GTD mints (needs a new circuit).
 - **`@cloakely/sdk` and `@cloakely/mcp` 0.8.4** are on npm: everything in 0.8.3 (drops, WL spot sales, drop tools in the MCP, Uniswap v4 launches), plus the fixed batchers, withdrawals to `.ely` names, and proving files from a CDN with the site as a fallback.
 - **`@cloakely/sdk` and `@cloakely/mcp` 0.8.5**: the keeper and relayer moved to a permanent address, `keeper.boblabs.tech`, so agents and apps keep working through any future hosting move.
+- **`@cloakely/sdk` and `@cloakely/mcp` 0.9.1** (Nov 7): receive addresses land in seconds (`watchReceive` takes an optional `delay`).
 - **`@cloakely/sdk` and `@cloakely/mcp` 0.9.0** (Nov 7): private receive addresses, split withdrawals over time, proof of funds (off chain and on chain), a faster first sync from a saved scan and the keeper's note list, and the Nov 7 contract fixes.
 
 ---
