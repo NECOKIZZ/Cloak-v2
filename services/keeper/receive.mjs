@@ -8,7 +8,7 @@ import { cloakReceiveAbi, receiveAddressOf } from "@cloakely/sdk";
 
 const TICK_MS = 30_000;
 const MAX_DELAY_S = 180; // deliver 0 to 3 minutes after funds are first seen
-const DELIVER_GAS = 450_000n;
+const DELIVER_GAS = 1_400_000n; // a first delivery deploys the box and inserts into the vault's tree
 const MAX_WATCHED = 50_000;
 
 export function startReceive({ pub, wallet, account, factory, tokens = [], minGasPrice = 0n, marginBps = 12_500n, log = () => {} }) {
@@ -29,7 +29,8 @@ export function startReceive({ pub, wallet, account, factory, tokens = [], minGa
     }
     const args = [w.params, token, fee];
     await pub.simulateContract({ address: factory, abi: cloakReceiveAbi, functionName: "deliver", args, account });
-    const hash = await wallet.writeContract({ address: factory, abi: cloakReceiveAbi, functionName: "deliver", args, gas: 900_000n });
+    const est = await pub.estimateContractGas({ address: factory, abi: cloakReceiveAbi, functionName: "deliver", args, account: account.address });
+    const hash = await wallet.writeContract({ address: factory, abi: cloakReceiveAbi, functionName: "deliver", args, gas: (est * 13n) / 10n + 100_000n });
     const r = await pub.waitForTransactionReceipt({ hash });
     if (r.status !== "success") throw new Error(`deliver reverted ${hash}`);
     w.deliveries.push({ token, amount: amount.toString(), fee: fee.toString(), txHash: hash, at: Math.floor(Date.now() / 1000) });
