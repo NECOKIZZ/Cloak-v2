@@ -14,6 +14,7 @@ import { RecipientNote } from "../recipient";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { useFeePct, useMarkets, type Market } from "./markets";
 import { usePrivateBalances } from "../balances";
+import { schedule, useScheduled } from "../scheduled";
 import { Skel } from "../skel";
 
 type Kind = "shield" | "send" | "withdraw";
@@ -221,10 +222,38 @@ export function Portfolio() {
               {moveMsg.err && <div className="err">{moveMsg.err}</div>}
             </div>
           )}
+          <ScheduledCard />
           <Tips />
         </div>
       </div>
     </>
+  );
+}
+
+/** Withdrawals sent in pieces: what's still waiting, what went out. */
+function ScheduledCard() {
+  const items = useScheduled();
+  if (!items.length) return null;
+  const at = (t: number) => new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  return (
+    <div className="card">
+      <div className="card-head"><h3>Scheduled withdrawals</h3><span className="xs mute">{items.filter((x) => (x.status?.state ?? "waiting") === "waiting").length} waiting</span></div>
+      <div className="asset-list">
+        {items.map((x) => {
+          const st = x.status?.state ?? "waiting";
+          return (
+            <div key={x.id} className="asset-row">
+              <div className="nm"><b className="mono">{formatUnits(x.piece.amount, x.decimals)} {x.symbol}</b><span className="xs mute">to {x.piece.to.slice(0, 6)}…{x.piece.to.slice(-4)}</span></div>
+              <div className="amt">
+                <span className={`pill ${st === "sent" ? "ok" : st === "dropped" ? "warn" : ""}`}>{st === "sent" ? "Sent" : st === "dropped" ? "Not sent" : "Waiting"}</span>
+                <span className="xs mute">{st === "sent" && x.status?.txHash && txLink(x.status.txHash) ? <a href={txLink(x.status.txHash)} target="_blank" rel="noreferrer">View tx ↗</a> : st === "dropped" ? x.status?.error ?? "" : `around ${at(x.piece.notBefore)}`}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="note">The relayer sends each piece at its time, even with Cloak closed. It can't change where any piece goes.</p>
+    </div>
   );
 }
 
@@ -265,6 +294,9 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   const [asset, setAsset] = useState<Key | undefined>((query.get("token") as Key | null) ?? (kind === "shield" ? "HYPE" : undefined));
   const [amt, setAmt] = useState("");
   const [to, setTo] = useState("");
+  // withdraw in pieces over time (HYPE and per-token vaults; not the shared vault yet)
+  const [spread, setSpread] = useState(false);
+  const [windowSecs, setWindowSecs] = useState(3600);
   const [busy, setBusy] = useState("");
   const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
   // send and withdraw start on the first token held, once balances arrive
@@ -340,8 +372,18 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
           const dest = await recipientNow(to).catch((e) => {
             throw new Hint(isAddress(to) ? e.message : `${e.message} Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.`);
           });
-          const tx = cur.key === "HYPE" ? await priv.unshieldHype(dest.address, a, setBusy) : cur.market?.shared && shared ? await shared.unshield(cur.key as Address, a, dest.address, setBusy) : await priv.unshieldToken(cur.key, dest.address, a, setBusy);
-          setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${dest.name ?? `${dest.address.slice(0, 6)}…${dest.address.slice(-4)}`}.`, tx });
+          const name = dest.name ?? `${dest.address.slice(0, 6)}…${dest.address.slice(-4)}`;
+          if (spread && !cur.market?.shared) {
+            const token = cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address);
+            const pieces = await priv.planSplitWithdraw(token, dest.address, a, { pieces: 3, windowSecs, onStatus: setBusy });
+            setBusy("Handing the pieces to the relayer…");
+            await schedule(priv, pieces, cur.symbol, cur.decimals);
+            const at = (t: number) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+            setRes({ ok: `${amt} ${cur.symbol} goes to ${name} in ${pieces.length} pieces: ${pieces.map((p) => `${amountOf(cur, p.amount)} around ${at(p.notBefore)}`).join(", ")}. You can close Cloak: the relayer sends them.` });
+          } else {
+            const tx = cur.key === "HYPE" ? await priv.unshieldHype(dest.address, a, setBusy) : cur.market?.shared && shared ? await shared.unshield(cur.key as Address, a, dest.address, setBusy) : await priv.unshieldToken(cur.key, dest.address, a, setBusy);
+            setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${name}.`, tx });
+          }
         }
       }
       refresh();
@@ -383,6 +425,21 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                   <label><span>{kind === "send" ? "Recipient cloak: address" : "To address"}</span><span>{kind === "send" ? "amount stays hidden" : "use a fresh one"}</span></label>
                   <input className="input" value={to} onChange={(e) => setTo(e.target.value.trim())} placeholder={kind === "send" ? "cloak:…" : "0x… or name.ely"} />
                   {kind === "withdraw" && <RecipientNote input={to} />}
+                </div>
+              )}
+              {kind === "withdraw" && cur && !cur.market?.shared && (
+                <div className="field spread">
+                  <label className="check">
+                    <input type="checkbox" checked={spread} onChange={(e) => setSpread(e.target.checked)} />
+                    <span><b>Send it in pieces over time</b><span className="xs mute"> 3 pieces of different sizes at random times, so the amount coming out doesn't match anything that went in. It costs a few small relayer fees more than one withdrawal</span></span>
+                  </label>
+                  {spread && (
+                    <select className="input" value={windowSecs} onChange={(e) => setWindowSecs(Number(e.target.value))} aria-label="Over how long">
+                      <option value={3600}>Over the next hour</option>
+                      <option value={6 * 3600}>Over the next 6 hours</option>
+                      <option value={24 * 3600}>Over the next 24 hours</option>
+                    </select>
+                  )}
                 </div>
               )}
               <button className="btn btn-ink btn-lg btn-block" disabled={!!busy || !cur} onClick={act}>

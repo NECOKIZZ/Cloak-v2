@@ -140,6 +140,63 @@ export function walletSubmitter(publicClient: PublicClient, wallet: Wallet, rout
 
 export type Status = (msg: string) => void;
 
+/** One piece of a split withdrawal: a proved relay call, and the earliest time a relayer may send it (unix seconds). */
+export interface ScheduledPiece {
+  call: RelayCall;
+  notBefore: number;
+  /** what this piece withdraws (before the vault's withdrawal fee) */
+  amount: bigint;
+  to: Address;
+}
+
+/**
+ * `amount` in `k` pieces of different, ordinary-looking sizes: random shares rounded to 2 significant digits, the
+ * last one taking the remainder. Every piece is above zero.
+ */
+export function splitAmount(amount: bigint, k: number): bigint[] {
+  if (amount < BigInt(k) * 100n) return [amount];
+  const w = Array.from({ length: k }, () => 0.6 + Math.random());
+  const sum = w.reduce((a, b) => a + b, 0);
+  const round2 = (x: bigint) => {
+    const d = x.toString().length;
+    const unit = d > 2 ? 10n ** BigInt(d - 2) : 1n;
+    return (x / unit) * unit;
+  };
+  const out: bigint[] = [];
+  let left = amount;
+  for (let i = 0; i < k - 1; i++) {
+    const x = round2((amount * BigInt(Math.round((w[i] / sum) * 1e6))) / 1_000_000n);
+    out.push(x);
+    left -= x;
+  }
+  out.push(left);
+  return out.every((x) => x > 0n) ? out : [amount];
+}
+
+/** Hand split-withdrawal pieces to a Cloak relayer (`POST /schedule`). Returns an id per piece, for `scheduleStatus`. */
+export async function scheduleRelay(url: string, pieces: ScheduledPiece[]): Promise<string[]> {
+  const res = await fetch(`${url.replace(/\/$/, "")}/schedule`, { method: "POST", headers: { "content-type": "application/json" }, body: json({ pieces: pieces.map((p) => ({ call: p.call, notBefore: p.notBefore })) }), signal: AbortSignal.timeout(120_000) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error ?? `scheduling failed (${res.status})`);
+  return out.ids as string[];
+}
+
+export interface ScheduledStatus {
+  id: string;
+  state: "waiting" | "sent" | "dropped" | "unknown";
+  notBefore?: number;
+  txHash?: Hex;
+  error?: string;
+}
+
+/** Where a relayer's scheduled pieces stand (`GET /schedule?ids=`). "unknown": it doesn't have it (re-send it). */
+export async function scheduleStatus(url: string, ids: string[]): Promise<ScheduledStatus[]> {
+  const res = await fetch(`${url.replace(/\/$/, "")}/schedule?ids=${ids.join(",")}`, { signal: AbortSignal.timeout(30_000) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(out.error ?? `status failed (${res.status})`);
+  return out.pieces as ScheduledStatus[];
+}
+
 /**
  * Private trading for Cloak launch tokens on Elysium.
  *
@@ -883,6 +940,85 @@ export class CloakPrivate {
     });
     onStatus("Relaying private transfer…");
     return this.submit({ kind: "transact", pool, proof, extData });
+  }
+
+  /**
+   * A withdrawal sent later in 2–4 pieces of different sizes, so the amount coming out doesn't match anything that went
+   * in. Done now, on this device:
+   *   1. private self-sends split the balance into one exact note per piece (pieces − 1 relayed sends),
+   *   2. each piece's withdrawal is proved, its recipient fixed by the proof.
+   * Hand the pieces to a relayer with `scheduleRelay`: it can only send each one (after `notBefore`) or refuse it,
+   * never change where it goes. Spending a piece's note before it's sent cancels that piece.
+   * `token` is a launch token or asset, or the WHYPE address / hypeMarket.token for HYPE.
+   */
+  async planSplitWithdraw(
+    token: Address,
+    to: Address,
+    amount: bigint,
+    opts: { pieces?: number; windowSecs?: number; onStatus?: Status } = {},
+  ): Promise<ScheduledPiece[]> {
+    const onStatus = opts.onStatus ?? (() => {});
+    const k = Math.min(4, Math.max(2, opts.pieces ?? 3));
+    const windowSecs = Math.max(600, opts.windowSecs ?? 3600);
+    const isHype = token.toLowerCase() === this.hypeMarket.token.toLowerCase();
+    const pool = isHype ? this.hypeMarket.pool : this.market(token).pool;
+    const kind: RelayKind = isHype ? "unshieldHype" : "transact";
+    const amounts = splitAmount(amount, k);
+    // each piece carries twice today's relayer fee, so a gas rise before it goes out doesn't get it refused
+    const q = await this.relayFee(kind, pool);
+    const pieceFee = q.fee * 2n;
+    const notes: OwnedNote[] = [];
+    let rest: OwnedNote[] | null = null;
+    for (let i = 0; i < k - 1; i++) {
+      onStatus(`Splitting your balance privately (${i + 1} of ${k - 1})…`);
+      const sq = await this.relayFee("transact", pool);
+      const remaining = amounts.slice(i).reduce((a, x) => a + x + pieceFee, 0n);
+      const inputs = rest ?? (await this.inputsFor(pool, remaining + sq.fee * BigInt(2 * (k - 1)), onStatus));
+      const total = inputs.reduce((a, x) => a + x.amount, 0n);
+      const first = amounts[i] + pieceFee;
+      const outputs = [await this.changeOutput(first), await this.changeOutput(total - sq.fee - first)];
+      onStatus("Generating zero-knowledge proof on this device…");
+      const { proof, extData } = await buildTransaction({ tree: await this.treeFor(pool, inputs), inputs, outputs, fee: sq.fee, relayer: sq.relayer, ...(await this.dummy()), prover: await this.prover() });
+      const h = await this.submit({ kind: "transact", pool, proof, extData });
+      await this.publicClient.waitForTransactionReceipt({ hash: h });
+      const [c0, c1] = proof.outputCommitments.map(BigInt);
+      let mine: OwnedNote[] = [];
+      for (let t = 0; t < 10 && mine.length < 2; t++) {
+        mine = (await this.sync(pool)).filter((n) => n.commitment === c0 || n.commitment === c1);
+        if (mine.length < 2) await new Promise((r) => setTimeout(r, 1500));
+      }
+      const piece = mine.find((n) => n.commitment === c0);
+      const left = mine.find((n) => n.commitment === c1);
+      if (!piece || !left) throw new Error("The split landed, but the new notes haven't shown up yet. Try again in a minute: nothing was lost.");
+      notes.push(piece);
+      rest = [left];
+    }
+    // the last piece's note is what the splits left: its amount plus anything spare, which comes back as change
+    notes.push(rest![0]);
+    const now = Math.floor(Date.now() / 1000);
+    const times = Array.from({ length: k }, () => now + 60 + Math.floor(Math.random() * (windowSecs - 60))).sort((a, b) => a - b);
+    const out: ScheduledPiece[] = [];
+    for (let i = 0; i < k; i++) {
+      onStatus(`Proving withdrawal ${i + 1} of ${k}…`);
+      const n = notes[i];
+      const pieceAmount = amounts[i];
+      const change = n.amount - pieceAmount - pieceFee;
+      if (change < 0n) throw new Error("The split came out short (the relayer's fee rose meanwhile). Your balance is intact: try again.");
+      const { proof, extData } = await buildTransaction({
+        tree: await this.treeFor(pool, [n]),
+        inputs: [n],
+        outputs: change > 0n ? [await this.changeOutput(change)] : [],
+        extAmount: -pieceAmount,
+        fee: pieceFee,
+        relayer: q.relayer,
+        recipient: isHype ? this.router : to,
+        ...(isHype ? { data: encodeAbiParameters([{ type: "address" }], [to]) } : {}),
+        ...(await this.dummy()),
+        prover: await this.prover(),
+      });
+      out.push({ call: { kind, pool, proof, extData }, notBefore: times[i], amount: pieceAmount, to });
+    }
+    return out;
   }
 
   /** Private tokens (a launch token, or an asset such as USDC) → any address. */

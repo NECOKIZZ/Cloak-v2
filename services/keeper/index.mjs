@@ -21,6 +21,7 @@
 import { createServer } from "node:http";
 import { startSnapshots } from "./snapshot.mjs";
 import { startLeaves } from "./leaves.mjs";
+import { startSchedule } from "./schedule.mjs";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
@@ -75,6 +76,9 @@ const SHARED_BATCHER = reg?.sharedBatcher;
 const SHARED_BATCHER_BLOCK = reg?.entries.findLast((e) => e.kind === "sharedBatcher")?.startBlock ?? SHARED_BLOCK ?? 0n;
 // v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
 const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
+
+// split withdrawals: proved pieces held until their time, then relayed like any other (POST/GET /schedule)
+const schedule = startSchedule({ check: (call) => relay(call, { dryRun: true }), send: (call) => relay(call), log: (m) => console.log(`[schedule] ${m}`) });
 
 // every vault's public note list, for an app's fast first sync (GET /leaves)
 const leaves = reg ? startLeaves(publicClient, { vaults: VAULTS, vaultsBlock: reg.vaultsBlock, shared: SHARED, sharedBlock: SHARED_BLOCK }) : null;
@@ -442,7 +446,7 @@ setInterval(() => {
   for (const [k, t] of inflight) if (now > t) inflight.delete(k);
 }, 30_000).unref();
 
-async function relay(body) {
+async function relay(body, { dryRun = false } = {}) {
   if (!submit) throw err("relay disabled (set ROUTER)", 503);
   const { kind, pool, proof: p, extData: e } = body;
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
@@ -484,6 +488,10 @@ async function relay(body) {
   } catch (e) {
     keys.forEach((k) => inflight.delete(k)); // nothing went out: the spend may be retried
     throw isNetworkError(e) ? err("The network didn't answer. Nothing was sent, so try again in a moment.", 503) : e;
+  }
+  if (dryRun) {
+    keys.forEach((k) => inflight.delete(k));
+    return null;
   }
   // From here the transaction may be out, so the spend stays locked until it lands (or the lock expires).
   try {
@@ -668,6 +676,34 @@ createServer((req, res) => {
     const gz = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
     res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, max-age=10", "x-content-type-options": "nosniff", ...(gz ? { "content-encoding": "gzip" } : {}) });
     return res.end(gz ? snapshot.gz() : body);
+  }
+  if (path === "/schedule" && (req.method === "POST" || req.method === "GET")) {
+    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
+    if (req.method === "GET") {
+      const ids = (new URL(req.url, "http://x").searchParams.get("ids") ?? "").split(",").filter((x) => /^0x[0-9a-f]{64}$/.test(x)).slice(0, 20);
+      return send(req, res, 200, { pieces: schedule.status(ids) });
+    }
+    let body = "";
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > MAX_BODY * 4) {
+        send(req, res, 413, { error: "request too large" });
+        req.destroy();
+        return;
+      }
+      body += c;
+    });
+    req.on("end", async () => {
+      if (size > MAX_BODY * 4) return;
+      try {
+        const ids = await schedule.add(JSON.parse(body));
+        send(req, res, 200, { ids });
+      } catch (e) {
+        send(req, res, e.status ?? 400, { error: e.status || e.shortMessage ? e.shortMessage ?? e.message : "malformed request" });
+      }
+    });
+    return;
   }
   if (req.method === "GET" && path === "/leaves") {
     if (!leaves) return send(req, res, 404, { error: "not found" });
