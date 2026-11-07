@@ -1,7 +1,7 @@
 // The /brand page: fills the image grids (files served from jsDelivr, so they don't use the site's bandwidth) and copies
 // colour values on click. Kept out of the page because the site's security policy allows no inline scripts.
 (() => {
-  const CDN = "https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/";
+  const CDN = "https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@326d5a4f40185691a8f7d7897dd5b24f38ceddbd/apps/web/public/brand/kit/";
   const fig = (title, files, tall) => {
     const f = document.createElement("figure");
     if (tall) f.className = "tall";
