@@ -47,6 +47,15 @@ const OVERRIDES = ["FACTORY", "START_BLOCK", "ROUTER", "BATCHER", "BATCHER_BLOCK
 const ignored = reg ? OVERRIDES.filter((k) => process.env[k]) : [];
 if (ignored.length) console.error(`CONFIG is set, so these are ignored (addresses come from the registry): ${ignored.join(", ")}`);
 const env = (k) => (reg ? undefined : process.env[k]);
+// the SDK's record for this chain (asset list, drop factories), or undefined on a chain it doesn't know, such as a local
+// fork run as 31337: everything that uses it then falls back to the registry and env, instead of the keeper exiting
+const KNOWN = (() => {
+  try {
+    return deploymentFor(chain.id);
+  } catch {
+    return undefined;
+  }
+})();
 const FACTORY = env("FACTORY") ?? reg?.factory;
 // every factory of this deployment still has launches to reveal, settle and claim: scan from the earliest one
 const EARLIER = reg?.earlierFactories ?? [];
@@ -87,7 +96,7 @@ const leaves = reg ? startLeaves(publicClient, { vaults: VAULTS, vaultsBlock: re
 
 // public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
 const snapshot = reg && process.env.SNAPSHOT !== "0"
-  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, shared: reg.shared, sharedBlock: reg.sharedBlock, sharedRouter: reg.sharedRouter, sharedBatcher: reg.sharedBatcher, previous: reg.previous, assets: (() => { try { return deploymentFor(chain.id)?.assets ?? []; } catch { return []; } })(), listDrops: async () => (drops ? drops.list() : []) })
+  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, shared: reg.shared, sharedBlock: reg.sharedBlock, sharedRouter: reg.sharedRouter, sharedBatcher: reg.sharedBatcher, previous: reg.previous, assets: KNOWN?.assets ?? [], listDrops: async () => (drops ? drops.list() : []) })
   : null;
 
 const account = privateKeyToAccount(PK);
@@ -432,7 +441,7 @@ const MIN_GAS_PRICE = BigInt(process.env.RELAY_MIN_GAS_PRICE ?? 100_000_000); //
 
 // private receive addresses: deliver what arrives into the vault as the owner's note (POST/GET /receive)
 const RECEIVE = reg?.receive;
-const receiver = RECEIVE ? startReceive({ pub: publicClient, wallet: walletClient, account, factory: RECEIVE, tokens: (deploymentFor(chain.id)?.assets ?? []).map((a) => a.token), minGasPrice: MIN_GAS_PRICE, marginBps: MARGIN_BPS, log: (m) => console.log(`[receive] ${m}`) }) : null;
+const receiver = RECEIVE ? startReceive({ pub: publicClient, wallet: walletClient, account, factory: RECEIVE, tokens: (KNOWN?.assets ?? []).map((a) => a.token), minGasPrice: MIN_GAS_PRICE, marginBps: MARGIN_BPS, log: (m) => console.log(`[receive] ${m}`) }) : null;
 
 // protocol fees waiting in the vaults go to the treasury every 48 h (FEE_COLLECT_HOURS, 0 = off). The treasury is fixed
 // in CloakConfig, so this can only trigger the payout, never redirect it.
