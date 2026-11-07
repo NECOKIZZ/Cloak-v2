@@ -155,8 +155,12 @@ export interface RawGroth16 {
 }
 export type FundsProver = (input: Record<string, unknown>) => Promise<{ proof: RawGroth16; publicSignals: string[] }>;
 
+/** Where the proof-of-funds circuit is served: jsDelivr pinned to the commit that added it, then Cloak's site. */
+export const FUNDS_CIRCUITS_CDN = "https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@9c949fa0578ee20a78166f8fcfaf7633010b54d0/apps/web/public/circuits";
+export const FUNDS_CIRCUITS_SOURCES = [FUNDS_CIRCUITS_CDN, CIRCUITS_URL];
+
 /** Fetch the proof-of-funds circuit (18 MB, once) and build its prover. Checked against `FUNDS_CIRCUIT_HASHES`. */
-export async function loadFundsProver(baseUrl: string | string[] = CIRCUITS_SOURCES, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<FundsProver> {
+export async function loadFundsProver(baseUrl: string | string[] = FUNDS_CIRCUITS_SOURCES, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<FundsProver> {
   const want = opts.hashes === undefined ? FUNDS_CIRCUIT_HASHES : opts.hashes;
   const [wasm, zkey] = await fetchCircuit(baseUrl, ["fundsProof3.wasm", "fundsProof3_final.zkey"], want, "proof-of-funds circuit");
   return createFundsProver(wasm, zkey);

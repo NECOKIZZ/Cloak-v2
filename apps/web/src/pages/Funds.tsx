@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits, type Address } from "viem";
-import { decodeFundsProof, encodeFundsProof, loadFundsProver, verifyFundsProof, type FundsCheck, type FundsProof, type FundsProver } from "@cloakely/sdk";
+import { FUNDS_CIRCUITS_CDN, decodeFundsProof, encodeFundsProof, loadFundsProver, verifyFundsProof, type FundsCheck, type FundsProof, type FundsProver } from "@cloakely/sdk";
 import { ASSETS, VAULTS } from "../config";
 import { publicClient } from "../wallet";
 import { useApp } from "../state";
@@ -13,9 +13,7 @@ import { useMarkets } from "./markets";
 
 // the circuit (18 MB, checked against the SDK's hashes) loads the first time someone proves
 let fundsProver: Promise<FundsProver> | null = null;
-const getFundsProver = () => (fundsProver ??= loadFundsProver(["/circuits"]).catch((e) => ((fundsProver = null), Promise.reject(e))));
-let vk: Promise<unknown> | null = null;
-const getVk = () => (vk ??= fetch("/circuits/fundsProof3_vk.json").then((r) => r.json()));
+const getFundsProver = () => (fundsProver ??= loadFundsProver([FUNDS_CIRCUITS_CDN, "/circuits"]).catch((e) => ((fundsProver = null), Promise.reject(e))));
 
 const DAYS = [1, 7, 30];
 
@@ -133,8 +131,7 @@ export function ProofPage() {
     try {
       const x = decodeFundsProof(location.hash.slice(1));
       setP(x);
-      getVk()
-        .then((k) => verifyFundsProof(publicClient, x, k, { vaults: VAULTS }))
+      verifyFundsProof(publicClient, x, undefined, { vaults: VAULTS })
         .then(setRes)
         .catch((e) => setErr(friendly(e)));
     } catch {

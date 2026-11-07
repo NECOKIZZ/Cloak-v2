@@ -2,6 +2,8 @@ import { encodeAbiParameters, keccak256, type Address, type PublicClient } from 
 import { cloakVaultsAbi, shieldedPoolAbi } from "../abis.js";
 import { FIELD_SIZE } from "./crypto.js";
 import type { RawGroth16 } from "./prover.js";
+import { FUNDS_VERIFYING_KEY } from "./fundsVk.js";
+export { FUNDS_VERIFYING_KEY };
 
 /**
  * Proof of funds: "this vault holds at least `threshold` for me, as of block `block`", from up to 3 of the prover's
@@ -61,11 +63,11 @@ export interface FundsCheck {
 }
 
 /**
- * Check a proof of funds: the zero-knowledge proof itself (against `vk`, the circuit's verifying key), that it's bound
+ * Check a proof of funds: the zero-knowledge proof itself (against `vk`, by default the key built into the SDK), that it's bound
  * to this chain, vault, label and expiry, that the vault is a Cloak vault and knows the root, and that no backing note
  * was spent as of the proof's block. A note spent since is reported, not failed: the claim was true when made.
  */
-export async function verifyFundsProof(publicClient: PublicClient, p: FundsProof, vk: unknown, opts: { vaults?: Address; now?: number } = {}): Promise<FundsCheck> {
+export async function verifyFundsProof(publicClient: PublicClient, p: FundsProof, vk: unknown = FUNDS_VERIFYING_KEY, opts: { vaults?: Address; now?: number } = {}): Promise<FundsCheck> {
   const checks: FundsCheck["checks"] = [];
   const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
   const now = opts.now ?? Math.floor(Date.now() / 1000);

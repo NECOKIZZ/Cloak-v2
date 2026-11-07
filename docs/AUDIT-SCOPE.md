@@ -69,6 +69,7 @@ vendored Uniswap v4 code listed in 3.
 | `SharedBatcher.sol` | 268 | The same batch rounds for SharedVault tokens. |
 | `CloakMigrator.sol` | 63 | Moves a private balance from an earlier deployment's pools into the current ones in one transaction. |
 | `CloakReceive.sol` | 133 | **Added after the commit above (Nov 7).** Private receive addresses: a ReceiveBox per address (CREATE2, no key) that only the factory can sweep, `deliver` deposits what arrived into the asset's vault as the note committed to in the salt (fee capped per address), `rescue` lets the address's own key take out what the vaults can't. |
+| `CloakFundsCheck.sol` | 33 | **Added after the commit above (Nov 7).** On-chain proof of funds: a Cloak vault, a known root, every backing nullifier unspent, and a valid `fundsProof3` Groth16 proof (`VerifierFunds.sol`, generated). |
 | `CloakFactoryList.sol` | 38 | Read-only view of earlier factories as one list. |
 | `WHYPE.sol` | 50 | Wrapped HYPE (WETH9 behaviour). |
 | `interfaces/IHasher.sol`, `interfaces/IVerifier.sol` | 16 | Interfaces. |
@@ -100,6 +101,7 @@ that the deployed bytecode matches circomlibjs and that the parameters match the
 | `circuits/src/transaction2x2.circom` | Main component (depth 20, 2 inputs, 2 outputs). Public: root, publicAmount, extDataHash, inputNullifier[2], outputCommitment[2]. Used by every `ShieldedPool`. |
 | `circuits/src/transactionMA.circom` | The multi-asset variant: an `asset` field in every note, one asset per proof, and `publicAsset` that is either the asset or 0 (a hidden-token send with no value leaving). |
 | `circuits/src/transactionMA2x2.circom` | Main component for `SharedVault` (8 public signals). |
+| `circuits/src/fundsProof.circom`, `fundsProof3.circom` | **Added Nov 7.** Proof of funds over up to 3 notes: membership under a public root, the vault's own nullifiers made public, distinct used notes, at least one used, the sum at least the threshold, a bound context. |
 | `circuits/src/merkleproof.circom` | Merkle path check, which must match `MerkleTreeWithHistory` and the SDK tree. |
 
 What we want checked: under-constrained signals, value conservation, field overflow and aliasing (amounts, the
