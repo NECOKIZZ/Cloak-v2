@@ -5,6 +5,10 @@ import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha256";
 import { randomBytes } from "@noble/hashes/utils";
 import { concat, keccak256, toBytes, toHex, type Hex } from "viem";
+import { poseidon1 } from "poseidon-lite/poseidon1";
+import { poseidon2 } from "poseidon-lite/poseidon2";
+import { poseidon3 } from "poseidon-lite/poseidon3";
+import { poseidon4 } from "poseidon-lite/poseidon4";
 
 export const FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 export const LEVELS = 20;
@@ -19,10 +23,14 @@ const fieldMod = (x: bigint) => ((x % FIELD_SIZE) + FIELD_SIZE) % FIELD_SIZE;
 export const randomField = () => BigInt(toHex(randomBytes(31)));
 export const randomKeyIndex = () => Number(BigInt(toHex(randomBytes(4))) % 0xc0000000n); // below RECEIVE_KEY_BASE
 
-let _poseidon: any;
+// circomlib's Poseidon (the circuits' hash) with per-arity constants: tens of KB instead of circomlibjs's 1.3 MB.
+// Identical outputs for arities 1 to 4 (checked against circomlibjs on 10,000+ inputs, field edges included, in
+// test/poseidon.test.mjs), which are the only arities Cloak uses.
+const POSEIDON = [poseidon1, poseidon2, poseidon3, poseidon4];
 export async function poseidon(inputs: bigint[]): Promise<bigint> {
-  _poseidon ??= await (await import("circomlibjs")).buildPoseidon(); // loaded on first use
-  return _poseidon.F.toObject(_poseidon(inputs.map((x) => BigInt(x))));
+  const f = POSEIDON[inputs.length - 1];
+  if (!f) throw new Error(`poseidon: ${inputs.length} inputs, only 1 to 4 are supported`);
+  return f(inputs.map((x) => BigInt(x)));
 }
 
 /**

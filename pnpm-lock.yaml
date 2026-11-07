@@ -124,9 +124,9 @@ importers:
       '@noble/hashes':
         specifier: 1.5.0
         version: 1.5.0
-      circomlibjs:
-        specifier: 0.1.7
-        version: 0.1.7
+      poseidon-lite:
+        specifier: 0.3.0
+        version: 0.3.0
       snarkjs:
         specifier: 0.7.5
         version: 0.7.5
@@ -134,6 +134,9 @@ importers:
         specifier: 0.9.0
         version: 0.9.0
     devDependencies:
+      circomlibjs:
+        specifier: 0.1.7
+        version: 0.1.7
       typescript:
         specifier: 5.6.3
         version: 5.6.3
@@ -1810,6 +1813,9 @@ packages:
   pngjs@5.0.0:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
+
+  poseidon-lite@0.3.0:
+    resolution: {integrity: sha512-ilJj4MIve4uBEG7SrtPqUUNkvpJ/pLVbndxa0WvebcQqeIhe+h72JR4g0EvwchUzm9sOQDlOjiDNmRAgxNZl4A==}
 
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
@@ -4346,6 +4352,8 @@ snapshots:
   pkce-challenge@5.0.1: {}
 
   pngjs@5.0.0: {}
+
+  poseidon-lite@0.3.0: {}
 
   postcss-value-parser@4.2.0: {}
 
