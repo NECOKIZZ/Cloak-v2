@@ -15176,6 +15176,141 @@ export const cloakReceiveAbi = [
   }
 ] as const;
 
+export const cloakFundsCheckAbi = [
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "verifier_",
+        "type": "address",
+        "internalType": "contract IVerifierFunds"
+      },
+      {
+        "name": "vaults_",
+        "type": "address",
+        "internalType": "contract CloakVaults"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "contextFor",
+    "inputs": [
+      {
+        "name": "gate",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "who",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "expiresAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "holds",
+    "inputs": [
+      {
+        "name": "pool",
+        "type": "address",
+        "internalType": "contract ShieldedPool"
+      },
+      {
+        "name": "threshold",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "context",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "p",
+        "type": "tuple",
+        "internalType": "struct CloakFundsCheck.Proof",
+        "components": [
+          {
+            "name": "a",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "b",
+            "type": "uint256[2][2]",
+            "internalType": "uint256[2][2]"
+          },
+          {
+            "name": "c",
+            "type": "uint256[2]",
+            "internalType": "uint256[2]"
+          },
+          {
+            "name": "root",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "nullifiers",
+            "type": "uint256[3]",
+            "internalType": "uint256[3]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "vaults",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract CloakVaults"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "verifier",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IVerifierFunds"
+      }
+    ],
+    "stateMutability": "view"
+  }
+] as const;
+
 export const cloakV4HookAbi = [
   {
     "type": "constructor",

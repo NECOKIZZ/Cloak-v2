@@ -152,5 +152,7 @@
     }
   ],
   "receive": "0x852675b2e127fcce3b5efd3ef817623db7aa44f3",
-  "receiveBlock": "25386020"
+  "receiveBlock": "25386020",
+  "fundsVerifier": "0xc6bb3e7c12e0b3a8843b82e421c59eb03796e44b",
+  "fundsCheck": "0xc841b190bd66dc7c55d04e87dbfd202fe80da7d7"
 }

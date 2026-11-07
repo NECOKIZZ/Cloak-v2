@@ -138,3 +138,35 @@ export async function loadSharedProver(baseUrl: string | string[] = CIRCUITS_SOU
   const [wasm, zkey] = await fetchCircuit(baseUrl, ["transactionMA2x2.wasm", "transactionMA2x2_final.zkey"], want, "shared-vault circuit");
   return createSharedProver(wasm, zkey);
 }
+
+/** SHA-256 of the proof-of-funds circuit artifacts (`fundsProof3`: up to 3 notes) this SDK version was tested with. */
+export const FUNDS_CIRCUIT_HASHES = {
+  wasm: "28056a569b765c4ec62b43d4af005503000e5d7a797cf779f92e66411c3960ef",
+  zkey: "5ae9a8b264b833b711a3bd3dfe64774c4944f363464592085cd564b7ca27e043",
+} as const;
+
+/** A raw snarkjs Groth16 proof, as `snarkjs.groth16.verify` takes it. */
+export interface RawGroth16 {
+  pi_a: string[];
+  pi_b: string[][];
+  pi_c: string[];
+  protocol?: string;
+  curve?: string;
+}
+export type FundsProver = (input: Record<string, unknown>) => Promise<{ proof: RawGroth16; publicSignals: string[] }>;
+
+/** Fetch the proof-of-funds circuit (18 MB, once) and build its prover. Checked against `FUNDS_CIRCUIT_HASHES`. */
+export async function loadFundsProver(baseUrl: string | string[] = CIRCUITS_SOURCES, opts: { hashes?: { wasm: string; zkey: string } | null } = {}): Promise<FundsProver> {
+  const want = opts.hashes === undefined ? FUNDS_CIRCUIT_HASHES : opts.hashes;
+  const [wasm, zkey] = await fetchCircuit(baseUrl, ["fundsProof3.wasm", "fundsProof3_final.zkey"], want, "proof-of-funds circuit");
+  return createFundsProver(wasm, zkey);
+}
+
+/** The proof-of-funds prover from files you already have (Node, or your own hosting). */
+export function createFundsProver(wasm: Uint8Array, zkey: Uint8Array): FundsProver {
+  return async (input) => {
+    const snarkjs = await import("snarkjs");
+    const { proof, publicSignals } = await snarkjs.groth16.fullProve(Object.fromEntries(Object.entries(input).map(([k, v]) => [k, str(v)])), wasm, zkey);
+    return { proof: proof as unknown as RawGroth16, publicSignals: publicSignals as string[] };
+  };
+}

@@ -174,6 +174,7 @@ export function Portfolio() {
           <Link to="/app/portfolio/send" className="btn btn-ghost"><Icon.send size={16} />Send privately</Link>
           <Link to="/app/portfolio/withdraw" className="btn btn-ghost"><Icon.arrowDown size={16} />Withdraw</Link>
           {RECEIVE && <Link to="/app/portfolio/receive" className="btn btn-ghost"><Icon.wallet size={16} />Receive</Link>}
+          <Link to="/app/portfolio/prove" className="btn btn-ghost"><Icon.lock size={16} />Prove funds</Link>
           <button className="btn btn-ghost" onClick={copy} title={privAddress}><Icon.copy size={16} />Copy cloak address</button>
         </div>
       </div>

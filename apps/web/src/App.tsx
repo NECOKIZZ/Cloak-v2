@@ -18,6 +18,7 @@ import { Launch } from "./pages/Launch";
 import { Launches } from "./pages/Launches";
 import { Portfolio, PortfolioAction } from "./pages/Portfolio";
 import { Receive } from "./pages/Receive";
+import { ProveFunds, ProofPage } from "./pages/Funds";
 import { Sdk } from "./pages/Sdk";
 import { Trade } from "./pages/Trade";
 import { Volume } from "./pages/Volume";
@@ -36,6 +37,7 @@ function Routes() {
   if (path === "/") return <Landing />;
   if (path === "/docs") return <AppShell><Docs /></AppShell>;
   if (path === "/sdk") return <AppShell><Sdk /></AppShell>;
+  if (path === "/proof") return <AppShell><ProofPage /></AppShell>;
   if (path === "/agents") return <AppShell><Agents /></AppShell>;
   if (path === "/pitch") return <Pitch />;
   if (path === "/demo") return <Demo />;
@@ -50,6 +52,7 @@ function Routes() {
       : path === "/app/drops" ? <Drops />
       : path === "/app/drops/create" ? <DropCreate />
       : path === "/app/portfolio/receive" ? <Receive />
+      : path === "/app/portfolio/prove" ? <ProveFunds />
       : act ? <PortfolioAction key={act[1]} kind={act[1] as "shield" | "send" | "withdraw"} />
       : path === "/app/trade" ? <Trade />
       : path === "/app/launches" ? <Launches />

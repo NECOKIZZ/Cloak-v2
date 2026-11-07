@@ -20,6 +20,8 @@ import {
 } from "./crypto.js";
 import { MerkleTree } from "./tree.js";
 import { fromJson, leavesRoot, toJson, type PublicLeaves } from "./syncState.js";
+import { FUNDS_NOTES, fundsContext, type FundsProof } from "./funds.js";
+import type { FundsProver } from "./prover.js";
 import type { ProofArgs, Prover } from "./prover.js";
 import { MOVE_DATA_ABI, ORDER_DATA_ABI, SWAP_DATA_ABI, buildTransaction, selectNotes, splitStandard, type ExtData, type OwnedNote } from "./tx.js";
 
@@ -1019,6 +1021,71 @@ export class CloakPrivate {
       out.push({ call: { kind, pool, proof, extData }, notBefore: times[i], amount: pieceAmount, to });
     }
     return out;
+  }
+
+  /**
+   * Prove "I hold at least `threshold` of `token` in its vault" without revealing the balance, the notes or who you
+   * are (see funds.ts). Uses 1–3 of your notes; if the balance is spread over more, they're combined first (one
+   * relayed private send). `label` says who it's for and `expiresAt` (unix seconds) when it stops counting.
+   */
+  async proveFunds(token: Address, threshold: bigint, o: { label: string; expiresAt: number; prover: FundsProver; symbol?: string; decimals?: number; onStatus?: Status }): Promise<FundsProof> {
+    const onStatus = o.onStatus ?? (() => {});
+    if (threshold <= 0n) throw new Error("Prove an amount above zero.");
+    if (!o.label.trim() || o.label.length > 80) throw new Error("Say who the proof is for, in up to 80 characters.");
+    const isHype = token.toLowerCase() === this.hypeMarket.token.toLowerCase();
+    const pool = isHype ? this.hypeMarket.pool : this.market(token).pool;
+    const notes = await this.inputsFor(pool, threshold, onStatus);
+    if (notes.length > FUNDS_NOTES) throw new Error("Your balance is in too many pieces: combine it first.");
+    const tree = await this.treeFor(pool, notes);
+    const root = await tree.root();
+    const paths = await Promise.all(notes.map((n) => tree.path(n.leafIndex)));
+    const block = await this.publicClient.getBlockNumber({ cacheTime: 0 });
+    const chainId = this.publicClient.chain?.id ?? (await this.publicClient.getChainId());
+    const context = fundsContext(chainId, pool, o.label, o.expiresAt);
+    const slot = <T,>(i: number, f: (n: OwnedNote) => T, empty: T) => (i < notes.length ? f(notes[i]) : empty);
+    const idx = [0, 1, 2];
+    onStatus("Generating the proof on this device…");
+    const { proof, publicSignals } = await o.prover({
+      root,
+      threshold,
+      context,
+      nullifier: idx.map((i) => slot(i, (n) => n.nullifier, 0n)),
+      used: idx.map((i) => (i < notes.length ? 1n : 0n)),
+      amount: idx.map((i) => slot(i, (n) => n.amount, 0n)),
+      privKey: idx.map((i) => slot(i, (n) => n.privKey, 1n)),
+      blinding: idx.map((i) => slot(i, (n) => n.blinding, 0n)),
+      pathIndices: idx.map((i) => slot(i, (n) => BigInt(n.leafIndex), 0n)),
+      pathElements: idx.map((i) => (i < notes.length ? paths[i].pathElements : new Array(paths[0].pathElements.length).fill(0n))),
+    });
+    return {
+      v: 1,
+      chainId,
+      pool,
+      token: isHype ? this.hypeMarket.token : token,
+      symbol: o.symbol ?? (isHype ? "HYPE" : this.market(token).symbol ?? "tokens"),
+      decimals: o.decimals ?? (isHype ? 18 : this.market(token).decimals ?? 18),
+      threshold: threshold.toString(),
+      label: o.label,
+      expiresAt: o.expiresAt,
+      block: block.toString(),
+      root: publicSignals[0],
+      context: publicSignals[2],
+      nullifiers: publicSignals.slice(3, 3 + FUNDS_NOTES),
+      proof,
+    };
+  }
+
+  /**
+   * Move notes into a fresh note of your own (a relayed private send to yourself), so whoever holds a proof of funds
+   * that named their nullifiers can't tell when you later spend that money.
+   */
+  async refreshNotes(pool: Address, notes: OwnedNote[], onStatus: Status = () => {}): Promise<Hex> {
+    const q = await this.relayFee("transact", pool);
+    const total = notes.reduce((a, x) => a + x.amount, 0n) - q.fee;
+    onStatus("Generating zero-knowledge proof on this device…");
+    const { proof, extData } = await buildTransaction({ tree: await this.treeFor(pool, notes), inputs: notes, outputs: [await this.changeOutput(total)], fee: q.fee, relayer: q.relayer, ...(await this.dummy()), prover: await this.prover() });
+    onStatus("Relaying…");
+    return this.submit({ kind: "transact", pool, proof, extData });
   }
 
   /** Private tokens (a launch token, or an asset such as USDC) → any address. */
