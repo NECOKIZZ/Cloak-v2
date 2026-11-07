@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatEther, formatUnits, type Address, type Hex } from "viem";
 import { cloakReceiveAbi, receiveAddress, receiveDeliveries, watchReceive, type CloakPrivate, type ReceiveAddress } from "@cloakely/sdk";
 import { ASSETS, KEEPER_URL, RECEIVE, txLink } from "../config";
 import { openBox, sealBox } from "../deviceBox";
 import { publicClient } from "../wallet";
 import { useApp } from "../state";
+import { usePrivateBalances } from "../balances";
 import { Link } from "../router";
 import { Icon } from "../ui";
 import { QR } from "../qr";
@@ -14,6 +15,8 @@ interface Issued {
   n: number;
   address: Address;
   at: number;
+  /** wait a random moment (up to 3 minutes) before it lands */
+  delay?: boolean;
 }
 
 let codeHash: Promise<Hex> | null = null;
@@ -31,7 +34,10 @@ async function rewatch(p: CloakPrivate, issued: Issued[]) {
   if (!KEEPER_URL || !RECEIVE || !issued.length) return;
   const h = await boxCodeHash();
   const all: ReceiveAddress[] = await Promise.all(issued.map((x) => receiveAddress(p.keys, RECEIVE!, h, x.n)));
-  for (let i = 0; i < all.length; i += 20) await watchReceive(KEEPER_URL, all.slice(i, i + 20)).catch(() => {});
+  for (const delay of [false, true]) {
+    const part = all.filter((_, i) => !!issued[i].delay === delay);
+    for (let i = 0; i < part.length; i += 20) await watchReceive(KEEPER_URL, part.slice(i, i + 20), { delay }).catch(() => {});
+  }
 }
 
 export function Receive() {
@@ -41,15 +47,17 @@ export function Receive() {
   const [err, setErr] = useState("");
   const [state, setState] = useState<Record<string, { waiting: string[]; delivered: { amount: string; tx: Hex }[] }>>({});
   const [copied, setCopied] = useState(false);
+  const { refresh } = usePrivateBalances();
+  const delivered = useRef(-1);
 
-  async function fresh(p: CloakPrivate, list: Issued[]) {
+  async function fresh(p: CloakPrivate, list: Issued[], delay = list.at(-1)?.delay ?? false) {
     setBusy(true);
     setErr("");
     try {
       const n = list.reduce((m, x) => Math.max(m, x.n + 1), 0);
       const rx = await receiveAddress(p.keys, RECEIVE!, await boxCodeHash(), n);
-      if (KEEPER_URL) await watchReceive(KEEPER_URL, [rx]);
-      const next = [...list, { n, address: rx.address, at: Math.floor(Date.now() / 1000) }];
+      if (KEEPER_URL) await watchReceive(KEEPER_URL, [rx], { delay });
+      const next = [...list, { n, address: rx.address, at: Math.floor(Date.now() / 1000), ...(delay ? { delay } : {}) }];
       await sealBox(p, "receive", JSON.stringify(next));
       setIssued(next);
     } catch (e) {
@@ -69,12 +77,30 @@ export function Receive() {
     })();
   }, [priv]);
 
+  // while this page is open, keep the addresses on the relayer's fast watch
+  useEffect(() => {
+    if (!priv || !issued?.length) return;
+    const t = setInterval(() => rewatch(priv, issued), 20 * 60_000);
+    return () => clearInterval(t);
+  }, [priv, issued]);
+
+  async function setDelay(on: boolean) {
+    if (!priv || !issued?.length) return;
+    const next = issued.map((x, i) => (i === issued.length - 1 ? { ...x, delay: on } : x));
+    setIssued(next);
+    await sealBox(priv, "receive", JSON.stringify(next)).catch(() => {});
+    if (KEEPER_URL) {
+      const rx = await receiveAddress(priv.keys, RECEIVE!, await boxCodeHash(), next.at(-1)!.n);
+      await watchReceive(KEEPER_URL, [rx], { delay: on }).catch(() => {});
+    }
+  }
+
   // what each address holds now (on its way in) and what the relayer has delivered
   useEffect(() => {
     if (!issued?.length) return;
     let live = true;
     const go = async () => {
-      const addrs = issued.map((x) => x.address);
+      const addrs = issued.slice(-12).map((x) => x.address);
       const [del, bals] = await Promise.all([
         KEEPER_URL ? receiveDeliveries(KEEPER_URL, addrs).catch(() => ({}) as Record<string, never[]>) : ({} as Record<string, never[]>),
         Promise.all(addrs.map((a) => publicClient.getBalance({ address: a }).catch(() => 0n))),
@@ -88,10 +114,15 @@ export function Receive() {
           delivered: ((del as Record<string, { token: string; amount: string; fee: string; txHash: Hex }[]>)[a] ?? []).map((d) => ({ amount: `${formatUnits(BigInt(d.amount) - BigInt(d.fee), decOf(d.token))} ${symbolOf(d.token)}`, tx: d.txHash })),
         };
       });
-      if (live) setState(out);
+      if (!live) return;
+      setState(out);
+      // something just landed: show it in the private balance now, not at the next refresh
+      const n = Object.values(out).reduce((m, x) => m + x.delivered.length, 0);
+      if (delivered.current >= 0 && n > delivered.current) refresh();
+      delivered.current = n;
     };
     go();
-    const t = setInterval(go, 20_000);
+    const t = setInterval(go, 4_000);
     return () => {
       live = false;
       clearInterval(t);
@@ -131,8 +162,14 @@ export function Receive() {
             </div>
           )}
           <p className="note">
-            Send HYPE or USDC on Elysium. It usually lands in your private balance a few minutes after it arrives (the relayer waits a random moment, then keeps at most 1% for gas). The address has no key and only the vault can take what's sent to it. Use a new address for every payment.
+            Send HYPE or USDC on Elysium. It lands in your private balance seconds after it arrives (the relayer keeps at most 1% of HYPE for gas). The address has no key and only the vault can take what's sent to it. Use a new address for every payment.
           </p>
+          {cur && (
+            <label className="row-flex small soft" style={{ gap: 8, marginTop: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!cur.delay} onChange={(e) => setDelay(e.target.checked)} />
+              Wait a random moment (up to 3 minutes) before it lands, so its arrival is a little harder to time
+            </label>
+          )}
         </div>
         <div className="col">
           {issued && issued.length > 0 && (

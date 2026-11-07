@@ -59,9 +59,13 @@ export async function signReceiveRescue(keys: CloakKeys, n: number, o: { factory
 
 const json = (v: unknown) => JSON.stringify(v, (_, x) => (typeof x === "bigint" ? x.toString() : x));
 
-/** Ask a Cloak relayer to watch receive addresses and deliver what arrives (`POST /receive`). */
-export async function watchReceive(url: string, list: ReceiveAddress[]): Promise<void> {
-  const res = await fetch(`${url.replace(/\/$/, "")}/receive`, { method: "POST", headers: { "content-type": "application/json" }, body: json({ addresses: list.map((x) => ({ address: x.address, params: x.params })) }), signal: AbortSignal.timeout(30_000) });
+/**
+ * Ask a Cloak relayer to watch receive addresses and deliver what arrives (`POST /receive`), seconds after it lands.
+ * With `delay`, the relayer waits a random moment (up to 3 minutes) first. Registering again keeps an address on the
+ * relayer's fast watch for the next couple of hours.
+ */
+export async function watchReceive(url: string, list: ReceiveAddress[], opts: { delay?: boolean } = {}): Promise<void> {
+  const res = await fetch(`${url.replace(/\/$/, "")}/receive`, { method: "POST", headers: { "content-type": "application/json" }, body: json({ addresses: list.map((x) => ({ address: x.address, params: x.params, ...(opts.delay ? { delay: true } : {}) })) }), signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `watch failed (${res.status})`);
 }
 
