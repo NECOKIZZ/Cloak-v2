@@ -168,7 +168,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [priv]);
   useEffect(() => {
     if (!KEEPER_URL) return;
-    fetch(KEEPER_URL).then((r) => setKeeper(r.ok ? "up" : "down")).catch(() => setKeeper("down"));
+    // look again every minute (and when the tab comes back), so a blip doesn't leave it saying offline
+    const check = () => fetch(KEEPER_URL!, { cache: "no-store" }).then((r) => setKeeper(r.ok ? "up" : "down")).catch(() => setKeeper("down"));
+    check();
+    const t = setInterval(check, 60_000);
+    const vis = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", vis);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", vis);
+    };
   }, []);
   return (
     <div className="app">

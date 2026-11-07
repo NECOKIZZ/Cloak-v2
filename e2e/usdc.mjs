@@ -105,7 +105,8 @@ try {
   const after = await d.publicClient.readContract({ address: usdc, abi: erc20, functionName: "balanceOf", args: [relayer] });
   ok(after > before, `relayer was paid ${usd(after - before)} USDC for the withdrawal`);
   const fees = await d.publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "feesOwed" });
-  ok(fees === 250_000n, "0.25 USDC protocol fee waiting in the pool for collectFees()");
+  // 0.25% of the 100 USDC withdrawal, plus 0.25% of each relayer fee paid so far (relayer fees pay the protocol fee too)
+  ok(fees >= 250_000n && fees - 250_000n < 1_000n, `${usd(fees)} USDC protocol fee waiting in the pool for collectFees() (0.25 on the withdrawal, the rest on relayer fees)`);
 
   // ── withdraw the max ──
   const max = await a.p.maxSpendable(pool, "transact");
