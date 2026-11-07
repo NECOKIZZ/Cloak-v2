@@ -77,7 +77,7 @@ export async function GET(req) {
             "div",
             { display: "flex", alignItems: "center", gap: 12, fontSize: 30, color: live ? C.signal : C.ink },
             h("div", { width: 14, height: 14, borderRadius: 7, background: live ? C.signal : C.seal, display: "flex" }),
-            sum.status,
+            sum.card,
           ),
           h("div", { display: "flex", fontSize: 34, color: C.seal, fontWeight: 600 }, sum.price),
           h("div", { display: "flex", fontSize: 24, color: C.mute, marginTop: 12 }, "Sealed bids. One price for every winner."),

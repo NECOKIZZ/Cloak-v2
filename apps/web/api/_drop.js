@@ -43,12 +43,15 @@ export function dropSummary(s) {
   const now = Date.now() / 1000;
   const name = s.name || s.symbol || "An NFT drop";
   const sold = s.sold + s.gtdMinted;
-  let status, desc;
+  // the card image is cached for a day, so its status carries no countdown (the text preview, cached 5 minutes, does)
+  let status, card, desc;
   if (s.phase === "gtd") {
     status = s.hasGtd ? "Guaranteed mint live" : `Bidding opens in ${left(s.gtdEnd - now)}`;
+    card = s.hasGtd ? "Guaranteed mint live" : "Sealed bidding opens soon";
     desc = `${s.supply.toLocaleString()} items. Sealed bidding opens in ${left(s.gtdEnd - now)} and nobody sees a bid until it closes.`;
   } else if (s.phase === "bidding") {
     status = `Sealed bidding · ${left(s.commitEnd - now)} left`;
+    card = "Sealed bidding open";
     desc = `${s.supply.toLocaleString()} items from ${hypeText(s.floor)} HYPE. Bids stay sealed until bidding closes, and every winner pays one price.`;
   } else if (s.phase === "reveal" || s.phase === "settle" || s.phase === "numbering") {
     status = "Opening the sealed bids";
@@ -61,5 +64,5 @@ export function dropSummary(s) {
     desc = `Cleared at ${hypeText(s.publicPrice)} HYPE with ${sold.toLocaleString()} of ${s.supply.toLocaleString()} sold in a sealed-bid auction on Cloak.`;
   }
   const price = s.settled && !s.failed ? `${hypeText(s.publicPrice)} HYPE` : `From ${hypeText(s.floor)} HYPE`;
-  return { title: `${name} on Cloak`, name, desc, status, price, sold };
+  return { title: `${name} on Cloak`, name, desc, status, card: card ?? status, price, sold };
 }
