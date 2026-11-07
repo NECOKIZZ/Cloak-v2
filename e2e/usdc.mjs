@@ -120,5 +120,45 @@ try {
 } finally {
   keeper.kill();
 }
+
+// ── the keeper collects the vaults' fees for the treasury (OPTIMIZATION.md R1), once per window, never twice ──
+{
+  const treasury = await d.publicClient.readContract({ address: f.config, abi: cloakConfigAbi, functionName: "feeRecipient" });
+  const owed = await d.publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "feesOwed" });
+  const before = await d.publicClient.readContract({ address: usdc, abi: erc20, functionName: "balanceOf", args: [treasury] });
+  ok(owed > 0n, `${usd(owed)} USDC of fees waiting before the collector runs`);
+  const run = (port) => {
+    let out = "";
+    const k = spawn(process.execPath, [`${root}services/keeper/index.mjs`], {
+      env: { ...process.env, RPC_URL: process.env.KEEPER_RPC ?? RPC, KEEPER_PK, CONFIG: f.config, HYPE_USD: String(HYPE_USD), HYPE_PRICE_URL: "http://127.0.0.1:9/", PORT: port, FEE_START_DELAY_MS: "500", SNAPSHOT: "0" },
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    k.stdout.on("data", (b) => (out += b));
+    return { k, log: () => out };
+  };
+  const one = run("3996");
+  try {
+    for (let i = 0; i < 150 && !/\[fees\] done/.test(one.log()); i++) await sleep(200);
+    if (!/\[fees\] done: [1-9]/.test(one.log())) console.log(one.log().split("\n").filter((l) => !l.startsWith("[snapshot]")).slice(-25).join("\n"));
+    ok(/\[fees\] done: [1-9]/.test(one.log()), "the keeper ran the fee collection on start (nothing collected in the last 48 h)");
+  } finally {
+    one.k.kill();
+  }
+  const left = await d.publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "feesOwed" });
+  const after = await d.publicClient.readContract({ address: usdc, abi: erc20, functionName: "balanceOf", args: [treasury] });
+  ok(left === 0n && after - before === owed, `${usd(owed)} USDC went to the treasury set in CloakConfig, and the vault owes nothing`);
+  const bal = await d.publicClient.readContract({ address: usdc, abi: erc20, functionName: "balanceOf", args: [pool] });
+  const dep = await d.publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "deposited" });
+  ok(bal >= dep, "the vault still holds every deposit after the collection");
+  // a restart reads the last collection back from the chain, so it waits instead of running again
+  const two = run("3995");
+  try {
+    for (let i = 0; i < 100 && !/\[fees\] last collected/.test(two.log()); i++) await sleep(200);
+    await sleep(1500);
+    ok(/\[fees\] last collected/.test(two.log()) && !/\[fees\] done/.test(two.log()), "after a restart the keeper finds that collection on chain and doesn't run again");
+  } finally {
+    two.k.kill();
+  }
+}
 console.log(`\n${checks} checks passed`);
 process.exit(0);

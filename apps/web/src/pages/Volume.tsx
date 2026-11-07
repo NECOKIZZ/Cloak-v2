@@ -3,7 +3,7 @@ import type { Address, Hex } from "viem";
 import { cloakTokenAbi, privateBatcherAbi, privateRouterAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, whypeAbi } from "@cloakely/sdk";
 import { BATCHER, PREVIOUS, ROUTER, ROUTER_BLOCK, SHARED, SHARED_BLOCK, SHARED_ROUTER, txLink } from "../config";
 import { friendly } from "../errors";
-import { hype } from "../format";
+import { hype, usd } from "../format";
 import { readCloak, publicClient } from "../wallet";
 import { TokenIcon } from "../ui";
 import { loadMarkets } from "./markets";
@@ -30,7 +30,14 @@ interface Stats {
   launches: number;
   privateTxs: number;
   recent: Activity[];
+  /** From the keeper's snapshot only (the chain fallback leaves these out and the page hides them). */
+  tokensLive?: number;
+  drops?: number;
+  revenue?: Revenue;
 }
+interface Fee { collected: bigint; owed: bigint }
+/** Protocol fees in HYPE (launch tokens at their pool price), USDC apart: sent to the treasury, and still waiting in contracts. */
+interface Revenue { launches: Fee; drops: Fee; vaults: Fee; usdc: Fee; collected: bigint; owed: bigint }
 
 let cache: { at: number; data: Stats } | null = null;
 
@@ -173,7 +180,7 @@ export function Volume() {
           <h1>Volume</h1>
           <p>Everything that has moved through Cloak on Elysium testnet, counted from public on-chain events. Who did what stays private.</p>
         </div>
-        <span className="pill"><span className="dot live" />Live · refreshes every 30 s</span>
+        <span className="pill"><span className="dot live" />Live · refreshes every minute</span>
       </div>
       {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
       {!s ? (
@@ -201,6 +208,23 @@ export function Volume() {
             <Card k="Batch volume" v={hype(s.batchVolume, 4)} sub={`${s.batchOrders} sealed orders in ${s.batchRounds} rounds`} />
             <Card k="Sealed-bid deposits" v={hype(s.bidDeposits, 4)} sub={`${s.bids} sealed bids across ${s.launches} launches · ${hype(s.raised, 4)} HYPE raised`} />
           </div>
+          {(s.tokensLive !== undefined || s.drops !== undefined) && (
+            <div className="stats" style={{ marginTop: 18, gridTemplateColumns: "repeat(2, 1fr)" }}>
+              <Card k="Tokens trading privately" v={(s.tokensLive ?? 0).toLocaleString()} unit="" sub={`${s.launches} launches so far`} />
+              <Card k="NFT drops" v={(s.drops ?? 0).toLocaleString()} unit="" sub="Sealed auctions for collections" />
+            </div>
+          )}
+          {s.revenue && (
+            <div className="card" style={{ marginTop: 18 }}>
+              <div className="card-head"><h3>Protocol revenue</h3><span className="xs mute">Fees go to the Cloak treasury. Testnet figures are play money.</span></div>
+              <div className="stats" style={{ marginTop: 4 }}>
+                <Card k="Fees earned" v={hype(s.revenue.collected + s.revenue.owed, 4)} sub={`${hype(s.revenue.collected, 4)} HYPE collected and ${hype(s.revenue.owed, 4)} HYPE waiting`} />
+                <Card k="From launches" v={hype(s.revenue.launches.collected + s.revenue.launches.owed, 4)} sub="A share of each successful raise" />
+                <Card k="From NFT drops" v={hype(s.revenue.drops.collected + s.revenue.drops.owed, 4)} sub="A share of each drop's sales" />
+                <Card k="From withdrawals" v={hype(s.revenue.vaults.collected + s.revenue.vaults.owed, 4)} sub={s.revenue.usdc.collected + s.revenue.usdc.owed > 0n ? `A small fee on each withdrawal, plus ${usd(s.revenue.usdc.collected + s.revenue.usdc.owed)} USDC` : "A small fee on each withdrawal"} />
+              </div>
+            </div>
+          )}
           <div className="card" style={{ marginTop: 18 }}>
             <div className="card-head"><h3>Recent activity</h3><span className="xs mute">Amounts the chain already shows. Senders are hidden.</span></div>
             {s.recent.length === 0 ? (

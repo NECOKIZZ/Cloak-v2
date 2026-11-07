@@ -1,4 +1,4 @@
-// A snapshot of Cloak's public data, rebuilt every 30 s, so the site can show launches, markets, launch images and
+// A snapshot of Cloak's public data, rebuilt every 60 s (the site reads it once a minute), so the site can show launches, markets, launch images and
 // Volume in one request instead of hundreds of RPC calls per visitor. Everything here is public chain data; nothing
 // private ever passes through it. The site still reads the chain for anything that moves money.
 //   GET /snapshot → { at, block, markets, launches, meta, stats } (bigints as {"$n":"…"})
@@ -14,14 +14,23 @@ const LAUNCH_CREATED_V1 = [{ type: "event", name: "LaunchCreated", inputs: [
   { name: "symbol", type: "string", indexed: false }, { name: "creatorAlloc", type: "uint256", indexed: false }, { name: "metadataURI", type: "string", indexed: false },
 ] }];
 
+// fees: launches and drops emit FeesCollected(to, amount); a vault emits it with `to` indexed; the shared vault per token
+const FEES_PLAIN = [{ type: "event", name: "FeesCollected", inputs: [{ name: "to", type: "address", indexed: false }, { name: "amount", type: "uint256", indexed: false }] }];
+const FEES_POOL = [{ type: "event", name: "FeesCollected", inputs: [{ name: "to", type: "address", indexed: true }, { name: "amount", type: "uint256", indexed: false }] }];
+const FEES_SHARED = [{ type: "event", name: "FeesCollected", inputs: [{ name: "token", type: "address", indexed: true }, { name: "to", type: "address", indexed: true }, { name: "amount", type: "uint256", indexed: false }] }];
+const OWED = [{ type: "function", name: "feesOwed", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }];
+const OWED_TOKEN = [{ type: "function", name: "feesOwed", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }];
+
 export const toJson = (x) => JSON.stringify(x, (_k, v) => (typeof v === "bigint" ? { $n: v.toString() } : v));
 
 /**
  * @param pub   a multicall-batched public client
  * @param d     { router, routerBlock, batcher, factory, earlierFactories?, shared?, sharedBlock?, sharedRouter?,
- *                previous: [{ router, routerBlock, batcher, factory }] }
+ *                previous: [{ router, routerBlock, batcher, factory }],
+ *                assets?: [{ token, decimals }] (dollar stablecoins such as USDC, counted apart from HYPE),
+ *                listDrops?: () => Promise<address[]> }
  */
-export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error } = {}) {
+export function startSnapshots(pub, d, { everyMs = Number(process.env.SNAPSHOT_EVERY_MS ?? 60_000), log = console.error } = {}) {
   const prev = (d.previous ?? []).filter((p) => p.router);
   const older = [...(d.earlierFactories ?? []), ...prev.map((p) => p.factory)].filter(Boolean);
   const reader = new Cloak(pub, undefined, d.factory, older);
@@ -101,7 +110,7 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
       since(`${d.sharedRouter}:PrivateSend`, from, head, { address: d.sharedRouter, abi: sharedRouterAbi, eventName: "PrivateSend" }),
       since(`${d.shared}:NewNullifier`, from, head, { address: d.shared, abi: sharedVaultAbi, eventName: "NewNullifier" }),
     ]);
-    return { value: value.reduce((a, b) => a + b, 0n), buys, sells, sends, nullifiers, settles, orders };
+    return { value: value.reduce((a, b) => a + b, 0n), tokens, buys, sells, sends, nullifiers, settles, orders };
   }
 
   /** The Volume page's totals, from the current deployment and every earlier one (same rules as the site). */
@@ -124,7 +133,7 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
           pub.readContract({ address: whype, abi: whypeAbi, functionName: "balanceOf", args: [hypePool] }),
           Promise.all(tokens.map((t, i) => pub.readContract({ address: t, abi: cloakTokenAbi, functionName: "balanceOf", args: [pools[i]] }).then((b) => (b * (prices.get(t.toLowerCase()) ?? 0n)) / WAD))),
         ]);
-        return { hypePool, shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVault: tokenVaults.reduce((a, b) => a + b, 0n) };
+        return { hypePool, tokens, pools, from: s.from, shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVault: tokenVaults.reduce((a, b) => a + b, 0n) };
       }),
     );
     const sh = await sharedPart(head).catch((e) => (log(`[snapshot] shared vault skipped: ${e.shortMessage ?? e.message}`), null));
@@ -168,7 +177,77 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
       launches: auctions.length,
       privateTxs: Math.floor((nullifiers.length + (sh?.nullifiers.length ?? 0)) / 2),
       recent,
+      // tokens with a private market: launch tokens in a vault of their own or in the shared vault
+      tokensLive: new Set([...mkts.map((m) => m.token.toLowerCase()), ...(sh?.tokens ?? []).map((t) => t.toLowerCase())]).size,
+      ...(await revenue(head, sources, sh, auctions, prices).catch((e) => (log(`[snapshot] revenue skipped: ${e.shortMessage ?? e.message}`), rev ?? {}))),
     };
+  }
+
+  /**
+   * Protocol revenue: fees already sent to the treasury and fees still waiting in contracts, by source, in HYPE (launch
+   * tokens valued at their pool price; USDC counted on its own). Read every 10 minutes, not every snapshot.
+   */
+  let rev = null;
+  let revAt = 0;
+  async function revenue(head, sources, sh, auctions, prices) {
+    if (rev && Date.now() - revAt < (d.revenueEveryMs ?? 600_000)) return rev;
+    const assets = new Map((d.assets ?? []).map((a) => [a.token.toLowerCase(), a]));
+    const sum = (xs) => xs.reduce((a, b) => a + b, 0n);
+    const owed = (address) => pub.readContract({ address, abi: OWED, functionName: "feesOwed" }).catch(() => 0n);
+    // every vault of every deployment, each once: HYPE vaults, launch-token vaults and asset (USDC) vaults
+    const pools = new Map();
+    for (const x of sources) {
+      pools.set(x.hypePool.toLowerCase(), { pool: x.hypePool, token: null, from: x.from });
+      x.tokens.forEach((t, i) => pools.set(x.pools[i].toLowerCase(), { pool: x.pools[i], token: t, from: x.from }));
+    }
+    const vaults = [...pools.values()];
+    const from = vaults.reduce((m, v) => (v.from < m ? v.from : m), head);
+    // a launch token's value in HYPE at its pool price; a USDC amount goes in its own total
+    const add = (o, token, amount) => {
+      const t = token?.toLowerCase();
+      if (!t) o.hype += amount;
+      else if (assets.has(t)) o.usdc += amount;
+      else o.hype += (amount * (prices.get(t) ?? 0n)) / WAD;
+    };
+    const vaultOwed = { hype: 0n, usdc: 0n };
+    const vaultPaid = { hype: 0n, usdc: 0n };
+    const [vOwed, vPaid] = await Promise.all([
+      Promise.all(vaults.map((v) => owed(v.pool))),
+      since(`fees:vaults:${vaults.length}`, from, head, { address: vaults.map((v) => v.pool), abi: FEES_POOL, eventName: "FeesCollected" }),
+    ]);
+    vaults.forEach((v, i) => add(vaultOwed, v.token, vOwed[i]));
+    for (const e of vPaid) add(vaultPaid, pools.get(e.address.toLowerCase())?.token, e.args.amount);
+    if (sh) {
+      const [sOwed, sPaid] = await Promise.all([
+        Promise.all(sh.tokens.map((t) => pub.readContract({ address: d.shared, abi: OWED_TOKEN, functionName: "feesOwed", args: [t] }).catch(() => 0n))),
+        since(`fees:shared`, d.sharedBlock ?? 0n, head, { address: d.shared, abi: FEES_SHARED, eventName: "FeesCollected" }),
+      ]);
+      sh.tokens.forEach((t, i) => add(vaultOwed, t, sOwed[i]));
+      for (const e of sPaid) add(vaultPaid, e.args.token, e.args.amount);
+    }
+    // launch fees on successful raises, and drop fees on sales, both in HYPE
+    const auctionAddrs = auctions.map((a) => a.address);
+    const launchPaid = auctionAddrs.length ? await since(`fees:auctions:${auctionAddrs.length}`, 0n, head, { address: auctionAddrs, abi: FEES_PLAIN, eventName: "FeesCollected" }) : [];
+    const dropAddrs = d.listDrops ? await d.listDrops().catch(() => []) : [];
+    const [dOwed, dropPaid] = dropAddrs.length
+      ? await Promise.all([Promise.all(dropAddrs.map(owed)), since(`fees:drops:${dropAddrs.length}`, 0n, head, { address: dropAddrs, abi: FEES_PLAIN, eventName: "FeesCollected" })])
+      : [[], []];
+    const launches = { collected: sum(launchPaid.map((e) => e.args.amount)), owed: sum(auctions.map((a) => a.feesOwed ?? 0n)) };
+    const drops = { collected: sum(dropPaid.map((e) => e.args.amount)), owed: sum(dOwed) };
+    const vaultsHype = { collected: vaultPaid.hype, owed: vaultOwed.hype };
+    rev = {
+      drops: dropAddrs.length,
+      revenue: {
+        launches,
+        drops,
+        vaults: vaultsHype,
+        usdc: { collected: vaultPaid.usdc, owed: vaultOwed.usdc },
+        collected: launches.collected + drops.collected + vaultsHype.collected,
+        owed: launches.owed + drops.owed + vaultsHype.owed,
+      },
+    };
+    revAt = Date.now();
+    return rev;
   }
 
   async function build() {

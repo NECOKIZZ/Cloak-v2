@@ -5,8 +5,10 @@
 //   /api/preview?a=0x…&img=1  the token's image (launch images are stored on-chain as data URIs)
 //   /api/preview?kind=claim   a claim link (/claim#…) or a payment request (/pay#…). Link fetchers never see what's
 //   /api/preview?kind=pay     after the #, so these cards are the same for every link: no amount, no names.
+//   /api/preview?drop=0x…     an NFT drop (/app/drop/0x…): its name, status and price, with a share card from /api/card
 import { createPublicClient, formatEther, http } from "viem";
 import { Cloak, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
+import { dropSummary, loadDrop } from "./_drop.js";
 
 export const config = { maxDuration: 15 };
 
@@ -92,10 +94,34 @@ function linkCard(kind) {
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, s-maxage=3600" } });
 }
 
+/** An NFT drop's preview page. The image is its share card, whose link changes with the drop's status so sites that
+ *  keep cards for days show the new one. */
+async function dropCard(a) {
+  const page = `${SITE}/app/drop/${a}`;
+  const got = await loadDrop(a).catch(() => null);
+  if (!got) return Response.redirect(page, 302);
+  const sum = dropSummary(got.s);
+  const image = `${SITE}/api/card?drop=${a}&v=${got.s.phase}-${sum.sold}`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>${esc(sum.title)}</title>
+<meta name="description" content="${esc(sum.desc)}">
+<link rel="canonical" href="${esc(page)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Cloak">
+<meta property="og:url" content="${esc(page)}"><meta property="og:title" content="${esc(sum.title)}">
+<meta property="og:description" content="${esc(sum.desc)}"><meta property="og:image" content="${esc(image)}">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:site" content="@cloakonelysium">
+<meta name="twitter:title" content="${esc(sum.title)}"><meta name="twitter:description" content="${esc(sum.desc)}"><meta name="twitter:image" content="${esc(image)}">
+</head><body><p>${esc(sum.title)}. ${esc(sum.desc)}</p><p><a href="${esc(page)}">Open on Cloak</a></p></body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, s-maxage=300, stale-while-revalidate=3600" } });
+}
+
 export async function GET(req) {
   const q = new URL(req.url).searchParams;
   const kind = q.get("kind");
   if (kind === "claim" || kind === "pay") return linkCard(kind);
+  const drop = (q.get("drop") ?? "").toLowerCase();
+  if (drop) return /^0x[0-9a-f]{40}$/.test(drop) ? dropCard(drop) : Response.redirect(SITE, 302);
   const a = (q.get("a") ?? "").toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(a)) return Response.redirect(SITE, 302);
   const page = `${SITE}/app/launch/${a}`;

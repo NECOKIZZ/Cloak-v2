@@ -18,6 +18,25 @@ const LINK_LABEL = { website: "Website", x: "X", discord: "Discord", telegram: "
 const when = (t: number) => new Date(t * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /** One sealed NFT drop: GTD minting, sealed bidding, then results, claims and refunds. */
+/** Copy the drop's link, or post it on X. Shared links show a card with the collection's art, status and price. */
+function ShareDrop({ s }: { s: DropState }) {
+  const { toast } = useApp();
+  const url = `${location.origin}/app/drop/${s.address}`;
+  const name = s.name || s.symbol;
+  const text =
+    s.phase === "gtd" || s.phase === "bidding"
+      ? `${name} is dropping on Cloak. Sealed bids nobody can see until bidding closes, and every winner pays one price`
+      : s.settled && !s.failed
+        ? `${name} sold through a sealed-bid auction on Cloak`
+        : `${name} on Cloak`;
+  return (
+    <>
+      <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(url).catch(() => {}); toast("Drop link copied"); }}><Icon.copy size={14} />Copy link</button>
+      <a className="btn btn-ghost btn-sm" href={`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">Share on X</a>
+    </>
+  );
+}
+
 export function Drop({ drop }: { drop: Address }) {
   const { wallet, connect, toast } = useApp();
   const [s, setS] = useState<DropState | null>(null);
@@ -206,11 +225,10 @@ export function Drop({ drop }: { drop: Address }) {
           {one?.name && <p className="small">{one.name}{colName ? ` from ${colName}` : ""}, token #{String(esc!.tokenIds[0])}</p>}
           <p className="small mute">by {addrLink(s.creator) ? <a className="link" href={addrLink(s.creator)} target="_blank" rel="noreferrer"><Who address={s.creator} /></a> : <Who address={s.creator} />} · {s.supply.toLocaleString()} {sale ? `spot${s.supply > 1 ? "s" : ""}` : esc ? `existing token${s.supply > 1 ? "s" : ""}${colName ? ` from ${colName}` : ""}` : "items"} · Elysium{!sale && s.royaltyBps ? ` · ${pct(s.royaltyBps)} royalty` : ""}</p>
         </div>
-        {details.links && (
-          <div className="dp-links">
-            {(["website", "x", "discord", "telegram"] as const).map((k) => details.links![k] && <a key={k} className="btn btn-ghost btn-sm" href={details.links![k]} target="_blank" rel="noreferrer nofollow">{LINK_LABEL[k]} ↗</a>)}
-          </div>
-        )}
+        <div className="dp-links">
+          <ShareDrop s={s} />
+          {details.links && (["website", "x", "discord", "telegram"] as const).map((k) => details.links![k] && <a key={k} className="btn btn-ghost btn-sm" href={details.links![k]} target="_blank" rel="noreferrer nofollow">{LINK_LABEL[k]} ↗</a>)}
+        </div>
       </div>
       <div className="dp-stats">
         <div><span className="xs mute">Floor</span><b className="mono">{hype(s.floor)} <small>HYPE</small></b></div>

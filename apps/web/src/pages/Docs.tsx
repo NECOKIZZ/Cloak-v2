@@ -70,6 +70,10 @@ export function Docs() {
           <div className="crumb">Start here</div>
           <h1 id="overview">Docs</h1>
           <p>Fair launches and private trading on Elysium, explained without the jargon wall.</p>
+          <div className="callout" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span>New here? Watch the walkthrough of the live app, from shielding funds to launching, bidding and trading.</span>
+            <Link to="/demo" className="btn btn-ghost btn-sm">Watch the demo</Link>
+          </div>
 
           <h2>What is Cloak?</h2>
           <p>On Elysium, one sequencer orders transactions by fee, every ~300 ms. A normal token launch becomes a race that bots win in the first block. After that, every buy, sell and balance is public forever and tied to your wallet.</p>

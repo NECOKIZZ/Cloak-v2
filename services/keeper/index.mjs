@@ -23,9 +23,10 @@ import { startSnapshots } from "./snapshot.mjs";
 import { startLeaves } from "./leaves.mjs";
 import { startSchedule } from "./schedule.mjs";
 import { startReceive } from "./receive.mjs";
+import { startFeeCollector } from "./fees.mjs";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
+import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakDropFactoryAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
 
 const RPC = process.env.RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];
 const chain = RPC.includes("127.0.0.1") || RPC.includes("localhost") ? anvilLocal : elysiumTestnet;
@@ -86,7 +87,7 @@ const leaves = reg ? startLeaves(publicClient, { vaults: VAULTS, vaultsBlock: re
 
 // public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
 const snapshot = reg && process.env.SNAPSHOT !== "0"
-  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, shared: reg.shared, sharedBlock: reg.sharedBlock, sharedRouter: reg.sharedRouter, sharedBatcher: reg.sharedBatcher, previous: reg.previous })
+  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, shared: reg.shared, sharedBlock: reg.sharedBlock, sharedRouter: reg.sharedRouter, sharedBatcher: reg.sharedBatcher, previous: reg.previous, assets: (() => { try { return deploymentFor(chain.id)?.assets ?? []; } catch { return []; } })(), listDrops: async () => (drops ? drops.list() : []) })
   : null;
 
 const account = privateKeyToAccount(PK);
@@ -143,8 +144,23 @@ const done = new Set(); // auctions fully claimed
 const waitUntil = new Map(); // settled auctions with their vault open: nothing to do until public claims start
 const log = (a, m) => console.log(`[${new Date().toISOString()}] ${a.slice(0, 10)} ${m}`);
 
+// the launch list only grows, so it is read again only when a factory's count changes (or every 5 minutes, to be safe),
+// not every tick: re-reading every launch every 3 s was the keeper's biggest steady RPC cost (OPTIMIZATION.md K1)
+const listCache = { key: "", at: 0, list: [] };
+async function launchList() {
+  // a count that can't be read forces a full read, as before this cache existed
+  const counts = await Promise.all([FACTORY, ...EARLIER].map((f) => publicClient.readContract({ address: f, abi: cloakFactoryAbi, functionName: "launchesCount" }).catch(() => `?${Date.now()}`)));
+  const key = counts.join(",");
+  if (key !== listCache.key || Date.now() - listCache.at > 300_000) {
+    listCache.list = await cloak.listLaunches();
+    listCache.key = key;
+    listCache.at = Date.now();
+  }
+  return listCache.list;
+}
+
 async function tick() {
-  const launches = await cloak.listLaunches();
+  const launches = await launchList();
   status.launchCount = launches.length;
   const now = Number((await publicClient.getBlock()).timestamp);
   for (const { auction, token, factory, index } of launches) {
@@ -320,9 +336,14 @@ const drops = DROP_FACTORY ? new CloakDrops(publicClient, walletClient, DROP_FAC
 const dropsDone = new Set();
 const dropWait = new Map();
 const dropSettledAt = new Map();
+// the drop list only grows: list it again only when a factory's count changes (or every 5 minutes), not every tick
+const dropList = { key: "", at: 0, list: [] };
 async function tickDrops() {
   if (!drops) return;
-  const list = await drops.list();
+  const counts = await Promise.all([DROP_FACTORY, ESCROW_DROP_FACTORY].filter(Boolean).map((f) => publicClient.readContract({ address: f, abi: cloakDropFactoryAbi, functionName: "dropsCount" }).catch(() => `?${Date.now()}`)));
+  const key = counts.join(",");
+  if (key !== dropList.key || Date.now() - dropList.at > 300_000) Object.assign(dropList, { list: await drops.list(), key, at: Date.now() });
+  const list = dropList.list;
   status.drops = { factory: DROP_FACTORY, count: list.length, live: {} };
   const now = Number((await publicClient.getBlock()).timestamp);
   for (const d of list) {
@@ -412,6 +433,61 @@ const MIN_GAS_PRICE = BigInt(process.env.RELAY_MIN_GAS_PRICE ?? 100_000_000); //
 // private receive addresses: deliver what arrives into the vault as the owner's note (POST/GET /receive)
 const RECEIVE = reg?.receive;
 const receiver = RECEIVE ? startReceive({ pub: publicClient, wallet: walletClient, account, factory: RECEIVE, tokens: (deploymentFor(chain.id)?.assets ?? []).map((a) => a.token), minGasPrice: MIN_GAS_PRICE, marginBps: MARGIN_BPS, log: (m) => console.log(`[receive] ${m}`) }) : null;
+
+// protocol fees waiting in the vaults go to the treasury every 48 h (FEE_COLLECT_HOURS, 0 = off). The treasury is fixed
+// in CloakConfig, so this can only trigger the payout, never redirect it.
+/** Every vault with a feesOwed(): the permanent vaults and each earlier deployment's, each once (token null = HYPE). */
+async function feeVaults() {
+  const seen = new Map();
+  if (VAULTS) {
+    const n = Number(await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "tokensCount" }));
+    const tokens = await Promise.all(Array.from({ length: n }, (_, i) => publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "tokens", args: [BigInt(i)] })));
+    const pools = await Promise.all(tokens.map((t) => publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [t] })));
+    tokens.forEach((t, i) => seen.set(pools[i].toLowerCase(), { pool: pools[i], token: t }));
+  }
+  for (const p of reg?.previous ?? []) {
+    if (!p.router) continue;
+    const c = { address: p.router, abi: privateRouterAbi };
+    const [hypePool, n] = await Promise.all([publicClient.readContract({ ...c, functionName: "hypePool" }), publicClient.readContract({ ...c, functionName: "tokensCount" })]);
+    seen.set(hypePool.toLowerCase(), { pool: hypePool, token: null });
+    const tokens = await Promise.all(Array.from({ length: Number(n) - 1 }, (_, i) => publicClient.readContract({ ...c, functionName: "tokens", args: [BigInt(i + 1)] })));
+    const pools = await Promise.all(tokens.map((t) => publicClient.readContract({ ...c, functionName: "poolOf", args: [t] })));
+    tokens.forEach((t, i) => seen.has(pools[i].toLowerCase()) || seen.set(pools[i].toLowerCase(), { pool: pools[i], token: t }));
+  }
+  return [...seen.values()];
+}
+/** A fee's worth in HYPE wei: HYPE as it is, USDC at the HYPE price, a launch token at its market's price. */
+async function feeValueInHype(token, amount) {
+  if (!token) return amount;
+  const whype = ROUTER ? await readRouter("whype") : null;
+  if (whype && token.toLowerCase() === whype.toLowerCase()) return amount;
+  let market = ROUTER ? await readRouter("pairOf", [token]).catch(() => zeroAddress) : zeroAddress;
+  if (market === zeroAddress && SHARED) market = await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "marketOf", args: [token] }).catch(() => zeroAddress);
+  if (market === zeroAddress) {
+    // a vault token with no launch market is a dollar asset such as USDC, priced the same way as the relayer's fees
+    const decimals = await publicClient.readContract({ address: token, abi: decimalsAbi, functionName: "decimals" });
+    return BigInt(Math.floor((Number(amount) / 10 ** decimals / (await hypeUsd())) * 1e18));
+  }
+  const price = await publicClient.readContract({ address: market, abi: cloakPairAbi, functionName: "price" });
+  return (amount * price) / 10n ** 18n;
+}
+const feeCollector = reg
+  ? startFeeCollector({
+      pub: publicClient,
+      wallet: walletClient,
+      account,
+      vaults: feeVaults,
+      shared: SHARED,
+      sharedTokens: async () => {
+        const n = Number(await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "tokensCount" }));
+        return Promise.all(Array.from({ length: n }, (_, i) => publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "tokens", args: [BigInt(i)] })));
+      },
+      valueInHype: feeValueInHype,
+      everyMs: Number(process.env.FEE_COLLECT_HOURS ?? 48) * 3600_000,
+      startDelayMs: Number(process.env.FEE_START_DELAY_MS ?? 300_000),
+      log: (m) => console.log(`[fees] ${m}`),
+    })
+  : null;
 
 async function quote(kind, pool) {
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
@@ -773,7 +849,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, shared: SHARED ?? null, sharedRouter: SHARED_ROUTER ?? null, sharedBatcher: SHARED_BATCHER ?? null, receive: RECEIVE ?? null, claimDelay: CLAIM_DELAY });
+    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, shared: SHARED ?? null, sharedRouter: SHARED_ROUTER ?? null, sharedBatcher: SHARED_BATCHER ?? null, receive: RECEIVE ?? null, claimDelay: CLAIM_DELAY, feeCollection: feeCollector ? (feeCollector.off ? "off" : { lastAt: feeCollector.lastAt, lastRun: feeCollector.lastRun }) : null });
   }
   send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));

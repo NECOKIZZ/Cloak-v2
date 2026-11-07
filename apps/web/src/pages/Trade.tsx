@@ -45,7 +45,7 @@ export function Trade() {
   const feePct = useFeePct();
   const [side, setSide] = useState<"buy" | "sell">(query.get("side") === "sell" ? "sell" : "buy");
   const [amt, setAmt] = useState("0.001");
-  const [modePick, setMode] = useState<"instant" | "batch">(BATCHER ? "batch" : "instant");
+  const [modePick, setMode] = useState<"instant" | "batch">("instant") // instant first: most swaps want the fill now (batch stays one click away);
   const mode = market && !market.batchable ? "instant" : modePick;
   const [q, setQ] = useState(0n);
   const [round, setRound] = useState<{ endsAt: number } | null>(null);
@@ -178,8 +178,8 @@ export function Trade() {
               </div>
               {BATCHER && market.batchable && (
                 <div className="mode">
-                  <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}><b>Batch · hides size</b><span>{round ? `Next round in ${Math.max(0, Math.ceil(round.endsAt - now))}s` : "Settles every 30 s"}</span></button>
                   <button className={mode === "instant" ? "on" : ""} onClick={() => setMode("instant")}><b>Instant</b><span>Fills now · size visible</span></button>
+                  <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}><b>Batch · hides size</b><span>{round ? `Next round in ${Math.max(0, Math.ceil(round.endsAt - now))}s` : "Settles every 30 s"}</span></button>
                 </div>
               )}
               {mode === "batch" && split.sizes.length > 0 && (

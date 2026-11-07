@@ -14,12 +14,14 @@
     "@fontsource-variable/inter-tight": "5.1.0",
     "@fontsource-variable/jetbrains-mono": "5.1.0",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/og": "0.8.6",
     "@walletconnect/ethereum-provider": "2.17.0",
     "@walletconnect/modal": "2.7.0",
     "buffer": "6.0.3",
     "qrcode-generator": "1.4.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "sharp": "0.33.5",
     "viem": "2.21.54"
   },
   "devDependencies": {

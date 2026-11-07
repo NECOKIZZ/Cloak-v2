@@ -39,6 +39,17 @@
       "destination": "/api/preview?a=:a"
     },
     {
+      "source": "/app/drop/:a",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(Twitterbot|facebookexternalhit|Facebot|Discordbot|TelegramBot|Slackbot|LinkedInBot|WhatsApp|SkypeUriPreview|redditbot|Embedly|Pinterest|Applebot|Iframely|Bluesky|Mastodon).*"
+        }
+      ],
+      "destination": "/api/preview?drop=:a"
+    },
+    {
       "source": "/api/nft/:drop/:id",
       "destination": "/api/nft?drop=:drop&id=:id"
     },
