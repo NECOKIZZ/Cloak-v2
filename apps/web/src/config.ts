@@ -69,6 +69,8 @@ export const SHARED = D?.shared;
 export const SHARED_ROUTER = D?.sharedRouter;
 export const SHARED_BLOCK = D?.sharedBlock ?? 0n;
 export const SHARED_BATCHER = D?.sharedBatcher;
+/** Private receive addresses (CloakReceive): anyone pays an address, it arrives as a private note. */
+export const RECEIVE = D?.receive;
 
 /** Vaults for existing tokens (USDC): private sends and withdrawals. The router also lists them; these load faster. */
 /** Sealed NFT drops (CloakDropFactory). */

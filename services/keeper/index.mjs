@@ -22,6 +22,7 @@ import { createServer } from "node:http";
 import { startSnapshots } from "./snapshot.mjs";
 import { startLeaves } from "./leaves.mjs";
 import { startSchedule } from "./schedule.mjs";
+import { startReceive } from "./receive.mjs";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
@@ -407,6 +408,11 @@ async function hypeUsd() {
 const GAS = { transact: 1_900_000n, unshieldHype: 2_000_000n, privateSwap: 2_500_000n, placeOrder: 2_200_000n, migrate: 2_700_000n };
 const MARGIN_BPS = BigInt(process.env.RELAY_FEE_MARGIN_BPS ?? 12_500); // 1.25× the gas cost
 const MIN_GAS_PRICE = BigInt(process.env.RELAY_MIN_GAS_PRICE ?? 100_000_000); // 0.1 gwei floor
+
+// private receive addresses: deliver what arrives into the vault as the owner's note (POST/GET /receive)
+const RECEIVE = reg?.receive;
+const receiver = RECEIVE ? startReceive({ pub: publicClient, wallet: walletClient, account, factory: RECEIVE, tokens: (deploymentFor(chain.id)?.assets ?? []).map((a) => a.token), minGasPrice: MIN_GAS_PRICE, marginBps: MARGIN_BPS, log: (m) => console.log(`[receive] ${m}`) }) : null;
+
 async function quote(kind, pool) {
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
   if (!ROUTER) throw err("relay disabled", 503);
@@ -677,6 +683,35 @@ createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, max-age=10", "x-content-type-options": "nosniff", ...(gz ? { "content-encoding": "gzip" } : {}) });
     return res.end(gz ? snapshot.gz() : body);
   }
+  if (path === "/receive" && (req.method === "POST" || req.method === "GET")) {
+    if (!receiver) return send(req, res, 404, { error: "receive addresses aren't enabled on this relayer" });
+    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
+    if (req.method === "GET") {
+      const addrs = (new URL(req.url, "http://x").searchParams.get("addresses") ?? "").split(",").filter((x) => /^0x[0-9a-fA-F]{40}$/.test(x)).slice(0, 50);
+      return send(req, res, 200, { deliveries: receiver.deliveries(addrs) });
+    }
+    let body = "";
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > MAX_BODY) {
+        send(req, res, 413, { error: "request too large" });
+        req.destroy();
+        return;
+      }
+      body += c;
+    });
+    req.on("end", async () => {
+      if (size > MAX_BODY) return;
+      try {
+        await receiver.watch(JSON.parse(body));
+        send(req, res, 200, { ok: true });
+      } catch (e) {
+        send(req, res, e.status ?? 400, { error: e.status ? e.message : "malformed request" });
+      }
+    });
+    return;
+  }
   if (path === "/schedule" && (req.method === "POST" || req.method === "GET")) {
     if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
     if (req.method === "GET") {
@@ -724,7 +759,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, shared: SHARED ?? null, sharedRouter: SHARED_ROUTER ?? null, sharedBatcher: SHARED_BATCHER ?? null, claimDelay: CLAIM_DELAY });
+    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, shared: SHARED ?? null, sharedRouter: SHARED_ROUTER ?? null, sharedBatcher: SHARED_BATCHER ?? null, receive: RECEIVE ?? null, claimDelay: CLAIM_DELAY });
   }
   send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));

@@ -150,5 +150,7 @@
       "sharedBatcher": "0xdc725bdeB0FcA923Bf2Dc65232F54463B0F80820",
       "until": "24645948"
     }
-  ]
+  ],
+  "receive": "0x852675b2e127fcce3b5efd3ef817623db7aa44f3",
+  "receiveBlock": "25386020"
 }

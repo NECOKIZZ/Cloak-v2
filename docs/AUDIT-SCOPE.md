@@ -68,6 +68,7 @@ vendored Uniswap v4 code listed in 3.
 | `PrivateBatcher.sol` | 243 | Batch rounds for pool tokens: standard sizes, a TWAP crossing price clamped to the opening price ± slippage, a net swap, refunds. |
 | `SharedBatcher.sol` | 268 | The same batch rounds for SharedVault tokens. |
 | `CloakMigrator.sol` | 63 | Moves a private balance from an earlier deployment's pools into the current ones in one transaction. |
+| `CloakReceive.sol` | 133 | **Added after the commit above (Nov 7).** Private receive addresses: a ReceiveBox per address (CREATE2, no key) that only the factory can sweep, `deliver` deposits what arrived into the asset's vault as the note committed to in the salt (fee capped per address), `rescue` lets the address's own key take out what the vaults can't. |
 | `CloakFactoryList.sol` | 38 | Read-only view of earlier factories as one list. |
 | `WHYPE.sol` | 50 | Wrapped HYPE (WETH9 behaviour). |
 | `interfaces/IHasher.sol`, `interfaces/IVerifier.sol` | 16 | Interfaces. |

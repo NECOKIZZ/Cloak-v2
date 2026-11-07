@@ -10,7 +10,7 @@
 //   (writes deployments/elysium-mainnet.fork.json)
 import { writeFileSync } from "node:fs";
 import { createPublicClient, defineChain, formatEther, http, parseEther } from "viem";
-import { cloakConfigAbi, cloakDropFactoryAbi, cloakFactoryAbi, cloakSpotBookAbi, cloakV4HookAbi, cloakVaultsAbi, cloakVestingDeployerAbi, elysiumTestnet, readRegistry, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi } from "@cloakely/sdk";
+import { cloakConfigAbi, cloakReceiveAbi, cloakDropFactoryAbi, cloakFactoryAbi, cloakSpotBookAbi, cloakV4HookAbi, cloakVaultsAbi, cloakVestingDeployerAbi, elysiumTestnet, readRegistry, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi } from "@cloakely/sdk";
 import { bytecode } from "@cloakely/sdk/bytecode";
 import { applyRules, assetVault, clients, deployBatcher, deployPrivacy, deployRaw, deployV4, exempt, register } from "./lib.mjs";
 
@@ -72,6 +72,10 @@ await register(pub, d.walletClient, config, "sharedRouter", sr.contractAddress, 
 await register(pub, d.walletClient, config, "sharedBatcher", sb.contractAddress, 4, sb.blockNumber);
 await exempt(pub, d.walletClient, config, [p.router, b.batcher, sr.contractAddress, sb.contractAddress]);
 console.log(`shared vault ${sv.contractAddress} · router ${sr.contractAddress} · batcher ${sb.contractAddress}`);
+// private receive addresses: a plain transfer becomes a note (not cap-exempt: deposits through it count against the caps)
+const rx = await send(d.walletClient.deployContract({ abi: cloakReceiveAbi, bytecode: bytecode.CloakReceive, args: [p.vaults, sv.contractAddress, p.whype] }));
+await register(pub, d.walletClient, config, "receive", rx.contractAddress, 4, rx.blockNumber);
+console.log(`receive ${rx.contractAddress}`);
 
 // 5. NFT drops and WL spot sales on the same config
 const df = await send(d.walletClient.deployContract({ abi: cloakDropFactoryAbi, bytecode: bytecode.CloakDropFactory, args: [config, "https://cloak.boblabs.tech/api/nft/"] }));
@@ -121,6 +125,7 @@ const out = {
   sharedBlock: sv.blockNumber.toString(),
   sharedRouter: sr.contractAddress,
   sharedBatcher: sb.contractAddress,
+  receive: rx.contractAddress,
   sharedBatcherBlock: sb.blockNumber.toString(),
   dropFactory: df.contractAddress,
   dropFactoryBlock: Number(df.blockNumber),

@@ -11,10 +11,13 @@ export const LEVELS = 20;
 export const MAX_NOTE_AMOUNT = 2n ** 128n;
 /** Key index of the main spending key; any other index is a one-time key used for a single public entry. */
 export const MAIN_KEY = 0xffffffff;
+/** One-time keys of private receive addresses: RECEIVE_KEY_BASE + n (random one-time keys stay below it in practice). */
+export const RECEIVE_KEY_BASE = 0xc0000000;
+export const RECEIVE_KEY_COUNT = 0x3fffffff;
 
 const fieldMod = (x: bigint) => ((x % FIELD_SIZE) + FIELD_SIZE) % FIELD_SIZE;
 export const randomField = () => BigInt(toHex(randomBytes(31)));
-export const randomKeyIndex = () => Number(BigInt(toHex(randomBytes(4))) % 0xfffffffen);
+export const randomKeyIndex = () => Number(BigInt(toHex(randomBytes(4))) % 0xc0000000n); // below RECEIVE_KEY_BASE
 
 let _poseidon: any;
 export async function poseidon(inputs: bigint[]): Promise<bigint> {
@@ -99,6 +102,21 @@ export class CloakKeys {
    * bid can't be linked to the account's wallet. Derived from this account's seed, so the same signature always finds
    * it again (on any device).
    */
+  /**
+   * Everything private receive address `n` needs, derived from the seed alone, so any device that unlocks the account
+   * finds the same address again: a one-time key (index RECEIVE_KEY_BASE + n), a blinding, the memo encrypted to this
+   * account's view key (deterministic, so the address is too) and the key that may sign a rescue for it.
+   */
+  async receive(n: number): Promise<{ keyIndex: number; pubKey: bigint; blinding: bigint; memo: Hex; rescueKey: Hex }> {
+    if (!Number.isInteger(n) || n < 0 || n >= RECEIVE_KEY_COUNT) throw new Error("receive address number out of range");
+    const tag = (t: string) => toBytes(keccak256(concat([toBytes(t), this.seed, toBytes(toHex(n, { size: 4 }))])));
+    const keyIndex = RECEIVE_KEY_BASE + n;
+    const k = await this.key(keyIndex);
+    const blinding = fieldMod(BigInt(toHex(tag("cloak-receive-blinding-v1"))));
+    const memo = toHex(seal(this.encPub, concat([toBytes(toHex(blinding, { size: 32 })), u32(keyIndex)]), tag("cloak-receive-eph-v1"), tag("cloak-receive-nonce-v1").slice(0, 24)));
+    return { keyIndex, pubKey: k.pubKey, blinding, memo, rescueKey: toHex(tag("cloak-receive-rescue-v1")) };
+  }
+
   bidWalletKey(auction: Hex, n: number): Hex {
     return keccak256(concat([toBytes("cloak-bidwallet-v1"), this.seed, toBytes(auction.toLowerCase() as Hex), toBytes(toHex(n, { size: 4 }))]));
   }
@@ -127,10 +145,8 @@ export async function nullifierOf(n: Note, leafIndex: number, privKey: bigint) {
 //        (the router prepends the public amount; the client only encrypts blinding + key index)
 const INFO = toBytes("cloak-note-v1");
 
-function seal(encPub: Uint8Array, pt: Uint8Array): Uint8Array {
-  const eph = randomBytes(32);
+function seal(encPub: Uint8Array, pt: Uint8Array, eph = randomBytes(32), nonce = randomBytes(24)): Uint8Array {
   const key = hkdf(sha256, x25519.getSharedSecret(eph, encPub), undefined, INFO, 32);
-  const nonce = randomBytes(24);
   return concat([x25519.getPublicKey(eph), nonce, xchacha20poly1305(key, nonce).encrypt(pt)]);
 }
 

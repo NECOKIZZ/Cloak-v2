@@ -17,6 +17,7 @@ import { Pay } from "./pages/Pay";
 import { Launch } from "./pages/Launch";
 import { Launches } from "./pages/Launches";
 import { Portfolio, PortfolioAction } from "./pages/Portfolio";
+import { Receive } from "./pages/Receive";
 import { Sdk } from "./pages/Sdk";
 import { Trade } from "./pages/Trade";
 import { Volume } from "./pages/Volume";
@@ -48,6 +49,7 @@ function Routes() {
       : dm ? <Drop key={dm[1]} drop={dm[1] as Address} />
       : path === "/app/drops" ? <Drops />
       : path === "/app/drops/create" ? <DropCreate />
+      : path === "/app/portfolio/receive" ? <Receive />
       : act ? <PortfolioAction key={act[1]} kind={act[1] as "shield" | "send" | "withdraw"} />
       : path === "/app/trade" ? <Trade />
       : path === "/app/launches" ? <Launches />

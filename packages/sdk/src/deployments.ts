@@ -55,6 +55,8 @@ export interface CloakDeployment {
   sharedRouter?: Address;
   /** SharedBatcher: batch rounds for the shared vault's tokens. */
   sharedBatcher?: Address;
+  /** CloakReceive: private receive addresses. */
+  receive?: Address;
   /** CloakDropFactory: sealed NFT drops. */
   dropFactory?: Address;
   /** Block the drop factory was deployed in: scan drop events from here. */
@@ -101,6 +103,7 @@ export const deployments: Record<number, CloakDeployment> = {
     sharedBlock: 21426599n,
     sharedRouter: "0xe2a0769a5acbd987c1b6725247c56187a112dc7e",
     sharedBatcher: "0x11598b35fabc90fdd45d8a77ac41e2057c32ea14",
+    receive: "0x852675b2e127fcce3b5efd3ef817623db7aa44f3",
     // sealed NFT drops (Nov 3): GTD, then a sealed auction with the creator's price as the floor and a WL bid boost
     dropFactory: "0x2afb7d9a5baa02a2d72a7c761521fc66dce9d783",
     dropFactoryBlock: 22329730n,
@@ -191,6 +194,7 @@ export async function liveDeployment(publicClient: PublicClient, base: CloakDepl
     sharedBlock: reg.sharedBlock ?? base.sharedBlock,
     sharedRouter: reg.sharedRouter ?? base.sharedRouter,
     sharedBatcher: reg.sharedBatcher ?? base.sharedBatcher,
+    receive: reg.receive ?? base.receive,
     hypePool,
     whype,
     previous: reg.previous.length
