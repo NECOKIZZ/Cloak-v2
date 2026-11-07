@@ -1,8 +1,8 @@
 import { markDone } from "../guide";
 import { useEffect, useMemo, useState } from "react";
-import { formatEther, parseEther, type Address, type Hex } from "viem";
-import { splitStandard } from "@cloakely/sdk";
-import { BATCHER, txLink } from "../config";
+import { formatEther, parseEther, parseEventLogs, type Address, type Hex } from "viem";
+import { privateBatcherAbi, splitStandard } from "@cloakely/sdk";
+import { BATCHER, SHARED_BATCHER, txLink } from "../config";
 import { hype, tokens } from "../format";
 import { Link, useRoute } from "../router";
 import { getProver, getSharedProver, useApp } from "../state";
@@ -12,6 +12,85 @@ import { quote, useFeePct, useMarkets, type Market } from "./markets";
 import { isHidden } from "../hidden";
 import { usePrivateBalances } from "../balances";
 import { Skel } from "../skel";
+import { publicClient } from "../wallet";
+import { every } from "../every";
+
+/** Placed batch orders, followed until each is paid or refunded (B4). */
+type Track = { batcher: Address; token: Address; ids: bigint[]; rounds: bigint[]; outSym: string; inSym: string; at: number };
+type OrderState = { round: bigint; done: boolean; settled: boolean; cancelled: boolean };
+
+/** Where a swap's orders are, read from the batcher (the same layout for the shared vault's batcher). */
+function useOrderStatus(t: Track | null) {
+  const [st, setSt] = useState<OrderState[] | null>(null);
+  useEffect(() => {
+    if (!t) return setSt(null);
+    let alive = true;
+    let stop = () => {};
+    const read = async () => {
+      const c = { address: t.batcher, abi: privateBatcherAbi } as const;
+      const orders = await Promise.all(t.ids.map((id) => publicClient.readContract({ ...c, functionName: "orders", args: [id] })));
+      const out: OrderState[] = await Promise.all(
+        orders.map(async (o, i) => {
+          const b = await publicClient.readContract({ ...c, functionName: "batches", args: [t.token, t.rounds[i]] });
+          return { round: t.rounds[i], done: o[3], settled: b[7], cancelled: b[8] };
+        }),
+      );
+      if (!alive) return;
+      setSt(out);
+      // everything paid or refunded, or 20 minutes passed: stop asking
+      if (out.every((o) => o.done) || Date.now() - t.at > 20 * 60_000) stop();
+    };
+    read().catch(() => {});
+    stop = every(() => read().catch(() => {}), 5_000);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [t]);
+  return st;
+}
+
+/** One plain line for where the orders are now. */
+function trackText(t: Track, st: OrderState[] | null, now: number, roundSecs: number): { text: string; tone: "wait" | "ok" | "warn" } {
+  if (!st) return { text: "Checking your orders", tone: "wait" };
+  const n = st.length;
+  const paid = st.filter((o) => o.done && o.settled).length;
+  const refunded = st.filter((o) => o.done && o.cancelled).length;
+  if (paid + refunded === n) {
+    if (!refunded) return { text: `All ${n} order${n > 1 ? "s" : ""} filled. Your ${t.outSym} is in your private balance.`, tone: "ok" };
+    const rs = [...new Set(st.filter((o) => o.cancelled).map((o) => o.round.toString()))].join(" and ");
+    return { text: `${refunded} order${refunded > 1 ? "s were" : " was"} refunded because the pool price moved more than 2% during round ${rs}. That ${t.inSym} is back in your private balance.${paid ? ` ${paid} filled.` : ""}`, tone: "warn" };
+  }
+  const open = st.filter((o) => !o.done);
+  const r = open.reduce((m, o) => (o.round < m ? o.round : m), open[0].round);
+  const end = Number(r + 1n) * roundSecs;
+  if (open.some((o) => o.settled)) return { text: `Round ${r} settled. Paying into your private balance (${paid} of ${n} done).`, tone: "wait" };
+  if (now < end) return { text: `Waiting for round ${r} to close (${Math.ceil(end - now)} s). ${paid} of ${n} filled so far.`, tone: "wait" };
+  if (now > end + 600) return { text: `Round ${r} couldn't settle because the price moved too far. Your orders are being refunded into your private balance.`, tone: "warn" };
+  return { text: `Round ${r} closed. Settling at one price for everyone in it (${paid} of ${n} filled).`, tone: "wait" };
+}
+
+/** How many orders the market's current round holds, for the side panel (batch mode only). */
+function useRoundCrowd(batcher: Address | undefined, token: Address | undefined) {
+  const [n, setN] = useState<number | null>(null);
+  useEffect(() => {
+    if (!batcher || !token) return setN(null);
+    let alive = true;
+    const c = { address: batcher, abi: privateBatcherAbi } as const;
+    const read = () =>
+      publicClient
+        .readContract({ ...c, functionName: "currentRound" })
+        .then((round) => publicClient.readContract({ ...c, functionName: "batches", args: [token, round] }))
+        .then((b) => alive && setN(Number(b[6])), () => {});
+    read();
+    const stop = every(read, 10_000);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [batcher, token]);
+  return n;
+}
 
 function TokenSel({ label, token, onPick, markets, held }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean; held?: Record<string, bigint> }) {
   const [open, setOpen] = useState(false);
@@ -48,10 +127,13 @@ export function Trade() {
   const [modePick, setMode] = useState<"instant" | "batch">("instant") // instant first: most swaps want the fill now (batch stays one click away);
   const mode = market && !market.batchable ? "instant" : modePick;
   const [q, setQ] = useState(0n);
-  const [round, setRound] = useState<{ endsAt: number } | null>(null);
+  const [round, setRound] = useState<{ endsAt: number; round: bigint; roundSecs: number } | null>(null);
   const [now, setNow] = useState(Date.now() / 1000);
   const [busy, setBusy] = useState("");
   const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
+  const [track, setTrack] = useState<Track | null>(null);
+  const orderStatus = useOrderStatus(track);
+  const batcherFor = (shared?: boolean) => (shared ? (SHARED_BATCHER as Address | undefined) : BATCHER);
 
   useEffect(() => {
     if (!markets?.length || market) return;
@@ -101,6 +183,7 @@ export function Trade() {
   async function swap() {
     if (!market) return;
     setRes({});
+    setTrack(null);
     const p = priv ?? (await unlock());
     if (!p) return;
     try {
@@ -112,6 +195,10 @@ export function Trade() {
         const r = market.shared ? await shared!.batch(market.token, side, amountIn, { onStatus: setBusy }) : await p.batch(market.token as Address, side, amountIn, { onStatus: setBusy });
         const rounds = [...new Set(r.orders.map((o) => o.round.toString()))];
         markDone("swap");
+        // follow the orders: the batcher is whatever contract emitted them
+        const rc = await publicClient.getTransactionReceipt({ hash: r.orders[0].txHash }).catch(() => null);
+        const placed = rc ? parseEventLogs({ abi: privateBatcherAbi, logs: rc.logs, eventName: "OrderPlaced" })[0] : undefined;
+        if (placed) setTrack({ batcher: placed.address, token: market.token as Address, ids: r.orders.map((o) => o.id), rounds: r.orders.map((o) => o.round), outSym: toSym, inSym: fromSym, at: Date.now() });
         setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles.${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
       } else if (market.shared) {
         // a token in the shared launch-token vault: same swap, through the shared router
@@ -132,6 +219,9 @@ export function Trade() {
       setBusy("");
     }
   }
+
+  const crowd = useRoundCrowd(mode === "batch" ? batcherFor(market?.shared) : undefined, market?.token as Address | undefined);
+  const tracked = track ? trackText(track, orderStatus, now, round?.roundSecs ?? 30) : null;
 
   let cta: { label: string; act?: () => void; disabled?: boolean; href?: string };
   if (!wallet) cta = { label: "Connect wallet", act: () => connect() };
@@ -195,6 +285,7 @@ export function Trade() {
               )}
               {res.err && <div className="err">{res.err}</div>}
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
+              {tracked && <div className={tracked.tone === "warn" ? "err" : tracked.tone === "ok" ? "okmsg" : "summary small"} style={{ marginTop: 8 }} aria-live="polite">{tracked.tone === "wait" && <span className="dot live" style={{ marginRight: 8 }} />}{tracked.text}</div>}
             </div>
             <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees: {feePct} Cloak fee on the amount traded, plus a small relayer fee that covers gas, both taken from your private balance.</p>
           </div>
@@ -206,7 +297,16 @@ export function Trade() {
                 <div className="row"><span className="mute">Your balance</span><span><span className="sealed" style={{ width: 70, height: 14 }} /></span></div>
                 <div className="row"><span className="mute">Your other trades</span><span>Unlinkable</span></div>
                 <div className="row"><span className="mute">Trade size</span><span className={mode === "instant" ? "warn-t" : "signal"}>{mode === "instant" ? "Visible on the pool" : "Hidden among standard orders"}</span></div>
+                {mode === "batch" && (
+                  <div className="row"><span className="mute">Orders in this round</span><span className={crowd ? "signal" : "warn-t"}>{crowd === null ? "…" : crowd === 0 ? "None yet" : crowd.toLocaleString()}</span></div>
+                )}
               </div>
+              {mode === "batch" && crowd === 0 && <p className="xs mute" style={{ margin: "10px 0 0" }}>Nobody else is in this round yet. If you trade alone, the round's total is your trade, so batch hides less until others join.</p>}
+              {mode === "instant" ? (
+                <p className="xs mute" style={{ margin: "10px 0 0" }}>Fills in seconds. Your wallet never appears, but the pool shows the size of the trade.</p>
+              ) : (
+                <p className="xs mute" style={{ margin: "10px 0 0" }}>Takes a round or more, usually under a few minutes. If the pool price moves more than 2% during a round, that round is refunded into your private balance.</p>
+              )}
             </div>
             <div className="card flat">
               <div className="card-head"><h3>{market.name} <span className="mute">${market.symbol}</span></h3><Link to={`/app`} className="xs arrow">Launches</Link></div>

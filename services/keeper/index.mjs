@@ -168,6 +168,11 @@ async function launchList() {
   return listCache.list;
 }
 
+// when nothing is in progress (no launch past bidding, no drop to open or pay, no open batch round, no relay in the last
+// two minutes) the loop waits IDLE_MS instead of POLL_MS between rounds (OPTIMIZATION.md K1)
+const IDLE_MS = Number(process.env.IDLE_MS ?? POLL_MS * 5); // 15 s at the default 3 s poll
+const work = { busy: false, relayAt: 0 };
+
 async function tick() {
   const launches = await launchList();
   status.launchCount = launches.length;
@@ -177,6 +182,12 @@ async function tick() {
     try {
       const s = await cloak.getAuction(auction);
       status.launches[auction] = { symbol: s.tokenSymbol, phase: s.phase, commits: s.commits, reveals: s.reveals };
+      // nothing to do while bids are sealed: look again when bidding closes (at most a minute from now)
+      if (s.phase === "commit") {
+        waitUntil.set(auction, Math.min(s.commitEnd, now + 60));
+        continue;
+      }
+      work.busy = true;
       if (s.phase === "reveal" && s.reveals < s.commits && Date.now() / 1000 >= drandRoundTime(s.tlockRound)) {
         const r = await cloak.revealAll(auction, { fromBlock: START_BLOCK, log: (m) => log(auction, m) });
         if (r.revealed) log(auction, `auto-revealed ${r.revealed} bids`);
@@ -360,6 +371,7 @@ async function tickDrops() {
     try {
       const s = await drops.get(d);
       status.drops.live[d] = { symbol: s.symbol, phase: s.phase, bids: s.bids, reveals: s.reveals };
+      if (s.phase !== "gtd" && s.phase !== "bidding") work.busy = true;
       if (s.phase === "reveal" && s.reveals < s.bids && Date.now() / 1000 >= drandRoundTime(s.tlockRound)) {
         const r = await drops.revealAll(d, { log: (m) => log(d, m) });
         if (r.revealed) log(d, `drop: opened ${r.revealed} bids`);
@@ -395,7 +407,10 @@ async function tickDrops() {
     await tick().catch((e) => console.error("tick failed:", e.shortMessage ?? e.message));
     await tickDrops().catch((e) => console.error("drops tick failed:", e.shortMessage ?? e.message));
     await tickBatches().catch((e) => console.error("batch tick failed:", e.shortMessage ?? e.message));
-    await new Promise((r) => setTimeout(r, POLL_MS));
+    const openRounds = [...batchCursors.values()].some((c) => c.open.size > 0);
+    const idle = !work.busy && !openRounds && Date.now() - work.relayAt > 120_000;
+    work.busy = false;
+    await new Promise((r) => setTimeout(r, idle ? Math.max(IDLE_MS, POLL_MS) : POLL_MS));
   }
 })();
 
@@ -559,6 +574,7 @@ setInterval(() => {
 }, 30_000).unref();
 
 async function relay(body, { dryRun = false } = {}) {
+  if (!dryRun) work.relayAt = Date.now();
   if (!submit) throw err("relay disabled (set ROUTER)", 503);
   const { kind, pool, proof: p, extData: e } = body;
   if (!KINDS.includes(kind)) throw err("bad kind", 400);
