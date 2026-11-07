@@ -9,6 +9,7 @@ import { usePrivateBalances } from "../balances";
 import { Link } from "../router";
 import { Icon } from "../ui";
 import { QR } from "../qr";
+import { every } from "../every";
 
 /** The receive addresses this account has handed out (only their numbers matter: each is derived again from the keys). */
 interface Issued {
@@ -122,10 +123,10 @@ export function Receive() {
       delivered.current = n;
     };
     go();
-    const t = setInterval(go, 4_000);
+    const stop = every(go, 4_000);
     return () => {
       live = false;
-      clearInterval(t);
+      stop();
     };
   }, [issued]);
 

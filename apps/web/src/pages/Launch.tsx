@@ -14,6 +14,7 @@ import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { launchCreatedLogs, useTokenMeta } from "../tokenMeta";
 import { publicClient, readCloak } from "../wallet";
+import { every } from "../every";
 
 type MyBidsT = Awaited<ReturnType<typeof readCloak.bidsOf>>;
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -70,8 +71,7 @@ export function Launch({ auction }: { auction: Address }) {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 4000);
-    return () => clearInterval(t);
+    return every(refresh, 4000);
   }, [refresh]);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now() / 1000), 250);
@@ -249,10 +249,10 @@ function Market({ s }: { s: AuctionState }) {
         publicClient.readContract({ address: s.pair, abi: cloakPairAbi, functionName: "reserveHype" }),
       ]).then(([total, burned, reserve]) => alive && setInfo({ supply: total - burned, reserve }), () => {});
     load();
-    const t = setInterval(load, 20_000);
+    const stop = every(load, 20_000);
     return () => {
       alive = false;
-      clearInterval(t);
+      stop();
     };
   }, [s.token, s.pair]);
   const last = pts?.at(-1)?.p;

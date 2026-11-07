@@ -3,7 +3,7 @@
 //      without waiting out the reveal window
 //   2. the keeper runs behind a flaky RPC (a quarter of requests dropped, the rest delayed up to 0.8s) and still
 //      opens, settles, numbers 30 bids' ties and delivers
-//   3. junk: a garbage ciphertext and a bid sealed for other numbers are skipped and cost their 10%, a bid under the
+//   3. junk: a garbage ciphertext and a bid sealed for other numbers are skipped and cost their 25%, a bid under the
 //      floor is refused, a WL wallet may still bid publicly, nobody can claim twice
 //   4. a spot sale whose keeper delivers before winners name wallets: naming still works, and the list is exact
 //   anvil --balance 1000000 --block-time 1 & ; node e2e/drops-break.mjs
@@ -150,7 +150,7 @@ try {
   const all = await creator.bids(d2);
   ok(all.reduce((a, b) => a + b.nfts, 0) === 10, "exactly the supply was allocated across 30 tied bids");
   const junkBids = all.filter((b) => !b.revealed);
-  ok(junkBids.length === 2 && junkBids.every((b) => b.refund * 10n === b.deposit * 9n), "both junk bids lost 10% and get 90% back");
+  ok(junkBids.length === 2 && junkBids.every((b) => b.refund * 4n === b.deposit * 3n), "both junk bids lost 25% and get 75% back");
   ok(all.find((b) => b.bidder.toLowerCase() === wlW.addr.toLowerCase())?.wl === false, "the WL wallet's public bid ranked as public");
   await until(async () => (await creator.bids(d2)).every((b) => b.claimed), 600, "the keeper never delivered through the flaky RPC");
   ok(true, `the keeper delivered all 33 bids despite ${dropped} dropped RPC requests`);

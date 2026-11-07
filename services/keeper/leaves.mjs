@@ -5,6 +5,7 @@
 //   GET /leaves            every vault
 //   GET /leaves?pool=0x…   one vault
 import { gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { cloakVaultsAbi, sharedVaultAbi, shieldedPoolAbi } from "@cloakely/sdk";
 
 const MIN_REFRESH_MS = 10_000;
@@ -54,6 +55,7 @@ export function startLeaves(pub, { vaults, vaultsBlock, shared, sharedBlock }) {
     await refreshing;
   }
 
+  const pack = (json) => ({ json, gz: gzipSync(json), etag: `W/"${createHash("sha256").update(json).digest("base64url").slice(0, 22)}"` });
   const view = (p) => ({ pool: p.address, block: (p.block ?? p.next - 1n).toString(), leaves: p.leaves });
 
   return {
@@ -63,12 +65,10 @@ export function startLeaves(pub, { vaults, vaultsBlock, shared, sharedBlock }) {
       if (pool) {
         const p = pools.get(pool.toLowerCase());
         if (!p) return null;
-        const json = JSON.stringify(view(p));
-        return { json, gz: gzipSync(json) };
+        return pack(JSON.stringify(view(p)));
       }
       if (!cache) {
-        const json = JSON.stringify({ vaults: [...pools.values()].map(view) });
-        cache = { json, gz: gzipSync(json) };
+        cache = pack(JSON.stringify({ vaults: [...pools.values()].map(view) }));
       }
       return cache;
     },

@@ -445,6 +445,27 @@ const isNetworkError = (e) =>
   !/reverted|execution reverted|revert reason/i.test(`${e?.shortMessage ?? ""}`) &&
   /HTTP request failed|fetch failed|timed? ?out|ECONNRESET|socket hang up|429|502|503|504/i.test(`${e?.shortMessage ?? ""} ${e?.message ?? ""} ${e?.name ?? ""}`);
 
+/**
+ * Public JSON that many browsers poll (snapshot, leaves): gzipped when asked, and a bodiless 304 when the browser
+ * already holds this version (If-None-Match), so an unchanged poll costs a few hundred bytes instead of the body.
+ * `no-cache` lets the browser keep it but makes it ask each time.
+ */
+function sendCached(req, res, { json, gz, etag }, extra = {}) {
+  const origin = req.headers.origin;
+  const allow = ORIGINS.includes("*") ? "*" : origin && ORIGINS.includes(origin) ? origin : ORIGINS[0];
+  const head = { "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, no-cache", "x-content-type-options": "nosniff", ...(etag ? { etag } : {}), ...extra };
+  if (Object.keys(extra).length) head["access-control-expose-headers"] = Object.keys(extra).join(", ");
+  const inm = req.headers["if-none-match"];
+  // a proxy may drop the weak W/ prefix: match either form
+  if (etag && inm && inm.split(",").some((t) => t.trim() === etag || t.trim() === etag.slice(2))) {
+    res.writeHead(304, head);
+    return res.end();
+  }
+  const zip = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
+  res.writeHead(200, { "content-type": "application/json", ...head, ...(zip ? { "content-encoding": "gzip" } : {}) });
+  return res.end(zip ? gz : json);
+}
+
 // one relayed spend per nullifier at a time: a second copy is refused before it costs gas
 const inflight = new Map();
 setInterval(() => {
@@ -677,11 +698,8 @@ createServer((req, res) => {
   if (req.method === "GET" && path === "/snapshot") {
     const body = snapshot?.get();
     if (!body) return send(req, res, 503, { error: "no snapshot yet" });
-    const origin = req.headers.origin;
-    const allow = ORIGINS.includes("*") ? "*" : origin && ORIGINS.includes(origin) ? origin : ORIGINS[0];
-    const gz = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
-    res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, max-age=10", "x-content-type-options": "nosniff", ...(gz ? { "content-encoding": "gzip" } : {}) });
-    return res.end(gz ? snapshot.gz() : body);
+    // x-snapshot-at: when the keeper last confirmed it (it can be unchanged for a while: a 304 carries this too)
+    return sendCached(req, res, { json: body, gz: snapshot.gz(), etag: snapshot.etag() }, { "x-snapshot-at": String(snapshot.builtAt()) });
   }
   if (path === "/receive" && (req.method === "POST" || req.method === "GET")) {
     if (!receiver) return send(req, res, 404, { error: "receive addresses aren't enabled on this relayer" });
@@ -749,11 +767,7 @@ createServer((req, res) => {
       .get(pool)
       .then((b) => {
         if (!b) return send(req, res, 404, { error: "unknown vault" });
-        const origin = req.headers.origin;
-        const allow = ORIGINS.includes("*") ? "*" : origin && ORIGINS.includes(origin) ? origin : ORIGINS[0];
-        const gz = /\bgzip\b/.test(req.headers["accept-encoding"] ?? "");
-        res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": allow, vary: "origin, accept-encoding", "cache-control": "public, max-age=10", "x-content-type-options": "nosniff", ...(gz ? { "content-encoding": "gzip" } : {}) });
-        res.end(gz ? b.gz : b.json);
+        sendCached(req, res, b);
       })
       .catch(() => send(req, res, 503, { error: "The network didn't answer. Try again in a moment." }));
     return;

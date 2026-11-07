@@ -5,6 +5,7 @@ import { ROUTER, SHARED, SHARED_BATCHER } from "../config";
 import { publicClient } from "../wallet";
 import { friendly } from "../errors";
 import { getSnapshot, save, saved } from "../snapshot";
+import { every } from "../every";
 
 export interface Market {
   token: Address;
@@ -108,10 +109,11 @@ export function useMarkets() {
     let alive = true;
     const go = () => loadMarkets().then((m) => alive && setMarkets(m)).catch((e) => alive && setErr(friendly(e)));
     go();
-    const t = setInterval(go, 15_000);
+    // a minute is plenty for other people's trades: after your own the app reads the chain at once (loadMarkets(true))
+    const stop = every(go, 60_000);
     return () => {
       alive = false;
-      clearInterval(t);
+      stop();
     };
   }, []);
   return { markets, err };

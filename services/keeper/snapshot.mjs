@@ -3,6 +3,7 @@
 // private ever passes through it. The site still reads the chain for anything that moves money.
 //   GET /snapshot → { at, block, markets, launches, meta, stats } (bigints as {"$n":"…"})
 import { gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { zeroAddress } from "viem";
 import { Cloak, cloakFactoryAbi, cloakPairAbi, cloakTokenAbi, privateBatcherAbi, privateRouterAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, whypeAbi } from "@cloakely/sdk";
 
@@ -26,6 +27,8 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
   const reader = new Cloak(pub, undefined, d.factory, older);
   const factories = [d.factory, ...older];
   let body = null; // the last snapshot, serialized once
+  let hash = null; // of its content (without the time and block), for the ETag
+  let builtAt = 0; // the last build that confirmed it, changed or not
   let zipped = null;
 
   // events are fetched once from their start block, then only the new blocks each round
@@ -173,17 +176,26 @@ export function startSnapshots(pub, d, { everyMs = 30_000, log = console.error }
     const [mkts, list, m] = await Promise.all([markets(), reader.listLaunches(), meta(head)]);
     const launches = await Promise.all(list.map((l) => reader.getAuction(l.auction)));
     const st = await stats(head, mkts, launches);
-    body = toJson({ at: Date.now(), block: head, markets: mkts, launches: launches.reverse(), meta: m, stats: st });
-    zipped = gzipSync(body);
+    // a new body (and ETag) only when something in it changed: a browser that has this one gets a bodiless 304
+    const content = toJson({ markets: mkts, launches: launches.reverse(), meta: m, stats: st });
+    const h = createHash("sha256").update(content).digest("base64url").slice(0, 22);
+    const changed = h !== hash;
+    if (changed) {
+      body = `{"at":${Date.now()},"block":${toJson(head)},${content.slice(1)}`;
+      zipped = gzipSync(body);
+      hash = h;
+    }
+    builtAt = Date.now();
+    return { head, changed };
   }
 
   (async function loop() {
     for (;;) {
       const t = Date.now();
-      await build().then(() => log(`[snapshot] block ${JSON.parse(body).block.$n} in ${Date.now() - t} ms, ${body.length} bytes`), (e) => log(`[snapshot] failed: ${e.shortMessage ?? e.message}`));
+      await build().then(({ head, changed }) => log(`[snapshot] block ${head} in ${Date.now() - t} ms, ${body.length} bytes${changed ? "" : " (unchanged)"}`), (e) => log(`[snapshot] failed: ${e.shortMessage ?? e.message}`));
       await new Promise((r) => setTimeout(r, everyMs));
     }
   })();
 
-  return { get: () => body, gz: () => zipped };
+  return { get: () => body, gz: () => zipped, etag: () => (hash ? `W/"${hash}"` : null), builtAt: () => builtAt };
 }

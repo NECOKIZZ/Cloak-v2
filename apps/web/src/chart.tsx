@@ -4,6 +4,7 @@ import { cloakAuctionAbi, cloakPairAbi, cloakV4MarketAbi, poolManagerAbi, type A
 import { DEPLOYMENT } from "./config";
 import { hype } from "./format";
 import { publicClient } from "./wallet";
+import { every } from "./every";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const FROM_BLOCK = DEPLOYMENT?.firstFactoryBlock ?? DEPLOYMENT?.factoryBlock ?? 0n;
@@ -143,10 +144,10 @@ export function usePrice(s: AuctionState | null) {
     let alive = true;
     const load = () => priceHistory(s!).then((p) => alive && setPts(p)).catch(() => alive && setPts((x) => x ?? []));
     load();
-    const t = setInterval(load, 20_000);
+    const stop = every(load, 20_000);
     return () => {
       alive = false;
-      clearInterval(t);
+      stop();
     };
   }, [live, s?.address]);
   return pts;

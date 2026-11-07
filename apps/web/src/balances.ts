@@ -5,6 +5,7 @@ import { openBox, sealBox } from "./deviceBox";
 import { ASSETS, KEEPER_URL } from "./config";
 import { useApp } from "./state";
 import { useMarkets, type Market } from "./pages/markets";
+import { every } from "./every";
 
 /**
  * Private balances, the way big wallets show them: the last balance this device saw appears the moment the account
@@ -146,8 +147,7 @@ export function usePrivateBalances() {
     if (!priv || !markets) return;
     const go = () => sync(priv, shared, markets);
     go();
-    const t = setInterval(go, 8000);
-    return () => clearInterval(t);
+    return every(go, 8000);
   }, [priv, shared, markets]);
   const s = priv ? storeFor(priv) : null;
   const refresh = () => (priv && markets ? sync(priv, shared, markets, true) : Promise.resolve());

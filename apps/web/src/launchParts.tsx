@@ -6,6 +6,7 @@ import { duration, hype, short, tokens } from "./format";
 import { friendly } from "./errors";
 import { sharedFor, useApp } from "./state";
 import { publicClient, readCloak } from "./wallet";
+import { every } from "./every";
 
 const FROM_BLOCK = DEPLOYMENT?.firstFactoryBlock ?? DEPLOYMENT?.factoryBlock ?? 0n;
 
@@ -99,8 +100,7 @@ export function CreatorFeesCard({ s, wallet }: { s: AuctionState; wallet: Wallet
   useEffect(() => {
     if (!s.creatorFees) return;
     load();
-    const t = setInterval(load, 15_000);
-    return () => clearInterval(t);
+    return every(load, 15_000);
   }, [s.address, s.creatorFees]);
   if (!s.creatorFees || !f) return null;
   const mine = wallet?.account.address.toLowerCase() === f.beneficiary.toLowerCase();

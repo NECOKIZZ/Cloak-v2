@@ -8,6 +8,7 @@ import { readCloak, publicClient } from "../wallet";
 import { TokenIcon } from "../ui";
 import { loadMarkets } from "./markets";
 import { getSnapshot, save, saved } from "../snapshot";
+import { every } from "../every";
 
 const WAD = 10n ** 18n;
 
@@ -158,10 +159,10 @@ export function Volume() {
     let alive = true;
     const go = () => loadStats().then((d) => alive && (setS(d), setErr(""))).catch((e) => alive && setErr(friendly(e)));
     go();
-    const t = setInterval(go, 30_000);
+    const stop = every(go, 60_000);
     return () => {
       alive = false;
-      clearInterval(t);
+      stop();
     };
   }, []);
 
