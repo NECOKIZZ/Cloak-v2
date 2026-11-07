@@ -4,6 +4,16 @@ services:
     runtime: node
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cloakely/sdk build
     startCommand: node services/keeper/index.mjs
+    # rebuild only when something the keeper runs changes (site, docs, contracts and e2e pushes skip the deploy)
+    buildFilter:
+      paths:
+        - services/keeper/**
+        - packages/sdk/**
+        - deployments/**
+        - pnpm-lock.yaml
+        - package.json
+        - pnpm-workspace.yaml
+        - render.yaml
     region: oregon
     healthCheckPath: /health
     # served at https://keeper.boblabs.tech (custom domain, a CNAME to this service): the site and SDK use that address

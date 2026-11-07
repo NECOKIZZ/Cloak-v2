@@ -3,6 +3,7 @@
   "buildCommand": "cd ../.. && pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/mcp build && pnpm --filter @cloakely/web build",
   "outputDirectory": "dist",
   "framework": null,
+  "ignoreCommand": "cd ../.. && git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- apps/web packages pnpm-lock.yaml package.json pnpm-workspace.yaml deployments",
   "rewrites": [
     {
       "source": "/claim",
