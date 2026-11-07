@@ -271,6 +271,8 @@ export function Footer() {
               <li><Link to="/docs#batch-auctions">Batch auctions</Link></li>
               <li><Link to="/docs#what-stays-private">What stays private</Link></li>
               <li><Link to="/pitch">Pitch</Link></li>
+              <li><a href="/roadmap">Roadmap</a></li>
+              <li><a href="/brand">Brand kit</a></li>
             </ul>
           </div>
         </div>

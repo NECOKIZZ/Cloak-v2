@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloak Brand</title>
+<meta name="description" content="The Cloak brand: logo, colour, type, the fractal glass, voice, social headers, post templates, slides, wallpapers and press screenshots. Download the brand kit.">
+<link rel="icon" href="/logo.svg">
+<script src="/brand/brand.js" defer></script>
+<style>
+  @font-face { font-family: "Inter Tight"; src: url("/brand/fonts/inter-tight-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "Inter"; src: url("/brand/fonts/inter-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+  @font-face { font-family: "JetBrains Mono"; src: url("/brand/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; font-display: swap; }
+  :root { --ink: #10161a; --paper: #f8f7f4; --signal: #2d7388; --seal: #c9852e; --mute: #5b6266; --line: #e4e3df; --card: #ffffff; --raised: #f1f0ec; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ink: #eef1f0; --paper: #0b1013; --signal: #6cb6cb; --seal: #e3a95a; --mute: #9aa3a6; --line: #1d2529; --card: #11181c; --raised: #151d21; } }
+  :root[data-theme="dark"] { --ink: #eef1f0; --paper: #0b1013; --signal: #6cb6cb; --seal: #e3a95a; --mute: #9aa3a6; --line: #1d2529; --card: #11181c; --raised: #151d21; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 "Inter", ui-sans-serif, system-ui, sans-serif; }
+  a { color: var(--signal); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 16px 96px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 40px; }
+  header a.home { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; font: 600 18px "Inter Tight", sans-serif; }
+  header img { width: 30px; height: 30px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; background: var(--ink); color: var(--paper); text-decoration: none; font-weight: 500; font-size: 14px; border: 0; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .hero { position: relative; border-radius: 24px; overflow: hidden; min-height: 320px; display: flex; align-items: flex-end; padding: 36px; color: #f8f7f4; background: #0b1013 url("https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/texture/cloak-fractal-glass.jpg") 60% 50% / cover; margin-bottom: 18px; }
+  .hero::before { content: ""; position: absolute; inset: 0; background: radial-gradient(80% 90% at 20% 80%, rgba(11,16,19,.88), rgba(11,16,19,.35)); }
+  .hero > * { position: relative; }
+  h1 { font: 500 clamp(40px, 7vw, 72px)/1.02 "Inter Tight", sans-serif; letter-spacing: -0.035em; margin: 0 0 10px; }
+  h1 em { font-style: normal; color: #6cb6cb; }
+  .hero p { margin: 0; color: rgba(248,247,244,.7); max-width: 46ch; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 40px; }
+  nav.toc a { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 13px; }
+  section { padding: 36px 0; border-top: 1px solid var(--line); }
+  h2 { font: 500 30px/1.1 "Inter Tight", sans-serif; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .lede { color: var(--mute); margin: 0 0 22px; max-width: 70ch; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .grid.wide { grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); }
+  figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  figure .pic { display: grid; place-items: center; min-height: 170px; padding: 22px; }
+  figure .pic img { max-width: 100%; max-height: 120px; }
+  figure .shot img { display: block; width: 100%; height: auto; }
+  figure.tall .shot img { max-height: 420px; width: auto; margin: 0 auto; }
+  figcaption { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 14px; flex-wrap: wrap; }
+  figcaption .dl { display: flex; gap: 6px; flex-wrap: wrap; }
+  figcaption .dl a { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+  .on-paper { background: #f8f7f4; } .on-ink { background: #10161a; } .on-glass { background: #0b1013 url("https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/texture/cloak-fractal-glass.jpg") center / cover; }
+  .swatch { border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: var(--card); }
+  .swatch .chip { height: 110px; }
+  .swatch .meta { padding: 12px 14px; font-size: 13px; }
+  .swatch b { display: block; font: 600 16px "Inter Tight", sans-serif; }
+  .swatch .vals { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--mute); }
+  .swatch button { all: unset; cursor: pointer; } .swatch button:hover { color: var(--signal); }
+  .type-row { display: grid; grid-template-columns: 160px 1fr; gap: 14px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .type-row .spec { font: 12px "JetBrains Mono", monospace; color: var(--mute); }
+  .two { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .box h3 { margin: 0 0 8px; font: 600 16px "Inter Tight", sans-serif; }
+  .box ul { margin: 0; padding-left: 18px; } .box li { margin: 5px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  .pill.sealed { background: color-mix(in srgb, var(--signal) 16%, transparent); color: var(--signal); }
+  .pill.seal { background: color-mix(in srgb, var(--seal) 18%, transparent); color: var(--seal); }
+  .pill.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); }
+  .download { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 24px; border-radius: 20px; background: var(--card); border: 1px solid var(--line); }
+  footer { margin-top: 40px; color: var(--mute); font-size: 14px; }
+  @media (max-width: 560px) { .hero { padding: 24px; min-height: 260px; } .type-row { grid-template-columns: 1fr; gap: 4px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="home" href="/"><img src="/logo.svg" alt="">Cloak</a>
+    <a class="btn" href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/cloak-brand-kit.zip">Download the kit</a>
+  </header>
+
+  <div class="hero">
+    <div><h1>The Cloak <em>brand.</em></h1><p>Logo, colour, type, the fractal glass, and everything ready to post. Use it to write about Cloak, build on it or partner with us.</p></div>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#logo">Logo</a><a href="#colour">Colour</a><a href="#type">Type</a><a href="#glass">Fractal glass</a><a href="#voice">Voice</a><a href="#interface">Interface</a><a href="#social">Social</a><a href="#presentation">Presentation</a><a href="#wallpapers">Wallpapers</a><a href="#press">Press</a><a href="#partners">Partners</a><a href="#downloads">Downloads</a>
+  </nav>
+
+  <section id="logo">
+    <h2>Logo</h2>
+    <p class="lede">The mark is a hood seen from the side: something covered, not hidden away. Use the wordmark where there's room, the mark alone where there isn't. Keep clear space equal to the height of the mark's opening on every side, and never stretch, rotate, outline or recolour it outside the three versions here.</p>
+    <div class="grid">
+      <figure><div class="pic on-paper"><img src="/brand/kit/cloak-wordmark.svg" alt="Cloak wordmark in ink"></div><figcaption>Wordmark <span class="dl"><a href="/brand/kit/cloak-wordmark.svg" download>SVG</a><a href="/brand/kit/cloak-wordmark-teal.svg" download>Teal mark</a></span></figcaption></figure>
+      <figure><div class="pic on-ink"><img src="/brand/kit/cloak-wordmark-white.svg" alt="Cloak wordmark in white"></div><figcaption>Wordmark, white <span class="dl"><a href="/brand/kit/cloak-wordmark-white.svg" download>SVG</a></span></figcaption></figure>
+      <figure><div class="pic on-paper"><img src="/brand/kit/cloak-mark-ink.svg" alt="Cloak mark"></div><figcaption>Mark <span class="dl"><a href="/brand/kit/cloak-mark-ink.svg" download>Ink</a><a href="/brand/kit/cloak-mark-teal.svg" download>Teal</a><a href="/brand/kit/cloak-mark-white.svg" download>White</a></span></figcaption></figure>
+      <figure><div class="pic on-glass"><img src="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-avatar-glass.png" alt="Cloak avatar on fractal glass" style="max-height:120px;border-radius:24px"></div><figcaption>Avatar · 800 × 800 <span class="dl"><a href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-avatar-glass.png" download>Glass</a><a href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-avatar-ink.png" download>Ink</a><a href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-avatar-paper.png" download>Paper</a></span></figcaption></figure>
+      <figure><div class="pic on-paper"><img src="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-app-icon-teal.png" alt="Cloak app icon" style="border-radius:22%"></div><figcaption>App icon · 1024 × 1024 <span class="dl"><a href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-app-icon-ink.png" download>Ink</a><a href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-app-icon-paper.png" download>Paper</a><a href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/cloak-app-icon-teal.png" download>Teal</a></span></figcaption></figure>
+    </div>
+  </section>
+
+  <section id="colour">
+    <h2>Colour</h2>
+    <p class="lede">Four colours do all the work. Ink and paper carry almost everything; Cloak teal means sealed, private and live; Seal amber marks the public side, the clearing price and warnings. Dark mode uses the paired values. Click a value to copy it.</p>
+    <div class="grid">
+      <div class="swatch"><div class="chip" style="background:#10161a"></div><div class="meta"><b>Ink</b>Type, primary buttons, the mark<div class="vals"><button data-copy="#10161A">#10161A</button><button data-copy="16 22 26">RGB 16 22 26</button><button data-copy="#EEF1F0">Dark mode #EEF1F0</button></div></div></div>
+      <div class="swatch"><div class="chip" style="background:#f8f7f4"></div><div class="meta"><b>Paper</b>Ground, space, calm<div class="vals"><button data-copy="#F8F7F4">#F8F7F4</button><button data-copy="248 247 244">RGB 248 247 244</button><button data-copy="#0B1013">Dark mode #0B1013</button></div></div></div>
+      <div class="swatch"><div class="chip" style="background:#2d7388"></div><div class="meta"><b>Cloak teal</b>Sealed, private, live, links<div class="vals"><button data-copy="#2D7388">#2D7388</button><button data-copy="45 115 136">RGB 45 115 136</button><button data-copy="#6CB6CB">Dark mode #6CB6CB</button></div></div></div>
+      <div class="swatch"><div class="chip" style="background:#c9852e"></div><div class="meta"><b>Seal amber</b>The public side, the clearing price, warnings<div class="vals"><button data-copy="#C9852E">#C9852E</button><button data-copy="201 133 46">RGB 201 133 46</button><button data-copy="#E3A95A">Dark mode #E3A95A</button></div></div></div>
+    </div>
+  </section>
+
+  <section id="type">
+    <h2>Type</h2>
+    <p class="lede">Inter Tight for headlines, Inter for reading, JetBrains Mono for numbers, addresses and code. Headlines are medium weight with tight tracking; nothing is ever bold for emphasis, use teal instead.</p>
+    <div class="type-row"><span class="spec">Display · Inter Tight 500 · -3.5%</span><span style="font:500 52px/1.02 'Inter Tight',sans-serif;letter-spacing:-.035em">Launch sealed.</span></div>
+    <div class="type-row"><span class="spec">Title · Inter Tight 500 · -2%</span><span style="font:500 30px/1.1 'Inter Tight',sans-serif;letter-spacing:-.02em">Your private balance</span></div>
+    <div class="type-row"><span class="spec">Body · Inter 400 · 16 / 1.6</span><span>Bids stay sealed until bidding closes, and every winner pays the same price.</span></div>
+    <div class="type-row"><span class="spec">Label · JetBrains Mono · caps +8%</span><span style="font:500 12px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--signal)">Live on testnet</span></div>
+    <div class="type-row"><span class="spec">Numbers · JetBrains Mono</span><span style="font:400 20px 'JetBrains Mono',monospace">0.0000596 HYPE · 0x6616…0E8e</span></div>
+  </section>
+
+  <section id="glass">
+    <h2>The fractal glass</h2>
+    <p class="lede">Our signature texture: ribbed glass in teal over ink, like looking at something through a privacy screen. Use it as a background behind headlines and the mark, darkened where text sits. On light designs it appears inverted and faint. Never put it behind long text or in the product UI.</p>
+    <div class="grid wide">
+      <figure><div class="shot"><img src="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/texture/cloak-fractal-glass.jpg" alt="The fractal glass texture" loading="lazy"></div><figcaption>Fractal glass, source <span class="dl"><a href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/kit/texture/cloak-fractal-glass.jpg" download>JPG</a></span></figcaption></figure>
+    </div>
+  </section>
+
+  <section id="voice">
+    <h2>Voice</h2>
+    <p class="lede">Calm, plain and exact. We say what a thing does and what it means for the person, in short sentences. No hype, no jargon, no promises we can't show on chain.</p>
+    <div class="two">
+      <div class="box"><h3>Do</h3><ul><li>Lead with the result: "Everyone pays one fair price."</li><li>Use plain words a first-time user knows.</li><li>Say what stays public, too.</li><li>Keep posts to one idea.</li></ul></div>
+      <div class="box"><h3>Don't</h3><ul><li>Use em dashes, colons or semicolons in posts.</li><li>Say "anonymous", "untraceable" or "100% private".</li><li>Use price talk, "moon", or financial advice.</li><li>Explain the cryptography unless asked.</li></ul></div>
+    </div>
+    <table style="margin-top:16px"><tr><th>Say</th><th>Not</th></tr>
+      <tr><td>Private balance</td><td>Shielded note, UTXO</td></tr>
+      <tr><td>Shield</td><td>Deposit into the pool</td></tr>
+      <tr><td>Withdraw</td><td>Unshield</td></tr>
+      <tr><td>Cloak address</td><td>Encryption public key, stealth meta-address</td></tr>
+      <tr><td>Sealed bid</td><td>Commit-reveal with drand timelock</td></tr>
+      <tr><td>One fair price</td><td>Uniform-price clearing</td></tr>
+      <tr><td>Hide your wallet</td><td>Use the relayer</td></tr>
+    </table>
+  </section>
+
+  <section id="interface">
+    <h2>Interface</h2>
+    <p class="lede">Teal is the signal for anything sealed, private or live. Amber is for the public side and the clearing price. Everything else is ink on paper, quiet and spacious.</p>
+    <div class="box" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="pill sealed">🔒 Only you</span><span class="pill sealed live">Live</span><span class="pill seal">Clearing price</span><span class="btn">Primary action</span><span class="btn ghost">Secondary</span></div>
+  </section>
+
+  <section id="social">
+    <h2>Social</h2>
+    <p class="lede">Headers and ready-to-post images. Templates have space for one headline and one line under it. Keep the headline under six words with the last word in teal.</p>
+    <div class="grid wide" id="social-grid"></div>
+  </section>
+
+  <section id="presentation">
+    <h2>Presentation</h2>
+    <p class="lede">Cover, section divider and closing slides at 1920 × 1080, light and dark.</p>
+    <div class="grid wide" id="deck-grid"></div>
+  </section>
+
+  <section id="wallpapers">
+    <h2>Wallpapers</h2>
+    <div class="grid" id="wall-grid"></div>
+  </section>
+
+  <section id="press">
+    <h2>Press screenshots</h2>
+    <p class="lede">The app on Elysium testnet, at 2880 × 1800.</p>
+    <div class="grid wide" id="press-grid"></div>
+  </section>
+
+  <section id="partners">
+    <h2>Partners</h2>
+    <p class="lede">Building with Cloak or integrating it? Use the partner lockup: our wordmark, a thin cross, then your logo at the same height. Keep the clear space shown in the guides, and use the white version on dark or glass backgrounds. Say "private trading by Cloak" or "launch on Cloak", not "powered by". Send anything co-branded to <a href="https://x.com/cloakonelysium">@cloakonelysium</a> before it goes out.</p>
+    <div class="grid">
+      <figure><div class="pic on-paper"><img src="/brand/kit/cloak-partner-lockup.svg" alt="Cloak partner lockup"></div><figcaption>Partner lockup <span class="dl"><a href="/brand/kit/cloak-partner-lockup.svg" download>SVG</a><a href="/brand/kit/cloak-partner-lockup-white.svg" download>White</a></span></figcaption></figure>
+      <figure><div class="pic on-paper"><img src="/brand/kit/cloak-partner-lockup-guides.svg" alt="Cloak partner lockup with clear-space guides"></div><figcaption>With guides <span class="dl"><a href="/brand/kit/cloak-partner-lockup-guides.svg" download>SVG</a></span></figcaption></figure>
+    </div>
+  </section>
+
+  <section id="downloads">
+    <h2>Downloads</h2>
+    <div class="download">
+      <div><b style="font:600 18px 'Inter Tight',sans-serif">Everything in one file</b><div style="color:var(--mute);font-size:14px">Logos, avatars, the fractal glass, social, slides, wallpapers, press screenshots and the fonts (open licences).</div></div>
+      <a class="btn" href="https://cdn.jsdelivr.net/gh/NECOKIZZ/Cloak@main/apps/web/public/brand/cloak-brand-kit.zip">Download the kit (.zip)</a>
+    </div>
+  </section>
+
+  <footer>Cloak · <a href="/">cloak.boblabs.tech</a> · <a href="https://x.com/cloakonelysium">@cloakonelysium</a> · <a href="/roadmap">Roadmap</a></footer>
+</div>
+</body>
+</html>

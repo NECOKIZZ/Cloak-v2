@@ -54,7 +54,11 @@
       "destination": "/roadmap.html"
     },
     {
-      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/|demo-nft/|roadmap).*)",
+      "source": "/brand",
+      "destination": "/brand.html"
+    },
+    {
+      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/|demo-nft/|roadmap|brand$).*)",
       "destination": "/index.html"
     }
   ],
