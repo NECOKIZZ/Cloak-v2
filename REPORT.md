@@ -661,3 +661,26 @@ Measured in `e2e-gloam/part5-launch-auto.mjs` on anvil (chain 99801), all on Glo
 - a private batch buy order, left alone until its round ended, then settled by the keeper loop.
 
 Also rerun and passing: forge (91), `part2-swap`, `part2-swap-v2`, `part2-bid`, `part3-relay`, `part4-launch-relay`, and the SDK tests (16). The bid run and the SDK's seal tests reach drand, and in this container that needs `NODE_USE_ENV_PROXY=1` for Node's fetch.
+
+### 16.7 Step 6 done: allocation gates and private receipts (Nov 8)
+
+Both run on Gloam's final keys, from balances in either Gloam's vault or Cloak's launch vault.
+
+Allocation gates, `contracts-gloam/src/CloakFundsGate.sol`: "only wallets that privately hold at least X may join this launch".
+- Anyone creates a gate (asset, threshold, closing time). A wallet joins with a Gloam funds proof (up to 4 notes). Its context is Gloam's `proofContext` (kind "funds", expiring at the close), computed on chain from the gate, the vault and the wallet. So a proof made for one wallet, gate or vault can't be used for another. The SDK checks that its context matches the contract's before proving.
+- The proof's note nullifiers are recorded, so the same notes can't qualify a second wallet. Moving the notes to prove again spends them, and that wallet drops out. After the close the keeper loop confirms every wallet still holding, and a confirmed wallet is then free to spend.
+- What it shows: that the wallet holds at least the threshold, not how much. Like every funds proof, it also shows the notes' nullifiers, so a watcher learns when those notes are later spent.
+- How a launch uses it: the creator reads the confirmed wallets for the launch's allowlist. Today's CloakAuction takes a Merkle allowlist root, so that is an off-chain step. A later auction could read `isConfirmed` directly.
+
+Private receipts, `contracts-gloam/src/CloakReceiptCheck.sol`, with `GloamReceiptVerifierFinal.sol` exported from Gloam's final `receipt_final.zkey` (its verification key matches Gloam's `final/receipt_vkey.json`):
+- A receipt says "this payment note is real, of this asset, worth at least X", or exactly X when the payer shows it, for one reader until a time. The reader checks it with a view call. The note's nullifier is never shown, so the receipt says nothing about when the payment is later spent.
+- GloamCore now keeps the payment notes it sends (`sentPayments()`), since the payer chose the payment note's secret and needs it for a receipt. That secret can spend the payment until the payee sweeps it, so the app must store it as carefully as the account.
+
+SDK (`packages/sdk/src/core/gloamProofs.ts`): `joinFundsGate()` and `proveReceipt()`. Keeper loop: `GLOAM_FUNDS_GATE` turns on gate confirmations.
+
+Measured in `e2e-gloam/part6-gates-receipts.mjs` on anvil (chain 99801):
+- Alice's wallet joined a 5 HYPE gate on a final-key funds proof from two notes (4 + 2), sent by the relay. The same notes couldn't qualify a second wallet (refused at simulation, so it cost nothing). Carol joined, then spent her note before the close and dropped out. After the close the keeper loop confirmed Alice only, and she could then spend.
+- Alice paid Bob 1.5 HYPE and proved it to "Shop #7" with the amount hidden: it passed for at least 1 HYPE and failed for 1.2 HYPE or for another reader. A receipt with the amount shown said exactly 1.5. It still held after Bob swept the payment.
+- Proving times on this container: funds 1.4 s, receipt 0.5 s.
+
+Also fixed: the keeper loop read the block number through viem's cache, so a tick could miss new batch orders (it caught them a tick later). It showed up as an intermittent failure in part 5. It now reads the head uncached, and part 5 passed 8 runs out of 8. Forge 105 of 105, SDK tests 16 of 16.

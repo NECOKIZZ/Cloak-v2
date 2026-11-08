@@ -10,3 +10,4 @@ export function coreKindFrom(value: string | undefined | null): CoreKind {
 export * from "./gloamSwap.js";
 export * from "./gloamBids.js";
 export * from "./launchVault.js";
+export * from "./gloamProofs.js";

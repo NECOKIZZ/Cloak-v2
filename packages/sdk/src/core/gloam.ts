@@ -72,6 +72,15 @@ export interface GloamAccountKeys {
   receiveJwk: { kty: "EC"; crv: "P-256"; x: string; y: string; d: string; ext: true; key_ops: ["deriveBits"] };
 }
 
+/** A payment this account sent: what a receipt for it needs. */
+export interface SentPayment {
+  commitment: bigint;
+  secret: bigint;
+  asset: Address;
+  amount: bigint;
+  txHash: Hex;
+}
+
 export interface OwnedGloamNote {
   asset: Address;
   amount: bigint;
@@ -351,9 +360,22 @@ export class GloamCore implements PrivateCore {
     const tickets = [payTicket];
     if (change.amount > 0n) tickets.push(await this.selfTicket(change));
     const memo = await this.post(payCommitment, tickets, onStatus);
+    // the payer knows the payment note's secret: kept so it can prove the payment later (a receipt), never sent anywhere
+    if (!mine) this.sent.push({ commitment: payCommitment, secret: paySecret, asset: n.asset, amount: pay, txHash: tx });
     if (mine) this.candidates.push({ commitment: mine.commitment, asset: n.asset, amount: pay, secret: mine.secret, own: true });
     if (change.amount > 0n) this.candidates.push({ commitment: change.commitment, asset: n.asset, amount: change.amount, secret: change.secret, own: true });
     return memo ? [tx, memo] : [tx];
+  }
+
+  private sent: SentPayment[] = [];
+
+  /**
+   * Payments this account sent in this session, with each payment note's secret, so the app can store them and prove a
+   * payment later (proveReceipt). Whoever holds a secret can spend that payment until the payee sweeps it, so store
+   * them as carefully as the account itself.
+   */
+  sentPayments(): SentPayment[] {
+    return [...this.sent];
   }
 
   /** @internal */ async pathOf(commitment: bigint) {

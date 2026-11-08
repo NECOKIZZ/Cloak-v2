@@ -2,7 +2,9 @@
 //   - admit every settled Cloak launch to the launch vault (CloakLaunchVault.admitLaunch, anyone may call it), so its
 //     token can be deposited the moment its launch settles;
 //   - collect the launch vault's HYPE fees for the relay's budget (the relay does it on demand too);
-//   - settle each batch round (CloakGloamBatcher.settle) once it ends, or cancel it once it is past its refund time.
+//   - settle each batch round (CloakGloamBatcher.settle) once it ends, or cancel it once it is past its refund time;
+//   - confirm every wallet still eligible in an allocation gate (CloakFundsGate.confirm) once the gate closes, so its
+//     owner is free to spend and the creator has a fixed list.
 //
 // What it can't do: anything that spends or signs for a user. A swap's leftover, a graduation's exit, a bid's or batch
 // order's payout all need the account's seed, so the app does them on open (finishPending in the SDK). A graduation's
@@ -29,6 +31,14 @@ const BATCHER_ABI = parseAbi([
   "function refundAfter() view returns (uint256)",
   "function batches(address, uint64) view returns (uint128 buyHype, uint128 sellTokens, uint128 tokensForBuyers, uint128 hypeForSellers, uint256 spotStart, uint64 settledAt, bool settled, bool cancelled)",
 ]);
+const GATE_ABI = parseAbi([
+  "function gatesCount() view returns (uint256)",
+  "function gates(uint256) view returns (address creator, address asset, uint128 threshold, uint64 closesAt, uint32 entered, uint32 confirmed)",
+  "function wallets(uint256 gateId, uint256 start, uint256 count) view returns (address[])",
+  "function isEligible(uint256 gateId, address wallet) view returns (bool)",
+  "function isConfirmed(uint256 gateId, address wallet) view returns (bool)",
+  "function confirm(uint256 gateId, address wallet)",
+]);
 const ORDER_PLACED = parseAbiItem("event OrderPlaced(bytes32 indexed id, address indexed token, uint64 indexed round, bool buy, uint256 size, uint256 net)");
 
 /**
@@ -39,8 +49,9 @@ const ORDER_PLACED = parseAbiItem("event OrderPlaced(bytes32 indexed id, address
  * @param batcher CloakGloamBatcher, or omit it; batcherBlock: where to read its orders from
  * @param relay the Gloam relay, for collectLaunchFees(); or omit it
  */
-export function createGloamLoop({ publicClient, account, send, launchVault, launchFactory, batcher, batcherBlock = 0n, relay, log = () => {} }) {
+export function createGloamLoop({ publicClient, account, send, launchVault, launchFactory, batcher, batcherBlock = 0n, fundsGate, relay, log = () => {} }) {
   let nextLaunch = 0n;
+  const gatesDone = new Set(); // gates whose entries are all confirmed or dropped
   let ordersFrom = batcherBlock;
   const open = new Map(); // `${token}:${round}` -> { token, round }
 
@@ -78,7 +89,7 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
 
   async function settleRounds() {
     if (!batcher) return [];
-    const head = await publicClient.getBlockNumber();
+    const head = await publicClient.getBlockNumber({ cacheTime: 0 }); // a cached head would skip new orders for a tick
     if (ordersFrom <= head) {
       const logs = await publicClient.getLogs({ address: batcher, event: ORDER_PLACED, fromBlock: ordersFrom, toBlock: head });
       for (const l of logs) open.set(`${l.args.token.toLowerCase()}:${l.args.round}`, { token: l.args.token, round: l.args.round });
@@ -116,8 +127,38 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
     return done;
   }
 
+  async function confirmGates() {
+    if (!fundsGate) return [];
+    const now = (await publicClient.getBlock()).timestamp;
+    const count = await publicClient.readContract({ address: fundsGate, abi: GATE_ABI, functionName: "gatesCount" });
+    const out = [];
+    for (let id = 0n; id < count; id++) {
+      if (gatesDone.has(id)) continue;
+      const g = await publicClient.readContract({ address: fundsGate, abi: GATE_ABI, functionName: "gates", args: [id] });
+      if (now <= g[3]) continue; // still open
+      let open = false;
+      for (let start = 0n; ; start += 200n) {
+        const ws = await publicClient.readContract({ address: fundsGate, abi: GATE_ABI, functionName: "wallets", args: [id, start, 200n] });
+        for (const w of ws) {
+          if (await publicClient.readContract({ address: fundsGate, abi: GATE_ABI, functionName: "isConfirmed", args: [id, w] })) continue;
+          if (!(await publicClient.readContract({ address: fundsGate, abi: GATE_ABI, functionName: "isEligible", args: [id, w] }))) continue; // dropped out
+          const call = { address: fundsGate, abi: GATE_ABI, functionName: "confirm", args: [id, w] };
+          if (!(await ok(call))) {
+            open = true;
+            continue;
+          }
+          out.push({ gateId: id, wallet: w, hash: await send(call) });
+          log(`[gloam loop] confirmed ${w} in gate ${id}`);
+        }
+        if (ws.length < 200) break;
+      }
+      if (!open) gatesDone.add(id);
+    }
+    return out;
+  }
+
   async function tick() {
-    const out = { admitted: [], rounds: [], feesCollected: 0n, errors: [] };
+    const out = { admitted: [], rounds: [], confirmed: [], feesCollected: 0n, errors: [] };
     const step = async (name, fn) => {
       try {
         return await fn();
@@ -128,9 +169,10 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
     };
     out.admitted = (await step("admit launches", admitLaunches)) ?? [];
     out.rounds = (await step("settle rounds", settleRounds)) ?? [];
+    out.confirmed = (await step("confirm gates", confirmGates)) ?? [];
     if (relay?.collectLaunchFees) out.feesCollected = (await step("collect fees", () => relay.collectLaunchFees())) ?? 0n;
     return out;
   }
 
-  return { tick, admitLaunches, settleRounds, pendingRounds: () => [...open.values()] };
+  return { tick, admitLaunches, settleRounds, confirmGates, pendingRounds: () => [...open.values()] };
 }
