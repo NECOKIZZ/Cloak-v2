@@ -1,0 +1,21 @@
+{
+  "name": "elysium-mainnet-gloam",
+  "chainId": 99901,
+  "rpcUrl": "FILL IN: Elysium mainnet RPC that answers eth_getLogs",
+  "gloamVault": "FILL IN: Gloam's vault (expected 0x39E28Cde55CAB798874746ac52cb4B5Cc99a0194)",
+  "memoBoard": "FILL IN: Gloam's memo board",
+  "poseidon": "FILL IN: the Poseidon Gloam's vault uses (its poseidon2())",
+  "verifier": "FILL IN: Gloam's vault's verifier()",
+  "shieldVerifier": "FILL IN: Gloam's vault's shieldVerifier()",
+  "factory": "FILL IN: Cloak's v4 launch factory on mainnet",
+  "poolManager": "0xe2e105d3f7209a9da11f83ccf3e7398a753823f1",
+  "v4Hook": "FILL IN: CloakV4Hook on mainnet",
+  "whype": "FILL IN: Cloak's own fixed WHYPE on mainnet (not the upgradeable 0xbA87...5E81)",
+  "safe": "FILL IN: Cloak's Safe (guard controller)",
+  "pauser": "FILL IN: Cloak's Safe (launch pauser)",
+  "feeRecipient": "FILL IN: the relay's fee account (the launch vault's 0.5% pays relay gas)",
+  "hype": { "perDeposit": "10000000000000000000", "total": "1000000000000000000000" },
+  "launchCaps": { "perDeposit": "1000000000000000000000000000", "total": "100000000000000000000000000000" },
+  "graduationRoundSecs": 3600,
+  "batch": { "roundSecs": 60, "maxSlippageBps": 200, "refundAfter": 600 }
+}

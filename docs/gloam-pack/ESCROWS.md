@@ -20,13 +20,17 @@ Private swaps between notes in the launch vault, through Cloak launches' own Uni
 
 ## CloakGloamBatcherV4 · not on testnet yet (and V2 `CloakGloamBatcher`)
 
-Batch rounds. Standard-size orders (1, 2, 5 x 10^n) collect into rounds per token; at the end buys and sells cross at the pool's price and only the net trades, through the launch's `CloakV4Market` (V2 venue: the Uniswap V2 pair). A 5% impact cap and a slippage cap against the round's opening price.
+Batch rounds. Standard-size orders (1, 2, 5 x 10^n) collect into rounds per token. At the end, buys and sells cross and only the net trades, through the launch's `CloakV4Market` (V2 venue: the Uniswap V2 pair).
+- **The price:** the market's time-weighted average (CloakV4Hook's accumulator, or V2's cumulative prices) from the round's first order, over at least one whole round (`settleOpens`).
+- **Guards:** the pool must be within 2% of that average when the net trades, and the net trade within 5% impact of it.
+- **Sizes:** each side holds at most 4% of the pool (`RoundFull`), so a round always settles.
+- **Deadline:** a round settles within `refundAfter` of `settleOpens` (`TooLate`), otherwise it's cancelled and refunded.
 
 | Call | Who | What it moves |
 |---|---|---|
 | `place(s, k)` | anyone (relay) | the spent note into the batcher, via Gloam's one-time `SwapEscrow2` |
-| `settle(token, round)` | anyone (keeper) | the round's net through the market; refused past the impact or slippage cap |
-| `cancel(token, round)` | anyone, after the refund time | nothing moves; every order is owed its input back |
+| `settle(token, round)` | anyone (keeper), from `settleOpens` until `refundAfter` later | the round's net through the market at the time-weighted average; refused past the impact or slippage guard |
+| `cancel(token, round)` | anyone, `refundAfter` after `settleOpens` | nothing moves; every order is owed its input back |
 | `claim(k, d, signature)` | anyone, owner key signs | an order's payout into the launch vault as a note of exactly what is owed |
 | `exitAfterTimeout(k)` | anyone, 30 days after the round | an unclaimed payout to the order's fallback address |
 | `register(launchIndex)` | anyone (V4 venue only) | nothing; records a settled launch's market |

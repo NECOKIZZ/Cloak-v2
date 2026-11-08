@@ -116,15 +116,9 @@ His answers, and what to do about each:
 
 **Update `GLOAM_QUESTIONS.md`** with a section "Answers from Gloam's founder (Nov 8)" covering the above, and mark which earlier LLM-derived answers they confirm or override.
 
-## 7. Next steps, in order
+## 7. Next steps
 
-1. **Deploy the v4 batcher live** once the new key is funded: `NODE_USE_ENV_PROXY=1 node e2e-gloam/deploy-batcher-v4.mjs`. Then put `batcherV4` in `deployments.ts` (`gloam`), and give the keeper `GLOAM_BATCHER_V4`, `GLOAM_BATCHER_V4_BLOCK` and the address in `GLOAM_ESCROWS`.
-2. **Mainnet page and version dropdown** (Bob's plan): Testnet v1 goes to cloak.boblabs.tech, Testnet v2 to gloak.boblabs.tech, and Private mainnet shows an invite-only access-code page with no codes and no backend. Do it in this repo first. Touching Cloak v1 needs Bob's explicit go.
-3. **Before the repo goes public:** a secret scan of the history, and decide whether `GLOAM_QUESTIONS.md` and the partnership parts of `REPORT.md` move somewhere private.
-4. **Hosting v2:** a Vercel project (same account) for gloak.boblabs.tech with `VITE_CORE=gloam`, and a keeper on a new Render account, no custom domain, CORS including gloak. Keeper env: the `GLOAM_*` variables from `services/keeper/index.mjs`.
-5. When Gloam's testnet vault is live: switch to it and their verifiers, redeploy what takes the vault address, update `deployments.ts`, rerun `part8-site.mjs` on a fork and the live script.
-6. Still open: payment links in the MCP tools; bundle size (`poseidon-lite`); the relay funded from the swap buffer; escrows posting memos in the same transaction.
-7. Only when Bob says Gloam's side is proven: remove Cloak's own private layer from v2 (REPORT section 17).
+The roadmap and to-do list, by stage and by who it waits on, is **`docs/MAINNET-V2.md`**. The brief for Gloam is `docs/FOR-GLOAM.md`, and the review log is `docs/REVIEW-RESPONSES.md`. The mainnet deploy is `e2e-gloam/deploy-partner.mjs` (rehearse with `--rehearse`).
 
 ## 8. How to run things
 

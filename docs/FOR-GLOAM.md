@@ -1,4 +1,4 @@
-# Cloak v2 on Gloam: status for Gloam (Nov 8)
+# Cloak v2 on Gloam: status for Gloam (Nov 8, updated)
 
 Cloak v2 runs on Gloam's vault, circuits and final ceremony keys, all unchanged. Cloak's launch features are built around them: sealed-bid launches, launch tokens with their own Uniswap v4 pools, private swaps, batch rounds, bids from a private balance, and receive addresses. Everything below is on Elysium testnet (99801) unless it says mainnet.
 
@@ -9,14 +9,16 @@ Cloak v2 runs on Gloam's vault, circuits and final ceremony keys, all unchanged.
 - **Our launch vault (`CloakLaunchVault`):** your `ShieldPoolCore` plus your `ShieldPoolPayments` rules, and one addition. `admitLaunch` gives a settled launch of Cloak's factory fixed caps at once, once per token, and a pauser can stop new admissions only. It's deployed the way your guarded deploy works: under a `VaultOwnerGuard`, with your final-key verifiers. HYPE and launch tokens live here, and USDC lives in your vault.
 - **Escrows on your pattern** (one-time CREATE2 escrow bound by the unshield proof, a timeout exit on each, no owner, no admin, no fee of their own):
   - private swaps through Cloak launches' own v4 pools, with the price buffer owed back to the trader;
-  - batch rounds (V2 and v4 venues);
+  - batch rounds (V2 and v4 venues). A round crosses at the market's time-weighted average over at least one whole round, and each side holds at most 4% of the pool, so a round always settles. One transaction can't move the price it crosses at.
   - sealed bids from a private balance;
   - graduation into your vault in rounds;
   - receive addresses (a public address anyone pays, shielded by the owner's app).
 - **Proofs:** an allocation gate on your funds circuit and a receipt check on your receipt circuit, with verifiers exported from your final zkeys (GPL-3.0 headers kept).
 - **Relay:** ours, built on your relay's rules (send records, locks held when the outcome is unknown, the 80/60/8 budget shares, cash-out destination checks). It is paid from the launch vault's 0.5% fee.
-- **Site, SDK and agent tools:** every page of Cloak's site runs on your vault: portfolio, send, withdraw (also in pieces over time), trade (instant or batched), payment links, receive and prove funds. Proofs are made in the browser on your files from jsDelivr at the pinned commit, hash-checked. The MCP agent tools run on it too.
-- **Tests:** 117 forge tests (ours), 65 more on the real v4 PoolManager, 16 end-to-end runs (anvil and forks of testnet, all on final keys), and the real site in a browser on a fork.
+- **Site, SDK and agent tools:** every page of Cloak's site runs on your vault: portfolio, send, withdraw, trade (instant or batched), payment links and requests, receive and prove funds.
+  - Withdrawals can go out in pieces over time. Your vault keeps every root valid, so each piece is proved up front and our keeper sends it at its time. The keeper can't change a piece, only send or drop it. Proofs are made in the browser on your files from jsDelivr at the pinned commit, hash-checked. The MCP agent tools run on it too, payment links included.
+- **Tests:** 122 forge tests (ours), 65 more on the real v4 PoolManager, 17 end-to-end runs (anvil and forks of testnet, all on final keys), and the real site in a browser on a fork.
+- **Outside reviews:** two independent reviews of Cloak (Nov 6 to 8). Every finding is fixed or decided. The two that touched our Gloam batcher (a price window one transaction could move, and one huge order stalling a round) are fixed, with regression tests. Log: `docs/REVIEW-RESPONSES.md`.
 
 **Token policy:** we vet every token ourselves before asking you to list it in your vault for graduation. Launch tokens are Cloak's factory token (fixed supply, no owner, no mint, no tax, no blacklist), and anything else gets the same check first.
 
@@ -36,7 +38,7 @@ From `deployments/elysium-testnet-gloam.json`, deploy block 26230337. Today the 
 | CloakGraduation (into the Gloam vault, 1-hour rounds) | `0x51756969b91f8b6a8c941250691b974c769c97fa` |
 | CloakGloamReceive (receive addresses) | `0x4a11f7948513fe7517ef7c6efee88c5681bb06c4` |
 | CloakFundsGate / CloakReceiptCheck | `0x1642422970782e5d1b0a94a64ee022e2c3b4a25c` / `0x2236b68e231cebd7dd04e23fe756efdae726e325` |
-| CloakGloamBatcherV4 (batch rounds) | built and tested, deploys next |
+| CloakGloamBatcherV4 (batch rounds) | built, reviewed and tested, deploys next (no owner, so it's added with no redeploy) |
 | Cloak's v4 launch factory / CloakV4Hook / PoolManager | `0x1b0072684e98d9e23018e2d107ed8166ef84c077` / `0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80` / `0x51027076df8416e42ea8438b27a0c433d9662e68` |
 
 What each escrow call does and where money can go: `docs/gloam-pack/ESCROWS.md`. The launch-vault diff against `ShieldPoolPayments`: `LAUNCH-VAULT-DIFF.md`. The factory token and v4 pool keys: `FACTORY-AND-POOLS.md`.
@@ -82,3 +84,5 @@ Not repeated here, because your answers or your repo settle them: the vault addr
 5. **Partner budget on your relay:** can it be set up for Cloak on testnet now (an account with `relayApproved`), ahead of the escrow review?
 6. **HYPE in your vault:** the HYPE caps and timing when you have them. That's when Cloak moves HYPE deposits that aren't for trading into your vault.
 7. **The escrow review scope:** what you need from us to book it (commit, contract list, our own internal review notes).
+8. **Our swap venue on your main vault:** `CloakLaunchSwapV4` routes any v4 pool with no hook (or Cloak's own hook), up to 3 hops, at once. Deployed on your vault, it gives private USDC to HYPE and ecosystem-token swaps without waiting on your router's allowlist. Are you fine with that, or do you want those swaps through your router only?
+9. **Bridging in privately:** we plan for Relay and Spicenet to deliver straight to a Cloak receive address, which the owner's app then shields into your vault (USDC) or ours (HYPE). Anything on your side we should line up with, such as Relay's quote into Elysium USDC that your bridge list notes as unchecked?
