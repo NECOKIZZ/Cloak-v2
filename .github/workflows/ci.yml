@@ -1,42 +1,13 @@
 name: CI
 on: [push, pull_request]
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: foundry-rs/foundry-toolchain@v1
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: cd contracts && forge test -vv
-      - run: cd contracts-v4 && forge test -vv && FOUNDRY_PROFILE=uniswap forge build
-      - run: pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/sdk test
-      - run: pnpm --filter @cloakely/mcp build && pnpm --filter @cloakely/mcp test
-      - run: pnpm --filter @cloakely/web build
-      - name: e2e on anvil (real drand beacon)
-        run: |
-          anvil --silent --balance 1000000 &
-          sleep 2
-          node e2e/run.mjs
-          node e2e/private.mjs
-          node e2e/usdc.mjs
-      - name: MCP server e2e on anvil (a fresh chain whose clock runs, so the keeper reveals and settles on its own)
-        timeout-minutes: 60
-        run: |
-          pkill anvil || true
-          anvil --silent --balance 1000000 --block-time 1 &
-          sleep 2
-          node e2e/mcp.mjs
-          node e2e/drops.mjs
-          node e2e/spots.mjs
-          node e2e/drops-break.mjs
-          node e2e/mcp-drops.mjs
   gloam:
-    # Cloak v2 on Gloam: Gloam's vault (pinned submodule), Cloak's escrow venues, and the GloamCore runs on anvil.
-    # The fork runs (part0 --fork, part2-swap*.mjs) need Elysium testnet's RPC and run by hand.
+    # Cloak v2 on Gloam: Gloam's vault (pinned submodule), Cloak's escrows and launch vault, the SDK, the MCP server,
+    # the site (Gloam backend) and the anvil end-to-end runs. Cloak's own vaults are tested in Cloak v1's repo.
+    # The fork runs (part0 --fork, part2-swap*.mjs, part12, part13, part14, part8-site) need Elysium testnet's RPC and
+    # run by hand.
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
@@ -46,10 +17,24 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: cd vendor/gloam/contracts && forge build
-      - run: cd contracts-gloam && forge test -vv
-      - run: pnpm --filter @cloakely/sdk build
-      - run: node e2e-gloam/part0.mjs
-      - run: node e2e-gloam/part1.mjs
-      - run: node e2e-gloam/part1-links.mjs
-      - run: node e2e-gloam/part3-funds.mjs
-      - run: node e2e-gloam/part3-relay.mjs
+      - run: cd contracts-gloam && forge test
+      - run: cd contracts-v4 && forge test
+      - run: pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/sdk test
+      - run: pnpm --filter @cloakely/mcp build && pnpm --filter @cloakely/mcp test
+      - run: pnpm --filter @cloakely/web build
+        env: { VITE_CORE: gloam }
+      - name: end to end on anvil (Gloam's final keys)
+        run: |
+          node e2e-gloam/part0.mjs
+          node e2e-gloam/part1.mjs
+          node e2e-gloam/part1-links.mjs
+          node e2e-gloam/part3-funds.mjs
+          node e2e-gloam/part3-relay.mjs
+          node e2e-gloam/part4-launch-relay.mjs
+          node e2e-gloam/part5-launch-auto.mjs
+          node e2e-gloam/part6-gates-receipts.mjs
+          node e2e-gloam/part7-adapter.mjs
+          node e2e-gloam/part9-links.mjs
+          node e2e-gloam/part11-receive.mjs
+          node e2e-gloam/part15-split-withdraw.mjs
+          node e2e-gloam/part16-mcp.mjs

@@ -1,5 +1,5 @@
 {
-  "where": "anvil 99801",
+  "where": "anvil",
   "sdk": "@gloamtrade/sdk@0.6.0",
   "gloamCommit": "16dac34",
   "stack": {
@@ -8,49 +8,49 @@
     "dual": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6",
     "shieldVerifier": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
     "payMemo": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
-    "deployMs": 4677
+    "deployMs": 5025
   },
   "proofs": {
     "shield": {
       "n": 3,
       "min": 113,
-      "median": 119,
-      "max": 128
+      "median": 114,
+      "max": 125
     },
     "transfer": {
       "n": 4,
-      "min": 464,
-      "median": 489,
-      "max": 518
+      "min": 467,
+      "median": 539,
+      "max": 555
     },
     "unshield": {
       "n": 4,
-      "min": 434,
-      "median": 448,
-      "max": 449
+      "min": 445,
+      "median": 484,
+      "max": 492
     }
   },
   "gas": {
     "deploy test USDC": 487124,
     "mint USDC": 68257,
     "deploy PoseidonT3": 2157126,
-    "shield HYPE": 1141759,
+    "shield HYPE": 1141747,
     "approve USDC": 46116,
-    "shield USDC": 1139220,
+    "shield USDC": 1139244,
     "approve USDC over limit": 46128,
-    "private send HYPE (1 in, 2 out)": 1787636,
+    "private send HYPE (1 in, 2 out)": 1787660,
     "post memo": 57370,
-    "private send HYPE #2": 1787660,
+    "private send HYPE #2": 1787612,
     "payer spends the payee's unswept note": 330735,
     "sweep received note (1 in, 2 out)": 1782446,
-    "cash out HYPE (whole note)": 313599,
-    "split for partial cash out": 1787636,
-    "cash out USDC (partial, after split)": 340520,
+    "cash out HYPE (whole note)": 313611,
+    "split for partial cash out": 1787660,
+    "cash out USDC (partial, after split)": 340532,
     "collectFees USDC": 69546
   },
   "machine": {
     "cpus": 4,
     "node": "v22.23.4"
   },
-  "wallMs": 11197
+  "wallMs": 12004
 }

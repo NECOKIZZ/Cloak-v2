@@ -1,8 +1,8 @@
 {
   "circuits": "funds + receipt (Gloam, final keys)",
   "timingsMs": {
-    "fundsProofMs": 1589,
-    "receiptProofMs": 533
+    "fundsProofMs": 1539,
+    "receiptProofMs": 500
   },
-  "seconds": 17
+  "seconds": 16
 }
