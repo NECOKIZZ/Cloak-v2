@@ -84,7 +84,8 @@ export class WrongPasscodeError extends Error {
 }
 
 /** Ways a phone may have typed the same code: curly quotes and long dashes from autocorrect, a trailing full stop. */
-function passcodeVariants(code: string): string[] {
+/** @internal The spellings a passcode is tried in (case, spacing, punctuation), shared by both link kinds. */
+export function passcodeVariants(code: string): string[] {
   const base = normalizePasscode(code);
   const straight = base.replace(/[\u2018\u2019\u201b\u2032]/g, "'").replace(/[\u201c\u201d\u2033]/g, '"').replace(/[\u2013\u2014\u2212]/g, "-");
   return [...new Set([base, straight, straight.replace(/[.!?]+$/, "")])].filter(Boolean);

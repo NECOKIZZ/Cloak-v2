@@ -1,6 +1,7 @@
-import { CloakPrivate, openLinkKeys, privateRouterAbi, relayerSubmitter, shieldedPoolAbi, type ClaimLink, type CloakKeys, type LinkToken, type OwnedNote } from "@cloakely/sdk";
+import { CloakPrivate, GloamPrivate, gloamLinkAddress, gloamLinkCheck, gloamLinkKeys, gloamRelaySubmitter, linkAddress, linkCheck, linkKeys, openGloamLinkKeys, openLinkKeys, privateRouterAbi, relayerSubmitter, shieldedPoolAbi, type ClaimLink, type CloakKeys, type LinkToken } from "@cloakely/sdk";
 import { keccak256, concat, toBytes, decodeAbiParameters, decodeFunctionData, formatUnits, type Address, type Hex } from "viem";
-import { ASSETS, BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK } from "./config";
+import { ASSETS, BATCHER, CORE, GLOAM, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, chain } from "./config";
+import { gloamProvers } from "./gloam";
 import { getProver, type Priv } from "./state";
 import { publicClient } from "./wallet";
 
@@ -10,9 +11,43 @@ export const TOKEN_DECIMALS: Record<LinkToken, number> = { HYPE: 18, USDC: 6 };
  * The private client of the account a claim link opens. No wallet: the relayer submits, so claiming needs no gas.
  * A locked link with a check throws WrongPasscodeError for a wrong code before anything touches the network.
  */
-export async function openLinkAccount(link: ClaimLink, passcode?: string): Promise<CloakPrivate> {
+export async function openLinkAccount(link: ClaimLink, passcode?: string): Promise<Priv> {
+  if (CORE === "gloam") return gloamLinkAccount(await openGloamLinkKeys(link, passcode));
   if (!ROUTER || !RELAYER_URL) throw new Error("Payment links aren't available on this deployment yet.");
   return clientFor(await openLinkKeys(link, passcode));
+}
+
+/** A claim link's account on Cloak v2 on Gloam: both vaults, spending what it received directly, through the relay. */
+async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>): Promise<GloamPrivate> {
+  if (!GLOAM || !RELAYER_URL) throw new Error("Payment links aren't available on this deployment yet.");
+  const p = new GloamPrivate(
+    {
+      publicClient,
+      chainId: chain.id,
+      gloamVault: { pool: GLOAM.gloamVault, poolBlock: GLOAM.block },
+      launchVault: { pool: GLOAM.launchVault, poolBlock: GLOAM.block },
+      payMemo: GLOAM.memoBoard,
+      provers: gloamProvers(),
+      submit: gloamRelaySubmitter(RELAYER_URL),
+      whype: GLOAM.whype,
+      spendReceived: true,
+      logChunk: 5_000n,
+    },
+    keys,
+  );
+  await p.loadMarkets();
+  ASSETS.forEach((a) => p.addAsset(a));
+  return p;
+}
+
+/** A new link's account: where the sender pays and, if locked, the check a wrong passcode fails. */
+export async function newLinkTarget(secret: Uint8Array, passcode?: string): Promise<{ address: string; check?: string }> {
+  if (CORE === "gloam") {
+    const k = await gloamLinkKeys(secret, passcode);
+    return { address: gloamLinkAddress(k), check: passcode !== undefined ? gloamLinkCheck(k) : undefined };
+  }
+  const k = await linkKeys(secret, passcode);
+  return { address: await linkAddress(k), check: passcode !== undefined ? await linkCheck(k) : undefined };
 }
 
 /** A wallet-less private client for `keys`, submitting through the relayer. */
@@ -39,7 +74,8 @@ export interface LinkHolding {
   open: number;
   /** notes already claimed (or taken back) */
   spent: number;
-  notes: OwnedNote[];
+  /** the account's notes in the link's token (shape depends on the backend) */
+  notes: { amount: bigint; spent?: boolean; nullifier?: unknown }[];
 }
 export type LinkState = Record<LinkToken, LinkHolding>;
 
@@ -47,7 +83,7 @@ export type LinkState = Record<LinkToken, LinkHolding>;
  * A link account's state, per token. `only` limits it to the link's own token (half the reading). Network trouble
  * throws: an unreadable vault must never look like an empty link.
  */
-export async function linkState(p: CloakPrivate, only?: LinkToken): Promise<LinkState> {
+export async function linkState(p: Priv, only?: LinkToken): Promise<LinkState> {
   const empty = (): LinkHolding => ({ waiting: 0n, open: 0, spent: 0, notes: [] });
   const out: LinkState = { HYPE: empty(), USDC: empty() };
   const tokens = only ? [only] : (["HYPE", "USDC"] as LinkToken[]);
@@ -59,7 +95,7 @@ export async function linkState(p: CloakPrivate, only?: LinkToken): Promise<Link
       } catch {
         return; // this deployment has no vault for it
       }
-      const notes = await withRetry(() => p.history(pool));
+      const notes: LinkHolding["notes"] = await withRetry<LinkHolding["notes"]>(() => p.history(pool));
       const open = notes.filter((n) => !n.spent);
       out[t] = { waiting: open.reduce((a, n) => a + n.amount, 0n), open: open.length, spent: notes.length - open.length, notes };
     }),
@@ -68,7 +104,7 @@ export async function linkState(p: CloakPrivate, only?: LinkToken): Promise<Link
 }
 
 /** Balances a link account holds, per token. Throws on network trouble rather than reading as zero. */
-export async function linkBalances(p: CloakPrivate, only?: LinkToken): Promise<Record<LinkToken, bigint>> {
+export async function linkBalances(p: Priv, only?: LinkToken): Promise<Record<LinkToken, bigint>> {
   const s = await linkState(p, only);
   return { HYPE: s.HYPE.waiting, USDC: s.USDC.waiting };
 }
@@ -100,14 +136,23 @@ export interface LinkClaim {
  * Who claimed a link, as far as the chain says: when, how much, and where it went. A claim into a private balance
  * shows only that it happened; a claim to a wallet shows the wallet, like any withdrawal.
  */
-export async function linkClaims(p: CloakPrivate, state: LinkState): Promise<LinkClaim[]> {
+export async function linkClaims(p: Priv, state: LinkState): Promise<LinkClaim[]> {
   const out: LinkClaim[] = [];
+  if (p instanceof GloamPrivate) {
+    for (const t of ["HYPE", "USDC"] as LinkToken[]) {
+      if (!state[t].notes.some((n) => n.spent)) continue;
+      for (const c of await withRetry(() => p.claims(p.market(tokenOf(p, t)).pool))) {
+        out.push({ token: t, amount: formatUnits(c.amount, TOKEN_DECIMALS[t]), to: c.to, at: c.at, tx: c.tx });
+      }
+    }
+    return out.sort((a, b) => b.at - a.at);
+  }
   for (const t of ["HYPE", "USDC"] as LinkToken[]) {
     const spent = state[t].notes.filter((n) => n.spent);
     if (!spent.length) continue;
     const pool = p.market(tokenOf(p, t)).pool;
     const logs = await withRetry(() => publicClient.getContractEvents({ address: pool, abi: shieldedPoolAbi, eventName: "NewNullifier", fromBlock: VAULTS_BLOCK, strict: true }));
-    const want = new Map(spent.map((n) => [BigInt(n.nullifier), n]));
+    const want = new Map(spent.map((n) => [BigInt(n.nullifier as bigint), n]));
     const seen = new Set<string>();
     for (const l of logs) {
       const note = want.get(BigInt(l.args.nullifier));

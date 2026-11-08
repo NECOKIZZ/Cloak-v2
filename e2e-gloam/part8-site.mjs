@@ -121,7 +121,6 @@ try {
   await page.getByRole("button", { name: "Connect wallet" }).first().click();
   await page.getByRole("button", { name: /Test Wallet/ }).click();
   await page.waitForTimeout(3000);
-  await shot("0-after-pick");
   // picking the wallet from "Connect wallet" goes straight on to unlocking; if not, ask for it
   const unlockBtn = page.getByRole("button", { name: "Unlock private account" });
   if (await unlockBtn.isVisible().catch(() => false)) await unlockBtn.click();
@@ -170,6 +169,38 @@ try {
   await page.getByText(/Swapped privately/).waitFor({ timeout: 180_000 });
   await shot("5-swapped");
   console.log(`  ok  the Trade page bought the launch token privately (estimate ${est}), sent by the relay`);
+
+  // 6. a payment link from the Links page, claimed to a wallet in another browser that has no wallet at all
+  await page.getByRole("link", { name: "Payment links" }).first().click();
+  await page.getByPlaceholder("0.05").waitFor({ timeout: 60_000 });
+  await page.getByPlaceholder("0.05").fill("0.1");
+  await page.getByPlaceholder("Happy birthday!").fill("A test link");
+  await page.locator("button.btn-ink.btn-lg.btn-block").first().click();
+  await page.locator(".linkbox").first().waitFor({ timeout: 180_000 });
+  const url = await page.locator(".linkbox").first().innerText();
+  await shot("6-link-made");
+  assert(url.includes("/claim"), `the Links page made a claim link (${url.slice(0, 40)}…)`);
+
+  const guest = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  guest.on("pageerror", (e) => logs.push(String(e)));
+  await guest.goto(url);
+  const enter = guest.getByRole("button", { name: "Enter the app" });
+  if (await enter.isVisible({ timeout: 5_000 }).catch(() => false)) await enter.click();
+  const fresh2 = privateKeyToAccount(ANVIL_KEYS[7]).address;
+  const before2 = await pub.getBalance({ address: fresh2 });
+  await guest.getByText("Claim to a wallet").waitFor({ timeout: 120_000 });
+  await guest.waitForTimeout(1500);
+  const later = guest.getByRole("button", { name: "Don't show again" });
+  if (await later.isVisible().catch(() => false)) await later.click();
+  await guest.screenshot({ path: join(REPO, "measurements", "part8-6b-claim-page.png") });
+  await guest.locator("button.choice").nth(1).click({ timeout: 120_000 }); // claim to a wallet
+  await guest.getByPlaceholder("0x… or name.ely").fill(fresh2);
+  await guest.locator("button.btn-ink.btn-lg.btn-block").last().click();
+  for (let i = 0; i < 180 && (await pub.getBalance({ address: fresh2 })) === before2; i++) await guest.waitForTimeout(1000);
+  const got2 = (await pub.getBalance({ address: fresh2 })) - before2;
+  await guest.waitForTimeout(2000);
+  await guest.screenshot({ path: join(REPO, "measurements", "part8-7-link-claimed.png") });
+  assert(got2 === parseEther("0.0995"), `a guest with no wallet claimed the link to a fresh wallet: ${formatEther(got2)} HYPE (0.1 less the vault's 0.5%)`);
 
   const errs = logs.filter((l) => !/favicon|404|keeper|snapshot|leaves|Failed to load resource/i.test(l));
   if (errs.length) console.log("  browser errors:", errs.slice(0, 5));

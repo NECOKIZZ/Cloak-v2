@@ -22,7 +22,7 @@ import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, toBytes, 
 import * as gloam from "@gloamtrade/sdk";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
 import type { Status } from "../private/client.js";
-import { GloamCore, gloamKeysFromSignature, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
+import { GloamCore, gloamKeysFromSignature, type GloamAccountKeys, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
 import { finishPending, launchRoute, launchSwap, type LaunchRecord } from "./launchVault.js";
 import { notesFor, type HolderProver } from "./gloamProofs.js";
 import { gloamFundsContext, type FundsProof } from "../private/funds.js";
@@ -43,6 +43,8 @@ export interface GloamPrivateConfig {
   launchSwap?: Address;
   /** CloakGloamBatcher on the launch vault. */
   batcher?: Address;
+  /** A claim link's account: spend received payments directly, never sweep them (see GloamCoreConfig). */
+  spendReceived?: boolean;
   /** Where the app keeps per-action records for finishPending (a swap's leftover, a graduation). */
   records?: { load(): LaunchRecord[]; save(r: LaunchRecord[]): void };
   logChunk?: bigint;
@@ -97,11 +99,12 @@ export class GloamPrivate {
    */
   readonly keys: { encPub: Uint8Array; encPriv: Uint8Array };
 
-  constructor(readonly cfg: GloamPrivateConfig, sig: Hex) {
-    const keys = gloamKeysFromSignature(sig);
+  /** From the wallet's account signature, or from keys (a claim link's account: `gloamLinkKeys`). */
+  constructor(readonly cfg: GloamPrivateConfig, sigOrKeys: Hex | GloamAccountKeys) {
+    const keys = typeof sigOrKeys === "string" ? gloamKeysFromSignature(sigOrKeys) : sigOrKeys;
     const encPriv = toBytes(keccak256(encodeAbiParameters([{ type: "string" }, { type: "uint256" }], ["cloak-gloam-device-v1", keys.noteSeed])));
     this.keys = { encPriv, encPub: toBytes(keccak256(encPriv)) };
-    const base = { publicClient: cfg.publicClient, chainId: cfg.chainId, payMemo: cfg.payMemo, provers: cfg.provers, submit: cfg.submit, logChunk: cfg.logChunk };
+    const base = { publicClient: cfg.publicClient, chainId: cfg.chainId, payMemo: cfg.payMemo, provers: cfg.provers, submit: cfg.submit, logChunk: cfg.logChunk, spendReceived: cfg.spendReceived };
     this.cores = [cfg.gloamVault, cfg.launchVault].filter((v): v is { pool: Address; poolBlock: bigint } => !!v).map((v) => new GloamCore({ ...base, pool: v.pool, poolBlock: v.poolBlock }, keys));
     if (!this.cores.length) throw new Error("No vault configured.");
   }
@@ -198,15 +201,43 @@ export class GloamPrivate {
     return out;
   }
 
-  /** This account's unspent notes in `pool`, both vaults (Gloam keeps no history of spent notes). */
-  async history(pool: Address): Promise<(OwnedGloamNote & { spent: false })[]> {
+  /**
+   * This account's notes in `pool`, both vaults: unspent ones, then the spent ones this session saw (Gloam keeps no
+   * history on chain for an account, so a fresh session sees a note as spent only if it saw it before or it was spent
+   * after the account's first sync, which is how a claim link's account reads its claims).
+   */
+  async history(pool: Address): Promise<(OwnedGloamNote & { spent: boolean; vault: Address })[]> {
     const asset = this.assetOf(pool);
-    const out: (OwnedGloamNote & { spent: false })[] = [];
+    const out: (OwnedGloamNote & { spent: boolean; vault: Address })[] = [];
     for (const c of this.cores) {
       await c.sync();
-      for (const n of c.ownNotes(asset)) out.push({ ...n, spent: false });
+      for (const n of c.ownNotes(asset)) out.push({ ...n, spent: false, vault: c.config.pool });
+      for (const n of c.spentNoteList(asset)) out.push({ ...n, spent: true, vault: c.config.pool });
     }
     return out;
+  }
+
+  /**
+   * Where this account's spent notes in `pool` went, from the vault's own events: a cash out names its wallet, a private
+   * transfer shows only that it happened.
+   */
+  async claims(pool: Address): Promise<{ amount: bigint; to: "private" | Address; at: number; tx: Hex }[]> {
+    const pub = this.cfg.publicClient;
+    const EV = parseAbi(["event Transferred(bytes32 indexed nullifier, bytes32[2] newCommitments)", "event Unshielded(bytes32 indexed nullifier, address indexed asset, address indexed to, uint256 amount)"]);
+    const out: { amount: bigint; to: "private" | Address; at: number; tx: Hex }[] = [];
+    for (const n of (await this.history(pool)).filter((x) => x.spent)) {
+      const nullifier = toHex(n.nullifier, { size: 32 });
+      const from = this.cores.find((c) => c.config.pool === n.vault)!.config.poolBlock;
+      const [tr, un] = await Promise.all([
+        pub.getContractEvents({ address: n.vault, abi: EV, eventName: "Transferred", args: { nullifier }, fromBlock: from }),
+        pub.getContractEvents({ address: n.vault, abi: EV, eventName: "Unshielded", args: { nullifier }, fromBlock: from }),
+      ]);
+      const l = un[0] ?? tr[0];
+      if (!l) continue;
+      const block = await pub.getBlock({ blockNumber: l.blockNumber! });
+      out.push({ amount: n.amount, to: un[0] ? (un[0].args.to as Address) : "private", at: Number(block.timestamp) * 1000, tx: l.transactionHash! });
+    }
+    return out.sort((a, b) => b.at - a.at);
   }
 
   /** No relayer fee comes out of the balance: the most one call moves is the whole balance. */
@@ -286,15 +317,18 @@ export class GloamPrivate {
   }
 
   /** Empty this account's balance of `token` to a gloamr1. address (privately) or a 0x address (a cash out). */
-  async sweep(token: Address, to: string, onStatus: Status = () => {}): Promise<{ txHash: Hex; amount: bigint; left: bigint }> {
+  async sweep(token: Address, to: string, onStatus: Status = () => {}, opts: { one?: boolean } = {}): Promise<{ txHash: Hex; amount: bigint; left: bigint }> {
     const asset = this.assetOf(token);
     let txHash: Hex | null = null;
     let amount = 0n;
     for (const c of this.cores) {
+      if (opts.one && txHash) break;
       await c.sync(onStatus);
-      const have = c.ownNotes(asset).reduce((a, n) => a + n.amount, 0n);
+      const notes = c.ownNotes(asset);
+      // one share of a split link: the smallest note, so the bigger ones stay for the next people
+      const have = opts.one ? (notes.length ? notes[notes.length - 1].amount : 0n) : notes.reduce((a, n) => a + n.amount, 0n);
       if (have === 0n) continue;
-      const hs = to.startsWith("0x") ? await c.withdraw(asset, to as Address, "max", onStatus) : (await c.send(asset, GloamPrivate.tagOf(to), have, onStatus)).txHashes;
+      const hs = to.startsWith("0x") ? await c.withdraw(asset, to as Address, opts.one ? have : "max", onStatus) : (await c.send(asset, GloamPrivate.tagOf(to), have, onStatus)).txHashes;
       txHash ??= hs[hs.length - 1];
       amount += have;
     }

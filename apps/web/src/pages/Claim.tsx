@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { parseClaimLink, WrongPasscodeError, type CloakPrivate, type ClaimLink, type LinkToken } from "@cloakely/sdk";
+import { parseClaimLink, WrongPasscodeError, type ClaimLink, type LinkToken } from "@cloakely/sdk";
+import type { Priv } from "../state";
 import { formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { friendly, Hint, linkProblem } from "../errors";
 import { linkClaims, linkState, openLinkAccount, tokenOf, TOKEN_DECIMALS, type LinkClaim } from "../links";
@@ -39,7 +40,7 @@ export function Claim() {
   const [link, setLink] = useState<ClaimLink | null>(null);
   const [bad, setBad] = useState("");
   const [code, setCode] = useState("");
-  const [acct, setAcct] = useState<CloakPrivate | null>(null);
+  const [acct, setAcct] = useState<Priv | null>(null);
   const [bals, setBals] = useState<Record<LinkToken, bigint> | null>(null);
   /** A link split into shares: how many are still unclaimed. */
   const [left, setLeft] = useState<number | null>(null);
@@ -82,7 +83,7 @@ export function Claim() {
     setErr("");
     setNetErr("");
     setBusy(l.locked ? (l.hint ? "Checking your answer…" : "Checking the passcode…") : "Opening the link…");
-    let a: CloakPrivate;
+    let a: Priv;
     try {
       a = await openLinkAccount(l, passcode);
       pass.current = passcode;
@@ -97,7 +98,7 @@ export function Claim() {
   }
 
   /** Reads what the link holds and why it might hold nothing. */
-  async function read(l: ClaimLink, a: CloakPrivate, quiet = false) {
+  async function read(l: ClaimLink, a: Priv, quiet = false) {
     if (!quiet) setBusy("Finding the money in the vault…");
     try {
       const st = await linkState(a, l.token);
@@ -113,7 +114,7 @@ export function Claim() {
       } else {
         setEmpty(null);
         const pool = (t: LinkToken) => a.market(tokenOf(a, t)).pool;
-        const fee = (k: Parameters<typeof a.relayFee>[0], t: LinkToken) => a.relayFee(k, pool(t)).then((q) => q.fee).catch(() => undefined);
+        const fee = (k: "transact" | "unshieldHype", t: LinkToken) => a.relayFee(k, pool(t)).then((q) => q.fee).catch(() => undefined);
         Promise.all([fee("transact", "HYPE"), fee("unshieldHype", "HYPE"), fee("transact", "USDC")]).then(([tr, un, us]) => {
           const f: Record<string, bigint> = {};
           if (tr !== undefined) f.HYPEprivate = tr;

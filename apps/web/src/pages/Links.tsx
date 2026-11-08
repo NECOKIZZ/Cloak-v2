@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, linkAddress, linkCheck, linkKeys, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
+import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, parseUnits, type Hex } from "viem";
 import { friendly, Hint, checked } from "../errors";
-import { addLink, linkBalances, linkClaims, linkState, loadLinks, newId, saveLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
+import { addLink, linkBalances, linkClaims, linkState, loadLinks, newId, newLinkTarget, saveLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
 import { QR } from "../qr";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { publicClient } from "../wallet";
@@ -135,10 +135,8 @@ export function Links() {
       if (have < total + sendFee * BigInt(n)) throw new Hint(`You have ${formatUnits(have, dec)} ${sf.token} private. This link needs ${formatUnits(total + sendFee * BigInt(n), dec)} with fees. Shield more first.`);
       setBusy("Making the link's account…");
       const secret = newLinkSecret();
-      const linkKeysNow = await linkKeys(secret, sf.lock ? sf.code : undefined);
-      const addr = await linkAddress(linkKeysNow);
       // a locked link carries a short check, so a wrong passcode is caught on the claimer's phone straight away
-      const check = sf.lock ? await linkCheck(linkKeysNow) : undefined;
+      const { address: addr, check } = await newLinkTarget(secret, sf.lock ? sf.code : undefined);
       const shareStr = formatUnits(share, dec);
       const linkAt = (block: bigint) => buildClaimLink({ secret, block, token: sf.token, amount: n > 1 ? shareStr : amtStr, message: sf.message, from: sf.from, locked: sf.lock, hint: sf.hint, shares: n, check }, location.origin);
       // saved before any money moves: if a send fails or the tab closes halfway, the link (and whatever reached it)

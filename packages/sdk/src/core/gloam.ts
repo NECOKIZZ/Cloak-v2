@@ -61,6 +61,11 @@ export interface GloamCoreConfig {
   submit: CoreSubmitter;
   /** Move received payments into this account's own notes during sync (default true). */
   autoSweep?: boolean;
+  /**
+   * Spend received payments directly, as if they were own notes, and never sweep them (a claim link's account: whoever
+   * holds the link holds the account, so a sweep into it first would only cost a transaction).
+   */
+  spendReceived?: boolean;
   /** getLogs range per call (Elysium's public RPCs cap results, not ranges). */
   logChunk?: bigint;
 }
@@ -102,7 +107,12 @@ const assetField = (a: Address) => BigInt(a);
 
 /** Keys from the 65-byte account signature. Deterministic: the same signature gives the same account. */
 export function gloamKeysFromSignature(sig: Hex): GloamAccountKeys {
-  const okm = hkdf(sha256, hexToBytes(sig), new Uint8Array(0), HKDF_INFO, 64);
+  return gloamKeysFromBytes(hexToBytes(sig));
+}
+
+/** Keys from any secret bytes (a signature, or a claim link's seed). Deterministic. */
+export function gloamKeysFromBytes(ikm: Uint8Array): GloamAccountKeys {
+  const okm = hkdf(sha256, ikm, new Uint8Array(0), HKDF_INFO, 64);
   const noteSeed = field(okm.slice(0, 32));
   const n = p256.CURVE.n;
   const d = (BigInt(toHex(okm.slice(32, 64))) % (n - 1n)) + 1n;
@@ -200,9 +210,12 @@ export class GloamCore implements PrivateCore {
     this.candidates = stillWaiting;
     for (const [k, n] of this.notes) {
       const spent = await pub.readContract({ address: this.cfg.pool, abi: GLOAM_POOL_ABI, functionName: "isSpent", args: [h32(n.nullifier)] });
-      if (spent) this.notes.delete(k);
+      if (spent) {
+        this.spentNotes.set(k, n);
+        this.notes.delete(k);
+      }
     }
-    if (this.cfg.autoSweep !== false) {
+    if (this.cfg.autoSweep !== false && !this.cfg.spendReceived) {
       const received = [...this.notes.values()].filter((x) => !x.own);
       for (const n of received) {
         if (!this.notes.has(h32(n.commitment))) continue;
@@ -261,7 +274,7 @@ export class GloamCore implements PrivateCore {
   }
 
   async balances(): Promise<Map<Address, bigint>> {
-    return this.sum((n) => n.own);
+    return this.sum((n) => n.own || !!this.cfg.spendReceived);
   }
 
   async pending(): Promise<Map<Address, bigint>> {
@@ -270,7 +283,15 @@ export class GloamCore implements PrivateCore {
 
   /** Every spendable note, largest first. */
   ownNotes(asset?: Address): OwnedGloamNote[] {
-    return [...this.notes.values()].filter((n) => n.own && (!asset || n.asset.toLowerCase() === asset.toLowerCase())).sort((a, b) => (a.amount < b.amount ? 1 : a.amount > b.amount ? -1 : 0));
+    return [...this.notes.values()].filter((n) => (n.own || this.cfg.spendReceived) && (!asset || n.asset.toLowerCase() === asset.toLowerCase())).sort((a, b) => (a.amount < b.amount ? 1 : a.amount > b.amount ? -1 : 0));
+  }
+
+  /** Notes this account held that have since been spent (seen in this session's syncs). */
+  private spentNotes = new Map<string, OwnedGloamNote>();
+
+  /** Spent notes this session saw: a claim link's account uses them to show who claimed and where it went. */
+  spentNoteList(asset?: Address): OwnedGloamNote[] {
+    return [...this.spentNotes.values()].filter((n) => !asset || n.asset.toLowerCase() === asset.toLowerCase());
   }
 
   private sum(pick: (n: OwnedGloamNote) => boolean) {

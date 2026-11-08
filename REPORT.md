@@ -783,3 +783,15 @@ What stays: the launch side (factory, auctions, drops, the launch pairs), the si
 The clock jump found a bug: `GloamPrivate` set a swap's deadline from the device's clock, but the contract checks block time. A device whose clock runs behind the chain (or a chain ahead of it) would have every swap refused as expired. The deadline now comes from the latest block.
 
 Also settled: Gloam's repo is public, so the site loads Gloam's circuits from jsDelivr at the pinned commit as planned (16.9). The self-hosted copy stays only as a fallback.
+
+### 16.13 Payment links on Gloam (Nov 8)
+
+Payment links now run on the Gloam backend with the same pages and the same link format. Locks, riddles, split shares, covered claim fees and taking a link back all work as before.
+- **How:** a link's secret (and passcode, stretched with scrypt as before) opens a small Gloam account, and its receive tag in `cloak:` form is where the sender pays, one payment per share. Whoever opens the link sweeps it, to a wallet (a cash out, relayed, so no gas) or into their own private balance (a private send).
+- **Why it fits Gloam:** Gloam's notes are bearer notes, which is what a link needs. The link account spends what it received directly (`spendReceived`), with no sweep into its own note first.
+- **SDK:** `core/gloamLinks.ts` (`gloamLinkKeys`, `gloamLinkAddress`, `gloamLinkCheck`, `openGloamLinkKeys`). In `GloamPrivate`: construction from keys, `sweep(..., { one })` for a single share, `history` with spent notes, and `claims()`, which reads where each spent note went from the vault's `Unshielded` and `Transferred` events. In `GloamCore`: `spendReceived` and a record of the session's spent notes.
+- **Site:** `links.ts` opens a Gloam link account and makes new link targets for whichever backend is active. The Links and Claim pages are unchanged apart from types.
+- **Tests:**
+  - `e2e-gloam/part9-links.mjs` covers a locked 2-share link: a wrong passcode refused on the device, the right one in another spelling opens it, one share claimed to a gasless wallet (0.2985 of 0.3), the other into another user's private balance, the claims list showing one wallet and one private, and the sender taking back an unclaimed link.
+  - `part8-site.mjs` now also makes a link on the real Links page and claims it in a second browser with no wallet (0.0995 of 0.1 arrived). Screenshots are `part8-6-link-made.png`, `part8-6b-claim-page.png` and `part8-7-link-claimed.png`.
+- **Still not on the Gloam backend:** bids from the private balance, receive addresses, and spread-out withdrawals.
