@@ -58,7 +58,11 @@ contract CloakAuction {
     // drand quicknet (the network sealed bids are encrypted to)
     uint256 public constant DRAND_GENESIS = 1692803367;
     uint256 public constant DRAND_PERIOD = 3;
-    uint256 public constant REVEAL_MARGIN = 30; // seconds the keeper needs between the round and the end of reveals
+    /// @dev Seconds the keeper needs between the drand round and the end of reveals (decrypt, reveal, retry).
+    uint256 public constant REVEAL_MARGIN = 120;
+    /// @dev The shortest reveal window: a bid that isn't revealed loses its penalty, so an honest bidder must always have
+    ///      time to be revealed, by the keeper or by themselves (review, Haider Ali, Nov 8).
+    uint256 public constant MIN_REVEAL_WINDOW = 5 minutes;
 
     struct Params {
         address creator; // receives the raise (minus LP) and, after the lock, the LP shares
@@ -173,7 +177,7 @@ contract CloakAuction {
         require(p.saleSupply > 0 && p.minPrice > 0, "supply/price");
         require(p.numTicks > 0 && p.numTicks <= MAX_TICKS, "ticks");
         require(p.numTicks == 1 || p.tickSize > 0, "tickSize");
-        require(p.commitEnd > block.timestamp && p.revealEnd > p.commitEnd, "times");
+        require(p.commitEnd > block.timestamp && p.revealEnd >= p.commitEnd + MIN_REVEAL_WINDOW, "times");
         require(p.lpBps <= 10_000 && p.noRevealPenaltyBps <= 5_000, "bps");
         require(p.noRevealPenaltyBps >= MIN_NO_REVEAL_PENALTY_BPS, "penalty");
         require(p.lpLockUntil == 0 || p.lpLockUntil >= p.revealEnd, "lock");

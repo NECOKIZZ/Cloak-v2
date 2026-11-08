@@ -1,0 +1,228 @@
+diff --git a/apps/web/src/pages/CreateForm.tsx b/apps/web/src/pages/CreateForm.tsx
+index 72cd02f..9170378 100644
+--- a/apps/web/src/pages/CreateForm.tsx
++++ b/apps/web/src/pages/CreateForm.tsx
+@@ -30,11 +30,11 @@ interface Form {
+ }
+ 
+ const PRESETS: { id: string; name: string; blurb: string; f: Partial<Form> }[] = [
+-  { id: "quick", name: "Quick", blurb: "15 minutes of bidding. Good for a first launch or a community drop.", f: { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "3" } },
++  { id: "quick", name: "Quick", blurb: "15 minutes of bidding. Good for a first launch or a community drop.", f: { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5" } },
+   { id: "standard", name: "Standard", blurb: "6 hours of bidding, so people in every time zone can take part.", f: { sale: "10000000", start: "0.0000001", ceiling: "0.00001", levels: "100", commitMin: "360", revealMin: "10" } },
+   { id: "extended", name: "Extended", blurb: "24 hours of bidding for a larger sale with a wide price range.", f: { sale: "100000000", start: "0.00000001", ceiling: "0.000002", levels: "200", commitMin: "1440", revealMin: "15" } },
+ ];
+-const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "3", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "10", creatorPct: "0", vestDays: "90" };
++const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "10", creatorPct: "0", vestDays: "90" };
+ const LAUNCH_FEE_BPS = 150n;
+ 
+ function Field({ label, unit, help, value, onChange, mode, disabled }: { label: string; unit?: string; help: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; mode: "decimal" | "numeric"; disabled?: boolean }) {
+@@ -114,7 +114,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
+       if (!/^\d+$/.test(f.levels.trim()) || levels < 1 || levels > 256) return "Price levels must be a whole number from 1 to 256.";
+       if (levels > 1 && (!pos(f.ceiling) || ceiling <= start)) return "The top price must be above the starting price.";
+       if (!pos(f.commitMin) || Number(f.commitMin) < 1) return "Bidding must last at least 1 minute.";
+-      if (!pos(f.revealMin) || Number(f.revealMin) < 1) return "The reveal window must be at least 1 minute, so every sealed bid can open.";
++      if (!pos(f.revealMin) || Number(f.revealMin) < 5) return "The reveal window must be at least 5 minutes, so every sealed bid can open in time.";
+       if (!num(f.lpPct) || Number(f.lpPct) > 100) return "The pool's share of the raise must be between 0 and 100%.";
+       if (f.lp === "date" && (!/^\d+$/.test(f.lockDays.trim()) || Number(f.lockDays) < 1)) return "Lock the pool for at least 1 day.";
+       if (!num(f.penaltyPct) || Number(f.penaltyPct) < 10 || Number(f.penaltyPct) > 50) return "The penalty for unrevealed bids must be between 10% and 50%.";
+diff --git a/contracts/src/CloakAuction.sol b/contracts/src/CloakAuction.sol
+index 3847120..7156708 100644
+--- a/contracts/src/CloakAuction.sol
++++ b/contracts/src/CloakAuction.sol
+@@ -58,7 +58,11 @@ contract CloakAuction {
+     // drand quicknet (the network sealed bids are encrypted to)
+     uint256 public constant DRAND_GENESIS = 1692803367;
+     uint256 public constant DRAND_PERIOD = 3;
+-    uint256 public constant REVEAL_MARGIN = 30; // seconds the keeper needs between the round and the end of reveals
++    /// @dev Seconds the keeper needs between the drand round and the end of reveals (decrypt, reveal, retry).
++    uint256 public constant REVEAL_MARGIN = 120;
++    /// @dev The shortest reveal window: a bid that isn't revealed loses its penalty, so an honest bidder must always have
++    ///      time to be revealed, by the keeper or by themselves (review, Haider Ali, Nov 8).
++    uint256 public constant MIN_REVEAL_WINDOW = 5 minutes;
+ 
+     struct Params {
+         address creator; // receives the raise (minus LP) and, after the lock, the LP shares
+@@ -173,7 +177,7 @@ contract CloakAuction {
+         require(p.saleSupply > 0 && p.minPrice > 0, "supply/price");
+         require(p.numTicks > 0 && p.numTicks <= MAX_TICKS, "ticks");
+         require(p.numTicks == 1 || p.tickSize > 0, "tickSize");
+-        require(p.commitEnd > block.timestamp && p.revealEnd > p.commitEnd, "times");
++        require(p.commitEnd > block.timestamp && p.revealEnd >= p.commitEnd + MIN_REVEAL_WINDOW, "times");
+         require(p.lpBps <= 10_000 && p.noRevealPenaltyBps <= 5_000, "bps");
+         require(p.noRevealPenaltyBps >= MIN_NO_REVEAL_PENALTY_BPS, "penalty");
+         require(p.lpLockUntil == 0 || p.lpLockUntil >= p.revealEnd, "lock");
+diff --git a/contracts/src/CloakDrop.sol b/contracts/src/CloakDrop.sol
+index 0ad976b..85aabd1 100644
+--- a/contracts/src/CloakDrop.sol
++++ b/contracts/src/CloakDrop.sol
+@@ -39,7 +39,11 @@ contract CloakDrop {
+     // drand quicknet, the network bids are sealed to
+     uint256 public constant DRAND_GENESIS = 1692803367;
+     uint256 public constant DRAND_PERIOD = 3;
+-    uint256 public constant REVEAL_MARGIN = 30;
++    /// @dev Seconds the keeper needs between the drand round and the end of reveals (decrypt, reveal, retry).
++    uint256 public constant REVEAL_MARGIN = 120;
++    /// @dev The shortest reveal window: a bid that isn't revealed loses its penalty, so an honest bidder must always have
++    ///      time to be revealed, by the keeper or by themselves (review, Haider Ali, Nov 8).
++    uint256 public constant MIN_REVEAL_WINDOW = 5 minutes;
+ 
+     struct Params {
+         address creator; // set by the factory to the caller
+@@ -157,7 +161,7 @@ contract CloakDrop {
+         require(p.floor > 0, "floor");
+         require(p.wlBoostBps <= MAX_BOOST_BPS && (p.wlRoot != bytes32(0) || p.wlBoostBps == 0), "boost");
+         require(p.royaltyBps <= MAX_ROYALTY_BPS, "royalty");
+-        require(p.gtdEnd >= block.timestamp && p.commitEnd > p.gtdEnd && p.revealEnd > p.commitEnd, "times");
++        require(p.gtdEnd >= block.timestamp && p.commitEnd > p.gtdEnd && p.revealEnd >= p.commitEnd + MIN_REVEAL_WINDOW, "times");
+         if (p.tlockRound != 0) {
+             uint256 at = DRAND_GENESIS + (uint256(p.tlockRound) - 1) * DRAND_PERIOD;
+             require(at >= p.commitEnd && at + REVEAL_MARGIN <= p.revealEnd, "tlock round");
+diff --git a/contracts/src/CloakEscrowDrop.sol b/contracts/src/CloakEscrowDrop.sol
+index 73d56dc..f8f727c 100644
+--- a/contracts/src/CloakEscrowDrop.sol
++++ b/contracts/src/CloakEscrowDrop.sol
+@@ -34,7 +34,11 @@ contract CloakEscrowDrop {
+     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
+     uint256 public constant DRAND_GENESIS = 1692803367;
+     uint256 public constant DRAND_PERIOD = 3;
+-    uint256 public constant REVEAL_MARGIN = 30;
++    /// @dev Seconds the keeper needs between the drand round and the end of reveals (decrypt, reveal, retry).
++    uint256 public constant REVEAL_MARGIN = 120;
++    /// @dev The shortest reveal window: a bid that isn't revealed loses its penalty, so an honest bidder must always have
++    ///      time to be revealed, by the keeper or by themselves (review, Haider Ali, Nov 8).
++    uint256 public constant MIN_REVEAL_WINDOW = 5 minutes;
+     /// Gas a token transfer may use: a collection can't make delivering a bid run out of gas.
+     uint256 public constant TRANSFER_GAS = 300_000;
+ 
+@@ -142,7 +146,7 @@ contract CloakEscrowDrop {
+         require(p.gtdRoot == bytes32(0) && p.gtdPrice == 0, "no gtd");
+         require(p.wlBoostBps <= MAX_BOOST_BPS && (p.wlRoot != bytes32(0) || p.wlBoostBps == 0), "boost");
+         require(p.royaltyBps == 0, "royalty"); // royalties are the collection's own
+-        require(p.gtdEnd >= block.timestamp && p.commitEnd > p.gtdEnd && p.revealEnd > p.commitEnd, "times");
++        require(p.gtdEnd >= block.timestamp && p.commitEnd > p.gtdEnd && p.revealEnd >= p.commitEnd + MIN_REVEAL_WINDOW, "times");
+         if (p.tlockRound != 0) {
+             uint256 at = DRAND_GENESIS + (uint256(p.tlockRound) - 1) * DRAND_PERIOD;
+             require(at >= p.commitEnd && at + REVEAL_MARGIN <= p.revealEnd, "tlock round");
+diff --git a/contracts/test/CloakAuction.t.sol b/contracts/test/CloakAuction.t.sol
+index e7fa7aa..de8e9f8 100644
+--- a/contracts/test/CloakAuction.t.sol
++++ b/contracts/test/CloakAuction.t.sol
+@@ -311,4 +311,26 @@ contract CloakAuctionTest is Test {
+         vm.stopPrank();
+         assertGt(hypeOut, 0);
+     }
++
++    /// review (Haider Ali, Nov 8): a reveal window too short to reveal in would cost honest bidders their penalty.
++    function test_haider_revealWindowTooShortIsRefused() public {
++        CloakAuction.Params memory p = CloakAuction.Params({
++            creator: creator,
++            saleSupply: SUPPLY,
++            lpReserve: LP_RESERVE,
++            minPrice: MIN_PRICE,
++            tickSize: TICK,
++            numTicks: 100,
++            commitEnd: uint64(block.timestamp + 1 hours),
++            revealEnd: uint64(block.timestamp + 1 hours + 5 minutes - 1),
++            lpBps: 5_000,
++            noRevealPenaltyBps: 1_000,
++            lpLockUntil: 0,
++            tlockRound: 0
++        });
++        vm.expectRevert(bytes("times"));
++        factory.createLaunch("Short", "SHT", 100_000e18, 30 days, p, "ipfs://meta");
++        p.revealEnd += 1; // exactly five minutes is enough
++        factory.createLaunch("Short", "SHT", 100_000e18, 30 days, p, "ipfs://meta");
++    }
+ }
+diff --git a/contracts/test/CloakDrop.t.sol b/contracts/test/CloakDrop.t.sol
+index e6d7f87..1d610d3 100644
+--- a/contracts/test/CloakDrop.t.sol
++++ b/contracts/test/CloakDrop.t.sol
+@@ -481,9 +481,25 @@ contract CloakDropTest is Test {
+         p.numTicks = 1;
+         p.gtdEnd = uint64(block.timestamp);
+         p.commitEnd = uint64(block.timestamp + 1);
+-        p.revealEnd = uint64(block.timestamp + 2);
++        p.revealEnd = uint64(block.timestamp + 1 + 5 minutes);
+         p.floor = 1;
+         CloakDrop d = factory.createDrop(p, "X", "X", "", "");
+         assertEq(d.baseURI(), string.concat("https://cloak.example/api/nft/", vm.toLowercase(vm.toString(address(d))), "/"));
+     }
++
++    /// review (Haider Ali, Nov 8): a drop's reveal window can't be shorter than five minutes.
++    function test_haider_revealWindowTooShortIsRefused() public {
++        CloakDrop.Params memory p;
++        p.supply = 1;
++        p.maxPerBid = 1;
++        p.numTicks = 1;
++        p.gtdEnd = uint64(block.timestamp);
++        p.commitEnd = uint64(block.timestamp + 1);
++        p.revealEnd = uint64(block.timestamp + 2);
++        p.floor = 1;
++        vm.expectRevert(bytes("times"));
++        factory.createDrop(p, "X", "X", "", "");
++        p.revealEnd = uint64(block.timestamp + 1 + 5 minutes);
++        factory.createDrop(p, "X", "X", "", "");
++    }
+ }
+diff --git a/packages/sdk/src/cloak.ts b/packages/sdk/src/cloak.ts
+index ace14d7..f79ebc4 100644
+--- a/packages/sdk/src/cloak.ts
++++ b/packages/sdk/src/cloak.ts
+@@ -15,6 +15,11 @@ import {
+ import { cloakAuctionAbi, cloakFactoryAbi, cloakFeeLockerAbi, cloakPairAbi, cloakTokenAbi, cloakV4HookAbi } from "./abis.js";
+ 
+ /** `lpLockUntil` for "locked forever, the creator earns the pool's trading fees". */
++
++/** The shortest reveal window launches and drops take (the contracts' MIN_REVEAL_WINDOW). */
++export const MIN_REVEAL_SECS = 300;
++/** Seconds the keeper needs between the drand round and the end of reveals (the contracts' REVEAL_MARGIN). */
++export const REVEAL_MARGIN_SECS = 120;
+ export const LOCK_FOREVER_FEES = 2n ** 64n - 1n;
+ import { type BidPreimage, drandRoundAt, sealBid, unsealBid } from "./seal.js";
+ 
+@@ -204,11 +209,14 @@ export class Cloak {
+ 
+   // ───────────── launchpad side ─────────────
+ 
++
+   async createLaunch(p: LaunchParams): Promise<{ auction: Address; token: Address; txHash: Hex; block: bigint }> {
+     if (!this.factory) throw new Error("Cloak: factory address required");
+     const w = this.wallet();
+     const lock = p.lpLockUntil === undefined || p.lpLockUntil === "burn" ? 0n : p.lpLockUntil === "fees" ? LOCK_FOREVER_FEES : BigInt(p.lpLockUntil);
+     if (lock !== 0n && lock !== LOCK_FOREVER_FEES && !(await this.timedLocks())) throw new Error("Launches from this factory open a Uniswap v4 pool, whose liquidity stays locked: choose \"burn\" or \"fees\" (locked forever, trading fees to the creator), not a lock date.");
++    // the contract refuses a reveal window under five minutes: an honest bidder must have time to be revealed
++    if (p.revealEnd - p.commitEnd < MIN_REVEAL_SECS) throw new Error(`The reveal window must be at least ${MIN_REVEAL_SECS / 60} minutes, so every sealed bid can open in time.`);
+     const params = {
+       creator: p.creator ?? w.account.address,
+       saleSupply: p.saleSupply,
+diff --git a/packages/sdk/src/drops.ts b/packages/sdk/src/drops.ts
+index 43f6630..3664960 100644
+--- a/packages/sdk/src/drops.ts
++++ b/packages/sdk/src/drops.ts
+@@ -15,6 +15,7 @@ import { cloakDropAbi, cloakDropFactoryAbi, cloakEscrowDropAbi, cloakEscrowDropF
+ import { commitmentOf, type Wallet } from "./cloak.js";
+ import { drandRoundAt, drandRoundTime, sealBid, unsealBid } from "./seal.js";
+ 
++import { MIN_REVEAL_SECS, REVEAL_MARGIN_SECS } from "./cloak.js";
+ export const DROP_BPS = 10_000n;
+ export const DROP_MAX_BOOST_BPS = 3_000;
+ export const DROP_MAX_PER_BID = 20;
+@@ -310,7 +311,7 @@ export class CloakDrops {
+     const gtdEnd = now + 90 + (gtdList.length ? o.gtd!.durationSecs : 0);
+     const commitEnd = gtdEnd + o.biddingSecs;
+     const tlockRound = drandRoundAt(commitEnd);
+-    const revealEnd = Math.max(commitEnd + (o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS), drandRoundTime(tlockRound) + 60);
++    const revealEnd = Math.max(commitEnd + Math.max(o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS, MIN_REVEAL_SECS), drandRoundTime(tlockRound) + REVEAL_MARGIN_SECS);
+     const params = {
+       creator: w.account.address,
+       supply: o.supply,
+@@ -460,7 +461,7 @@ export class CloakDrops {
+     const gtdEnd = now + 90;
+     const commitEnd = gtdEnd + o.biddingSecs;
+     const tlockRound = drandRoundAt(commitEnd);
+-    const revealEnd = Math.max(commitEnd + (o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS), drandRoundTime(tlockRound) + 60);
++    const revealEnd = Math.max(commitEnd + Math.max(o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS, MIN_REVEAL_SECS), drandRoundTime(tlockRound) + REVEAL_MARGIN_SECS);
+     const zero = `0x${"0".repeat(64)}` as Hex;
+     const params = {
+       creator: w.account.address,

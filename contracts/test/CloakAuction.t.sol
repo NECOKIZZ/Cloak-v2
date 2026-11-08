@@ -311,4 +311,26 @@ contract CloakAuctionTest is Test {
         vm.stopPrank();
         assertGt(hypeOut, 0);
     }
+
+    /// review (Haider Ali, Nov 8): a reveal window too short to reveal in would cost honest bidders their penalty.
+    function test_haider_revealWindowTooShortIsRefused() public {
+        CloakAuction.Params memory p = CloakAuction.Params({
+            creator: creator,
+            saleSupply: SUPPLY,
+            lpReserve: LP_RESERVE,
+            minPrice: MIN_PRICE,
+            tickSize: TICK,
+            numTicks: 100,
+            commitEnd: uint64(block.timestamp + 1 hours),
+            revealEnd: uint64(block.timestamp + 1 hours + 5 minutes - 1),
+            lpBps: 5_000,
+            noRevealPenaltyBps: 1_000,
+            lpLockUntil: 0,
+            tlockRound: 0
+        });
+        vm.expectRevert(bytes("times"));
+        factory.createLaunch("Short", "SHT", 100_000e18, 30 days, p, "ipfs://meta");
+        p.revealEnd += 1; // exactly five minutes is enough
+        factory.createLaunch("Short", "SHT", 100_000e18, 30 days, p, "ipfs://meta");
+    }
 }

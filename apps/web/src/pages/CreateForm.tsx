@@ -30,11 +30,11 @@ interface Form {
 }
 
 const PRESETS: { id: string; name: string; blurb: string; f: Partial<Form> }[] = [
-  { id: "quick", name: "Quick", blurb: "15 minutes of bidding. Good for a first launch or a community drop.", f: { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "3" } },
+  { id: "quick", name: "Quick", blurb: "15 minutes of bidding. Good for a first launch or a community drop.", f: { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5" } },
   { id: "standard", name: "Standard", blurb: "6 hours of bidding, so people in every time zone can take part.", f: { sale: "10000000", start: "0.0000001", ceiling: "0.00001", levels: "100", commitMin: "360", revealMin: "10" } },
   { id: "extended", name: "Extended", blurb: "24 hours of bidding for a larger sale with a wide price range.", f: { sale: "100000000", start: "0.00000001", ceiling: "0.000002", levels: "200", commitMin: "1440", revealMin: "15" } },
 ];
-const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "3", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "10", creatorPct: "0", vestDays: "90" };
+const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "10", creatorPct: "0", vestDays: "90" };
 const LAUNCH_FEE_BPS = 150n;
 
 function Field({ label, unit, help, value, onChange, mode, disabled }: { label: string; unit?: string; help: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; mode: "decimal" | "numeric"; disabled?: boolean }) {
@@ -114,7 +114,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
       if (!/^\d+$/.test(f.levels.trim()) || levels < 1 || levels > 256) return "Price levels must be a whole number from 1 to 256.";
       if (levels > 1 && (!pos(f.ceiling) || ceiling <= start)) return "The top price must be above the starting price.";
       if (!pos(f.commitMin) || Number(f.commitMin) < 1) return "Bidding must last at least 1 minute.";
-      if (!pos(f.revealMin) || Number(f.revealMin) < 1) return "The reveal window must be at least 1 minute, so every sealed bid can open.";
+      if (!pos(f.revealMin) || Number(f.revealMin) < 5) return "The reveal window must be at least 5 minutes, so every sealed bid can open in time.";
       if (!num(f.lpPct) || Number(f.lpPct) > 100) return "The pool's share of the raise must be between 0 and 100%.";
       if (f.lp === "date" && (!/^\d+$/.test(f.lockDays.trim()) || Number(f.lockDays) < 1)) return "Lock the pool for at least 1 day.";
       if (!num(f.penaltyPct) || Number(f.penaltyPct) < 10 || Number(f.penaltyPct) > 50) return "The penalty for unrevealed bids must be between 10% and 50%.";

@@ -15,6 +15,7 @@ import { cloakDropAbi, cloakDropFactoryAbi, cloakEscrowDropAbi, cloakEscrowDropF
 import { commitmentOf, type Wallet } from "./cloak.js";
 import { drandRoundAt, drandRoundTime, sealBid, unsealBid } from "./seal.js";
 
+import { MIN_REVEAL_SECS, REVEAL_MARGIN_SECS } from "./cloak.js";
 export const DROP_BPS = 10_000n;
 export const DROP_MAX_BOOST_BPS = 3_000;
 export const DROP_MAX_PER_BID = 20;
@@ -310,7 +311,7 @@ export class CloakDrops {
     const gtdEnd = now + 90 + (gtdList.length ? o.gtd!.durationSecs : 0);
     const commitEnd = gtdEnd + o.biddingSecs;
     const tlockRound = drandRoundAt(commitEnd);
-    const revealEnd = Math.max(commitEnd + (o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS), drandRoundTime(tlockRound) + 60);
+    const revealEnd = Math.max(commitEnd + Math.max(o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS, MIN_REVEAL_SECS), drandRoundTime(tlockRound) + REVEAL_MARGIN_SECS);
     const params = {
       creator: w.account.address,
       supply: o.supply,
@@ -460,7 +461,7 @@ export class CloakDrops {
     const gtdEnd = now + 90;
     const commitEnd = gtdEnd + o.biddingSecs;
     const tlockRound = drandRoundAt(commitEnd);
-    const revealEnd = Math.max(commitEnd + (o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS), drandRoundTime(tlockRound) + 60);
+    const revealEnd = Math.max(commitEnd + Math.max(o.revealSecs ?? DROP_DEFAULT_REVEAL_SECS, MIN_REVEAL_SECS), drandRoundTime(tlockRound) + REVEAL_MARGIN_SECS);
     const zero = `0x${"0".repeat(64)}` as Hex;
     const params = {
       creator: w.account.address,

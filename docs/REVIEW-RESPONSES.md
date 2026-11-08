@@ -61,3 +61,14 @@ All 12 findings were handled in Cloak v1 on Nov 7 (v1's `SECURITY.md`). The cont
 ### Draft reply to the reviewer
 
 > Thanks, both are real. On the sealed bids: the chain can't verify a drand ciphertext without BLS12-381 pairings, so the no-reveal penalty (10% floor, up to 50%) is what prices the option. The keeper now publishes bids it can't open the moment the drand round passes, so a launch page can show them during the reveal window. We're checking whether Elysium has EIP-2537 so a reveal can prove the ciphertext opens to the commitment. On the batcher: agreed. In our new batcher, rounds now cross at a time-weighted average over at least a full round, with a fixed time limit to settle. Spot must sit within the slippage band of that average when the net trades, and the first order's spot no longer anchors anything. Tests cover a push in the settling transaction, a push in the first order's block and a real move held through the round. Elysium is an Orbit chain with a single sequencer that orders first come first served, and no public mempool.
+
+## Follow-ups after the replies (Nov 8)
+
+- **Haider's recheck of f15fe8a: a 1-second reveal window is still allowed.** With a 25% penalty, an honest bidder could lose a quarter of their deposit just for lack of time to be revealed. **Fixed:**
+  - `CloakAuction`, `CloakDrop` and `CloakEscrowDrop` require `MIN_REVEAL_WINDOW` (5 minutes) between the end of bidding and the end of reveals.
+  - `REVEAL_MARGIN` between the drand round and the end of reveals goes from 30 seconds to 2 minutes.
+  - The SDK refuses a shorter window before sending (`MIN_REVEAL_SECS`), drops pad to it, and the site's create form and Quick preset now start at 5 minutes.
+  - Regression tests `test_haider_revealWindowTooShortIsRefused` (auction and drop). v1's suite is at 277 of 277 here.
+  - These are v1's contracts, so `docs/patches/v1-min-reveal-window.patch` carries the change for v1's repo. It applies cleanly to v1's `main` (`git apply`).
+- **Promised to Ghost: unopenable bids on the launch page.** Done. During the reveal window, the launch page shows how many sealed bids the time-lock key couldn't open and their total deposit, from the keeper's `GET /unopenable`, refreshed every 20 seconds.
+- **Promised to Ghost: the batcher fix "into the mainnet contracts".** Done for v2's batcher (2.2 above). v1's `PrivateBatcher` and `SharedBatcher` still anchor the band to the first order's spot. That fix sits with the held v1 batcher work, waiting for Bob's call.

@@ -15,6 +15,11 @@ import {
 import { cloakAuctionAbi, cloakFactoryAbi, cloakFeeLockerAbi, cloakPairAbi, cloakTokenAbi, cloakV4HookAbi } from "./abis.js";
 
 /** `lpLockUntil` for "locked forever, the creator earns the pool's trading fees". */
+
+/** The shortest reveal window launches and drops take (the contracts' MIN_REVEAL_WINDOW). */
+export const MIN_REVEAL_SECS = 300;
+/** Seconds the keeper needs between the drand round and the end of reveals (the contracts' REVEAL_MARGIN). */
+export const REVEAL_MARGIN_SECS = 120;
 export const LOCK_FOREVER_FEES = 2n ** 64n - 1n;
 import { type BidPreimage, drandRoundAt, sealBid, unsealBid } from "./seal.js";
 
@@ -204,11 +209,14 @@ export class Cloak {
 
   // ───────────── launchpad side ─────────────
 
+
   async createLaunch(p: LaunchParams): Promise<{ auction: Address; token: Address; txHash: Hex; block: bigint }> {
     if (!this.factory) throw new Error("Cloak: factory address required");
     const w = this.wallet();
     const lock = p.lpLockUntil === undefined || p.lpLockUntil === "burn" ? 0n : p.lpLockUntil === "fees" ? LOCK_FOREVER_FEES : BigInt(p.lpLockUntil);
     if (lock !== 0n && lock !== LOCK_FOREVER_FEES && !(await this.timedLocks())) throw new Error("Launches from this factory open a Uniswap v4 pool, whose liquidity stays locked: choose \"burn\" or \"fees\" (locked forever, trading fees to the creator), not a lock date.");
+    // the contract refuses a reveal window under five minutes: an honest bidder must have time to be revealed
+    if (p.revealEnd - p.commitEnd < MIN_REVEAL_SECS) throw new Error(`The reveal window must be at least ${MIN_REVEAL_SECS / 60} minutes, so every sealed bid can open in time.`);
     const params = {
       creator: p.creator ?? w.account.address,
       saleSupply: p.saleSupply,

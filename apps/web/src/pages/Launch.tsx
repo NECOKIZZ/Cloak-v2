@@ -184,6 +184,7 @@ export function Launch({ auction }: { auction: Address }) {
                   ? <>Bidding has closed. Every sealed bid now opens itself with a public time-lock key, so nobody can change or pull a bid. Trading starts in about <b className="mono">{duration(s.revealEnd - now)}</b>.</>
                   : "Every bid that could open has opened. The launch settles at one price next, then trading starts."}
               </p>
+              <Unopenable auction={s.address} live={s.phase === "reveal"} />
             </div>
           )}
           {hasPool && <Market s={s} />}
@@ -302,5 +303,36 @@ function Details({ s, curve }: { s: AuctionState; curve: bigint[] }) {
       {open === "demand" && <DemandChart s={s} curve={curve} />}
       {open === "record" && <LaunchRecord s={s} />}
     </div>
+  );
+}
+
+/**
+ * Sealed bids the public time-lock key couldn't open (the keeper publishes them once the drand round passes). Only
+ * their bidders can still reveal them, after seeing every other reveal, so everyone should see that they exist.
+ */
+function Unopenable({ auction, live }: { auction: Address; live: boolean }) {
+  const [n, setN] = useState<{ count: number; deposit: bigint } | null>(null);
+  useEffect(() => {
+    if (!KEEPER_URL) return;
+    let alive = true;
+    const go = () =>
+      fetch(`${(KEEPER_URL ?? "").replace(/\/+$/, "")}/unopenable?auction=${auction}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { checked?: boolean; bids?: { deposit: string }[] } | null) => {
+          if (alive && j?.checked) setN({ count: j.bids?.length ?? 0, deposit: (j.bids ?? []).reduce((a, b) => a + BigInt(b.deposit), 0n) });
+        })
+        .catch(() => {});
+    go();
+    const t = live ? setInterval(go, 20_000) : undefined;
+    return () => {
+      alive = false;
+      if (t) clearInterval(t);
+    };
+  }, [auction, live]);
+  if (!n || n.count === 0) return null;
+  return (
+    <p className="small" style={{ margin: "10px 0 0" }}>
+      <b>{n.count} sealed {n.count === 1 ? "bid" : "bids"} ({hype(n.deposit)} HYPE deposited) couldn't be opened by the time-lock key.</b> Only {n.count === 1 ? "its bidder" : "their bidders"} can still reveal {n.count === 1 ? "it" : "them"} before the window closes. A bid that stays sealed loses its penalty.
+    </p>
   );
 }

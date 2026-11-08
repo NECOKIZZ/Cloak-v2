@@ -39,7 +39,11 @@ contract CloakDrop {
     // drand quicknet, the network bids are sealed to
     uint256 public constant DRAND_GENESIS = 1692803367;
     uint256 public constant DRAND_PERIOD = 3;
-    uint256 public constant REVEAL_MARGIN = 30;
+    /// @dev Seconds the keeper needs between the drand round and the end of reveals (decrypt, reveal, retry).
+    uint256 public constant REVEAL_MARGIN = 120;
+    /// @dev The shortest reveal window: a bid that isn't revealed loses its penalty, so an honest bidder must always have
+    ///      time to be revealed, by the keeper or by themselves (review, Haider Ali, Nov 8).
+    uint256 public constant MIN_REVEAL_WINDOW = 5 minutes;
 
     struct Params {
         address creator; // set by the factory to the caller
@@ -157,7 +161,7 @@ contract CloakDrop {
         require(p.floor > 0, "floor");
         require(p.wlBoostBps <= MAX_BOOST_BPS && (p.wlRoot != bytes32(0) || p.wlBoostBps == 0), "boost");
         require(p.royaltyBps <= MAX_ROYALTY_BPS, "royalty");
-        require(p.gtdEnd >= block.timestamp && p.commitEnd > p.gtdEnd && p.revealEnd > p.commitEnd, "times");
+        require(p.gtdEnd >= block.timestamp && p.commitEnd > p.gtdEnd && p.revealEnd >= p.commitEnd + MIN_REVEAL_WINDOW, "times");
         if (p.tlockRound != 0) {
             uint256 at = DRAND_GENESIS + (uint256(p.tlockRound) - 1) * DRAND_PERIOD;
             require(at >= p.commitEnd && at + REVEAL_MARGIN <= p.revealEnd, "tlock round");

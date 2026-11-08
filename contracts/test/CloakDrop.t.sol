@@ -481,9 +481,25 @@ contract CloakDropTest is Test {
         p.numTicks = 1;
         p.gtdEnd = uint64(block.timestamp);
         p.commitEnd = uint64(block.timestamp + 1);
-        p.revealEnd = uint64(block.timestamp + 2);
+        p.revealEnd = uint64(block.timestamp + 1 + 5 minutes);
         p.floor = 1;
         CloakDrop d = factory.createDrop(p, "X", "X", "", "");
         assertEq(d.baseURI(), string.concat("https://cloak.example/api/nft/", vm.toLowercase(vm.toString(address(d))), "/"));
+    }
+
+    /// review (Haider Ali, Nov 8): a drop's reveal window can't be shorter than five minutes.
+    function test_haider_revealWindowTooShortIsRefused() public {
+        CloakDrop.Params memory p;
+        p.supply = 1;
+        p.maxPerBid = 1;
+        p.numTicks = 1;
+        p.gtdEnd = uint64(block.timestamp);
+        p.commitEnd = uint64(block.timestamp + 1);
+        p.revealEnd = uint64(block.timestamp + 2);
+        p.floor = 1;
+        vm.expectRevert(bytes("times"));
+        factory.createDrop(p, "X", "X", "", "");
+        p.revealEnd = uint64(block.timestamp + 1 + 5 minutes);
+        factory.createDrop(p, "X", "X", "", "");
     }
 }
