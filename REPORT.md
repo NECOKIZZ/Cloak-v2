@@ -283,8 +283,20 @@ At Elysium testnet's 0.1 gwei, a private send is about 0.00018 HYPE of gas, so g
 | Swap FRTN to HYPE | 2,626 |
 | Create / claim a link | in `measurements/part1-links-anvil.json` |
 
-**Bundle size:** not measured yet. `@gloamtrade/sdk` pulls in circomlibjs; Cloak moved off it to poseidon-lite. The
-circuit files are 13 to 18 MB per zkey.
+**Bundle size** (esbuild, minified, browser, snarkjs and Node built-ins left out):
+
+| Bundle | Minified | Gzipped |
+|---|---|---|
+| Cloak today, `private/client.js` | 491 KB | 163 KB |
+| `core/gloam.js` (GloamCore with `@gloamtrade/sdk`) | 3,530 KB | 1,685 KB |
+| `core/index.js` (GloamCore, swaps, bids, Cloak adapter) | 3,726 KB | 1,753 KB |
+
+circomlibjs is 2.5 MB of that. `@gloamtrade/sdk` imports it statically through its Poseidon module, and its npm
+`exports` allow no deep imports, so any app that uses the SDK in a browser carries it. It also needs a polyfill for
+Node's `assert`. Cloak moved off circomlibjs to poseidon-lite (same outputs) for exactly this reason. Either Gloam does
+the same, or GloamCore stops importing their SDK in the browser and carries the few functions it uses (question 10).
+
+The circuit files are separate downloads: 13 to 18 MB per zkey.
 
 ## 6. Privacy per action, side by side
 
@@ -322,7 +334,8 @@ circuit files are 13 to 18 MB per zkey.
 - relayer-fee income (Gloam's proofs carry no relayer fee, so a relayer pays gas from somewhere else);
 - dependence on Gloam's timelock, listing reviews and SDK releases;
 - a second step to claim batch and bid payouts;
-- the size of the rewrite (section 8).
+- the size of the rewrite (section 8);
+- about 1.6 MB gzipped more in the browser bundle, unless the SDK drops circomlibjs (5).
 
 ## 8. Effect on the mainnet date, and the real switch
 
@@ -412,3 +425,5 @@ The human decides.
 8. **Proof of funds on chain:** would Gloam deploy and own a funds verifier, so partners share one?
 9. **Escrow review:** will Gloam review `CloakGloamBids`, `CloakGloamBatcher` and `CloakV2PairSwap` (which uses their
    `GloamVaultSwap2` base unchanged)? Which auditor should do the partner-escrow scope?
+10. **Bundle size:** could the SDK use poseidon-lite (or lazy-load circomlibjs)? Today it adds about 2.5 MB minified to
+    a browser app (5).
