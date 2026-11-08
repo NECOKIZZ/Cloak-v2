@@ -1,6 +1,6 @@
 {
   "name": "@cloakely/sdk",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Cloak on Elysium: sealed-bid token launches, sealed NFT drops and WL spot sales, and private trading (shielded balances, private swaps, batch auctions, private sends) with on-device zero-knowledge proofs.",
   "keywords": [
     "cloak",

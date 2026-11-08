@@ -301,12 +301,11 @@ export function Trade() {
                   <div className="row"><span className="mute">Orders in this round</span><span className={crowd ? "signal" : "warn-t"}>{crowd === null ? "…" : crowd === 0 ? "None yet" : crowd.toLocaleString()}</span></div>
                 )}
               </div>
-              {mode === "batch" && crowd === 0 && <p className="xs mute" style={{ margin: "10px 0 0" }}>Nobody else is in this round yet. If you trade alone, the round's total is your trade, so batch hides less until others join.</p>}
-              {mode === "instant" ? (
-                <p className="xs mute" style={{ margin: "10px 0 0" }}>Fills in seconds. Your wallet never appears, but the pool shows the size of the trade.</p>
-              ) : (
-                <p className="xs mute" style={{ margin: "10px 0 0" }}>Takes a round or more, usually under a few minutes. If the pool price moves more than 2% during a round, that round is refunded into your private balance.</p>
-              )}
+              <div className="fl" style={{ gridTemplateColumns: "1fr", marginTop: 6 }}>
+                <div className="row"><span className="mute">Time</span><span>{mode === "instant" ? "A few seconds" : "About 1 to 3 minutes"}</span></div>
+                <div className="row"><span className="mute">Risk</span><span className="warn-t" style={{ textAlign: "right" }}>{mode === "instant" ? "Price can slip up to 1%" : "Refunded if the price moves over 2%"}</span></div>
+                {mode === "batch" && crowd === 0 && <div className="row"><span className="mute">Cover</span><span className="warn-t" style={{ textAlign: "right" }}>Alone so far, so the round total is your trade</span></div>}
+              </div>
             </div>
             <div className="card flat">
               <div className="card-head"><h3>{market.name} <span className="mute">${market.symbol}</span></h3><Link to={`/app`} className="xs arrow">Launches</Link></div>
