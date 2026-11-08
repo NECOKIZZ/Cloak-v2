@@ -305,10 +305,11 @@ At Elysium testnet's 0.1 gwei, a private send is about 0.00018 HYPE of gas, so g
 | `core/gloam.js` (GloamCore with `@gloamtrade/sdk`) | 3,530 KB | 1,685 KB |
 | `core/index.js` (GloamCore, swaps, bids, Cloak adapter) | 3,726 KB | 1,753 KB |
 
-circomlibjs is 2.5 MB of that. `@gloamtrade/sdk` imports it statically through its Poseidon module, and its npm
-`exports` allow no deep imports, so any app that uses the SDK in a browser carries it. It also needs a polyfill for
-Node's `assert`. Cloak moved off circomlibjs to poseidon-lite (same outputs) for exactly this reason. Either Gloam does
-the same, or GloamCore stops importing their SDK in the browser and carries the few functions it uses (question 10).
+circomlibjs is 2.5 MB of that. Correction to an earlier draft: the SDK loads it lazily (a dynamic `import()` on first
+use), and my measurement inlined it because it was a single bundle with no code splitting. GloamCore computes
+commitments on every sync, though, so any user with a private balance downloads it in practice. This one is ours to
+fix: GloamCore can use poseidon-lite (the same constants, as Cloak already does) for its own hashing, so circomlibjs
+only loads if another SDK function needs it.
 
 The circuit files are separate downloads: 13 to 18 MB per zkey.
 
@@ -349,7 +350,7 @@ The circuit files are separate downloads: 13 to 18 MB per zkey.
 - dependence on Gloam's timelock, listing reviews and SDK releases;
 - a second step to claim batch and bid payouts;
 - the size of the rewrite (section 8);
-- about 1.6 MB gzipped more in the browser bundle, unless the SDK drops circomlibjs (5).
+- about 1.6 MB gzipped more in the browser until GloamCore hashes with poseidon-lite (ours to fix, 5).
 
 ## 8. Effect on the mainnet date, and the real switch
 
@@ -420,24 +421,118 @@ The human decides.
 - **New network hosts.** The cloud environment got the two Elysium testnet RPC hosts and `api.drand.sh`. Node's fetch
   needs `NODE_USE_ENV_PROXY=1` here to reach drand.
 
-## 11. Open questions for the Gloam founder
+## 11. The founder's answers (Nov 8), checked against Gloam's repo at `16dac34` (unchanged on Nov 8, npm still 0.6.0)
 
-1. **Launch tokens and the 3-day listing.** Is queueing a token's listing at launch creation (3.5) acceptable for the
-   shared vault, with Cloak requesting it? Is any admission path without the delay possible while staying the audited
-   contract? Owning an instance doesn't help, because the timelock is in the vault.
-2. **Their Elysium testnet vault:** when, and at which addresses? Will it list native HYPE?
-3. **The interface fee:** how is it charged and sent privately? Every escrow action already pays the 0.5% cash-out
-   fee. Could the escrow's leftover, or a fee note, be the interface fee?
-4. **Their relayer on Elysium testnet:** the URL and its limits. Does it relay calls to partner escrows (Cloak's
-   swaps, bids and batcher) and memo posts?
-5. **Fees:** 0.5% on every swap, bid and cash out, plus an interface fee, against Cloak's 0.25% today. What is the
-   split for Cloak's volume? Could trading through partner escrows pay a lower rate?
-6. **The SDK:** a release that knows Elysium testnet (final keys for 99801), a version bump when `main` changes (npm
-   0.6.0 and repo 0.6.0 differ), and a way to pass a change-note secret into `buildTransferWitness`.
-7. **Bearer notes:** is a recipient-keyed note (an owner key in the commitment) on the roadmap? It would close the
-   bearer window without a sweep.
-8. **Proof of funds on chain:** would Gloam deploy and own a funds verifier, so partners share one?
-9. **Escrow review:** will Gloam review `CloakGloamBids`, `CloakGloamBatcher` and `CloakV2PairSwap` (which uses their
-   `GloamVaultSwap2` base unchanged)? Which auditor should do the partner-escrow scope?
-10. **Bundle size:** could the SDK use poseidon-lite (or lazy-load circomlibjs)? Today it adds about 2.5 MB minified to
-    a browser app (5).
+| Topic | Founder's answer | What the repo shows | Settled? |
+|---|---|---|---|
+| Vault | use Gloam's shared Elysium vault, guarded, multisig, verifiers can't be swapped | matches (`_deployMainnetGuarded`). The controller can lower deposit limits to 0 at once (closing deposits, never withdrawals); raising a limit or the fee (cap 1%) takes 3 days | yes |
+| Assets | HYPE, USDC and approved tokens in the main vault | Elysium mainnet launches **USDC only, 500 per deposit, 25,000 in total**. HYPE is not listed at launch, so it needs a timelocked listing (3 days or more after review). Their testnet script lists no native coin at all | partly: timing and caps open |
+| Launch tokens | can have their own instance | an instance is the same `ShieldPoolPayments`, so a new token still waits 3 days (3.5) | no |
+| Interface fee | partners can charge one, sent privately | `app/src/lib/partners.ts`: partner fees are recorded, **not collected on any network**; collecting one "needs a fee output inside the circuits and the vault contract". A swap carries no partner fee | no: their own code says it isn't possible yet |
+| Relayer | supports Elysium from day one, no relayer fee | `lib/relay/server.ts` sends only the vault's transfer and unshield, memo posts and Gloam's own swap routers ("a request never names a target"), and memos only for commitments already in the vault. Elysium's budget is a starting guess of 1 HYPE an hour. Calls to partner escrows are not served | partly: partner escrows open |
+| Escrows | the pattern is general, they will review Cloak's | matches (`GloamVaultSwap2`) | yes |
+| Private swaps on Elysium | their router does it | `elysium.ts` and `DEPLOY-ELYSIUM.md` say no router on Elysium yet, and the SDK refuses swaps there | partly |
+| 2-in sends | not in the short term | matches | yes: a sacrifice |
+| Audits | vault by Kann; routers, relay and circuits being booked; partner escrows as a separate scope | matches. No grant, so the partner-escrow audit is Cloak's cost | yes |
+| Blacklists | a reverting cash out leaves the note unspent; tokens listed after review | matches (`unshield` reverts whole) | yes |
+| SDK | pinned versions, 2 weeks' notice | npm 0.6.0 and the repo's 0.6.0 differ, and npm 0.6.0 knows no Elysium | partly |
+| Ceremony keys | work on any chain | confirmed on 99801 (Part 0) | yes |
+| Elysium testnet vault | "start the testnet build whenever you're ready" | `ELYSIUM_TESTNET.pool` is null; no code at the expected address | no: when and where |
+| Bearer notes | not addressed | no plan for owner-keyed notes in the repo or docs | no |
+| Proof of funds verifier | not addressed | none deployed by Gloam; Cloak can deploy its own from their final key (done, 3.7) | not needed: settled on our side |
+| Bundle size | not asked | lazy-loaded; ours to fix | settled on our side |
+
+## 12. What Cloak gives up, in full
+
+On Gloam's shared vault, as it is today:
+
+1. **Payments become bearer notes until the recipient comes online.** The payer can take a payment back, or see
+   when it is spent, until the recipient's app sweeps it. Every received payment costs a sweep (about 1.8M gas, about
+   0.7 s), paid by whoever relays. Claim links, receive addresses and x402 have the same window. Cloak today has none
+   of this.
+2. **No merging.** A balance in k notes pays out in up to k pieces, and the recipient sees how many. Proof of funds
+   covers at most 4 notes.
+3. **Launch tokens wait at least 3 days**, plus Gloam's review, before they can be private in Gloam's vault, and the
+   same holds in a Cloak-owned instance. A launch shorter than that can't trade privately at settlement there.
+4. **HYPE isn't in the Elysium vault at launch.** Elysium launches USDC only, capped at 25,000 USDC in total for the
+   whole vault (500 per deposit). Cloak's balances are mostly HYPE. Until the limits rise, Cloak's users share a
+   25,000 USDC cap with everyone else.
+5. **The fee rises from 0.25% to 0.5% on every exit**, and every swap, bid and batch order is an exit. Gloam can raise
+   it to 1% with 3 days' notice. On top of that, the price buffer of an exact-output swap goes to the router's
+   treasury.
+6. **No interface fee yet.** Gloam's own code says a private interface fee needs circuit and vault changes. Today
+   Cloak could only take a fee in the clear inside its own escrows (swaps, bids, batch orders). There would be no fee
+   at all on sends and payments, and no relayer fee either.
+7. **Cloak runs and pays for a relayer.** Gloam's relay won't send calls to partner escrows, so every Cloak swap
+   (outside Gloam's own router), bid and batch order needs Cloak's relay, which pays gas with no fee coming in, under
+   a budget that spam can use up (3.10).
+8. **Gloam's controller decides some things.** It can close deposits at once, lists assets, and changes limits and
+   fees on a 3-day notice. Cloak's users depend on that.
+9. **Payouts need a second step.** Batch-round and bid payouts come back with a second relayed call (3.8), not
+   automatically.
+10. **The rewrite and the audit are Cloak's cost:** about 2 to 3 weeks, plus an audit of Cloak's escrows (no grant).
+11. **Proof times get faster** (2 to 2.5 times), but some actions need two proofs (a split, a sweep).
+
+## 13. A hybrid that keeps what matters
+
+Keep Cloak's own vaults for what Gloam can't do yet, and use Gloam for what it does well:
+
+- **Gloam's shared vault holds USDC, and HYPE once listed:** balances, private payments, claim and request links,
+  cash outs, proof of funds. This brings the shared crowd, the ceremony keys, the audited vault and "powered by
+  Gloam".
+- **Cloak's own vaults hold launch tokens and trading:** sealed bids, settlement trading in the first minutes, batch
+  rounds, the 0.25% fee and relayer fees, owner-keyed notes and 2-in sends.
+- **A bridge escrow joins the two.**
+  - Gloam to Cloak: unshield to a one-time escrow, then `depositTo` a one-time key in Cloak's vault, which takes any
+    amount for a key.
+  - Cloak to Gloam: withdraw an exact amount from Cloak's vault to an escrow, which then makes a bound deposit
+    into Gloam.
+  - The amounts crossing are public, as they are at any shield or cash out, and each crossing pays the exit fee of
+    the side it leaves.
+- **Launch tokens move into Gloam once listed** (requested at launch creation), if they still have volume.
+
+What the hybrid keeps:
+
+- private launches and trading exactly as today;
+- Gloam's crowd and keys for payments and USDC;
+- a gradual path: more moves to Gloam as they add owner-keyed notes, 2-in sends, collectable partner fees and faster
+  listing.
+
+What it costs:
+
+- two private layers to maintain;
+- the bridge escrow (to build and audit);
+- users see two balances unless the app merges them;
+- the crowd is split for launch tokens, which have none on Gloam today anyway.
+
+## 14. Questions for the Gloam founder
+
+Each of these is still open after the answers above and a check of Gloam's repo.
+
+1. **Your Elysium testnet vault.** When do you deploy it, and at which addresses (vault, memo board, guard)? Until
+   then we test on our own instance of your deploy script, which lists HYPE too.
+2. **HYPE and the caps.** Elysium mainnet goes live with USDC only, at 500 per deposit and 25,000 in total. When do
+   you plan to list native HYPE, and at what caps? What schedule do you have for raising the USDC caps? Cloak's
+   balances are mostly HYPE, and 25,000 in total for the whole vault would fill quickly.
+3. **The interface fee.** Your `partners.ts` says partner fees can't be collected yet because they need a fee output
+   in the circuits and the vault. How exactly would a Cloak fee be "sent privately" on a send and on a cash out, and
+   when? Are you fine with Cloak taking its fee in the clear inside its own escrows (swaps, bids, batch orders) in the
+   meantime?
+4. **Your relay and our escrows.** Your relay sends only the vault, the memo board and your own routers, and memos
+   only for commitments already in the vault. Will it relay calls to partner escrows (Cloak's swap venue, bids, batch
+   orders) once you've reviewed them? If not, we run our own relay for those. And is the 1 HYPE an hour on Elysium a
+   budget for everyone together, with a share per partner?
+5. **Private swaps on Elysium.** Your repo says there's no router on Elysium yet. Will you deploy `GloamVaultSwapV4c`
+   there with Cloak's v4 launch pools allowlisted, or should Cloak deploy its own instance (its treasury, its pools)?
+   A new pool waits 3 days on your router.
+6. **Launch tokens.** A token in any `ShieldPoolPayments` vault waits 3 days, even in its own instance. Would you
+   review and stand behind a variant that admits only tokens made by Cloak's factory, at once? Or is the answer that
+   launch tokens stay in Cloak's vaults until they're listed? Either is workable; we need to know which.
+7. **Bearer notes.** A payer can spend a payment back until the payee sweeps it. Is a note bound to the recipient's
+   key on your roadmap, separately from 2-in sends? That decides whether Cloak moves private sends to Gloam now or
+   keeps them in its own vault for now.
+8. **The fee split.** On 0.5% of every exit, including every swap, bid and batch order Cloak brings, what share
+   would you offer? Is a lower rate possible for exits into partner escrows, which go straight back into the vault?
+9. **The SDK.** npm 0.6.0 differs from your repo's 0.6.0, and neither knows Elysium testnet's pool yet. When will a
+   release know 99801 and 99901 with the final keys? Could `buildTransferWitness` take the change note's secret, so
+   partners can make recoverable notes without copying the circuit input?
