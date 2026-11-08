@@ -4,7 +4,7 @@
 import { encodeFunctionData, parseAbi, parseEther, zeroAddress } from "viem";
 import { GloamCore } from "@cloakely/sdk";
 import { createGloamRelay } from "../services/keeper/gloam.mjs";
-import { ANVIL_KEYS, ELYSIUM_TESTNET_ID, assert, clients, finalProver, localGloam, rejects } from "./lib.mjs";
+import { rpc, ANVIL_KEYS, ELYSIUM_TESTNET_ID, assert, clients, finalProver, localGloam, rejects } from "./lib.mjs";
 
 const t0 = performance.now();
 const L = await localGloam({ port: 8554 });
@@ -48,8 +48,10 @@ try {
   // the hourly budget: once it is spent, the relay answers 429 and the user can still send it themselves
   const spent = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: 0n });
   let hit = null;
+  const realRoot = await pub.readContract({ address: stack.pool, abi: parseAbi(["function currentRoot() view returns (bytes32)"]), functionName: "currentRoot" });
+  const withRoot = encodeFunctionData({ abi: parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]), functionName: "unshield", args: ["0x" + "11".repeat(256), realRoot, "0x" + "55".repeat(32), zeroAddress, alice.account.address, 1n] });
   try {
-    await spent({ to: stack.pool, data: bad });
+    await spent({ to: stack.pool, data: withRoot });
   } catch (e) {
     hit = e;
   }
@@ -62,8 +64,8 @@ try {
   const via = (r, sender) => ({ ...cfg, submit: (call) => r({ kind: call.kind, to: call.to, data: call.data }, { sender }) });
   const out9 = who(9).account.address;
   {
-    // the 80% line on its own (no per-sender cap): spent after one send and two memos is about 87% of this budget
-    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: (c * 130n) / 100n, shares: { sender: 100n } });
+    // the 80% line on its own (no per-sender cap, a roomy memo budget): one send is about 87% of this budget
+    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: (c * 115n) / 100n, shares: { sender: 100n, memo: 40n } });
     const D = await GloamCore.unlock(who(4).wallet, via(r, "d"));
     await D.shield(who(4).wallet, zeroAddress, parseEther("2"));
     await D.sync();
@@ -76,21 +78,57 @@ try {
     assert((await pub.getBalance({ address: out9 })) > before, "but a cash out still goes through on the reserved top of the budget");
   }
   {
-    // the 60% per-sender cap: one sender's second send is cut off, another sender still gets through
-    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: c * 3n });
+    // the 60% per-sender cap: one sender's third send is cut off, its own cash out still goes through on its separate
+    // refunds-and-exits share, and another sender still gets through
+    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: c * 3n, shares: { memo: 40n } });
     const E = await GloamCore.unlock(who(5).wallet, via(r, "1.1.1.1"));
     const F = await GloamCore.unlock(who(6).wallet, via(r, "2.2.2.2"));
     await E.shield(who(5).wallet, zeroAddress, parseEther("2"));
     await E.sync();
     await E.send(zeroAddress, await B.address(), parseEther("0.5"));
+    await E.send(zeroAddress, await B.address(), parseEther("0.5"));
     let e = null;
     await E.send(zeroAddress, await B.address(), parseEther("0.5")).catch((x) => (e = x));
     assert(/your share of the relay's gas/.test(String(e?.message)), "one sender past 60% of the budget is refused (429)");
+    const beforeE = await pub.getBalance({ address: out9 });
+    await E.withdraw(zeroAddress, out9, parseEther("1"));
+    assert((await pub.getBalance({ address: out9 })) > beforeE, "but its own cash out still goes through: refunds and exits have their own share");
     await F.shield(who(6).wallet, zeroAddress, parseEther("0.3"));
     await F.sync();
     const before = await pub.getBalance({ address: out9 });
     await F.withdraw(zeroAddress, out9, parseEther("0.3"));
-    assert((await pub.getBalance({ address: out9 })) > before, "while another sender still gets through");
+    assert((await pub.getBalance({ address: out9 })) > before, "and another sender still gets through");
+  }
+  {
+    // checks before the gas estimate: an unknown tree, and cash outs to where money would stop
+    const UNSHIELD = parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)", "function currentRoot() view returns (bytes32)"]);
+    const root = await pub.readContract({ address: stack.pool, abi: UNSHIELD, functionName: "currentRoot" });
+    const call = (r, to) => relay({ to: stack.pool, data: encodeFunctionData({ abi: UNSHIELD, functionName: "unshield", args: ["0x" + "11".repeat(256), r, "0x" + "44".repeat(32), zeroAddress, to, 1n] }) }).then(() => null, (x) => x);
+    assert((await call("0x" + "22".repeat(32), alice.account.address))?.message.includes("tree"), "a proof against a tree the vault doesn't know is refused before any gas estimate");
+    for (const [to, what] of [[zeroAddress, "the zero address"], [stack.pool, "the vault"], [stack.payMemo, "the memo board"]]) {
+      assert((await call(root, to))?.message.includes("can't go to that address"), `a cash out to ${what} is refused`);
+    }
+  }
+  {
+    // a spend whose send hasn't landed: even once its lock has expired (shortened here), the relay won't send it again
+    // while that send could still land; once it lands, the spend is simply spent
+    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: parseEther("1"), lockTtlMs: 1 });
+    let captured = null;
+    const G = await GloamCore.unlock(who(7).wallet, { ...cfg, submit: (call) => (call.kind === "memo" ? r(call) : ((captured = call), Promise.reject(new Error("captured")))) });
+    await G.shield(who(7).wallet, zeroAddress, parseEther("0.3"));
+    await G.sync();
+    await G.withdraw(zeroAddress, out9, parseEther("0.3")).catch(() => {});
+    assert(captured?.kind === "unshield", "a real cash out, proved and held back");
+    await rpc(rpcUrl, "evm_setAutomine", [false]);
+    const first = r({ to: captured.to, data: captured.data });
+    await new Promise((x) => setTimeout(x, 1500));
+    const second = await r({ to: captured.to, data: captured.data }).then(() => null, (x) => x);
+    assert(second?.status === 409 && /could still land/.test(second.message), "while the first send is still pending, the same spend isn't sent again, even after its lock expired");
+    await rpc(rpcUrl, "evm_setAutomine", [true]);
+    await rpc(rpcUrl, "evm_mine");
+    await first;
+    const third = await r({ to: captured.to, data: captured.data }).then(() => null, (x) => x);
+    assert(third?.status === 409, "once it lands, the spend is spent and refused");
   }
   console.log(`\nPart 3b passed in ${Math.round((performance.now() - t0) / 1000)} s`);
 } finally {

@@ -116,7 +116,7 @@ try {
   assert(st.baseSpentWei === 0n, "and spent none of its own budget");
   const keeperAfter = await pub.getBalance({ address: keeper.account.address });
   console.log(`  keeper wallet change over the fee-paid send: ${keeperAfter - keeperBefore} wei (fees in minus gas out)`);
-  const unshield = encodeFunctionData({ abi: parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]), functionName: "unshield", args: ["0x" + "11".repeat(256), "0x" + "22".repeat(32), "0x" + "33".repeat(32), zeroAddress, alice.account.address, 1n] });
+  const unshield = encodeFunctionData({ abi: parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]), functionName: "unshield", args: ["0x" + "11".repeat(256), await pub.readContract({ address: stack.pool, abi: parseAbi(["function currentRoot() view returns (bytes32)"]), functionName: "currentRoot" }), "0x" + "33".repeat(32), zeroAddress, alice.account.address, 1n] });
   const e3 = await refused(broke({ to: stack.pool, data: unshield }), "a call to Gloam's vault can't use Cloak's fee income");
   assert(e3.status === 429, "it answers 429 once the base budget is spent");
 

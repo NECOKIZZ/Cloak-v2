@@ -808,3 +808,24 @@ Payment links now run on the Gloam backend with the same pages and the same link
 - **What the guard allows:** it forwards only `setDepositLimit` and `setWithdrawFee` through the 3-day wait, plus the instant lowering calls. It never forwards a verifier change. Nothing in the vault needs another owner call later, because the factory and the launch caps are fixed at deploy (changing either means a new vault).
 - **The pauser (new):** under the guard, the owner can close a launch token only once it's admitted (`lowerDepositLimit` can't tell "never set" from "lowered to zero", and it can't be overridden). So the vault has a fixed `launchPauser` (Cloak's multisig, or nobody). It can stop all new admissions (`pauseAdmissions`) or one token's (`blockLaunch`). It can't touch funds, limits, the fee, or a token already admitted.
 - **Tests:** forge is at 108 of 108. The new ones cover the pauser, and the guard handover itself: the guard refuses a vault still in setup, admission needs nobody, the guard lowers an admitted token and re-admitting can't raise it, another asset lists through the 3-day wait, and a verifier change is refused. Parts 4 to 9 and the anvil rehearsal of the live run pass with the new constructor.
+
+### 16.15 Relay hardening from Gloam's relay (Nov 8)
+
+`services/keeper/gloam.mjs` adds the checks Gloam's relay has that ours lacked (`lib/relay/server.ts`, `inflight.ts`, `spendCap.ts`). Each has a test in `part3-relay.mjs`:
+- **Spent and root first.** A spent note, or a proof against a tree the vault doesn't know, is refused before the gas estimate.
+- **Send records and lock rules.** Each spend's last send (hash and nonce) is kept a day. A spend isn't sent again while that send could still land, meaning no receipt yet and the relay hasn't used that nonce. Its lock is dropped only when nothing was sent, or the send provably reverted, never on a timeout or an unknown end.
+  - Tested with automatic mining off: a real cash out left pending, its lock expired on purpose, and the same spend was still refused. Once it was mined, the spend read as spent.
+- **Cash-out destinations.** Nothing goes to the zero address, the token itself, a vault, the memo board or an escrow.
+- **Refunds and exits get their own share per sender (60%).** A sender's own sends can't block its refund. Tested: a sender cut off for sends still cashed out.
+- **Memos get their own budget** (8% of the hour's), so free memo posts can't use up send capacity. A memo for a payment in the launch vault can still be paid from Cloak's fee income.
+- **Failed sends** count against their sender, up to 10% of the hour's budget.
+
+**Fixed along the way:** a relay with a zero base budget refused every call, because the failed-send cap was zero too. It now refuses only once a sender has failed sends. Part 4's fee-paid relay caught it.
+
+**Not adopted:**
+- Gloam's signed memo tickets and per-payment memo counts. We keep one memo per payment.
+- Shared lock storage and rate limits across instances, since we run one keeper.
+- Sanctions screening, which is a compliance question for Gloam's founder.
+- The Ethereum-only gas ceiling and swap floor.
+
+The relay is still not funded from the swap buffer, which `CloakLaunchSwap` returns to the user.

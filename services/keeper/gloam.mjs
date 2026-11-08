@@ -7,13 +7,18 @@
 //   - only known targets and selectors (each vault's transfer and unshield, the board's postMemo, the escrows), never
 //     anything else;
 //   - every call is simulated first: one that would revert is refused and costs nothing;
-//   - one in-flight call per spend (by nullifier), and a spend already used on chain is refused;
+//   - one in-flight call per spend (by nullifier), and a spend already used on chain, or with a proof against a tree the
+//     vault doesn't know, is refused before the gas estimate. Each spend's last send is kept a day: the spend isn't sent
+//     again while that send could still land, and its lock goes only when nothing was sent or the send reverted;
+//   - no cash out to the zero address, the token itself, a vault, the memo board or an escrow;
+//   - failed sends count against their sender, capped (10% of the hour's budget each);
 //   - memos only for a payment commitment already in a vault this relay serves, at most one per commitment, and bodies
 //     capped at the board's own 8 KB;
 //   - an hourly HYPE budget (GLOAM_RELAY_HOURLY_SPEND, default 1 HYPE, Gloam's own default), after which it answers 429,
-//     shared the way Gloam's relay shares its own: new sends may use up to 80% of it, other calls (memos) up to 92%,
-//     and refunds and exits all of it, so the top 8% is always there for getting money out; one sender (an IP, as the
-//     keeper's HTTP layer passes it) gets at most 60% (of the base budget and of the fee income alike);
+//     shared the way Gloam's relay shares its own: new sends may use up to 80% of it and refunds and exits all of it,
+//     so the top is always there for getting money out; one sender (an IP, as the keeper's HTTP layer passes it) gets
+//     at most 60% for its sends and another 60% for its refunds and exits, so its own sends never block its refund;
+//     memos have their own budget (8% of the hour's), so free memo posts can't use up what sends need;
 //   - per-IP rate limits, in the keeper's HTTP layer (RELAY_PER_MIN).
 //
 // Paid from the launch vault's fee. When the relay's wallet is the launch vault's fee recipient, the relay collects the
@@ -29,6 +34,7 @@ const VAULT_ABI = parseAbi([
   "function transfer(bytes proof, bytes32 root, bytes32 nullifier, bytes32[2] newCommitments)",
   "function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)",
   "function isSpent(bytes32) view returns (bool)",
+  "function isKnownRoot(bytes32) view returns (bool)",
   "function commitmentSeen(bytes32) view returns (bool)",
   "function feesOwed(address) view returns (uint256)",
   "function feeRecipient() view returns (address)",
@@ -38,7 +44,8 @@ const MEMO_ABI = parseAbi(["function postMemo(bytes32 paymentCommitment, bytes m
 const MAX_MEMOS_REMEMBERED = 100_000;
 
 // Budget shares, in percent of the hour's budget (Gloam's relay uses the same split). Settable per relay (`shares`).
-const SHARES = { newSends: 80n, other: 92n, sender: 60n };
+const SHARES = { newSends: 80n, other: 92n, sender: 60n, back: 60n, memo: 8n, reverts: 10n };
+const DAY_MS = 86_400_000;
 /** Escrow calls that take money out or back (refunds, exits, claims): they may use the whole budget. */
 const EXIT_SELECTORS = new Set(
   [
@@ -70,7 +77,10 @@ const EXIT_SELECTORS = new Set(
  * @param gloamEscrows Gloam's own routers (base budget only)
  * @param feeCollectWei collect the launch vault's HYPE fees once this much is owed (default 0.05 HYPE)
  * @param feeSpendPerHourWei the most fee income spent in one hour (default 1 HYPE), so a flood can't burn a week's income
- * @param shares percent of the hour's budget new sends, other calls and one sender may reach (default 80, 92, 60)
+ * @param shares percent of the hour's budget: new sends may reach (newSends, 80), one sender's sends (sender, 60), one
+ *        sender's refunds and exits (back, 60), all memos (memo, 8, a budget of its own), one sender's failed sends
+ *        (reverts, 10)
+ * @param lockTtlMs how long a spend's lock outlives a send whose end is unknown (a day; tests shorten it)
  */
 export function createGloamRelay({
   publicClient,
@@ -84,9 +94,10 @@ export function createGloamRelay({
   feeCollectWei = parseEther(process.env.GLOAM_RELAY_FEE_COLLECT ?? "0.05"),
   feeSpendPerHourWei = parseEther(process.env.GLOAM_RELAY_FEE_SPEND_PER_HOUR ?? "1"),
   shares = SHARES,
+  lockTtlMs = DAY_MS,
   log = () => {},
 }) {
-  const { newSends: NEW_SEND_PCT, other: OTHER_PCT, sender: SENDER_PCT } = { ...SHARES, ...shares };
+  const { newSends: NEW_SEND_PCT, sender: SENDER_PCT, back: BACK_PCT, memo: MEMO_PCT, reverts: REVERT_PCT } = { ...SHARES, ...shares };
   const lc = (a) => a.toLowerCase();
   const targets = new Map();
   if (vault) targets.set(lc(vault), { role: "vault", cloak: false, address: vault });
@@ -96,7 +107,9 @@ export function createGloamRelay({
   for (const e of gloamEscrows) targets.set(lc(e), { role: "escrow", cloak: false, address: e });
   const vaults = [...targets.values()].filter((t) => t.role === "vault");
 
-  const inflight = new Set();
+  const inflight = new Map(); // spend -> when it was locked
+  const sends = new Map(); // spend -> { hash, nonce, at }: the last send for it, kept a day
+  let memoSpentWei = 0n; // the memo budget spent this hour
   const memoed = new Set();
   let windowStart = Date.now();
   let spentWei = 0n; // from the base budget this hour
@@ -114,6 +127,7 @@ export function createGloamRelay({
       spentWei = 0n;
       feeSpentWei = 0n;
       bySender.clear();
+      memoSpentWei = 0n;
     }
   }
 
@@ -168,8 +182,16 @@ export function createGloamRelay({
         throw fail(400, "not a call this relay serves");
       }
       if (decoded.functionName !== "transfer" && decoded.functionName !== "unshield") throw fail(400, "not a call this relay serves");
-      spendKey = `${lc(t.address)}:${decoded.args[2]}`;
-      if (await read(t.address, "isSpent", [decoded.args[2]])) throw fail(409, "already spent");
+      const [, root, nullifier] = decoded.args;
+      spendKey = `${lc(t.address)}:${nullifier}`;
+      // spent and root first: a spent note or an unknown root never reaches the gas estimate
+      if (await read(t.address, "isSpent", [nullifier])) throw fail(409, "already spent");
+      if (!(await read(t.address, "isKnownRoot", [root]))) throw fail(400, "the proof's tree isn't one this vault knows");
+      if (decoded.functionName === "unshield") {
+        const [, , , asset, to] = decoded.args;
+        // nowhere the money would stop or be lost: the zero address, a vault, the memo board, the token itself, an escrow
+        if (lc(to) === lc(zeroAddress) || lc(to) === lc(asset) || targets.has(lc(to))) throw fail(400, "a cash out can't go to that address");
+      }
     } else if (t.role === "memo") {
       try {
         decoded = decodeFunctionData({ abi: MEMO_ABI, data: body.data });
@@ -186,27 +208,39 @@ export function createGloamRelay({
       // a memo for a payment in Cloak's launch vault is Cloak's call
       cloakCall = seenIn.cloak;
     }
-    if (spendKey && inflight.has(spendKey)) throw fail(409, "this spend is already being relayed");
+    if (spendKey) {
+      expireLocks();
+      if (inflight.has(spendKey)) throw fail(409, "this spend is already being relayed");
+      await assertEarlierSendSettled(spendKey);
+    }
 
     roll();
     const cls = classOf(t, decoded, body.data);
     const sender = String(ctx.sender ?? "anonymous");
-    const mine = bySender.get(sender) ?? { base: 0n, fee: 0n };
-    // a call about Cloak's own contracts may use fee income first; anything else only the base budget
+    const mine = bySender.get(sender) ?? { base: 0n, back: 0n, fee: 0n, reverted: 0n, memo: 0n };
+    const limit = (pct) => (hourlySpendWei * pct) / 100n;
+    if (mine.reverted > 0n && mine.reverted >= limit(REVERT_PCT)) throw fail(429, "too many of your calls failed on chain this hour, try again later");
+    // a call about Cloak's own contracts (a memo for a payment in the launch vault included) may use fee income first;
+    // anything else only the base budget, or for memos the memo budget
     let fromFees = false;
     if (cloakCall && feeRoom() === 0n) await collectLaunchFees().catch((e) => log(`[gloam relay] fee collect failed: ${e.shortMessage ?? e.message}`));
     if (cloakCall && feeRoom() > 0n && mine.fee < (feeSpendPerHourWei * SENDER_PCT) / 100n) fromFees = true;
-    else {
-      const pct = cls === "new" ? NEW_SEND_PCT : cls === "other" ? OTHER_PCT : 100n;
-      if (spentWei >= (hourlySpendWei * pct) / 100n) {
+    else if (cls === "other") {
+      // memos have their own small budget, so free memo posts can never use up what sends need
+      if (memoSpentWei >= limit(MEMO_PCT)) throw fail(429, "the relay's memo budget is used up this hour, try again later or post it yourself");
+      if (mine.memo >= (limit(MEMO_PCT) * SENDER_PCT) / 100n) throw fail(429, "you've used your share of the relay's memo budget this hour");
+    } else {
+      if (spentWei >= limit(cls === "new" ? NEW_SEND_PCT : 100n)) {
         throw fail(429, cls === "exit" ? "the relay's hourly gas budget is used up, try again later or send it yourself" : "the relay is keeping its last gas for refunds and cash outs this hour, try again later or send it yourself");
       }
-      if (mine.base >= (hourlySpendWei * SENDER_PCT) / 100n) throw fail(429, "you've used your share of the relay's gas this hour, try again later or send it yourself");
+      // refunds and exits have their own share per sender, so a sender's own sends can never block their refund
+      if (cls === "exit" ? mine.back >= limit(BACK_PCT) : mine.base >= limit(SENDER_PCT)) throw fail(429, "you've used your share of the relay's gas this hour, try again later or send it yourself");
     }
 
-    if (spendKey) inflight.add(spendKey);
+    if (spendKey) inflight.set(spendKey, Date.now());
     if (memoKey) memoed.add(memoKey);
     let sent = false;
+    let reverted = false;
     try {
       // simulate: a call that would revert is refused before it costs anything
       let gas;
@@ -215,39 +249,77 @@ export function createGloamRelay({
       } catch (e) {
         throw fail(400, `this call would fail: ${e.shortMessage ?? e.message}`);
       }
-      const hash = await walletClient.sendTransaction({ account: walletClient.account, chain: walletClient.chain, to: body.to, data: body.data, gas: (gas * 12n) / 10n });
+      const nonce = await publicClient.getTransactionCount({ address: walletClient.account.address, blockTag: "pending" });
+      const hash = await walletClient.sendTransaction({ account: walletClient.account, chain: walletClient.chain, to: body.to, data: body.data, gas: (gas * 12n) / 10n, nonce });
       sent = true;
+      // what was sent for this spend, kept a day: a later request for it waits until this send can no longer land
+      if (spendKey) sends.set(spendKey, { hash, nonce, at: Date.now() });
       const r = await publicClient.waitForTransactionReceipt({ hash });
+      reverted = r.status !== "success";
       const cost = r.gasUsed * r.effectiveGasPrice;
       if (fromFees) {
         const use = cost < feeCreditWei ? cost : feeCreditWei;
         feeCreditWei -= use;
         feeSpentWei += use;
-        spentWei += cost - use;
         mine.fee += use;
-        mine.base += cost - use;
+        if (cls === "other") {
+          memoSpentWei += cost - use;
+          mine.memo += cost - use;
+        } else {
+          spentWei += cost - use;
+          if (cls === "exit") mine.back += cost - use;
+          else mine.base += cost - use;
+        }
+      } else if (cls === "other") {
+        memoSpentWei += cost;
+        mine.memo += cost;
       } else {
         spentWei += cost;
-        mine.base += cost;
+        if (cls === "exit") mine.back += cost;
+        else mine.base += cost;
       }
+      if (reverted) mine.reverted += cost;
       bySender.set(sender, mine);
       log(`[gloam relay] ${t.role}${cloakCall ? " (cloak)" : ""} ${hash} gas ${r.gasUsed}${fromFees ? " paid from fees" : ""}`);
-      if (r.status !== "success") throw fail(400, `reverted on chain (${hash})`);
+      if (reverted) throw fail(400, `reverted on chain (${hash})`);
       return hash;
     } catch (e) {
       // a memo that never went out may be tried again
       if (memoKey && !sent) memoed.delete(memoKey);
       throw e;
     } finally {
-      if (spendKey) inflight.delete(spendKey);
+      // the lock goes only when nothing was sent, or the send provably reverted: never on a timeout or an unknown end
+      if (spendKey && (!sent || reverted)) inflight.delete(spendKey);
       if (memoed.size > MAX_MEMOS_REMEMBERED) memoed.clear();
     }
+  }
+
+  /** Locks for spends whose send landed or was lost long ago (a day by default); send records go after a day. */
+  function expireLocks() {
+    for (const [k, at] of inflight) if (at < Date.now() - lockTtlMs) inflight.delete(k);
+    for (const [k, x] of sends) if (x.at < Date.now() - DAY_MS) sends.delete(k);
+  }
+
+  /**
+   * Refuses a spend while an earlier send for it could still land: no receipt yet and the relay account hasn't used that
+   * nonce for anything else. A send that reverted, or whose nonce went to another transaction, is settled.
+   */
+  async function assertEarlierSendSettled(spendKey) {
+    const prev = sends.get(spendKey);
+    if (!prev) return;
+    const rc = await publicClient.getTransactionReceipt({ hash: prev.hash }).catch(() => null);
+    if (rc) {
+      if (rc.status === "success") throw fail(409, "this spend already went through");
+      return; // it reverted: free to try again
+    }
+    const used = await publicClient.getTransactionCount({ address: walletClient.account.address, blockTag: "latest" });
+    if (used <= prev.nonce) throw fail(409, "an earlier send of this spend could still land, try again in a few minutes");
   }
 
   relay.collectLaunchFees = collectLaunchFees;
   relay.stats = () => {
     roll();
-    return { baseSpentWei: spentWei, baseBudgetWei: hourlySpendWei, feeCreditWei, feeSpentWei, feeIncomeWei, feeRoomWei: feeRoom() };
+    return { baseSpentWei: spentWei, baseBudgetWei: hourlySpendWei, memoSpentWei, feeCreditWei, feeSpentWei, feeIncomeWei, feeRoomWei: feeRoom() };
   };
   return relay;
 }
