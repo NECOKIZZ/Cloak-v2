@@ -102,7 +102,14 @@ const trader = clients(chain, RPC, generatePrivateKey());
 await d.publicClient.waitForTransactionReceipt({ hash: await d.walletClient.sendTransaction({ to: trader.account.address, value: (relayed ? parseEther("0.03") : parseEther("2") / scale) + parseEther("0.003") }) });
 const relayer = clients(chain, RPC, RELAYER_PK);
 const root = new URL("..", import.meta.url).pathname;
-const prover = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
+const proofMs = [];
+const rawProver = createProver(readFileSync(`${root}apps/web/public/circuits/transaction2x2.wasm`), readFileSync(`${root}apps/web/public/circuits/transaction2x2_final.zkey`));
+const prover = async (input) => {
+  const t = performance.now();
+  const out = await rawProver(input);
+  proofMs.push(Math.round(performance.now() - t));
+  return out;
+};
 const submit = process.env.RELAYER_URL ? relayerSubmitter(process.env.RELAYER_URL) : walletSubmitter(relayer.publicClient, relayer.walletClient, router, batcher);
 const keys = await CloakPrivate.keysFromWallet(trader.walletClient, { chainId: chain.id, verify: true });
 const priv = new CloakPrivate(d.publicClient, router, keys, async () => prover, submit, routerBlock, batcher);
@@ -219,6 +226,12 @@ const rates = sameRoundBuys.map((o) => (byId.get(o.id) * 10n ** 18n) / o.size); 
 ok(rates.every((x) => (x > rates[0] ? x - rates[0] : rates[0] - x) * 10n ** 9n <= rates[0]), `uniform price: ${sameRoundBuys.length} buy orders in one round all filled at the same rate`);
 
 console.log(`\n${checks} checks passed`);
+// v2 comparison: GAS_OUT=file writes the gas of every recorded transaction (Cloak's side of the measurements)
+if (process.env.GAS_OUT) {
+  const gas = {};
+  for (const [k, h] of Object.entries(txs)) gas[k] = Number((await d.publicClient.getTransactionReceipt({ hash: h })).gasUsed);
+  writeFileSync(process.env.GAS_OUT, JSON.stringify({ where: local ? "anvil" : chain.name, gas, proofMs: { circuit: "transaction2x2", all: proofMs, median: proofMs.slice().sort((a, b) => a - b)[Math.floor(proofMs.length / 2)] } }, null, 2) + "\n");
+}
 if (!local) {
   mkdirSync(new URL("../deployments", import.meta.url), { recursive: true });
   const outj = { chainId: chain.id, factory, router, routerBlock: routerBlock.toString(), batcher, batcherBlock: batcherBlock.toString(), token, hypePool, tokenPool, txs: Object.fromEntries(Object.entries(txs).map(([k, v]) => [k, explorer(v)])) };
