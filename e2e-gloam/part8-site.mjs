@@ -12,7 +12,8 @@ import { createPublicClient, createWalletClient, formatEther, http, parseEther }
 import { privateKeyToAccount } from "viem/accounts";
 import { deployments } from "@cloakely/sdk";
 import { createGloamRelay } from "../services/keeper/gloam.mjs";
-import { ANVIL_KEYS, CIRCUITS, ELYSIUM_TESTNET_ID, ELYSIUM_TESTNET_RPC, REPO, assert, chainFor, startAnvil, writeMeasurements } from "./lib.mjs";
+import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
+import { ANVIL_KEYS, CIRCUITS, ELYSIUM_TESTNET_ID, ELYSIUM_TESTNET_RPC, REPO, assert, chainFor, rpc, startAnvil, writeMeasurements } from "./lib.mjs";
 
 // Playwright is installed globally in this container: require finds it where an ES import doesn't
 const { chromium } = createRequire(import.meta.url)("playwright");
@@ -26,7 +27,7 @@ const keeperWallet = createWalletClient({ chain, account: privateKeyToAccount(AN
 const user = privateKeyToAccount(ANVIL_KEYS[1]).address;
 
 // the local relay: POST /gloam/relay only; everything else the site asks the keeper for answers 404
-const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.launchSwapV4, G.receive, G.bids, G.graduation, G.batcher, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("1") });
+const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.launchSwapV4, G.receive, G.bids, G.graduation, G.batcher, G.batcherV4, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("1") });
 let relayed = 0;
 const relayServer = createServer((req, res) => {
   const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "content-type": "application/json" };
@@ -170,6 +171,24 @@ try {
   await shot("5-swapped");
   const tradedSym = (await page.locator(".swap-box").nth(1).innerText()).split("\n").pop();
   console.log(`  ok  the Trade page bought a real Cloak launch token privately through its v4 pool (estimate ${est} ${tradedSym}), sent by the relay`);
+
+  // 5b. batch mode on the same page: sealed standard-size orders in the live v4 batcher's round, settled by the keeper
+  if (G.batcherV4) {
+    const fromBlock = await pub.getBlockNumber();
+    await page.getByRole("button", { name: /Batch · hides size/ }).click();
+    await page.getByLabel("Amount").fill("0.003");
+    await page.getByRole("button", { name: /Place \d+ sealed orders?/ }).click();
+    await page.getByText(/sealed buy orders? placed in round/).waitFor({ timeout: 180_000 });
+    await shot("5b-batch-placed");
+    const loop = createGloamLoop({ publicClient: pub, account: keeperWallet.account, send: (x) => keeperWallet.writeContract(x).then((h) => pub.waitForTransactionReceipt({ hash: h }).then(() => h)), batcherV4: G.batcherV4, batcherV4Block: fromBlock });
+    let settled = [];
+    for (let i = 0; i < 6 && !settled.length; i++) {
+      await rpc(rpcUrl, "evm_increaseTime", [70]);
+      await rpc(rpcUrl, "evm_mine");
+      settled = (await loop.tick()).rounds.filter((r) => r.action === "settled");
+    }
+    assert(settled.length > 0, `the Trade page placed sealed batch orders in the live v4 batcher, and the keeper loop settled the round (${settled.map((r) => r.round).join(", ")})`);
+  }
 
   // 6. a payment link from the Links page, claimed to a wallet in another browser that has no wallet at all
   await page.getByRole("link", { name: "Payment links" }).first().click();

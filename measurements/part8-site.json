@@ -1,6 +1,6 @@
 {
-  "seconds": 196,
-  "relayed": 15,
+  "seconds": 282,
+  "relayed": 21,
   "screenshots": [
     "part8-0-welcome.png",
     "part8-1-unlocked.png",
@@ -8,6 +8,7 @@
     "part8-3-balance.png",
     "part8-4-withdrawn.png",
     "part8-5-swapped.png",
+    "part8-5b-batch-placed.png",
     "part8-6-link-made.png",
     "part8-8-received.png"
   ]

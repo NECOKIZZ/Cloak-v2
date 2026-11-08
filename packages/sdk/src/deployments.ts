@@ -161,6 +161,8 @@ export const deployments: Record<number, CloakDeployment> = {
       receive: "0x4a11f7948513fe7517ef7c6efee88c5681bb06c4",
       bids: "0x0c3f42b10569a4550fe75785f86b2b019905f31b",
       graduation: "0x51756969b91f8b6a8c941250691b974c769c97fa",
+      // batch rounds through launches' own v4 pools (Nov 8): time-weighted price over at least a round, 4% per side
+      batcherV4: "0x5963bb45ed8d33d51f6de06ef9a21800a59496a3",
       fundsGate: "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c",
       receiptCheck: "0x2236b68e231cebd7dd04e23fe756efdae726e325",
       whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",

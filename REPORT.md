@@ -952,3 +952,11 @@ An outside reviewer asked about the batcher's price window and the auction's unc
   - one share claimed privately, and the other to a fresh wallet (0.0995 arrived);
   - the link reading empty afterwards;
   - a request paid privately.
+
+### 16.27 The v4 batcher live on testnet, and the next steps written down (Nov 8)
+
+- **CloakGloamBatcherV4 on Elysium testnet:** `0x5963bb45ed8d33d51f6de06ef9a21800a59496a3` (block 26392134, 0.0003 HYPE, from the new testnet key). It's the reviewed version: a time-weighted price over at least a round, 4% per side, a settling deadline. All 5 settled launches with v4 pools are registered. It's in `deployments.ts` (`gloam.batcherV4`), so the site's Trade page offers batch mode for them.
+- **The real site** (`part8-site.mjs`) now also places sealed batch orders from the Trade page into the live batcher, on a fork, and the keeper loop settles the round. All parts pass.
+- **Mainnet path:**
+  - `e2e-gloam/deploy-partner.mjs` deploys v2 next to Gloam's own vault from a config and hands the guard to a Safe. It was rehearsed on a fork for 0.022 HYPE.
+  - The roadmap and to-do list are in `docs/MAINNET-V2.md`.
