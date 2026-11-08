@@ -2,7 +2,7 @@
 // and a test launch token listed at deploy), CloakLaunchVault on the same final-key verifiers, CloakLaunchSwap with a
 // V2 pool stand-in, CloakGraduation, CloakGloamBatcher, CloakFundsGate, CloakReceiptCheck. The launch is a stand-in
 // (FakeFactory and FakeAuction). Used by live-elysium.mjs (live and --anvil) and part7-adapter.mjs.
-import { parseAbi, parseEther, zeroAddress } from "viem";
+import { encodeFunctionData, parseAbi, parseEther, zeroAddress } from "viem";
 import { deployGloamStack, deployPoseidon, ourArtifact, sendAndLog } from "./lib.mjs";
 
 const FAKE_ABI = parseAbi(["function add(address auction, address token) returns (uint256)", "function settle()"]);
@@ -18,11 +18,16 @@ export const LV_ABI = parseAbi([
 ]);
 
 /**
+ * @param gloamAssets what Cloak's instance of Gloam's vault lists:
+ *   "realistic" (default): as Gloam's Elysium vault will, USDC only at their mainnet caps (500 per deposit, 25,000 in
+ *     total), and the launch token listed later through the guard's 3-day timelock (`warp` moves the clock on anvil);
+ *   "open": HYPE and the launch token listed at deploy, for the live testnet run, which can't wait 3 days.
+ * @param warp (seconds) => moves the chain's clock (anvil); without it a realistic listing is only queued
  * @param me clients() for the funded deployer, who is also every fee recipient and the guard's controller
  * @param seed { hype, tokens }: what the V2 pool starts with (default 0.2 HYPE and 200 tokens: 1 HYPE = 1000 tokens)
  * @param roundSecs graduation and batch rounds
  */
-export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEther("0.2"), tokens: parseEther("200") }, roundSecs = 60n }) {
+export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEther("0.2"), tokens: parseEther("200") }, roundSecs = 60n, gloamAssets = "realistic", warp }) {
   const pub = me.pub;
   const wallet = me.wallet;
   const addr = me.account.address;
@@ -32,14 +37,18 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
   const tok = ourArtifact("TestToken.sol", "TestToken");
   const launch = await deploy("launch token", tok, ["Cloak Live Test", "CLT", 18]);
   const poseidon = await deployPoseidon(me);
+  const realistic = gloamAssets === "realistic";
+  const usdc = realistic ? await deploy("test USDC", tok, ["Test USDC", "USDC", 6]) : null;
   const stack = await deployGloamStack({
     rpcUrl,
     pk,
     poseidon,
-    assets: [
-      { address: zeroAddress, perDeposit: parseEther("10"), total: parseEther("100") },
-      { address: launch, perDeposit: parseEther("1000000"), total: parseEther("100000000") },
-    ],
+    assets: realistic
+      ? [{ address: usdc, perDeposit: 500n * 10n ** 6n, total: 25_000n * 10n ** 6n }]
+      : [
+          { address: zeroAddress, perDeposit: parseEther("10"), total: parseEther("100") },
+          { address: launch, perDeposit: parseEther("1000000"), total: parseEther("100000000") },
+        ],
     feeBps: 50,
     feeRecipient: addr,
     controller: addr,
@@ -70,7 +79,20 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
   const rv = await deploy("GloamReceiptVerifierFinal", ourArtifact("GloamReceiptVerifierFinal.sol", "GloamReceiptVerifierFinal"));
   const gate = await deploy("CloakFundsGate", ourArtifact("CloakFundsGate.sol", "CloakFundsGate"), [fv, stack.pool, lv]);
   const receipts = await deploy("CloakReceiptCheck", ourArtifact("CloakReceiptCheck.sol", "CloakReceiptCheck"), [rv, stack.pool, lv]);
+  // realistic: Gloam lists the launch token the only way it can after setup, through the guard's 3-day timelock
+  let listing = null;
+  if (realistic) {
+    const GUARD_ABI = parseAbi(["function queueChange(bytes call) returns (bytes32, uint256)", "function executeChange(bytes call)"]);
+    const call = encodeFunctionData({ abi: parseAbi(["function setDepositLimit(address asset, uint128 perDeposit, uint128 total)"]), functionName: "setDepositLimit", args: [launch, parseEther("1000000"), parseEther("100000000")] });
+    await write(stack.guard, GUARD_ABI, "queueChange", [call]);
+    listing = { queued: true, listed: false };
+    if (warp) {
+      await warp(3 * 86_400 + 1);
+      await write(stack.guard, GUARD_ABI, "executeChange", [call]);
+      listing.listed = true;
+    }
+  }
   const block = await pub.getBlockNumber();
-  const contracts = { gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
-  return { contracts, block, stack };
+  const contracts = { usdc, gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
+  return { contracts, block, stack, listing };
 }

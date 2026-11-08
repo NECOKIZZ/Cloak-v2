@@ -345,7 +345,8 @@ export class GloamPrivate {
     const amountOut = (expected * BigInt(10_000 - (opts.slippageBps ?? 100))) / 10_000n;
     if (amountOut === 0n) throw new Error("amount too small to trade");
     const path = side === "buy" ? [this.cfg.whype, token] : [token, this.cfg.whype];
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
+    // the chain's clock, not this device's: the contract checks the deadline against block time
+    const deadline = (await this.cfg.publicClient.getBlock()).timestamp + 600n;
     const rec = await launchSwap(core, { router: this.cfg.launchSwap, route: launchRoute(path), assetIn, amountIn, assetOut, amountOut, deadline }, onStatus);
     this.remember(rec);
     // take the buffer back at once when it can be; otherwise the next open does

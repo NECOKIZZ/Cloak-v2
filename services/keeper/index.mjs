@@ -772,8 +772,9 @@ const MAX_BODY = 64 * 1024;
 const LIMIT = Number(process.env.RELAY_PER_MIN ?? 20); // relay requests per IP per minute
 const hits = new Map();
 setInterval(() => hits.clear(), 60_000).unref();
+const clientIp = (req) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
 const limited = (req) => {
-  const ip = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
+  const ip = clientIp(req);
   const n = (hits.get(ip) ?? 0) + 1;
   hits.set(ip, n);
   return n > LIMIT;
@@ -804,7 +805,7 @@ createServer((req, res) => {
     });
     req.on("end", async () => {
       try {
-        send(req, res, 200, { txHash: await gloamRelay(JSON.parse(body)) });
+        send(req, res, 200, { txHash: await gloamRelay(JSON.parse(body), { sender: clientIp(req) }) });
       } catch (e) {
         send(req, res, e.status ?? 400, { error: e.status ? e.message : "malformed request" });
       }

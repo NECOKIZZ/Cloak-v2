@@ -54,6 +54,44 @@ try {
     hit = e;
   }
   assert(hit?.status === 429, "a relay whose hourly budget is spent answers 429");
+  // the budget is shared as Gloam's relay shares its own: new sends stop at 80%, refunds and exits may use the rest,
+  // and one sender gets at most 60%. A private send's cost sets the budgets below. Fresh accounts, so each send is one
+  // note (one transfer and its memo).
+  const sendTx = await pub.getTransactionReceipt({ hash: sent.txHashes[0] });
+  const c = sendTx.gasUsed * sendTx.effectiveGasPrice;
+  const via = (r, sender) => ({ ...cfg, submit: (call) => r({ kind: call.kind, to: call.to, data: call.data }, { sender }) });
+  const out9 = who(9).account.address;
+  {
+    // the 80% line on its own (no per-sender cap): spent after one send and two memos is about 87% of this budget
+    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: (c * 130n) / 100n, shares: { sender: 100n } });
+    const D = await GloamCore.unlock(who(4).wallet, via(r, "d"));
+    await D.shield(who(4).wallet, zeroAddress, parseEther("2"));
+    await D.sync();
+    await D.send(zeroAddress, await B.address(), parseEther("0.5"));
+    let e = null;
+    await D.send(zeroAddress, await B.address(), parseEther("0.5")).catch((x) => (e = x));
+    assert(/keeping its last gas for refunds and cash outs/.test(String(e?.message)), "past 80% of the hour's budget a new send is refused (429)");
+    const before = await pub.getBalance({ address: out9 });
+    await D.withdraw(zeroAddress, out9, parseEther("1.5")); // the whole change note: one cash out
+    assert((await pub.getBalance({ address: out9 })) > before, "but a cash out still goes through on the reserved top of the budget");
+  }
+  {
+    // the 60% per-sender cap: one sender's second send is cut off, another sender still gets through
+    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: c * 3n });
+    const E = await GloamCore.unlock(who(5).wallet, via(r, "1.1.1.1"));
+    const F = await GloamCore.unlock(who(6).wallet, via(r, "2.2.2.2"));
+    await E.shield(who(5).wallet, zeroAddress, parseEther("2"));
+    await E.sync();
+    await E.send(zeroAddress, await B.address(), parseEther("0.5"));
+    let e = null;
+    await E.send(zeroAddress, await B.address(), parseEther("0.5")).catch((x) => (e = x));
+    assert(/your share of the relay's gas/.test(String(e?.message)), "one sender past 60% of the budget is refused (429)");
+    await F.shield(who(6).wallet, zeroAddress, parseEther("0.3"));
+    await F.sync();
+    const before = await pub.getBalance({ address: out9 });
+    await F.withdraw(zeroAddress, out9, parseEther("0.3"));
+    assert((await pub.getBalance({ address: out9 })) > before, "while another sender still gets through");
+  }
   console.log(`\nPart 3b passed in ${Math.round((performance.now() - t0) / 1000)} s`);
 } finally {
   L.stop();

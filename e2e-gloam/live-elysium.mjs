@@ -109,7 +109,9 @@ try {
 
   // ── 1. deploy ──────────────────────────────────────────────────────────
   const ROUND = 60n;
-  const d = await deployCloakGloam({ me, rpcUrl, pk, roundSecs: ROUND });
+  // the anvil rehearsal lists like Gloam's real vault (USDC only, the launch token through the 3-day wait, skipped
+  // forward); live, the 3 days can't be skipped, so HYPE and the launch token are listed at deploy
+  const d = await deployCloakGloam({ me, rpcUrl, pk, roundSecs: ROUND, gloamAssets: ANVIL ? "realistic" : "open", warp: ANVIL ? async (secs) => (await rpc(rpcUrl, "evm_increaseTime", [secs]), await rpc(rpcUrl, "evm_mine")) : undefined });
   const stack = d.stack;
   ok(stack.forgeLog.includes("All checks passed"), "Gloam's deploy gate passed: its verifiers take final-key proofs and refuse dev-key ones");
   const { launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, launchToken: launch, whypeStandIn: weth } = d.contracts;

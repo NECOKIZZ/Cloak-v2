@@ -746,3 +746,40 @@ Backend changes this needed, with no layout change:
 - **Trade data:** the Trade page's data layer (`pages/markets.ts`) has a Gloam branch: markets are the launch vault's admitted tokens with their V2 pools, quotes use V2's 0.3% maths on live reserves, the fee is read from the launch vault, and batch mode uses CloakGloamBatcher. On the Gloam backend the page doesn't download Cloak's own circuit.
 - **Fee notes:** the Withdraw and Trade notes now state the backend's real terms. On Gloam that is 0.5%, and the relayer pays the gas, with the trade's unused amount coming back.
 - **Circuit copies:** `apps/web/public/circuits/gloam/` (the site's self-hosted copy of Gloam's circuits) is git-ignored. The test copies the files there because jsDelivr is blocked in this container.
+
+## 17. Direction after Gloam's code answers (Nov 8)
+
+The answers in `GLOAM_QUESTIONS.md` (Answers read from Gloam's public code) come from an LLM reading Gloam's public repo, not from Gloam's founder. They describe the code, not Gloam's plans. The open items wait for the founder.
+
+**Cloak v2 is Gloam-only.** Once Gloam's side is proven, cloak-v2 drops whatever duplicates Cloak's own private layer. Cloak v1 (NECOKIZZ/Cloak) keeps all of Cloak's own mechanics, so nothing is lost. What would leave cloak-v2 at that point (not removed yet):
+- the `cloak` backend in the site (`VITE_CORE` goes, `GloamPrivate` becomes the only private account);
+- Cloak's own vaults and circuits: `CloakPrivate`, `SharedVaultClient`, `CloakVaults`, `ShieldedPool`, `PrivateRouter`, the batcher, the migrator, `CloakReceive`, `circuits/`, and the 15 MB of circuit files in `apps/web/public/circuits`;
+- the keeper's Cloak relay (`/relay`, `/quote`, the scheduled pieces) and the site code that only serves Cloak's vaults (`scheduled.ts`, the move-from-earlier-deployments panel, the leaves snapshot).
+
+What stays: the launch side (factory, auctions, drops, the launch pairs), the site's pages and the Gloam stack (`contracts-gloam`, `core/` in the SDK, the Gloam relay and loop).
+
+**Decisions this settles:**
+- **Launch tokens stay in `CloakLaunchVault`** (Gloam's audited core plus `admitLaunch`). Cloak's own vaults are leaving v2, so there is nowhere else to keep them. Its safety rests on our review until Gloam reviews it or it's audited.
+- **Private sends use Gloam's notes,** with the sweep on every app open. That leaves the bearer window (a payer can spend a payment back until the payee's app sweeps it). The pending balance shows it, and receipts can prove a payment was made.
+- **The relay follows Gloam's budget rules** (16.11) and **tests use a realistic Gloam vault** (USDC only at their caps, launch tokens through the 3-day wait).
+- Later, not yet: escrows posting their note's memo in the same transaction (their memo board allows it).
+
+### 16.11 The relay shares its budget as Gloam's does (Nov 8)
+
+`services/keeper/gloam.mjs`:
+- New sends (vault transfers and escrow entries) may use up to 80% of the hour's budget, other calls (memos) up to 92%, and refunds and exits all of it. So the top 8% is always there for getting money out.
+- An exit is a vault cash out or an escrow call that takes money out or back. The 12 escrow functions are listed by selector, and each one was checked against the compiled contracts.
+- One sender (the caller's IP, passed by the keeper's HTTP layer) gets at most 60%, of the base budget and of the fee income alike.
+- The three shares are settable per relay and default to Gloam's.
+- `part3-relay.mjs` checks each rule with real sends, and parts 4 to 8 pass on the new relay:
+  - past 80% a new send is refused while a cash out still goes through;
+  - one sender past 60% is refused while another still gets through.
+- One effect to know: since the per-sender cap (60%) is below the new-send line (80%), no single sender can push the relay into its reserve.
+
+### 16.12 Tests on a realistic Gloam vault, and a deadline fix (Nov 8)
+
+`e2e-gloam/stack.mjs` now deploys Cloak's instance of Gloam's vault the way Gloam's Elysium vault will be: USDC only, at 500 per deposit and 25,000 in total. The launch token is listed later through the guard's real 3-day timelock, skipped forward on anvil. `part7-adapter.mjs` and the anvil rehearsal of `live-elysium.mjs` run on it and pass. The live testnet run keeps listing HYPE and the launch token at deploy, because 3 days can't be skipped there.
+
+The clock jump found a bug: `GloamPrivate` set a swap's deadline from the device's clock, but the contract checks block time. A device whose clock runs behind the chain (or a chain ahead of it) would have every swap refused as expired. The deadline now comes from the latest block.
+
+Also settled: Gloam's repo is public, so the site loads Gloam's circuits from jsDelivr at the pinned commit as planned (16.9). The self-hosted copy stays only as a fallback.

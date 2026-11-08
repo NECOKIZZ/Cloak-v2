@@ -20,7 +20,7 @@ const pub = dep.pub;
 try {
   console.log("Part 7 on anvil (chain 99801): GloamPrivate, the site's backend on Gloam");
   const ROUND = 60n;
-  const { contracts: c, block } = await deployCloakGloam({ me: dep, rpcUrl, pk: ANVIL_KEYS[0], roundSecs: ROUND, seed: { hype: parseEther("50"), tokens: parseEther("50000") } });
+  const { contracts: c, block } = await deployCloakGloam({ me: dep, rpcUrl, pk: ANVIL_KEYS[0], roundSecs: ROUND, seed: { hype: parseEther("50"), tokens: parseEther("50000") }, warp: async (secs) => (await rpc(rpcUrl, "evm_increaseTime", [secs]), await rpc(rpcUrl, "evm_mine")) });
   const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: c.gloamVault, launchVault: c.launchVault, memoBoard: c.memoBoard, escrows: [c.launchSwap, c.graduation, c.batcher, c.fundsGate], hourlySpendWei: parseEther("1") });
   const loop = createGloamLoop({ publicClient: pub, account: keeper.account, send: async (call) => (await sendAndLog(pub, call.functionName, keeper.wallet.writeContract(call))).transactionHash, launchVault: c.launchVault, batcher: c.batcher, batcherBlock: block });
   await loop.tick(); // admits the launch
