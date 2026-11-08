@@ -100,8 +100,12 @@ contract CloakGloamBidsTest is Test {
         k = CloakGloamBids.BidKey(bytes32(nul), NOTE, address(auction), vm.addr(ownerPk), fallbackTo, block.timestamp + 30 days);
     }
 
+    function _bidCall(bytes32 commitment, bytes memory sealedBid) internal pure returns (bytes memory) {
+        return abi.encodeCall(MockAuction.commit, (commitment, sealedBid));
+    }
+
     function _placeSig(CloakGloamBids.BidKey memory k, bytes memory sealedBid) internal view returns (bytes memory) {
-        return _sign(bids.placeDigest(bids.accountFor(k), COMMITMENT, sealedBid));
+        return _sign(bids.placeDigest(bids.accountFor(k), _bidCall(COMMITMENT, sealedBid)));
     }
 
     function _spend(CloakGloamBids.BidKey memory k) internal view returns (CloakGloamBids.Spend memory) {
@@ -115,7 +119,7 @@ contract CloakGloamBidsTest is Test {
         CloakGloamBids.Spend memory s = _spend(k);
         bytes memory sig = _placeSig(k, sealedBid);
         vm.prank(relayer);
-        bids.place(s, k, COMMITMENT, sealedBid, sig);
+        bids.place(s, k, _bidCall(COMMITMENT, sealedBid), sig);
     }
 
     function _deps(uint256 tokens, uint256 hype, uint256 c) internal view returns (CloakGloamBids.Deposit[] memory ds) {
@@ -171,7 +175,7 @@ contract CloakGloamBidsTest is Test {
         bytes memory sig = _placeSig(k, sealedBid);
         vm.warp(block.timestamp + 2 hours);
         vm.expectRevert(bytes("commit closed"));
-        bids.place(s, k, COMMITMENT, sealedBid, sig);
+        bids.place(s, k, _bidCall(COMMITMENT, sealedBid), sig);
         assertFalse(pool.isSpent(k.nullifier), "note unspent");
     }
 
@@ -181,7 +185,7 @@ contract CloakGloamBidsTest is Test {
         CloakGloamBids.Spend memory s = _spend(k);
         vm.prank(mallory);
         pool.unshield(s.proof, s.root, s.nullifier, address(0), bids.accountFor(k), NOTE);
-        bids.place(s, k, COMMITMENT, sealedBid, _placeSig(k, sealedBid));
+        bids.place(s, k, _bidCall(COMMITMENT, sealedBid), _placeSig(k, sealedBid));
         (, uint256 deposit, , ) = auction.bids(0);
         assertEq(deposit, ARRIVES);
     }
@@ -243,7 +247,7 @@ contract CloakGloamBidsTest is Test {
         CloakGloamBids.Spend memory s = _spend(k);
         bytes memory sig = _placeSig(k, "sealed");
         vm.expectRevert(CloakGloamBids.Closed.selector);
-        bids.place(s, k, COMMITMENT, "sealed", sig);
+        bids.place(s, k, _bidCall(COMMITMENT, "sealed"), sig);
     }
 
     function test_finish_replay_is_refused() public {
@@ -273,14 +277,14 @@ contract CloakGloamBidsTest is Test {
         bytes memory sig = _placeSig(k, sealedBid);
         // a copier swaps in its own bid (one it would never reveal, to get the bidder fined): the signature fails
         vm.expectRevert(CloakGloamBids.BadSignature.selector);
-        bids.place(s, k, COMMITMENT, "other", sig);
+        bids.place(s, k, _bidCall(COMMITMENT, "other"), sig);
         vm.expectRevert(CloakGloamBids.BadSignature.selector);
-        bids.place(s, k, keccak256("other"), sealedBid, sig);
+        bids.place(s, k, _bidCall(keccak256("other"), sealedBid), sig);
         // or changes the key (a fallback of its own): another account, and the proof names the old one
         k.fallbackTo = mallory;
         bytes memory sig2 = _placeSig(k, sealedBid);
         vm.expectRevert();
-        bids.place(s, k, COMMITMENT, sealedBid, sig2);
+        bids.place(s, k, _bidCall(COMMITMENT, sealedBid), sig2);
     }
 
     function test_only_the_factory_moves_an_account() public {
@@ -301,8 +305,8 @@ contract CloakGloamBidsTest is Test {
         bytes memory sealedBid = "sealed";
         CloakGloamBids.BidKey memory k = CloakGloamBids.BidKey(bytes32(uint256(0xAB)), NOTE, address(za), vm.addr(ownerPk), fallbackTo, block.timestamp + 30 days);
         address account = bids.accountFor(k);
-        bytes memory psig = _sign(bids.placeDigest(account, COMMITMENT, sealedBid));
-        bids.place(CloakGloamBids.Spend(abi.encode(account), pool.currentRoot(), k.nullifier, address(0), NOTE), k, COMMITMENT, sealedBid, psig);
+        bytes memory psig = _sign(bids.placeDigest(account, _bidCall(COMMITMENT, sealedBid)));
+        bids.place(CloakGloamBids.Spend(abi.encode(account), pool.currentRoot(), k.nullifier, address(0), NOTE), k, _bidCall(COMMITMENT, sealedBid), psig);
         z.freeze(account, true); // the token blocks the account: its claim can't pay tokens
         za.settle(0, 100e18, 0.5e18);
         CloakGloamBids.Deposit[] memory ds = new CloakGloamBids.Deposit[](1);
@@ -313,5 +317,26 @@ contract CloakGloamBidsTest is Test {
         z.freeze(account, false); // the issuer unfreezes: the same call works
         bids.finish(k, ds, sig);
         assertEq(z.balanceOf(account), 100e18, "tokens wait for a second finish or an exit");
+    }
+
+    function test_owner_call_moves_what_cannot_go_back_and_works_once() public {
+        (CloakGloamBids.BidKey memory k, address account) = _place(0xAA);
+        auction.settle(0, 500e18, 0);
+        auction.claim(0);
+        bytes memory data = abi.encodeCall(TestToken.transfer, (address(0xF8E5), 500e18));
+        bytes memory sig = _sign(bids.callDigest(account, address(launch), 0, data, 0));
+        vm.prank(relayer);
+        bids.ownerCall(k, address(launch), 0, data, sig);
+        assertEq(launch.balanceOf(address(0xF8E5)), 500e18);
+        vm.expectRevert(CloakGloamBids.BadSignature.selector); // the nonce moved on
+        bids.ownerCall(k, address(launch), 0, data, sig);
+    }
+
+    function test_owner_call_can_not_touch_the_vault() public {
+        (CloakGloamBids.BidKey memory k, address account) = _place(0xAA);
+        bytes memory data = abi.encodeWithSignature("collectFees(address)", address(0));
+        bytes memory sig = _sign(bids.callDigest(account, address(pool), 0, data, 0));
+        vm.expectRevert(CloakGloamBids.BadKey.selector);
+        bids.ownerCall(k, address(pool), 0, data, sig);
     }
 }

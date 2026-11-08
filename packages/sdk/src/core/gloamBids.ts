@@ -14,12 +14,15 @@ const SPEND = "(bytes proof, bytes32 root, bytes32 nullifier, address asset, uin
 const DEPOSIT = "(bytes proof, bytes32 commitment, address asset, uint256 amount)";
 const KEY = "(bytes32 nullifier, uint256 amount, address auction, address ownerKey, address fallbackTo, uint256 exitAfter)";
 export const CLOAK_GLOAM_BIDS_ABI = parseAbi([
-  `function place(${SPEND} s, ${KEY} k, bytes32 commitment, bytes sealedBid, bytes signature) returns (uint256)`,
+  `function place(${SPEND} s, ${KEY} k, bytes bidCall, bytes signature) returns (uint256)`,
+  `function ownerCall(${KEY} k, address target, uint256 value, bytes data, bytes signature) returns (bytes)`,
+  "function callDigest(address account, address target, uint256 value, bytes data, uint256 nonce) view returns (bytes32)",
+  "function callNonce(address) view returns (uint256)",
   `function finish(${KEY} k, ${DEPOSIT}[] ds, bytes signature)`,
   `function exit(${KEY} k, address to, address[] tokens, bytes signature)`,
   `function exitAfterTimeout(${KEY} k, address[] tokens)`,
   `function accountFor(${KEY} k) view returns (address)`,
-  "function placeDigest(address account, bytes32 commitment, bytes sealedBid) view returns (bytes32)",
+  "function placeDigest(address account, bytes bidCall) view returns (bytes32)",
   `function finishDigest(address account, ${DEPOSIT}[] ds) view returns (bytes32)`,
   "function exitDigest(address account, address to) view returns (bytes32)",
   "function bidIdPlus1(address) view returns (uint256)",
@@ -29,6 +32,13 @@ export const CLOAK_GLOAM_BIDS_ABI = parseAbi([
 // The signatures are built from strings, so viem can't type the calls: an untyped handle, checked by the e2e runs.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BIDS = CLOAK_GLOAM_BIDS_ABI as any;
+
+const COMMITS = parseAbi(["function commit(bytes32 commitment, bytes sealedBid) payable returns (uint256)", "function commit(bytes32 commitment, bytes sealedBid, bool wl, bytes32[] wlProof) payable returns (uint256)"]);
+
+/** CloakAuction.commit(commitment, sealedBid). */
+export const launchBidCall = (commitment: Hex, sealedBid: Hex): Hex => encodeFunctionData({ abi: [COMMITS[0]], functionName: "commit", args: [commitment, sealedBid] });
+/** CloakDrop.commit(commitment, sealedBid, false, []): a public bid (a WL bid must come from the listed wallet). */
+export const dropBidCall = (commitment: Hex, sealedBid: Hex): Hex => encodeFunctionData({ abi: [COMMITS[1]], functionName: "commit", args: [commitment, sealedBid, false, []] });
 
 export interface GloamBidKey {
   nullifier: Hex;
@@ -56,7 +66,18 @@ export interface GloamBidRecord {
  */
 export async function gloamBid(
   core: GloamCore,
-  p: { bids: Address; auction: Address; tick: number; quantity: bigint; tlockRound: number; amount: bigint; fallbackTo: Address; exitAfter: bigint },
+  p: {
+    bids: Address;
+    auction: Address;
+    tick: number;
+    quantity: bigint;
+    tlockRound: number;
+    amount: bigint;
+    fallbackTo: Address;
+    exitAfter: bigint;
+    /** Builds the auction call from the commitment and sealed bid. Default: CloakAuction.commit. Drops: dropBidCall. */
+    bidCall?: (commitment: Hex, sealedBid: Hex) => Hex;
+  },
   onStatus: Status = () => {},
 ): Promise<GloamBidRecord> {
   const pub = core.config.publicClient;
@@ -70,10 +91,11 @@ export async function gloamBid(
   onStatus("Sealing the bid");
   const sealed = await sealBid({ auction: p.auction, bidder: account, tick: p.tick, quantity: p.quantity, salt }, p.tlockRound);
   const s = await core.spendProof(note, account, onStatus);
-  const digest: Hex = (await pub.readContract({ address: p.bids, abi: BIDS, functionName: "placeDigest", args: [account, commitment, sealed] })) as Hex;
+  const bidCall = (p.bidCall ?? launchBidCall)(commitment, sealed);
+  const digest: Hex = (await pub.readContract({ address: p.bids, abi: BIDS, functionName: "placeDigest", args: [account, bidCall] })) as Hex;
   const signature = await privateKeyToAccount(ownerPk).sign({ hash: digest });
   onStatus("Placing the bid");
-  const txHash = await core.config.submit({ kind: "escrow", to: p.bids, data: encodeFunctionData({ abi: BIDS, functionName: "place", args: [s, key, commitment, sealed, signature] }) });
+  const txHash = await core.config.submit({ kind: "escrow", to: p.bids, data: encodeFunctionData({ abi: BIDS, functionName: "place", args: [s, key, bidCall, signature] }) });
   return { bids: p.bids, key, account, tick: p.tick, quantity: p.quantity, salt, txHash };
 }
 
@@ -91,4 +113,13 @@ export async function gloamFinishBid(core: GloamCore, rec: GloamBidRecord, back:
   const tx = await core.config.submit({ kind: "escrow", to: rec.bids, data: encodeFunctionData({ abi: BIDS, functionName: "finish", args: [rec.key, ds, signature] }) });
   for (const m of made) core.track({ commitment: m.note.commitment, asset: m.note.asset, amount: m.note.amount, secret: m.note.secret });
   return memo ? [memo, tx] : [tx];
+}
+
+/** One owner-signed call from the bid account: a drop's NFTs out to a wallet, for instance. */
+export async function gloamBidOwnerCall(core: GloamCore, rec: GloamBidRecord, call: { target: Address; value?: bigint; data: Hex }): Promise<Hex> {
+  const pub = core.config.publicClient;
+  const nonce = (await pub.readContract({ address: rec.bids, abi: BIDS, functionName: "callNonce", args: [rec.account] })) as bigint;
+  const digest = (await pub.readContract({ address: rec.bids, abi: BIDS, functionName: "callDigest", args: [rec.account, call.target, call.value ?? 0n, call.data, nonce] })) as Hex;
+  const signature = await privateKeyToAccount(core.exitKeyFor(rec.key.nullifier)).sign({ hash: digest });
+  return core.config.submit({ kind: "escrow", to: rec.bids, data: encodeFunctionData({ abi: BIDS, functionName: "ownerCall", args: [rec.key, call.target, call.value ?? 0n, call.data, signature] }) });
 }
