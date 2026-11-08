@@ -591,3 +591,12 @@ Steps, each tested on anvil and pushed:
 5. App-side automation: sweeps, bid finishes and batch claims run on every open. The keeper loop queues listings, settles rounds and pushes timeout exits.
 6. Allocation gates by proof of funds, and private receipts, using Gloam's final keys.
 7. The live Elysium testnet run, once `GLOAM_TESTNET_PK` is set.
+
+### 16.1 Step 1 done: CloakLaunchVault (Nov 8)
+
+`contracts-gloam/src/CloakLaunchVault.sol` is Gloam's `ShieldPoolCore` with Gloam's ShieldPoolPayments rules copied over (deposits take `shieldBound` only, setup can't end without both verifiers and deposit limits, no sealed swap), plus one addition, `admitLaunch(launchIndex)`.
+- Anyone may call it for a settled launch from the one factory named at deploy. It gives the token fixed caps (set at deploy) at once, with no 3-day wait. This is how Cloak's own `CloakVaults.createPool` already admits launch tokens.
+- It runs once per token. A second call does nothing, so a limit the owner lowered in an incident can't be raised back. A token the owner already gave limits keeps them.
+- Every other asset, the verifiers and the fee still go through setup, then the 3-day timelock. The owner can still lower limits and the fee at once, and still has no function that moves user funds.
+- The cash-out fee goes to Cloak. Gloam's `_withdrawFee` isn't virtual, so the vault can't exempt the graduation escrow without changing Gloam's code. Safer choice taken: no exemption, graduating pays the launch vault fee once.
+- Tests in `contracts-gloam/test/CloakLaunchVault.t.sol` (14, all pass): admission, unsettled and unknown launches refused, per-deposit and total caps, re-admit after a lowered limit, other tokens need the timelock, deposit then send then cash out with Cloak's fee collected, fee cap, setup checks. The verifiers there are stand-ins. The proof checks are Gloam's unchanged code, so Gloam's final keys work as in Gloam's vault (to be shown in the live run, step 7).
