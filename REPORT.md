@@ -536,3 +536,42 @@ Each of these is still open after the answers above and a check of Gloam's repo.
 9. **The SDK.** npm 0.6.0 differs from your repo's 0.6.0, and neither knows Elysium testnet's pool yet. When will a
    release know 99801 and 99901 with the final keys? Could `buildTransferWitness` take the change note's secret, so
    partners can make recoverable notes without copying the circuit input?
+
+## 15. One circuit, graduation, and features built on Gloam's own work (Nov 8)
+
+### 15.1 One circuit: yes
+
+The 3-day wait is in the vault contract (`ShieldPoolCore`, through `ChangeTimelock`), not in the circuits. Gloam's circuits know nothing about which tokens are listed. `_setDepositLimit` is internal, so a Cloak launch vault can be Gloam's `ShieldPoolCore` and Gloam's final verifiers (the 13-party keys), plus one function: Cloak's factory sets a deposit limit for a token it has just deployed. That is roughly 30 lines of contract, with no circuit change and no new ceremony. Gloam's own vault and its 3-day rule stay untouched.
+
+It is safe to admit factory tokens at once because every one is the same `CloakToken` contract: fixed supply, no owner, no mint, no tax, no blacklist (`contracts/src/CloakToken.sol`). The 3-day review exists for unknown token code, and here there is none to review. The rule must take only tokens the factory itself deployed, never any token that asks.
+
+What it gives:
+- one note format, one prover, one set of ceremony keys and one SDK path (GloamCore on either vault, by address);
+- Cloak owns the instance, so Cloak sets its fee (it could stay 0.25%, capped at 1% by the contract) and is the fee recipient, which can also pay for Cloak's relayer;
+- graduation becomes a short escrow, below.
+
+What it costs:
+- Cloak's own circuits go for launch tokens too, so owner-keyed notes and 2-in sends are lost there as well (bearer window, pieces);
+- the variant needs an audit, a small one (one function, no circuit work);
+- launch tokens hide in a smaller crowd than Gloam's vault, as they do today.
+
+Not possible without Gloam changing its vault: spending a note of one vault inside the other. Each vault has its own tree, so moving between them is always cash out from one and deposit into the other.
+
+### 15.2 Graduation
+
+When Gloam lists a token (its 3 days and review, which Cloak can queue at launch creation as in Part 2c), a graduation escrow moves holders over:
+1. the holder's note in Cloak's launch vault is cashed out to the escrow (the proof names it);
+2. the escrow deposits into Gloam's vault with a note the holder made in advance from the same seed, so restore works the same way.
+
+Public at graduation: the token and the amount, out of one vault and into the other. Not public: who. To blur amounts, graduation runs in rounds (many holders, one window) or in standard sizes. Gloam's per-deposit cap for the token applies. Cloak's cash-out fee would apply too, unless the variant exempts its own graduation escrow (one more line).
+
+### 15.3 Features built on Gloam's own work
+
+Gloam ships final ceremony keys for `receipt`, `funds` (solvency) and `payroll_total` as well as shield, transfer and unshield (`app/public/circuits/final`). Each one gives Cloak a feature Cloak doesn't have today:
+- Private receipts (`receipt`): prove a payment, a bid deposit or a purchase happened, with the amount shown or hidden, and without revealing when the note is later spent.
+- Private creator payouts and airdrops with a proven total (`payroll_total`): a creator pays holders, team or winners privately, then proves the exact total and count.
+- Allocation gates by proof of funds (`funds`, verifier built in Part 3a): "holds at least X USDC" earns a launch allocation or a drop spot without revealing the wallet. The public nullifiers let the gate count each note once. This partly replaces WL spots for private balances.
+- Cross-app payments: Cloak and Gloam users share one vault, one tag format and one memo board, so a Cloak user can pay any Gloam user and the reverse, and claim links open in either app.
+- Gift and airdrop links for launches (`gloam1.` note packages), with take-back from any device (built in Part 1b).
+- A "Graduated to Gloam" badge on tokens that reach Gloam's vault, which markets both.
+- Later: Gloam's `sealedSwap` circuit (v0, not deployed) would hide swap sizes.
