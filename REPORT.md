@@ -711,3 +711,21 @@ What this run doesn't show:
 - Cloak's real launches: the launch, WHYPE and the V2 pool are stand-ins. Cloak's testnet launches trade on Uniswap v4, and this wallet holds none of their tokens.
 - Gloam's own Elysium testnet vault: it isn't deployed yet, so "Gloam's vault" here is Cloak's own instance of Gloam's guarded deploy, with the launch token listed at deploy. On Gloam's real vault, listing a token takes Gloam's review and the 3-day wait.
 - Only one user per round, so the round privacy numbers are untested.
+
+### 16.9 The site's backend on Gloam, stage 1 (Nov 8)
+
+Same pages and site map. Only the backend changes, chosen by one build setting, `VITE_CORE=gloam` (default `cloak`, today's site).
+
+- `packages/sdk/src/core/gloamPrivate.ts`: `GloamPrivate` has the same methods and return shapes the pages call on `CloakPrivate`. Under it are two GloamCores made from the same one wallet signature, so one private address (`gloamr1.`) receives in both vaults. Balances add up across both.
+  - **Deposits** go to the launch vault when it takes the asset (HYPE and launch tokens, so they can trade: a swap spends from the launch vault and nothing moves privately between vaults), else to Gloam's vault (USDC).
+  - **Sends and cash outs** draw from Gloam's vault first, then the launch vault.
+  - A page's market `pool` id is the asset itself.
+  - **Numbers that differ under the same UI:** the relayer fee is 0 (Cloak's relay pays gas), and `afterFee` takes the vault's 0.5%.
+- **Works on Gloam:** markets (HYPE plus every admitted launch token with its V2 pool), deposit, balance, max spendable, send, sweep, withdraw, instant buy and sell (CloakLaunchSwap, the price buffer back at once), batch orders (CloakGloamBatcher), and proof of funds. The Funds page's shareable proof is now version 2 (Gloam's funds circuit, final keys, up to 4 notes), and the SDK's `verifyFundsProof`, which the proof page uses, checks it against Gloam's final funds key, built into the SDK.
+- **Not on Gloam yet:** bids paid from the private balance, Links (link accounts use Cloak's key format), receive addresses, and spread-out withdrawals. On the Gloam backend they show "This part of Cloak isn't on the new private layer yet. It's coming soon." The panel for moving balances from earlier deployments is hidden there, since those are Cloak's old vaults.
+- **Circuits in the browser:** `gloamProvers()` fetches Gloam's wasm and final zkeys (13.5 MB for shield, transfer and unshield) from jsDelivr at Gloam's pinned commit, else from `/circuits/gloam` on the site. Each file is checked against a SHA-256 pinned in the SDK (`GLOAM_CIRCUIT_HASHES`). Not checked from this container: jsDelivr is blocked here, and so is Gloam's GitHub repo, so whether jsDelivr serves it (it must be public) is still to confirm. If not, the site serves its own copy.
+- **The SDK's deployment record for chain 99801** now has a `gloam` block with the Nov 8 live-run addresses, marked `standIns: true`.
+- **Tests:**
+  - `e2e-gloam/part7-adapter.mjs` calls each method the way the pages do, on final keys through the relay. It passes, including the site's proof checker passing a v2 proof and failing it for another reader.
+  - `e2e-gloam/stack.mjs` now holds the deploy steps, shared with `live-elysium.mjs`, whose anvil rehearsal passes again after the move.
+  - The site type-checks and builds with both settings. SDK tests 16 of 16.

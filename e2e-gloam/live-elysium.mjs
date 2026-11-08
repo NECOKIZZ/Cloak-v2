@@ -19,6 +19,7 @@ import { generatePrivateKey } from "viem/accounts";
 import { CLOAK_FUNDS_GATE_ABI, CLOAK_RECEIPT_CHECK_ABI, GloamCore, finishPending, graduate, joinFundsGate, launchRoute, launchSwap, proveReceipt } from "@cloakely/sdk";
 import { createGloamRelay } from "../services/keeper/gloam.mjs";
 import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
+import { LV_ABI, deployCloakGloam } from "./stack.mjs";
 import {
   ANVIL_KEYS,
   CIRCUITS,
@@ -27,11 +28,8 @@ import {
   REPO,
   assert,
   clients,
-  deployGloamStack,
-  deployPoseidon,
   finalProver,
   gasLog,
-  ourArtifact,
   proofLog,
   rpc,
   sendAndLog,
@@ -92,17 +90,6 @@ const holderProver = (circuit) => async (input) => {
 };
 const bal = (m, asset) => [...m].filter(([a]) => a.toLowerCase() === asset.toLowerCase()).reduce((x, [, v]) => x + v, 0n);
 
-const FAKE_ABI = parseAbi(["function add(address auction, address token) returns (uint256)", "function settle()"]);
-const TOKEN_ABI = parseAbi(["function mint(address to, uint256 amount)", "function transfer(address to, uint256 amount) returns (bool)", "function deposit() payable"]);
-const PAIR_ABI = parseAbi(["function create(address a, address b) returns (address)", "function getPair(address, address) view returns (address)", "function sync()"]);
-const LV_ABI = parseAbi([
-  "function setShieldVerifier(address)",
-  "function setWithdrawFee(uint16 bps, address recipient)",
-  "function turnOnDepositLimits()",
-  "function setDepositLimit(address asset, uint128 perDeposit, uint128 total)",
-  "function endSetup()",
-  "function feesOwed(address) view returns (uint256)",
-]);
 const BATCH_ABI = parseAbi([
   "function place((bytes proof, bytes32 root, bytes32 nullifier, address asset, uint256 amount) s, (bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo) k) returns (bytes32)",
   "function escrowFor((bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo) k) view returns (address)",
@@ -121,51 +108,13 @@ try {
   console.log(`Step 7 on ${ANVIL ? "a local anvil rehearsal" : "Elysium testnet"} (chain 99801), wallet ${addr}, ${formatEther(startBalance)} HYPE`);
 
   // ── 1. deploy ──────────────────────────────────────────────────────────
-  const tok = ourArtifact("TestToken.sol", "TestToken");
-  const launch = await deploy("launch token", tok, ["Cloak Live Test", "CLT", 18]);
-  const poseidon = await deployPoseidon(me);
-  const stack = await deployGloamStack({
-    rpcUrl,
-    pk,
-    poseidon,
-    assets: [
-      { address: zeroAddress, perDeposit: parseEther("10"), total: parseEther("100") },
-      { address: launch, perDeposit: parseEther("1000000"), total: parseEther("100000000") },
-    ],
-    feeBps: 50,
-    feeRecipient: addr,
-    controller: addr,
-  });
-  ok(stack.forgeLog.includes("All checks passed"), "Gloam's deploy gate passed: its verifiers take final-key proofs and refuse dev-key ones");
-  const auction = await deploy("auction stand-in", ourArtifact("CloakLaunchVault.t.sol", "FakeAuction"));
-  const factory = await deploy("factory stand-in", ourArtifact("CloakLaunchVault.t.sol", "FakeFactory"));
-  await write(factory, FAKE_ABI, "add", [auction, launch]);
-  await write(auction, FAKE_ABI, "settle");
-  const weth = await deploy("WHYPE stand-in", ourArtifact("CloakV2PairSwap.t.sol", "WETH9"));
-  const v2 = await deploy("V2 factory stand-in", ourArtifact("CloakV2PairSwap.t.sol", "V2Factory"));
-  await write(v2, PAIR_ABI, "create", [weth, launch]);
-  const pair = await pub.readContract({ address: v2, abi: PAIR_ABI, functionName: "getPair", args: [weth, launch] });
-  await write(weth, TOKEN_ABI, "deposit", [], parseEther("0.2"));
-  await write(weth, TOKEN_ABI, "transfer", [pair, parseEther("0.2")]);
-  await write(launch, TOKEN_ABI, "mint", [pair, parseEther("200")]); // 1 HYPE = 1000 tokens
-  await write(pair, PAIR_ABI, "sync");
-
-  const lv = await deploy("CloakLaunchVault", ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), [poseidon, stack.dual, factory, parseEther("1000000"), parseEther("100000000")]);
-  await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
-  await write(lv, LV_ABI, "setWithdrawFee", [50, addr]);
-  await write(lv, LV_ABI, "turnOnDepositLimits");
-  await write(lv, LV_ABI, "setDepositLimit", [zeroAddress, parseEther("10"), parseEther("100")]);
-  await write(lv, LV_ABI, "endSetup");
   const ROUND = 60n;
-  const router = await deploy("CloakLaunchSwap", ourArtifact("CloakLaunchSwap.sol", "CloakLaunchSwap"), [lv, v2, weth]);
-  const graduation = await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [lv, stack.pool, ROUND]);
-  const batcher = await deploy("CloakGloamBatcher", ourArtifact("CloakGloamBatcher.sol", "CloakGloamBatcher"), [lv, v2, weth, ROUND, 200n, 600n]);
-  const fv = await deploy("GloamFundsVerifierFinal", ourArtifact("GloamFundsVerifierFinal.sol", "GloamFundsVerifierFinal"));
-  const rv = await deploy("GloamReceiptVerifierFinal", ourArtifact("GloamReceiptVerifierFinal.sol", "GloamReceiptVerifierFinal"));
-  const gate = await deploy("CloakFundsGate", ourArtifact("CloakFundsGate.sol", "CloakFundsGate"), [fv, stack.pool, lv]);
-  const receipts = await deploy("CloakReceiptCheck", ourArtifact("CloakReceiptCheck.sol", "CloakReceiptCheck"), [rv, stack.pool, lv]);
-  const lvBlock = await pub.getBlockNumber();
-  out.contracts = { gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
+  const d = await deployCloakGloam({ me, rpcUrl, pk, roundSecs: ROUND });
+  const stack = d.stack;
+  ok(stack.forgeLog.includes("All checks passed"), "Gloam's deploy gate passed: its verifiers take final-key proofs and refuse dev-key ones");
+  const { launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, launchToken: launch, whypeStandIn: weth } = d.contracts;
+  const lvBlock = d.block;
+  out.contracts = d.contracts;
   out.deployedAtBlock = lvBlock.toString();
   console.log("  deployed:", JSON.stringify(out.contracts, null, 1));
   if (!ANVIL) writeFileSync(join(REPO, "deployments/elysium-testnet-gloam.json"), JSON.stringify({ chainId: ELYSIUM_TESTNET_ID, note: "Cloak v2 on Gloam, live test run (testnet only). Launch, WHYPE and V2 are stand-ins.", block: Number(lvBlock), ...out.contracts }, null, 2) + "\n");

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { fromJson, scheduleRelay, scheduleStatus, shieldedPoolAbi, toJson, type CloakPrivate, type ScheduledPiece, type ScheduledStatus } from "@cloakely/sdk";
+import { fromJson, scheduleRelay, scheduleStatus, shieldedPoolAbi, toJson, type ScheduledPiece, type ScheduledStatus } from "@cloakely/sdk";
+import type { Priv } from "./state";
 import { publicClient } from "./wallet";
 import { RELAYER_URL } from "./config";
 import { openBox, sealBox } from "./deviceBox";
@@ -16,7 +17,7 @@ export interface SavedPiece {
 }
 
 const LABEL = "scheduled";
-export async function loadScheduled(p: CloakPrivate): Promise<SavedPiece[]> {
+export async function loadScheduled(p: Priv): Promise<SavedPiece[]> {
   const s = await openBox(p, LABEL);
   try {
     return s ? fromJson<SavedPiece[]>(s) : [];
@@ -24,10 +25,10 @@ export async function loadScheduled(p: CloakPrivate): Promise<SavedPiece[]> {
     return [];
   }
 }
-export const saveScheduled = (p: CloakPrivate, list: SavedPiece[]) => sealBox(p, LABEL, toJson(list));
+export const saveScheduled = (p: Priv, list: SavedPiece[]) => sealBox(p, LABEL, toJson(list));
 
 /** Queue pieces with the relayer and remember them on this device. */
-export async function schedule(p: CloakPrivate, pieces: ScheduledPiece[], symbol: string, decimals: number): Promise<SavedPiece[]> {
+export async function schedule(p: Priv, pieces: ScheduledPiece[], symbol: string, decimals: number): Promise<SavedPiece[]> {
   if (!RELAYER_URL) throw new Error("Scheduled withdrawals need Cloak's relayer.");
   const ids = await scheduleRelay(RELAYER_URL, pieces);
   const mine = pieces.map((piece, i) => ({ id: ids[i], piece, symbol, decimals }));

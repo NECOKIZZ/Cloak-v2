@@ -1,7 +1,7 @@
 import { CloakPrivate, openLinkKeys, privateRouterAbi, relayerSubmitter, shieldedPoolAbi, type ClaimLink, type CloakKeys, type LinkToken, type OwnedNote } from "@cloakely/sdk";
 import { keccak256, concat, toBytes, decodeAbiParameters, decodeFunctionData, formatUnits, type Address, type Hex } from "viem";
 import { ASSETS, BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK } from "./config";
-import { getProver } from "./state";
+import { getProver, type Priv } from "./state";
 import { publicClient } from "./wallet";
 
 export const TOKEN_DECIMALS: Record<LinkToken, number> = { HYPE: 18, USDC: 6 };
@@ -25,7 +25,7 @@ export async function clientFor(keys: CloakKeys): Promise<CloakPrivate> {
 }
 
 /** The token address a private client uses for HYPE or USDC. */
-export function tokenOf(p: CloakPrivate, t: LinkToken): Address {
+export function tokenOf(p: Priv, t: LinkToken): Address {
   if (t === "HYPE") return p.hypeMarket.token;
   const a = ASSETS.find((x) => x.symbol.toUpperCase() === "USDC");
   if (!a) throw new Error("USDC isn't available on this deployment.");
@@ -169,14 +169,16 @@ export interface SentRequest {
 }
 export type LinkRecord = SentLink | SentRequest;
 
+/** What the link list's encrypted store needs from an account (CloakKeys, or GloamPrivate's device keys). */
+type StoreKeys = Pick<CloakKeys, "encPub" | "encPriv">;
 const storeKey = (fp: string) => `cloak.links.v1.${fp}`;
-async function aesKey(keys: CloakKeys) {
+async function aesKey(keys: StoreKeys) {
   const raw = toBytes(keccak256(concat([toBytes("cloak-links-store-v1"), keys.encPriv])));
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
-const fingerprint = (keys: CloakKeys) => keccak256(concat([toBytes("cloak-links-id-v1"), keys.encPub])).slice(2, 18);
+const fingerprint = (keys: StoreKeys) => keccak256(concat([toBytes("cloak-links-id-v1"), keys.encPub])).slice(2, 18);
 
-export async function loadLinks(keys: CloakKeys): Promise<LinkRecord[]> {
+export async function loadLinks(keys: StoreKeys): Promise<LinkRecord[]> {
   try {
     const raw = localStorage.getItem(storeKey(fingerprint(keys)));
     if (!raw) return [];
@@ -189,7 +191,7 @@ export async function loadLinks(keys: CloakKeys): Promise<LinkRecord[]> {
   }
 }
 
-export async function saveLinks(keys: CloakKeys, list: LinkRecord[]) {
+export async function saveLinks(keys: StoreKeys, list: LinkRecord[]) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(keys), new TextEncoder().encode(JSON.stringify(list))));
   const s = (u: Uint8Array) => btoa(String.fromCharCode(...u));
@@ -198,12 +200,12 @@ export async function saveLinks(keys: CloakKeys, list: LinkRecord[]) {
   } catch {}
 }
 
-export async function addLink(keys: CloakKeys, rec: LinkRecord) {
+export async function addLink(keys: StoreKeys, rec: LinkRecord) {
   const list = await loadLinks(keys);
   await saveLinks(keys, [rec, ...list.filter((x) => x.id !== rec.id)].slice(0, 200));
 }
 
-export async function updateLink(keys: CloakKeys, id: string, patch: Partial<SentLink>) {
+export async function updateLink(keys: StoreKeys, id: string, patch: Partial<SentLink>) {
   const list = await loadLinks(keys);
   await saveLinks(keys, list.map((x) => (x.id === id ? ({ ...x, ...patch } as LinkRecord) : x)));
 }

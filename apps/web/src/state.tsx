@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { CIRCUITS_CDN, CloakPrivate, SharedVaultClient, loadProver, loadSharedProver, relayerSubmitter, sharedRelayerSubmitter, sharedWalletSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
+import { CIRCUITS_CDN, CloakPrivate, GloamPrivate, SharedVaultClient, gloamRelaySubmitter, walletCoreSubmitter, loadProver, loadSharedProver, relayerSubmitter, sharedRelayerSubmitter, sharedWalletSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
 import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, ASSETS, SHARED, SHARED_BATCHER, SHARED_BLOCK, SHARED_ROUTER } from "./config";
-import { chain, IS_LOCAL } from "./config";
+import { chain, CORE, GLOAM, IS_LOCAL } from "./config";
+import { gloamProvers, launchRecords } from "./gloam";
 import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";
 import { connectBurner, connectProvider, ensureElysium, installedWallets, publicClient, silentReconnect, walletConnectProvider, walletFor, type Eip1193, type WalletOption } from "./wallet";
@@ -13,11 +14,14 @@ let sharedProverPromise: Promise<Prover> | null = null;
 export const getSharedProver = () => (sharedProverPromise ??= loadSharedProver([CIRCUITS_CDN, "/circuits"]).catch((e) => ((sharedProverPromise = null), Promise.reject(e))));
 
 /** The shared launch-token vault client for a private account (null when the deployment has none). */
-export function sharedFor(p: CloakPrivate, w?: Wallet | null): SharedVaultClient | null {
-  if (!SHARED || !SHARED_ROUTER) return null;
+export function sharedFor(p: CloakPrivate | GloamPrivate, w?: Wallet | null): SharedVaultClient | null {
+  if (!SHARED || !SHARED_ROUTER || !(p instanceof CloakPrivate)) return null;
   const ss = RELAYER_URL ? sharedRelayerSubmitter(RELAYER_URL) : w ? sharedWalletSubmitter(p, w, SHARED, SHARED_ROUTER, SHARED_BATCHER) : null;
   return ss ? new SharedVaultClient(p, SHARED, SHARED_ROUTER, getSharedProver, ss, SHARED_BLOCK, SHARED_BATCHER) : null;
 }
+
+/** The private account the pages use: Cloak's own (CloakPrivate) or Cloak v2 on Gloam (GloamPrivate), same methods. */
+export type Priv = CloakPrivate | GloamPrivate;
 
 export type Theme = "light" | "dark" | "auto";
 
@@ -29,12 +33,12 @@ interface AppState {
   provider: Eip1193 | null;
   wrongChain: boolean;
   switchNetwork: () => Promise<void>;
-  priv: CloakPrivate | null;
+  priv: Priv | null;
   /** The shared launch-token vault for this private account (null when the deployment has none). */
   shared: SharedVaultClient | null;
   privAddress: string;
   /** `given`: a wallet that was just connected, before React state has caught up with it. */
-  unlock: (given?: Wallet) => Promise<CloakPrivate | null>;
+  unlock: (given?: Wallet) => Promise<Priv | null>;
   unlocking: boolean;
   error: string;
   setError: (e: string) => void;
@@ -53,7 +57,7 @@ function applyTheme(t: Theme) {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [priv, setPriv] = useState<CloakPrivate | null>(null);
+  const [priv, setPriv] = useState<Priv | null>(null);
   const [shared, setShared] = useState<SharedVaultClient | null>(null);
   const [privAddress, setPrivAddress] = useState("");
   const [unlocking, setUnlocking] = useState(false);
@@ -220,7 +224,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (priv) return priv;
     // also used directly as a click handler, so ignore anything that isn't a wallet (such as the click event)
     const fresh = given && typeof given === "object" && "account" in given && given.account ? given : undefined;
-    if (!ROUTER) {
+    if (CORE === "gloam" ? !GLOAM : !ROUTER) {
       setError("Private trading isn't available on this deployment yet.");
       return null;
     }
@@ -228,6 +232,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!w) return null;
     setUnlocking(true);
     try {
+      if (CORE === "gloam" && GLOAM) {
+        // Cloak v2 on Gloam: one signature opens both vaults (Gloam's and Cloak's launch vault)
+        const g = await GloamPrivate.unlock(w, {
+          publicClient,
+          chainId: chain.id,
+          gloamVault: { pool: GLOAM.gloamVault, poolBlock: GLOAM.block },
+          launchVault: { pool: GLOAM.launchVault, poolBlock: GLOAM.block },
+          payMemo: GLOAM.memoBoard,
+          provers: gloamProvers(),
+          submit: RELAYER_URL ? gloamRelaySubmitter(RELAYER_URL) : walletCoreSubmitter(publicClient, w),
+          whype: GLOAM.whype,
+          launchSwap: GLOAM.launchSwap,
+          batcher: GLOAM.batcher,
+          records: launchRecords(w.account.address),
+          logChunk: 5_000n,
+        });
+        await g.loadMarkets();
+        ASSETS.forEach((a) => g.addAsset(a));
+        setPrivAddress(await g.address());
+        setShared(null);
+        setPriv(g);
+        g.finishPending().catch(() => {}); // a swap's buffer, a graduation: whatever can finish now
+        return g;
+      }
       // The first unlock on this device signs twice to check the wallet signs the same way every time; later unlocks
       // compare against the account fingerprint saved then. From v4 on the account is bound to the chain only, so it
       // never changes again.
@@ -242,6 +270,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         localStorage.setItem(fpKey, fp);
       } catch {}
+      if (!ROUTER) throw new Hint("Private trading isn't available on this deployment yet.");
       const submit = RELAYER_URL ? relayerSubmitter(RELAYER_URL) : walletSubmitter(publicClient, w, ROUTER, BATCHER, MIGRATOR);
       const p = new CloakPrivate(publicClient, ROUTER, keys, getProver, submit, VAULTS_BLOCK, BATCHER, MIGRATOR);
       await p.loadMarkets();

@@ -75,6 +75,28 @@ export interface CloakDeployment {
   assets?: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[];
   /** Earlier deployments, newest first. */
   previous?: PreviousDeployment[];
+  /** Cloak v2 on Gloam (`core: "gloam"`): the vaults and Cloak's contracts on them. */
+  gloam?: GloamDeployment;
+}
+
+/** Where Cloak v2 on Gloam lives on a chain (deployments/<chain>-gloam.json). */
+export interface GloamDeployment {
+  /** Gloam's vault, or Cloak's own instance of Gloam's guarded deploy until Gloam's is live on this chain. */
+  gloamVault: Address;
+  memoBoard: Address;
+  /** CloakLaunchVault: Gloam's code and keys, launch tokens admitted when their launch settles. */
+  launchVault: Address;
+  /** First block to scan both vaults from. */
+  block: bigint;
+  launchSwap?: Address;
+  graduation?: Address;
+  batcher?: Address;
+  fundsGate?: Address;
+  receiptCheck?: Address;
+  /** The WHYPE the launch swap trades through. */
+  whype: Address;
+  /** True while any of these are test stand-ins (launch factory, WHYPE, V2 pool), as in the Nov 8 live run. */
+  standIns?: boolean;
 }
 
 export const deployments: Record<number, CloakDeployment> = {
@@ -118,6 +140,21 @@ export const deployments: Record<number, CloakDeployment> = {
     whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
     relayerUrl: "https://keeper.boblabs.tech",
     circuitsUrl: "https://cloak.boblabs.tech/circuits",
+    // Cloak v2 on Gloam, live test run of Nov 8 (deployments/elysium-testnet-gloam.json): Cloak's own instance of
+    // Gloam's guarded vault (Gloam's isn't on this chain yet) and a stand-in launch, WHYPE and V2 pool
+    gloam: {
+      gloamVault: "0x86c0aeE66BeDDEd8eDfb757C08a673579A01E4ec",
+      memoBoard: "0x02978536F12BB1e53326f88026E5D6B7c0a42aA2",
+      launchVault: "0x7959498ba49aa47c3917c6f072d29a81d2ff7c00",
+      block: 26174234n,
+      launchSwap: "0xa17fec8acced08f062a1b36e41c10c10e10e194f",
+      graduation: "0x8dfc5976915617a0494c2e9fbabf886affd6479e",
+      batcher: "0x7101131a194559f0e397cee506288303042a2bb2",
+      fundsGate: "0xd8b51bc3860849b47caf1af078c3733cb4fc0591",
+      receiptCheck: "0xb4ab89ee537d28a3232866ffcdd0b96626e1bb64",
+      whype: "0xcaf668de7a7ccb061b691945ae4f0a0541cbfd88",
+      standIns: true,
+    },
     assets: [
       // Elysium testnet USDC (bridged from Circle's USDC on HyperEVM): private sends and withdrawals
       { symbol: "USDC", token: "0x7D29d8047B905000459c0E80c34a26CeedcB47b2", pool: "0x3d5cB722490D9908a118f8B3151f83fcE943E4F0", decimals: 6, fromBlock: 19485039n },

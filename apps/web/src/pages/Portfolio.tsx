@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { CloakPrivate, shieldedPoolAbi } from "@cloakely/sdk";
-import { ASSETS, CHAIN_ID, CLOAK_TOKEN, MIGRATOR, PREVIOUS, RECEIVE, txLink } from "../config";
+import { ASSETS, CHAIN_ID, CLOAK_TOKEN, CORE, MIGRATOR, PREVIOUS, RECEIVE, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
 import { getProver, getSharedProver, useApp } from "../state";
@@ -128,6 +128,7 @@ export function Portfolio() {
       await getProver();
       let n = 0;
       for (const p of PREVIOUS) {
+        if (!(priv instanceof CloakPrivate)) break; // earlier deployments are Cloak's own vaults
         setMoveMsg({ busy: `Sign once more to open your v${p.version} private account…` });
         const keys = await CloakPrivate.keysForVersion(wallet, { chainId: CHAIN_ID, version: p.version, router: p.router });
         const legacy = new CloakPrivate(publicClient, p.router, keys, getProver, priv.submit, p.routerBlock);
@@ -214,7 +215,7 @@ export function Portfolio() {
           <p className="note">Shield HYPE, USDC or CLOAK, then <Link to="/app/trade" className="link">swap privately</Link> into other tokens.</p>
         </div>
         <div className="col">
-          {MIGRATOR && PREVIOUS.length > 0 && (
+          {MIGRATOR && CORE === "cloak" && PREVIOUS.length > 0 && (
             <div className="card">
               <div className="card-head"><h3>Balance in the old vaults?</h3><Icon.lock size={16} /></div>
               <p className="small mute">Cloak's vaults are now permanent, and your private account stays the same from here on. If you held a private balance in an earlier version, move it here once. It stays private, and nobody can redirect it.</p>

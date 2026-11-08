@@ -78,7 +78,8 @@ export const CIRCUITS_URL = "https://cloak.boblabs.tech/circuits";
 export const CIRCUITS_SOURCES = [CIRCUITS_CDN, CIRCUITS_URL];
 
 /** Download a circuit's two files from the first source that serves them with the expected hashes. */
-async function fetchCircuit(baseUrl: string | string[], names: [string, string], want: { wasm: string; zkey: string } | null, what: string): Promise<[Uint8Array, Uint8Array]> {
+/** @internal Downloads two circuit files from the first source that answers, checked against their SHA-256. */
+export async function fetchCircuit(baseUrl: string | string[], names: [string, string], want: { wasm: string; zkey: string } | null, what: string): Promise<[Uint8Array, Uint8Array]> {
   const bases = (Array.isArray(baseUrl) ? baseUrl : [baseUrl]).map((b) => b.replace(/\/$/, ""));
   let last: unknown;
   for (const base of bases) {

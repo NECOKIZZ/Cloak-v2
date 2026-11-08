@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { type Address } from "viem";
-import { fetchLeaves, type CloakPrivate, type SharedVaultClient } from "@cloakely/sdk";
+import { fetchLeaves, type SharedVaultClient } from "@cloakely/sdk";
+import type { Priv } from "./state";
 import { openBox, sealBox } from "./deviceBox";
 import { ASSETS, KEEPER_URL } from "./config";
 import { useApp } from "./state";
@@ -34,11 +35,11 @@ interface Store {
   savedSync?: string;
 }
 
-const stores = new WeakMap<CloakPrivate, Store>();
+const stores = new WeakMap<Priv, Store>();
 
 // ───────────── the encrypted copies on this device ─────────────
 
-async function readSaved(p: CloakPrivate): Promise<Bals | null> {
+async function readSaved(p: Priv): Promise<Bals | null> {
   const s = await openBox(p, "balance");
   if (!s) return null;
   try {
@@ -47,14 +48,14 @@ async function readSaved(p: CloakPrivate): Promise<Bals | null> {
     return null;
   }
 }
-const writeSaved = (p: CloakPrivate, b: Bals) => sealBox(p, "balance", JSON.stringify(Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.toString()]))));
+const writeSaved = (p: Priv, b: Bals) => sealBox(p, "balance", JSON.stringify(Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.toString()]))));
 
 /**
  * Where the vault scan starts on unlock: this device's saved sync progress (only new blocks get scanned), else the
  * keeper's public note list (one download instead of every vault's history, used only if it matches a root the vault
  * knows), else the chain from the start.
  */
-async function restoreSync(p: CloakPrivate, shared: SharedVaultClient | null, pools: Address[]) {
+async function restoreSync(p: Priv, shared: SharedVaultClient | null, pools: Address[]) {
   const saved = await openBox(p, "sync");
   if (saved) {
     try {
@@ -73,7 +74,7 @@ async function restoreSync(p: CloakPrivate, shared: SharedVaultClient | null, po
 
 // ───────────── the store ─────────────
 
-function storeFor(p: CloakPrivate): Store {
+function storeFor(p: Priv): Store {
   let s = stores.get(p);
   if (!s) {
     const st: Store = { bals: {}, loaded: false, synced: false, syncing: false, again: false, subs: new Set(), ready: Promise.resolve() };
@@ -92,7 +93,7 @@ const emit = (s: Store) => s.subs.forEach((f) => f());
 const same = (a: Bals, b: Bals) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
 
 /** Sync every vault, then show every balance at once. A vault that fails keeps its last known balance. */
-async function sync(p: CloakPrivate, shared: SharedVaultClient | null, markets: Market[], queue = false) {
+async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[], queue = false) {
   const s = storeFor(p);
   if (s.syncing) return void (queue && (s.again = true));
   s.syncing = true;

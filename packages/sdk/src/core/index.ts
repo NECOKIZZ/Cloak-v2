@@ -11,3 +11,5 @@ export * from "./gloamSwap.js";
 export * from "./gloamBids.js";
 export * from "./launchVault.js";
 export * from "./gloamProofs.js";
+export * from "./gloamPrivate.js";
+export * from "./gloamProvers.js";

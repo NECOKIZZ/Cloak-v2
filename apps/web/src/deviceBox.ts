@@ -1,5 +1,5 @@
 import { keccak256, toBytes } from "viem";
-import type { CloakPrivate } from "@cloakely/sdk";
+import type { Priv } from "./state";
 import { CHAIN_ID } from "./config";
 
 /**
@@ -7,13 +7,13 @@ import { CHAIN_ID } from "./config";
  * comes from the account's view key, which only exists after the wallet signs to unlock, so anyone reading this
  * browser's storage sees opaque blobs. Every read and write is best effort: these are speed-ups, never the truth.
  */
-const slot = (p: CloakPrivate, label: string) => `cloak.${label}.v1.${CHAIN_ID}.${keccak256(p.keys.encPub).slice(2, 18)}`;
-const keyOf = (p: CloakPrivate, label: string) =>
+const slot = (p: Priv, label: string) => `cloak.${label}.v1.${CHAIN_ID}.${keccak256(p.keys.encPub).slice(2, 18)}`;
+const keyOf = (p: Priv, label: string) =>
   crypto.subtle.importKey("raw", toBytes(keccak256(new Uint8Array([...toBytes(`cloak-${label}-cache-v1`), ...p.keys.encPriv]))), "AES-GCM", false, ["encrypt", "decrypt"]);
 const b64 = (u: Uint8Array) => btoa(Array.from(u, (c) => String.fromCharCode(c)).join(""));
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
-export async function openBox(p: CloakPrivate, label: string): Promise<string | null> {
+export async function openBox(p: Priv, label: string): Promise<string | null> {
   try {
     const s = localStorage.getItem(slot(p, label));
     if (!s) return null;
@@ -24,7 +24,7 @@ export async function openBox(p: CloakPrivate, label: string): Promise<string | 
   }
 }
 
-export async function sealBox(p: CloakPrivate, label: string, text: string): Promise<void> {
+export async function sealBox(p: Priv, label: string, text: string): Promise<void> {
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await keyOf(p, label), new TextEncoder().encode(text)));

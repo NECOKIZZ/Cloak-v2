@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatEther, formatUnits, type Address, type Hex } from "viem";
-import { cloakReceiveAbi, receiveAddress, receiveDeliveries, watchReceive, type CloakPrivate, type ReceiveAddress } from "@cloakely/sdk";
+import { CloakPrivate, cloakReceiveAbi, receiveAddress, receiveDeliveries, watchReceive, type ReceiveAddress } from "@cloakely/sdk";
 import { ASSETS, KEEPER_URL, RECEIVE, txLink } from "../config";
 import { openBox, sealBox } from "../deviceBox";
 import { publicClient } from "../wallet";
@@ -42,7 +42,9 @@ async function rewatch(p: CloakPrivate, issued: Issued[]) {
 }
 
 export function Receive() {
-  const { priv } = useApp();
+  const { priv: anyPriv } = useApp();
+  // receive addresses come from Cloak's own account keys; on Cloak v2 on Gloam they aren't built yet
+  const priv = anyPriv instanceof CloakPrivate ? anyPriv : null;
   const [issued, setIssued] = useState<Issued[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -69,6 +71,7 @@ export function Receive() {
   }
 
   useEffect(() => {
+    if (anyPriv && !priv) setErr("Receive addresses aren't on the new private layer yet. They're coming soon.");
     if (!priv || !RECEIVE) return;
     (async () => {
       const list = await load(priv);

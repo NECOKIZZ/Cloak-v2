@@ -83,3 +83,11 @@ export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: 
 
 /** $CLOAK, Cloak's own launch token: shieldable from a wallet next to HYPE and USDC. */
 export const CLOAK_TOKEN: Address | undefined = CHAIN_ID === 99801 ? "0x7e65c418e4E3CDdB1C3C8a9bD2dcE336AC7fd17D" : undefined;
+
+/**
+ * Which private layer the site runs on: Cloak's own vaults ("cloak", today's live site) or Cloak v2 on Gloam
+ * ("gloam"). One build setting, VITE_CORE. The pages are the same either way; only the backend under them changes.
+ */
+export const CORE: "cloak" | "gloam" = env.VITE_CORE === "gloam" ? "gloam" : "cloak";
+/** Cloak v2 on Gloam's contracts on this chain (the SDK's deployment record). */
+export const GLOAM = D?.gloam;
