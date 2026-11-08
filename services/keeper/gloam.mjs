@@ -1,61 +1,159 @@
-// Gloam relay for the keeper (Cloak v2 on Gloam). Relays the calls GloamCore and Cloak's Gloam escrows make, so the
-// user's wallet is never the sender: vault transfers and cash outs, memo posts, and calls to Cloak's escrows (swaps,
-// bids, batch orders). It holds no secrets and can't change a call: every spend is fixed by its proof, every escrow
-// action by its escrow key or owner signature.
+// Gloam relay for the keeper (Cloak v2 on Gloam). Relays the calls GloamCore and Cloak's escrows make, so the user's
+// wallet is never the sender: vault transfers and cash outs (Gloam's vault and Cloak's launch vault), memo posts, and
+// calls to Cloak's escrows (launch swaps, graduation, bids, batch orders). It holds no secrets and can't change a call:
+// every spend is fixed by its proof, every escrow action by its escrow key or owner signature.
 //
 // Gloam's proofs carry no relayer fee, so the relay pays gas from its own wallet. What keeps that from being drained:
-//   - only known targets and selectors (the vault's transfer and unshield, the board's postMemo, the escrows' entry
-//     points), never anything else;
+//   - only known targets and selectors (each vault's transfer and unshield, the board's postMemo, the escrows), never
+//     anything else;
 //   - every call is simulated first: one that would revert is refused and costs nothing;
 //   - one in-flight call per spend (by nullifier), and a spend already used on chain is refused;
+//   - memos only for a payment commitment already in a vault this relay serves, at most one per commitment, and bodies
+//     capped at the board's own 8 KB;
 //   - an hourly HYPE budget (GLOAM_RELAY_HOURLY_SPEND, default 1 HYPE, Gloam's own default), after which it answers 429;
-//   - memo bodies capped at the board's own 8 KB.
+//   - per-IP rate limits, in the keeper's HTTP layer (RELAY_PER_MIN).
+//
+// Paid from the launch vault's fee. When the relay's wallet is the launch vault's fee recipient, the relay collects the
+// vault's HYPE fees (collectFees, anyone may call it, the destination is fixed) once they pass a threshold, and that
+// income becomes extra budget for calls about Cloak's own contracts (the launch vault and Cloak's escrows). Calls to
+// Gloam's vault use the base budget only. So the more Cloak's vault is used, the more relaying it pays for, and spam
+// still can't spend more than what came in plus the base budget. Fees in launch tokens stay owed to the recipient.
 //
 //   POST /gloam/relay {kind, to, data} -> {txHash}
-import { decodeFunctionData, parseAbi, parseEther } from "viem";
+import { decodeFunctionData, parseAbi, parseEther, zeroAddress } from "viem";
 
 const VAULT_ABI = parseAbi([
   "function transfer(bytes proof, bytes32 root, bytes32 nullifier, bytes32[2] newCommitments)",
   "function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)",
   "function isSpent(bytes32) view returns (bool)",
+  "function commitmentSeen(bytes32) view returns (bool)",
+  "function feesOwed(address) view returns (uint256)",
+  "function feeRecipient() view returns (address)",
+  "function collectFees(address asset)",
 ]);
 const MEMO_ABI = parseAbi(["function postMemo(bytes32 paymentCommitment, bytes memo)"]);
-// Calls to an escrow (Cloak's Gloam escrows, Gloam's swap routers) are relayed whatever the function: each one checks
-// its own authorization (escrow key, proof or owner signature), and the simulation keeps a failing call free.
+const MAX_MEMOS_REMEMBERED = 100_000;
 
-export function createGloamRelay({ publicClient, walletClient, vault, memoBoard, escrows = [], hourlySpendWei = parseEther(process.env.GLOAM_RELAY_HOURLY_SPEND ?? "1"), log = () => {} }) {
-  const targets = new Map([[vault.toLowerCase(), "vault"], [memoBoard.toLowerCase(), "memo"], ...escrows.map((e) => [e.toLowerCase(), "escrow"])]);
-  const inflight = new Map();
+/**
+ * @param vault Gloam's vault (base budget only), or omit it
+ * @param launchVault Cloak's launch vault (CloakLaunchVault), or omit it
+ * @param escrows Cloak's escrow contracts (fee-backed budget). Each checks its own authorization, and the simulation
+ *        keeps a failing call free, so any function on them is relayed
+ * @param gloamEscrows Gloam's own routers (base budget only)
+ * @param feeCollectWei collect the launch vault's HYPE fees once this much is owed (default 0.05 HYPE)
+ * @param feeSpendPerHourWei the most fee income spent in one hour (default 1 HYPE), so a flood can't burn a week's income
+ */
+export function createGloamRelay({
+  publicClient,
+  walletClient,
+  vault,
+  launchVault,
+  memoBoard,
+  escrows = [],
+  gloamEscrows = [],
+  hourlySpendWei = parseEther(process.env.GLOAM_RELAY_HOURLY_SPEND ?? "1"),
+  feeCollectWei = parseEther(process.env.GLOAM_RELAY_FEE_COLLECT ?? "0.05"),
+  feeSpendPerHourWei = parseEther(process.env.GLOAM_RELAY_FEE_SPEND_PER_HOUR ?? "1"),
+  log = () => {},
+}) {
+  const lc = (a) => a.toLowerCase();
+  const targets = new Map();
+  if (vault) targets.set(lc(vault), { role: "vault", cloak: false, address: vault });
+  if (launchVault) targets.set(lc(launchVault), { role: "vault", cloak: true, address: launchVault });
+  if (memoBoard) targets.set(lc(memoBoard), { role: "memo", cloak: false, address: memoBoard });
+  for (const e of escrows) targets.set(lc(e), { role: "escrow", cloak: true, address: e });
+  for (const e of gloamEscrows) targets.set(lc(e), { role: "escrow", cloak: false, address: e });
+  const vaults = [...targets.values()].filter((t) => t.role === "vault");
+
+  const inflight = new Set();
+  const memoed = new Set();
   let windowStart = Date.now();
-  let spentWei = 0n;
+  let spentWei = 0n; // from the base budget this hour
+  let feeSpentWei = 0n; // from fee income this hour
+  let feeCreditWei = 0n; // fee income not spent yet
+  let feeIncomeWei = 0n; // all fee income so far
   const fail = (status, message) => Object.assign(new Error(message), { status });
 
-  return async function relay(body) {
-    if (!body || typeof body !== "object" || typeof body.to !== "string" || typeof body.data !== "string" || !/^0x[0-9a-fA-F]*$/.test(body.data)) throw fail(400, "malformed request");
-    const to = body.to.toLowerCase();
-    const role = targets.get(to);
-    if (!role) throw fail(400, "not a contract this relay serves");
-    if (body.data.length > 2 + 2 * 20_000) throw fail(413, "request too large");
-    let spendKey = null;
-    if (role === "vault") {
-      const d = decodeFunctionData({ abi: VAULT_ABI, data: body.data });
-      if (d.functionName !== "transfer" && d.functionName !== "unshield") throw fail(400, "not a call this relay serves");
-      spendKey = d.args[2];
-      if (await publicClient.readContract({ address: vault, abi: VAULT_ABI, functionName: "isSpent", args: [spendKey] })) throw fail(409, "already spent");
-    } else if (role === "memo") {
-      const d = decodeFunctionData({ abi: MEMO_ABI, data: body.data });
-      if (d.functionName !== "postMemo" || (d.args[1].length - 2) / 2 > 8192) throw fail(400, "not a memo this relay serves");
-    }
-    if (spendKey && inflight.has(spendKey)) throw fail(409, "this spend is already being relayed");
+  const read = (address, functionName, args = []) => publicClient.readContract({ address, abi: VAULT_ABI, functionName, args });
 
-    // budget: reset each hour
+  function roll() {
     if (Date.now() - windowStart > 3_600_000) {
       windowStart = Date.now();
       spentWei = 0n;
+      feeSpentWei = 0n;
     }
-    if (spentWei >= hourlySpendWei) throw fail(429, "the relay's hourly gas budget is used up, try again later or send it yourself");
+  }
 
-    if (spendKey) inflight.set(spendKey, Date.now());
+  const feeRoom = () => {
+    const capLeft = feeSpendPerHourWei > feeSpentWei ? feeSpendPerHourWei - feeSpentWei : 0n;
+    return feeCreditWei < capLeft ? feeCreditWei : capLeft;
+  };
+
+  /** Collect the launch vault's HYPE fees into the relay's wallet, when the relay is the recipient. Returns what came in. */
+  async function collectLaunchFees() {
+    if (!launchVault) return 0n;
+    const me = walletClient.account.address;
+    if (lc(await read(launchVault, "feeRecipient")) !== lc(me)) return 0n;
+    const owed = await read(launchVault, "feesOwed", [zeroAddress]);
+    if (owed < feeCollectWei) return 0n;
+    const hash = await walletClient.writeContract({ account: walletClient.account, chain: walletClient.chain, address: launchVault, abi: VAULT_ABI, functionName: "collectFees", args: [zeroAddress] });
+    const r = await publicClient.waitForTransactionReceipt({ hash });
+    if (r.status !== "success") return 0n;
+    const gas = r.gasUsed * r.effectiveGasPrice;
+    const net = owed > gas ? owed - gas : 0n;
+    feeCreditWei += net;
+    feeIncomeWei += net;
+    log(`[gloam relay] collected ${owed} wei of launch vault fees (${net} after gas)`);
+    return net;
+  }
+
+  async function relay(body) {
+    if (!body || typeof body !== "object" || typeof body.to !== "string" || typeof body.data !== "string" || !/^0x[0-9a-fA-F]*$/.test(body.data)) throw fail(400, "malformed request");
+    const t = targets.get(lc(body.to));
+    if (!t) throw fail(400, "not a contract this relay serves");
+    if (body.data.length > 2 + 2 * 20_000) throw fail(413, "request too large");
+
+    let spendKey = null;
+    let memoKey = null;
+    let cloakCall = t.cloak;
+    let decoded;
+    if (t.role === "vault") {
+      try {
+        decoded = decodeFunctionData({ abi: VAULT_ABI, data: body.data });
+      } catch {
+        throw fail(400, "not a call this relay serves");
+      }
+      if (decoded.functionName !== "transfer" && decoded.functionName !== "unshield") throw fail(400, "not a call this relay serves");
+      spendKey = `${lc(t.address)}:${decoded.args[2]}`;
+      if (await read(t.address, "isSpent", [decoded.args[2]])) throw fail(409, "already spent");
+    } else if (t.role === "memo") {
+      try {
+        decoded = decodeFunctionData({ abi: MEMO_ABI, data: body.data });
+      } catch {
+        throw fail(400, "not a memo this relay serves");
+      }
+      const [commitment, memo] = decoded.args;
+      if (decoded.functionName !== "postMemo" || (memo.length - 2) / 2 > 8192) throw fail(400, "not a memo this relay serves");
+      memoKey = lc(commitment);
+      if (memoed.has(memoKey)) throw fail(409, "a memo for this payment was already relayed");
+      let seenIn = null;
+      for (const v of vaults) if (!seenIn && (await read(v.address, "commitmentSeen", [commitment]))) seenIn = v;
+      if (!seenIn) throw fail(400, "no payment with this commitment in the vaults this relay serves");
+      // a memo for a payment in Cloak's launch vault is Cloak's call
+      cloakCall = seenIn.cloak;
+    }
+    if (spendKey && inflight.has(spendKey)) throw fail(409, "this spend is already being relayed");
+
+    roll();
+    // a call about Cloak's own contracts may use fee income first; anything else only the base budget
+    let fromFees = false;
+    if (cloakCall && feeRoom() === 0n) await collectLaunchFees().catch((e) => log(`[gloam relay] fee collect failed: ${e.shortMessage ?? e.message}`));
+    if (cloakCall && feeRoom() > 0n) fromFees = true;
+    else if (spentWei >= hourlySpendWei) throw fail(429, "the relay's hourly gas budget is used up, try again later or send it yourself");
+
+    if (spendKey) inflight.add(spendKey);
+    if (memoKey) memoed.add(memoKey);
+    let sent = false;
     try {
       // simulate: a call that would revert is refused before it costs anything
       let gas;
@@ -65,14 +163,34 @@ export function createGloamRelay({ publicClient, walletClient, vault, memoBoard,
         throw fail(400, `this call would fail: ${e.shortMessage ?? e.message}`);
       }
       const hash = await walletClient.sendTransaction({ account: walletClient.account, chain: walletClient.chain, to: body.to, data: body.data, gas: (gas * 12n) / 10n });
+      sent = true;
       const r = await publicClient.waitForTransactionReceipt({ hash });
-      spentWei += r.gasUsed * r.effectiveGasPrice;
-      log(`[gloam relay] ${role} ${hash} gas ${r.gasUsed}`);
+      const cost = r.gasUsed * r.effectiveGasPrice;
+      if (fromFees) {
+        const use = cost < feeCreditWei ? cost : feeCreditWei;
+        feeCreditWei -= use;
+        feeSpentWei += use;
+        spentWei += cost - use;
+      } else {
+        spentWei += cost;
+      }
+      log(`[gloam relay] ${t.role}${cloakCall ? " (cloak)" : ""} ${hash} gas ${r.gasUsed}${fromFees ? " paid from fees" : ""}`);
       if (r.status !== "success") throw fail(400, `reverted on chain (${hash})`);
       return hash;
+    } catch (e) {
+      // a memo that never went out may be tried again
+      if (memoKey && !sent) memoed.delete(memoKey);
+      throw e;
     } finally {
       if (spendKey) inflight.delete(spendKey);
+      if (memoed.size > MAX_MEMOS_REMEMBERED) memoed.clear();
     }
-  };
-}
+  }
 
+  relay.collectLaunchFees = collectLaunchFees;
+  relay.stats = () => {
+    roll();
+    return { baseSpentWei: spentWei, baseBudgetWei: hourlySpendWei, feeCreditWei, feeSpentWei, feeIncomeWei, feeRoomWei: feeRoom() };
+  };
+  return relay;
+}

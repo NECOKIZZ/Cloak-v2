@@ -625,3 +625,17 @@ You asked whether graduation could move a token's whole vault, every note, to Gl
 - No owner, fee or allowlist. A hop may use only the pair the immutable V2 factory reports. HYPE goes through WHYPE.
 - Also fixed in this step: CloakLaunchSwap and CloakGraduation now refuse an already-opened escrow before trying CREATE2 again. Without that, a repeat call burned all the gas sent (about 1 billion in a test), as Gloam's own base notes.
 - Tests in `contracts-gloam/test/CloakLaunchSwap.t.sol` (14, all pass): buy and sell, leftover owed and claimed as a note, exit in the clear, signature checks, greedy swaps revert with the note untouched, copiers refused, deadline, a spend sent alone then swapped or rescued, route checks, stray HYPE refused. Full suite 91 of 91.
+
+### 16.5 Step 4 done: the relay paid from the launch vault's fee (Nov 8)
+
+`services/keeper/gloam.mjs` now serves Gloam's vault and Cloak's launch vault side by side, with two budgets.
+- Fee income. When the relay's wallet is the launch vault's fee recipient, the relay collects the vault's HYPE fees (`collectFees`, anyone may call it, the destination is fixed) once 0.05 HYPE is owed (`GLOAM_RELAY_FEE_COLLECT`). That income, net of the collect's gas, pays for calls about Cloak's contracts: the launch vault, Cloak's escrows, and memos for payments in the launch vault. At most 1 HYPE of it an hour (`GLOAM_RELAY_FEE_SPEND_PER_HOUR`), so a flood can't burn a week's income.
+- Base budget. Calls to Gloam's vault and Gloam's routers use only the hourly base budget (`GLOAM_RELAY_HOURLY_SPEND`, default 1 HYPE). Cloak's fee income never pays for Gloam's traffic. Fees in launch tokens stay owed to the recipient.
+- Spam limits added: a memo is relayed only for a payment commitment already in a served vault (Gloam's own relay rule), and once per commitment. Memo spam for made-up payments is now refused before sending and costs nothing (before, it ran the hourly budget out after about 170 memos). The per-IP limit (`RELAY_PER_MIN`, 20 a minute) and the earlier rules stay.
+- Keeper settings: `GLOAM_LAUNCH_VAULT`, `GLOAM_ESCROWS` (Cloak's escrows), `GLOAM_ROUTERS` (Gloam's routers). `GET /gloam/relay/stats` shows both budgets.
+
+Measured in `e2e-gloam/part4-launch-relay.mjs` on anvil (chain 99801), and the first run of CloakLaunchVault with real proofs:
+- CloakLaunchVault wired to the same final-key verifiers Gloam's deploy makes, and driven by GloamCore unchanged: a deposit, a relayed private send, Bob's sweep and a relayed cash out (Bob got 0.995 of 1 HYPE and paid no gas) all pass on final-key proofs. So Gloam's circuits, keys and SDK work on Cloak's vault as they do on Gloam's.
+- The relay then collected the 0.005 HYPE fee (0.00495 after gas) and paid a 1.79M-gas private send plus its memo from it, with none of its own budget. The keeper wallet ended up 0.003 HYPE ahead over that send. At anvil's gas price a 1 HYPE cash out's fee paid for about two and a half private sends. The live testnet ratio is still to be measured (step 7).
+- Memo refusals (409 for a repeat, 400 for a made-up payment) and 429 for Gloam vault calls once the base budget is spent.
+- `part3-relay.mjs` updated to the new memo rule and passing.

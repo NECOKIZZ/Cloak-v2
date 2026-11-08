@@ -34,16 +34,26 @@ try {
   const bad = encodeFunctionData({ abi: parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]), functionName: "unshield", args: ["0x" + "11".repeat(256), "0x" + "22".repeat(32), "0x" + "33".repeat(32), zeroAddress, alice.account.address, 1n] });
   await rejects(relay({ to: stack.pool, data: bad }), "a call that would revert is refused before sending");
   assert((await pub.getBalance({ address: keeper.account.address })) === before, "and cost the keeper no gas");
-  // the hourly budget: after it, the relay answers 429 and the user can still send it themselves
-  let hit = null;
-  for (let i = 0; i < 400 && !hit; i++) {
+  // memo spam: a memo for a commitment in no served vault is refused before sending, so it costs the keeper nothing
+  const spamBefore = await pub.getBalance({ address: keeper.account.address });
+  let refusedCount = 0;
+  for (let i = 0; i < 20; i++) {
     try {
       await relay({ to: stack.payMemo, data: encodeFunctionData({ abi: parseAbi(["function postMemo(bytes32,bytes)"]), functionName: "postMemo", args: ["0x" + (i + 1).toString(16).padStart(64, "0"), "0x" + "ab".repeat(4000)] }) });
     } catch (e) {
-      hit = e;
+      if (e.status === 400) refusedCount++;
     }
   }
-  assert(hit?.status === 429, "memo spam runs into the hourly gas budget (429), then stops costing the keeper");
+  assert(refusedCount === 20 && (await pub.getBalance({ address: keeper.account.address })) === spamBefore, "memo spam for made-up payments is refused (400) and costs the keeper nothing");
+  // the hourly budget: once it is spent, the relay answers 429 and the user can still send it themselves
+  const spent = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, hourlySpendWei: 0n });
+  let hit = null;
+  try {
+    await spent({ to: stack.pool, data: bad });
+  } catch (e) {
+    hit = e;
+  }
+  assert(hit?.status === 429, "a relay whose hourly budget is spent answers 429");
   console.log(`\nPart 3b passed in ${Math.round((performance.now() - t0) / 1000)} s`);
 } finally {
   L.stop();

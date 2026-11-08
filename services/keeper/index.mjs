@@ -102,9 +102,20 @@ const snapshot = reg && process.env.SNAPSHOT !== "0"
 
 const account = privateKeyToAccount(PK);
 const walletClient = createWalletClient({ chain, transport, account });
-// Cloak v2 on Gloam: POST /gloam/relay, on when GLOAM_VAULT and GLOAM_MEMO are set (GLOAM_ESCROWS: comma separated)
-const gloamRelay = process.env.GLOAM_VAULT && process.env.GLOAM_MEMO
-  ? createGloamRelay({ publicClient, walletClient, vault: process.env.GLOAM_VAULT, memoBoard: process.env.GLOAM_MEMO, escrows: (process.env.GLOAM_ESCROWS ?? "").split(",").filter(Boolean), log: console.log })
+// Cloak v2 on Gloam: POST /gloam/relay, on when GLOAM_MEMO and a vault (GLOAM_VAULT, Gloam's, and or GLOAM_LAUNCH_VAULT,
+// Cloak's) are set. GLOAM_ESCROWS: Cloak's escrows, GLOAM_ROUTERS: Gloam's own routers (comma separated).
+const list = (v) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const gloamRelay = process.env.GLOAM_MEMO && (process.env.GLOAM_VAULT || process.env.GLOAM_LAUNCH_VAULT)
+  ? createGloamRelay({
+      publicClient,
+      walletClient,
+      vault: process.env.GLOAM_VAULT,
+      launchVault: process.env.GLOAM_LAUNCH_VAULT,
+      memoBoard: process.env.GLOAM_MEMO,
+      escrows: list(process.env.GLOAM_ESCROWS),
+      gloamEscrows: list(process.env.GLOAM_ROUTERS),
+      log: console.log,
+    })
   : null;
 
 // One wallet sends everything (reveals, settles, payouts and relays, which arrive at any time), so its transactions go
@@ -747,6 +758,11 @@ const send = (req, res, code, obj) => {
 createServer((req, res) => {
   const path = (req.url ?? "/").split("?")[0];
   if (req.method === "OPTIONS") return send(req, res, 204, {});
+  if (req.method === "GET" && path === "/gloam/relay/stats") {
+    if (!gloamRelay) return send(req, res, 503, { error: "Gloam relay is off on this keeper" });
+    const st = gloamRelay.stats();
+    return send(req, res, 200, Object.fromEntries(Object.entries(st).map(([k, v]) => [k, String(v)])));
+  }
   if (req.method === "POST" && path === "/gloam/relay") {
     if (!gloamRelay) return send(req, res, 503, { error: "Gloam relay is off on this keeper" });
     if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
