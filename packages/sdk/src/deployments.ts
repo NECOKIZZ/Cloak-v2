@@ -95,6 +95,8 @@ export interface GloamDeployment {
   batcher?: Address;
   /** CloakGloamReceive: receive addresses. */
   receive?: Address;
+  /** CloakGloamBids on the launch vault: sealed bids from the private balance. */
+  bids?: Address;
   fundsGate?: Address;
   receiptCheck?: Address;
   /** The WHYPE the launch swap trades through. */

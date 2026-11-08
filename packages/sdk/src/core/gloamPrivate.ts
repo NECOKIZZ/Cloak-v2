@@ -51,6 +51,8 @@ export interface GloamPrivateConfig {
   batcher?: Address;
   /** CloakGloamReceive: receive addresses anyone can pay, moved into the private balance by the app. */
   receive?: Address;
+  /** CloakGloamBids on the launch vault: sealed bids paid from the private balance. */
+  bids?: Address;
   /** A claim link's account: spend received payments directly, never sweep them (see GloamCoreConfig). */
   spendReceived?: boolean;
   /** Where the app keeps per-action records for finishPending (a swap's leftover, a graduation). */
@@ -538,25 +540,75 @@ export class GloamPrivate {
 
   // ── on Cloak's own vaults, not built on Gloam yet (they throw a friendly message) ──
 
-  /** Bids from the private balance go through CloakGloamBids on Gloam, so no one-time bid wallets and no gas reserve. */
+  // ── sealed bids from the private balance (CloakGloamBids on the launch vault) ──
+
+  /** No bid wallet holds gas here: the relay sends the bid, so nothing is set aside. */
   async bidGasReserve(): Promise<bigint> {
     return 0n;
   }
 
-  async bidWallets(_auction: Address): Promise<{ n: number; address: Address; wallet: WalletClient }[]> {
-    return [];
+  /** The bid accounts this device placed in `auction` (as the launch page lists one-time bid wallets). */
+  async bidWallets(auction: Address): Promise<{ n: number; address: Address; wallet: WalletClient }[]> {
+    const recs = (this.cfg.records?.load() ?? []).filter((r): r is Extract<LaunchRecord, { kind: "bid" }> => r.kind === "bid" && lc(r.key.auction) === lc(auction));
+    return recs.map((r, n) => ({ n, address: r.account, wallet: undefined as unknown as WalletClient }));
   }
 
-  async bidPrivately(_auction: Address, _opts: { maxPrice: bigint; quantity: bigint; deposit?: bigint }, _onStatus?: Status): Promise<never> {
-    throw new Error(NOT_YET);
+  /**
+   * A sealed bid paid from the private HYPE balance: one note of the deposit (plus the vault's fee) leaves the launch
+   * vault to a one-time bid account the auction sees as the bidder, sent by the relay. After settlement the won tokens
+   * and the refund come back into the vault as notes (finishPending, or finishPrivateBids). If nobody finishes it, its
+   * timeout exit goes to this account's receive address, which moves back in on the next open.
+   */
+  async bidPrivately(auction: Address, opts: { maxPrice: bigint; quantity: bigint; deposit?: bigint }, onStatus: Status = () => {}) {
+    const core = this.launchCore;
+    if (!core || !this.cfg.bids) throw new Error(NOT_YET);
+    const { Cloak } = await import("../cloak.js");
+    const reader = new Cloak(this.cfg.publicClient as never);
+    const s = await reader.getAuction(auction);
+    if (s.phase !== "commit") throw new Error("commit phase is over");
+    const q = reader.quoteBid(s, opts.maxPrice, opts.quantity);
+    const deposit = opts.deposit ?? q.deposit;
+    if (deposit < q.cost) throw new Error("deposit is below the bid's cost");
+    // what arrives at the bid account is the note less the vault's fee: send enough that the deposit lands in full
+    const bps = await this.feeBpsOf(core);
+    const amount = (deposit * 10_000n + (10_000n - bps) - 1n) / (10_000n - bps);
+    const fallbackTo = this.cfg.receive ? await this.receiveAddress(0) : this.receiveKey(0).address;
+    const { gloamBid } = await import("./gloamBids.js");
+    const rec = await gloamBid(core, { bids: this.cfg.bids, auction, tick: q.tick, quantity: opts.quantity, tlockRound: s.tlockRound, amount, fallbackTo, exitAfter: BigInt(s.revealEnd) + 30n * 86_400n }, onStatus);
+    this.remember({ kind: "bid", ...rec });
+    const secret = { auction, bidder: rec.account, tick: rec.tick, quantity: rec.quantity, salt: rec.salt, id: 0n, deposit, commitment: "0x" as Hex, txHash: rec.txHash };
+    return { secret, bidWallet: rec.account, n: 0, fundTx: rec.txHash };
   }
 
-  async claimPrivately(_wallet: WalletClient, _auction: Address, _bidId: bigint): Promise<{ txHash: Hex; tokens: bigint }> {
-    throw new Error(NOT_YET);
+  private async feeBpsOf(c: GloamCore): Promise<bigint> {
+    const k = lc(c.config.pool);
+    if (!this.feeBps.has(k)) this.feeBps.set(k, BigInt(await this.cfg.publicClient.readContract({ address: c.config.pool, abi: VAULT, functionName: "withdrawFeeBps" })));
+    return this.feeBps.get(k)!;
   }
 
-  async finishPrivateBids(_auction: Address, _onStatus?: Status, _shared?: unknown): Promise<{ claimed: number; movedHype: bigint; movedTokens: bigint }> {
-    return { claimed: 0, movedHype: 0n, movedTokens: 0n };
+  /** After settlement: every private bid in `auction` back into the vault (tokens and refund as notes). */
+  async finishPrivateBids(auction: Address, onStatus: Status = () => {}, _shared?: unknown): Promise<{ claimed: number; movedHype: bigint; movedTokens: bigint }> {
+    const core = this.launchCore;
+    if (!core || !this.cfg.records) return { claimed: 0, movedHype: 0n, movedTokens: 0n };
+    const all = this.cfg.records.load();
+    const mine = all.filter((r) => r.kind === "bid" && lc(r.key.auction) === lc(auction));
+    const res = await finishPending(core, mine, {}, onStatus);
+    this.cfg.records.save([...all.filter((r) => !mine.includes(r)), ...res.waiting]);
+    return { claimed: res.done.length, movedHype: 0n, movedTokens: 0n };
+  }
+
+  /** A bid placed from a wallet, its tokens claimed and moved into the private balance (the deposit is public). */
+  async claimPrivately(wallet: WalletClient, auction: Address, bidId: bigint): Promise<{ txHash: Hex; tokens: bigint }> {
+    const A = parseAbi(["function claim(uint256 bidId)", "function allocationOf(uint256) view returns (uint256 tokens, uint256 refund)", "function token() view returns (address)"]);
+    const pub = this.cfg.publicClient;
+    const [tokens] = await pub.readContract({ address: auction, abi: A, functionName: "allocationOf", args: [bidId] });
+    if (tokens === 0n) throw new Error("this bid won no tokens");
+    const token = await pub.readContract({ address: auction, abi: A, functionName: "token" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h = await wallet.writeContract({ account: wallet.account!, chain: wallet.chain, address: auction, abi: A, functionName: "claim", args: [bidId] } as any);
+    await pub.waitForTransactionReceipt({ hash: h });
+    const txHash = await this.shieldToken(wallet, token, tokens);
+    return { txHash, tokens };
   }
 
   async planSplitWithdraw(_token: Address, _to: Address, _amount: bigint, _o: { pieces: number; windowSecs: number; onStatus?: Status }): Promise<never[]> {

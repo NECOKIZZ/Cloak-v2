@@ -11,6 +11,7 @@ import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, toHex, ty
 import { privateKeyToAccount } from "viem/accounts";
 import type { Status } from "../private/client.js";
 import type { GloamCore } from "./gloam.js";
+import { gloamFinishBid, type GloamBidRecord } from "./gloamBids.js";
 
 const SPEND_SWAP = "(bytes proof, bytes32 root, bytes32 nullifier, address asset, uint256 amount)";
 const DEPOSIT_SWAP = "(bytes proof, bytes32 commitment, address asset, uint256 amount)";
@@ -74,7 +75,8 @@ export interface GraduationKey {
 /** What the app keeps per action until finishPending() reports it done. */
 export type LaunchRecord =
   | { kind: "launchSwap"; router: Address; id: Hex; key: LaunchSwapKey; txHash: Hex }
-  | { kind: "graduation"; graduation: Address; id: Hex; key: GraduationKey; txHash: Hex };
+  | { kind: "graduation"; graduation: Address; id: Hex; key: GraduationKey; txHash: Hex }
+  | ({ kind: "bid" } & GloamBidRecord);
 
 /** A Uniswap v4 route as CloakLaunchSwapV4 reads it: abi.encode(PoolKey[]), pools from the input to the output. */
 export function launchRouteV4(keys: readonly { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address }[]): Hex {
@@ -190,7 +192,7 @@ export async function finishPending(
   const out: PendingResult = { waiting: [], done: [], errors: [] };
   for (const r of records) {
     try {
-      const res = r.kind === "launchSwap" ? await finishSwap(core, r, now, onStatus) : await finishGraduation(core, r, now, opts, onStatus);
+      const res = r.kind === "launchSwap" ? await finishSwap(core, r, now, onStatus) : r.kind === "bid" ? await finishBid(core, r, onStatus) : await finishGraduation(core, r, now, opts, onStatus);
       if (res) out.done.push({ record: r, ...res });
       else out.waiting.push(r);
     } catch (e) {
@@ -269,4 +271,30 @@ async function finishGraduation(
     if (memo) txHashes.push(memo);
     return { outcome: `${net} back in the launch vault (Gloam's vault refused it)`, txHashes };
   }
+}
+
+/** After its launch settles: the bid's won tokens and refund back into the vault as notes (the auction claim included). */
+async function finishBid(core: GloamCore, r: Extract<LaunchRecord, { kind: "bid" }>, onStatus: Status) {
+  const pub = core.config.publicClient;
+  const A = parseAbi([
+    "function settled() view returns (bool)",
+    "function failed() view returns (bool)",
+    "function allocationOf(uint256) view returns (uint256 tokens, uint256 refund)",
+    "function token() view returns (address)",
+    "function getBid(uint256) view returns ((address bidder, bytes32 commitment, uint128 quantity, uint64 tick, bool revealed, bool claimed, uint256 deposit))",
+  ]);
+  const B = parseAbi(["function bidIdPlus1(address) view returns (uint256)", "function closed(address) view returns (bool)"]);
+  if (await pub.readContract({ address: r.bids, abi: B, functionName: "closed", args: [r.account] }).catch(() => false)) return { outcome: "already back in the private balance", txHashes: [] as Hex[] };
+  const idPlus1 = await pub.readContract({ address: r.bids, abi: B, functionName: "bidIdPlus1", args: [r.account] });
+  if (idPlus1 === 0n) return null; // not placed (yet)
+  if (!(await pub.readContract({ address: r.key.auction, abi: A, functionName: "settled" }))) return null;
+  const [tokens, refund] = await pub.readContract({ address: r.key.auction, abi: A, functionName: "allocationOf", args: [idPlus1 - 1n] });
+  const token = await pub.readContract({ address: r.key.auction, abi: A, functionName: "token" });
+  onStatus("Bringing the bid back into your private balance");
+  // a refund too small to be worth a note (rounding dust) stays in the bid account, where an exit can still take it:
+  // a note for it would only add a piece to the balance
+  const DUST = 10n ** 12n;
+  const back = [{ asset: token, amount: tokens }, { asset: "0x0000000000000000000000000000000000000000" as Address, amount: refund >= DUST ? refund : 0n }];
+  const txHashes = await gloamFinishBid(core, r, back, onStatus);
+  return { outcome: `${tokens} tokens and ${back[1].amount} wei of HYPE back as notes${refund > back[1].amount ? ` (${refund} wei of dust left in the bid account)` : ""}`, txHashes };
 }
