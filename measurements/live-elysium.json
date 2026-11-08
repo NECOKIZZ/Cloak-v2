@@ -1,0 +1,206 @@
+{
+  "where": "live-elysium",
+  "wallet": "0x130292b4d2A3C2aBc1C5B3747b9f18C06CfBBFE5",
+  "startBalance": "1.3",
+  "checks": [
+    "Gloam's deploy gate passed: its verifiers take final-key proofs and refuse dev-key ones",
+    "the keeper loop admitted the settled launch to Cloak's launch vault, with no wait",
+    "0.5 HYPE deposited into Cloak's launch vault on a final-key proof",
+    "a relayed private send of 0.1 HYPE, swept by Bob, whose wallet has never held gas",
+    "Bob's relayed cash out pays 0.0995 HYPE to a fresh address",
+    "the launch vault holds Cloak's 0.5% fee",
+    "a private swap of 0.1 HYPE for exactly 50 tokens",
+    "the next app open: leftover of 32632731527917084 back as a note",
+    "graduation: 49750000000000000000 moved into Gloam's vault",
+    "the same wallet finds 49.75 tokens in Gloam's vault",
+    "a private batch buy order, settled by the keeper loop once its round ended",
+    "a wallet joins a 0.1 HYPE gate on a final-key funds proof, its balance unshown",
+    "a final-key receipt for Alice's 0.1 HYPE payment to Bob passes on chain, after Bob swept and cashed it out",
+    "the keeper loop confirmed the wallet once the gate closed",
+    "the graduated tokens cash out of Gloam's vault with a final-key proof"
+  ],
+  "contracts": {
+    "gloamVault": "0x86c0aeE66BeDDEd8eDfb757C08a673579A01E4ec",
+    "guard": "0x95B1C8528aab82250DB0813F4Bd83B265DE26cb9",
+    "memoBoard": "0x02978536F12BB1e53326f88026E5D6B7c0a42aA2",
+    "poseidon": "0xf25d6e1fcbd89ec5f39c3e9e671a2ec374dbaa92",
+    "dual": "0x43A411373Eb498a44280EfD565326f12cBB52950",
+    "shieldVerifier": "0xEE76aDfFE63b98D225457F3b87B74Fc8E5e80CF7",
+    "launchVault": "0x7959498ba49aa47c3917c6f072d29a81d2ff7c00",
+    "launchSwap": "0xa17fec8acced08f062a1b36e41c10c10e10e194f",
+    "graduation": "0x8dfc5976915617a0494c2e9fbabf886affd6479e",
+    "batcher": "0x7101131a194559f0e397cee506288303042a2bb2",
+    "fundsGate": "0xd8b51bc3860849b47caf1af078c3733cb4fc0591",
+    "receiptCheck": "0xb4ab89ee537d28a3232866ffcdd0b96626e1bb64",
+    "fundsVerifier": "0xb529e7ff6f9b532cd1b2fe76e31903456c095446",
+    "receiptVerifier": "0x7088bc976d67e0fc9193d1aee21b72e845f09c2e",
+    "launchToken": "0x4e603cbba0aa3704b0ed909a6bd31ceeb40b296b",
+    "factoryStandIn": "0x8b32d938245a9218ad134a0b0f779c639d604c8e",
+    "auctionStandIn": "0xcaaf31a1b7c252b4951bf99dfe7727676d50ae66",
+    "whypeStandIn": "0xcaf668de7a7ccb061b691945ae4f0a0541cbfd88",
+    "v2FactoryStandIn": "0x678d77face2909eb9630cd8407d845a13ea5a444",
+    "pair": "0x93D0aDc79dcC3dd87BE527c67F433D0597dE7e05"
+  },
+  "deployedAtBlock": "26174234",
+  "swapBufferBackWei": "32632731527917084",
+  "relay": {
+    "baseSpentWei": "439815466920000",
+    "baseBudgetWei": "200000000000000000",
+    "feeCreditWei": "91082205010000",
+    "feeSpentWei": "899303833690000",
+    "feeIncomeWei": "990386038700000",
+    "feeRoomWei": "91082205010000"
+  },
+  "endBalance": "0.922721452300178394",
+  "spentHype": "0.377278547699821606",
+  "timingsMs": {
+    "fundsProofMs": 1512,
+    "receiptProofMs": 494
+  },
+  "proofsMs": {
+    "shield": [
+      361,
+      139,
+      120,
+      147
+    ],
+    "transfer": [
+      624,
+      551,
+      487,
+      487
+    ],
+    "unshield": [
+      486,
+      520,
+      502,
+      505,
+      483,
+      544,
+      558
+    ]
+  },
+  "gas": [
+    {
+      "label": "deploy launch token",
+      "gas": 487271
+    },
+    {
+      "label": "deploy PoseidonT3",
+      "gas": 2157480
+    },
+    {
+      "label": "deploy auction stand-in",
+      "gas": 86968
+    },
+    {
+      "label": "deploy factory stand-in",
+      "gas": 241289
+    },
+    {
+      "label": "add",
+      "gas": 137836
+    },
+    {
+      "label": "settle",
+      "gas": 43301
+    },
+    {
+      "label": "deploy WHYPE stand-in",
+      "gas": 577371
+    },
+    {
+      "label": "deploy V2 factory stand-in",
+      "gas": 596919
+    },
+    {
+      "label": "create",
+      "gas": 513245
+    },
+    {
+      "label": "deposit",
+      "gas": 65748
+    },
+    {
+      "label": "transfer",
+      "gas": 46898
+    },
+    {
+      "label": "mint",
+      "gas": 68301
+    },
+    {
+      "label": "sync",
+      "gas": 58786
+    },
+    {
+      "label": "deploy CloakLaunchVault",
+      "gas": 3966170
+    },
+    {
+      "label": "setShieldVerifier",
+      "gas": 49561
+    },
+    {
+      "label": "setWithdrawFee",
+      "gas": 50159
+    },
+    {
+      "label": "turnOnDepositLimits",
+      "gas": 29366
+    },
+    {
+      "label": "setDepositLimit",
+      "gas": 50538
+    },
+    {
+      "label": "endSetup",
+      "gas": 29411
+    },
+    {
+      "label": "deploy CloakLaunchSwap",
+      "gas": 2530501
+    },
+    {
+      "label": "deploy CloakGraduation",
+      "gas": 1639901
+    },
+    {
+      "label": "deploy CloakGloamBatcher",
+      "gas": 3019097
+    },
+    {
+      "label": "deploy GloamFundsVerifierFinal",
+      "gas": 486047
+    },
+    {
+      "label": "deploy GloamReceiptVerifierFinal",
+      "gas": 465980
+    },
+    {
+      "label": "deploy CloakFundsGate",
+      "gas": 1404793
+    },
+    {
+      "label": "deploy CloakReceiptCheck",
+      "gas": 474265
+    },
+    {
+      "label": "admitLaunch",
+      "gas": 138182
+    },
+    {
+      "label": "settle",
+      "gas": 171602
+    },
+    {
+      "label": "createGate",
+      "gas": 93897
+    },
+    {
+      "label": "confirm",
+      "gas": 51896
+    }
+  ],
+  "seconds": 310
+}

@@ -1,8 +1,8 @@
 # Cloak v2 on Gloam: test report
 
-**Status:** Parts 0 to 2 are built and tested, and Part 3 is partly done. Everything has run on a local chain and on a
-local fork of Elysium testnet. **Not done yet:** the live testnet deploy (it needs a funded testnet key), the site
-pages, the keeper and the MCP tools on the seam, and receive addresses. Every number here comes from a script in this
+**Status:** Parts 0 to 2 are built and tested, and Part 3 is partly done. The plan in section 16 (Cloak's launch vault,
+graduation, launch swaps, the fee-paid relay, app follow-ups, allocation gates and receipts) is built and ran live on
+Elysium testnet on Nov 8 (16.8). **Not done yet:** the site pages and the MCP tools on the seam, and receive addresses. Every number here comes from a script in this
 repo, and its raw output is in `measurements/`. The verdict in section 9 is provisional until those parts are done.
 
 **Pinned versions:**
@@ -684,3 +684,30 @@ Measured in `e2e-gloam/part6-gates-receipts.mjs` on anvil (chain 99801):
 - Proving times on this container: funds 1.4 s, receipt 0.5 s.
 
 Also fixed: the keeper loop read the block number through viem's cache, so a tick could miss new batch orders (it caught them a tick later). It showed up as an intermittent failure in part 5. It now reads the head uncached, and part 5 passed 8 runs out of 8. Forge 105 of 105, SDK tests 16 of 16.
+
+### 16.8 Step 7 done: the live run on Elysium testnet (Nov 8)
+
+`e2e-gloam/live-elysium.mjs` ran everything from steps 1 to 6 live on Elysium testnet (chain 99801), on Gloam's final keys. It used a fresh testnet wallet (`0x130292b4d2A3C2aBc1C5B3747b9f18C06CfBBFE5`, key only in the git-ignored `.env`), funded with 1.3 testnet HYPE. One wallet played deployer, Alice, relay and keeper. Bob was a fresh wallet that never held gas. Addresses are in `deployments/elysium-testnet-gloam.json`, raw numbers in `measurements/live-elysium.json`. The same script with `--anvil` is the local rehearsal.
+
+All 15 checks passed in 310 s:
+- Gloam's deploy gate: the deployed verifiers took final-key proofs and refused dev-key ones;
+- the keeper loop admitted the settled launch to Cloak's launch vault, with no wait;
+- a 0.5 HYPE deposit; a relayed 0.1 HYPE private send, swept by Bob; Bob's relayed cash out paid 0.0995 to a fresh address; the vault held Cloak's 0.0005 fee;
+- a private swap of 0.1 HYPE for exactly 50 tokens, and on the next open the 0.033 HYPE buffer came back as a note;
+- a graduation: after its 60 s round, 49.75 tokens moved into Gloam's vault, where the same wallet found them, and later cashed them out;
+- a private batch buy order, settled by the keeper loop once its round ended;
+- a wallet joined a 0.1 HYPE allocation gate on a funds proof, and the keeper loop confirmed it after the close;
+- a receipt for Alice's payment to Bob passed on chain, after Bob had swept and cashed it out.
+
+Costs at 0.1 gwei:
+- A relayed private send is 1.79M gas, about 0.00018 HYPE. A cash out is about 0.31M to 0.36M gas.
+- All relayed calls together cost 0.00134 HYPE. Two 0.5% fee collections (0.00099 HYPE after gas) paid 0.0009 of it, so Cloak's fee income covered two thirds of the run's relaying.
+- Deploying Cloak's contracts was 19.7M gas, about 0.002 HYPE, plus Gloam's stack through its own script.
+- Of the 0.377 HYPE the wallet spent: 0.2 seeded the test pool, about 0.067 bought the swap's tokens, 0.0995 went to Bob's throwaway address, 0.005 is the batch order's payout (owed in the batcher, its exit after 30 days goes back to the wallet), and about 0.005 was gas. The wallet holds 0.92 HYPE for later runs.
+
+Proving times in this container: shield 0.15 s, transfer 0.55 s, unshield 0.5 s, funds 1.5 s, receipt 0.5 s.
+
+What this run doesn't show:
+- Cloak's real launches: the launch, WHYPE and the V2 pool are stand-ins. Cloak's testnet launches trade on Uniswap v4, and this wallet holds none of their tokens.
+- Gloam's own Elysium testnet vault: it isn't deployed yet, so "Gloam's vault" here is Cloak's own instance of Gloam's guarded deploy, with the launch token listed at deploy. On Gloam's real vault, listing a token takes Gloam's review and the 3-day wait.
+- Only one user per round, so the round privacy numbers are untested.
