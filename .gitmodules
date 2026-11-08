@@ -1,3 +1,4 @@
 [submodule "vendor/gloam"]
 	path = vendor/gloam
 	url = https://github.com/cryptoduke01/gloam.git
+	ignore = dirty

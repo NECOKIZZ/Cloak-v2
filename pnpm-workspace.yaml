@@ -3,3 +3,4 @@ packages:
   - "services/*"
   - "apps/*"
   - "e2e"
+  - "e2e-gloam"

@@ -11,3 +11,5 @@ deployments/*.fork.json
 # circuit build output (setup intermediates, r1cs, wasm); the served artifacts live in apps/web/public/circuits
 circuits/build/
 circuits/package-lock.json
+contracts-gloam/out/
+contracts-gloam/cache/

@@ -1,0 +1,18 @@
+# Cloak v2 on Gloam: Cloak's escrows and test tokens, built against the pinned Gloam vault in ../vendor/gloam.
+# gloam-root/ holds scripts that must compile from Gloam's own project root (see ../e2e-gloam/lib.mjs, forgeGloam):
+# they are not part of this project's build.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["../vendor/gloam/contracts/lib"]
+remappings = [
+  "forge-std/=../vendor/gloam/contracts/lib/forge-std/src/",
+  "gloam/=../vendor/gloam/contracts/src/",
+]
+allow_paths = ["../vendor"]
+# Gloam's settings, so the vault built here matches theirs
+solc_version = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+evm_version = "shanghai"

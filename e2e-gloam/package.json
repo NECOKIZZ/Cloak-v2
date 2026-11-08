@@ -1,0 +1,13 @@
+{
+  "name": "@cloakely/e2e-gloam",
+  "private": true,
+  "type": "module",
+  "description": "Cloak v2 on Gloam: deploy Gloam's stack, run their SDK end to end, and measure it",
+  "dependencies": {
+    "@gloamtrade/sdk": "0.6.0",
+    "snarkjs": "0.7.5",
+    "circomlibjs": "0.1.7",
+    "viem": "2.55.2"
+  },
+  "license": "MIT"
+}
