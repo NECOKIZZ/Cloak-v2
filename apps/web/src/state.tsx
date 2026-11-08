@@ -246,6 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           launchSwap: GLOAM.launchSwap,
           launchSwapV4: GLOAM.launchSwapV4,
           batcher: GLOAM.batcher,
+          batcherV4: GLOAM.batcherV4,
           receive: GLOAM.receive,
           bids: GLOAM.bids,
           records: launchRecords(w.account.address),

@@ -14,8 +14,11 @@ import { usePrivateBalances } from "../balances";
 import { Skel } from "../skel";
 import { publicClient } from "../wallet";
 
-/** The batcher behind batch mode: Cloak's own, or CloakGloamBatcher on the launch vault (Cloak v2 on Gloam). */
-const BATCHER = (CORE === "gloam" ? GLOAM?.batcher : CLOAK_BATCHER) as Address | undefined;
+/**
+ * The batcher behind batch mode: Cloak's own, or on the launch vault (Cloak v2 on Gloam) CloakGloamBatcherV4 for
+ * launches' v4 pools, else the V2 CloakGloamBatcher.
+ */
+const BATCHER = (CORE === "gloam" ? GLOAM?.batcherV4 ?? GLOAM?.batcher : CLOAK_BATCHER) as Address | undefined;
 import { every } from "../every";
 
 /** Placed batch orders, followed until each is paid or refunded (B4). */
@@ -172,8 +175,8 @@ export function Trade() {
   useEffect(() => {
     if (!priv || !BATCHER) return;
     // the shared vault's batcher runs its own rounds (same length)
-    if (!round || now > round.endsAt) (market?.shared && shared ? shared.roundInfo() : priv.roundInfo()).then(setRound).catch(() => {});
-  }, [priv, shared, market?.shared, now > (round?.endsAt ?? 0)]);
+    if (!round || now > round.endsAt) (market?.shared && shared ? shared.roundInfo() : "batcherFor" in priv ? priv.roundInfo(market?.token as Address | undefined) : priv.roundInfo()).then(setRound).catch(() => {});
+  }, [priv, shared, market?.shared, market?.token, now > (round?.endsAt ?? 0)]);
 
   const split = splitStandard(amountIn, 6);
   const fromSym = side === "buy" ? "HYPE" : market?.symbol ?? "…";
@@ -202,7 +205,7 @@ export function Trade() {
         const rc = await publicClient.getTransactionReceipt({ hash: r.orders[0].txHash }).catch(() => null);
         const placed = rc ? parseEventLogs({ abi: privateBatcherAbi, logs: rc.logs, eventName: "OrderPlaced" })[0] : undefined;
         if (placed) setTrack({ batcher: placed.address, token: market.token as Address, ids: r.orders.map((o) => o.id), rounds: r.orders.map((o) => o.round), outSym: toSym, inSym: fromSym, at: Date.now() });
-        setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles.${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
+        setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles.${CORE === "gloam" ? " What you get back moves into your private balance the next time Cloak is open." : ""}${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
       } else if (market.shared) {
         // a token in the shared launch-token vault: same swap, through the shared router
         if (!shared) throw new Error("Unlock your private account again to trade this token.");

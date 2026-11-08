@@ -2,7 +2,10 @@
 //   - admit every settled Cloak launch to the launch vault (CloakLaunchVault.admitLaunch, anyone may call it), so its
 //     token can be deposited the moment its launch settles;
 //   - collect the launch vault's HYPE fees for the relay's budget (the relay does it on demand too);
-//   - settle each batch round (CloakGloamBatcher.settle) once it ends, or cancel it once it is past its refund time;
+//   - register every settled launch's v4 market with CloakGloamBatcherV4 (register, anyone may call it), so its batch
+//     rounds can open;
+//   - settle each batch round (CloakGloamBatcher and CloakGloamBatcherV4) once it ends, or cancel it once it is past
+//     its refund time;
 //   - confirm every wallet still eligible in an allocation gate (CloakFundsGate.confirm) once the gate closes, so its
 //     owner is free to spend and the creator has a fixed list.
 //
@@ -23,7 +26,9 @@ const FACTORY_ABI = parseAbi([
   "function launchesCount() view returns (uint256)",
   "function launches(uint256) view returns (address auction, address token, address creator, address launchpad, uint256 creatorAlloc, address vesting)",
 ]);
-const AUCTION_ABI = parseAbi(["function settled() view returns (bool)"]);
+const AUCTION_ABI = parseAbi(["function settled() view returns (bool)", "function pair() view returns (address)"]);
+const BATCHER_V4_ABI = parseAbi(["function register(uint256 launchIndex) returns (address)", "function marketOf(address) view returns (address)", "function launchFactory() view returns (address)"]);
+const ZERO = "0x0000000000000000000000000000000000000000";
 const BATCHER_ABI = parseAbi([
   "function settle(address token, uint64 round)",
   "function cancel(address token, uint64 round)",
@@ -47,13 +52,16 @@ const ORDER_PLACED = parseAbiItem("event OrderPlaced(bytes32 indexed id, address
  * @param launchVault CloakLaunchVault, or omit it
  * @param launchFactory a factory other than the vault's own (for tests); default: the vault's factory()
  * @param batcher CloakGloamBatcher, or omit it; batcherBlock: where to read its orders from
+ * @param batcherV4 CloakGloamBatcherV4, or omit it; batcherV4Block: where to read its orders from
  * @param relay the Gloam relay, for collectLaunchFees(); or omit it
  */
-export function createGloamLoop({ publicClient, account, send, launchVault, launchFactory, batcher, batcherBlock = 0n, fundsGate, relay, log = () => {} }) {
+export function createGloamLoop({ publicClient, account, send, launchVault, launchFactory, batcher, batcherBlock = 0n, batcherV4, batcherV4Block = 0n, fundsGate, relay, log = () => {} }) {
   let nextLaunch = 0n;
   const gatesDone = new Set(); // gates whose entries are all confirmed or dropped
-  let ordersFrom = batcherBlock;
-  const open = new Map(); // `${token}:${round}` -> { token, round }
+  let nextRegister = 0n;
+  // per batcher: where to read new orders from
+  const batchers = [batcher && { address: batcher, from: batcherBlock }, batcherV4 && { address: batcherV4, from: batcherV4Block }].filter(Boolean);
+  const open = new Map(); // `${batcher}:${token}:${round}` -> { batcher, token, round }
 
   const ok = async (call) => {
     try {
@@ -87,38 +95,73 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
     return admitted;
   }
 
+  async function registerMarkets() {
+    if (!batcherV4) return [];
+    const factory = launchFactory ?? (await publicClient.readContract({ address: batcherV4, abi: BATCHER_V4_ABI, functionName: "launchFactory" }));
+    const count = await publicClient.readContract({ address: factory, abi: FACTORY_ABI, functionName: "launchesCount" });
+    const registered = [];
+    let firstOpen = null;
+    for (let i = nextRegister; i < count; i++) {
+      const [auction, token] = await publicClient.readContract({ address: factory, abi: FACTORY_ABI, functionName: "launches", args: [i] });
+      if ((await publicClient.readContract({ address: batcherV4, abi: BATCHER_V4_ABI, functionName: "marketOf", args: [token] })) !== ZERO) continue;
+      if (!(await publicClient.readContract({ address: auction, abi: AUCTION_ABI, functionName: "settled" }))) {
+        if (firstOpen === null) firstOpen = i;
+        continue;
+      }
+      const market = await publicClient.readContract({ address: auction, abi: AUCTION_ABI, functionName: "pair" }).catch(() => ZERO);
+      if (market === ZERO) continue; // a launch with no market (failed, or from before markets)
+      const call = { address: batcherV4, abi: BATCHER_V4_ABI, functionName: "register", args: [i] };
+      if (!(await ok(call))) continue;
+      registered.push({ index: i, token, market, hash: await send(call) });
+      log(`[gloam loop] registered launch ${i} (${token}) for v4 batch rounds`);
+    }
+    nextRegister = firstOpen ?? count;
+    return registered;
+  }
+
   async function settleRounds() {
-    if (!batcher) return [];
+    if (!batchers.length) return [];
     const head = await publicClient.getBlockNumber({ cacheTime: 0 }); // a cached head would skip new orders for a tick
-    if (ordersFrom <= head) {
-      const logs = await publicClient.getLogs({ address: batcher, event: ORDER_PLACED, fromBlock: ordersFrom, toBlock: head });
-      for (const l of logs) open.set(`${l.args.token.toLowerCase()}:${l.args.round}`, { token: l.args.token, round: l.args.round });
-      ordersFrom = head + 1n;
+    for (const b of batchers) {
+      if (b.from > head) continue;
+      const logs = await publicClient.getLogs({ address: b.address, event: ORDER_PLACED, fromBlock: b.from, toBlock: head });
+      for (const l of logs) open.set(`${b.address.toLowerCase()}:${l.args.token.toLowerCase()}:${l.args.round}`, { batcher: b.address, token: l.args.token, round: l.args.round });
+      b.from = head + 1n;
     }
     if (!open.size) return [];
     const now = (await publicClient.getBlock()).timestamp;
-    const roundSecs = await publicClient.readContract({ address: batcher, abi: BATCHER_ABI, functionName: "roundSecs" });
-    const refundAfter = await publicClient.readContract({ address: batcher, abi: BATCHER_ABI, functionName: "refundAfter" });
+    const timing = new Map();
+    const timingOf = async (addr) => {
+      if (!timing.has(addr)) {
+        const [roundSecs, refundAfter] = await Promise.all([
+          publicClient.readContract({ address: addr, abi: BATCHER_ABI, functionName: "roundSecs" }),
+          publicClient.readContract({ address: addr, abi: BATCHER_ABI, functionName: "refundAfter" }),
+        ]);
+        timing.set(addr, { roundSecs, refundAfter });
+      }
+      return timing.get(addr);
+    };
     const done = [];
-    for (const [k, { token, round }] of open) {
-      const b = await publicClient.readContract({ address: batcher, abi: BATCHER_ABI, functionName: "batches", args: [token, round] });
+    for (const [k, { batcher: addr, token, round }] of open) {
+      const b = await publicClient.readContract({ address: addr, abi: BATCHER_ABI, functionName: "batches", args: [token, round] });
       if (b[6] || b[7]) {
         open.delete(k);
         continue;
       }
+      const { roundSecs, refundAfter } = await timingOf(addr);
       const ends = (BigInt(round) + 1n) * roundSecs;
       if (now < ends) continue;
-      const settle = { address: batcher, abi: BATCHER_ABI, functionName: "settle", args: [token, round] };
+      const settle = { address: addr, abi: BATCHER_ABI, functionName: "settle", args: [token, round] };
       if (await ok(settle)) {
-        done.push({ token, round, action: "settled", hash: await send(settle) });
+        done.push({ batcher: addr, token, round, action: "settled", hash: await send(settle) });
         open.delete(k);
         log(`[gloam loop] settled batch round ${round} of ${token}`);
         continue;
       }
       if (now >= ends + refundAfter) {
-        const cancel = { address: batcher, abi: BATCHER_ABI, functionName: "cancel", args: [token, round] };
+        const cancel = { address: addr, abi: BATCHER_ABI, functionName: "cancel", args: [token, round] };
         if (await ok(cancel)) {
-          done.push({ token, round, action: "cancelled", hash: await send(cancel) });
+          done.push({ batcher: addr, token, round, action: "cancelled", hash: await send(cancel) });
           open.delete(k);
           log(`[gloam loop] cancelled batch round ${round} of ${token}: it couldn't settle in time, every order is owed its input back`);
         }
@@ -158,7 +201,7 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
   }
 
   async function tick() {
-    const out = { admitted: [], rounds: [], confirmed: [], feesCollected: 0n, errors: [] };
+    const out = { admitted: [], registered: [], rounds: [], confirmed: [], feesCollected: 0n, errors: [] };
     const step = async (name, fn) => {
       try {
         return await fn();
@@ -168,11 +211,12 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
       }
     };
     out.admitted = (await step("admit launches", admitLaunches)) ?? [];
+    out.registered = (await step("register v4 markets", registerMarkets)) ?? [];
     out.rounds = (await step("settle rounds", settleRounds)) ?? [];
     out.confirmed = (await step("confirm gates", confirmGates)) ?? [];
     if (relay?.collectLaunchFees) out.feesCollected = (await step("collect fees", () => relay.collectLaunchFees())) ?? 0n;
     return out;
   }
 
-  return { tick, admitLaunches, settleRounds, confirmGates, pendingRounds: () => [...open.values()] };
+  return { tick, admitLaunches, registerMarkets, settleRounds, confirmGates, pendingRounds: () => [...open.values()] };
 }

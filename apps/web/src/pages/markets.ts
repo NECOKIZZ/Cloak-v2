@@ -8,6 +8,9 @@ import { friendly } from "../errors";
 import { getSnapshot, save, saved } from "../snapshot";
 import { every } from "../every";
 
+const BATCHER_V4 = parseAbi(["function marketOf(address) view returns (address)"]);
+const ZERO = "0x0000000000000000000000000000000000000000" as Address;
+
 export interface Market {
   token: Address;
   pool: Address;
@@ -166,8 +169,11 @@ async function gloamV4Markets(lv: Address): Promise<Market[]> {
         publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
         publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "price" }),
       ]);
-      // batch rounds run on V2 pairs (CloakGloamBatcher), so v4 launches trade instantly only for now
-      return { token, pool: token, pair, symbol, name, price, reserveHype, reserveToken, batchable: false };
+      // batch rounds through the launch's v4 market (CloakGloamBatcherV4), once the keeper has registered it there
+      const batchable = GLOAM?.batcherV4
+        ? (await publicClient.readContract({ address: GLOAM.batcherV4, abi: BATCHER_V4, functionName: "marketOf", args: [token] }).catch(() => ZERO)) !== ZERO
+        : false;
+      return { token, pool: token, pair, symbol, name, price, reserveHype, reserveToken, batchable };
     }),
   );
   return rows.filter((x): x is Market => x !== null).reverse();

@@ -47,8 +47,10 @@ export interface GloamPrivateConfig {
    * launch token's market is its auction's market, quoted and routed through it; launchSwap (V2) is the fallback.
    */
   launchSwapV4?: Address;
-  /** CloakGloamBatcher on the launch vault. */
+  /** CloakGloamBatcher on the launch vault (rounds through Uniswap V2 pairs). */
   batcher?: Address;
+  /** CloakGloamBatcherV4 on the launch vault: rounds through launches' own v4 pools (their CloakV4Market). */
+  batcherV4?: Address;
   /** CloakGloamReceive: receive addresses anyone can pay, moved into the private balance by the app. */
   receive?: Address;
   /** CloakGloamBids on the launch vault: sealed bids paid from the private balance. */
@@ -90,6 +92,7 @@ const BATCH = parseAbi([
   "function escrowFor((bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo) k) view returns (address)",
   "function currentRound() view returns (uint64)",
   "function roundSecs() view returns (uint256)",
+  "function marketOf(address) view returns (address)",
 ]);
 
 const lc = (a: string) => a.toLowerCase();
@@ -105,6 +108,32 @@ function standardSizes(amount: bigint, max: number): { sizes: bigint[]; rest: bi
     const s = rest >= 5n * p ? 5n * p : rest >= 2n * p ? 2n * p : p;
     sizes.push(s);
     rest -= s;
+  }
+  return { sizes, rest };
+}
+
+/**
+ * Standard sizes that the notes actually held can pay, one note per order (Gloam spends one note in). Each order is
+ * the largest standard size that fits both what's left to place and the largest note, and the notes are then used the
+ * way GloamCore.exactNote uses them (an exact note if there is one, else split from the largest). So an amount spread
+ * over many notes still goes in, as more, smaller orders.
+ */
+export function standardSizesFor(amount: bigint, notes: bigint[], max: number): { sizes: bigint[]; rest: bigint } {
+  const caps = notes.filter((n) => n > 0n).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+  const sizes: bigint[] = [];
+  let rest = amount;
+  while (sizes.length < max && rest > 0n && caps.length) {
+    const target = rest < caps[0] ? rest : caps[0];
+    const sz = standardSizes(target, 1).sizes[0];
+    if (!sz) break;
+    const exact = caps.indexOf(sz);
+    if (exact >= 0) caps.splice(exact, 1);
+    else {
+      caps[0] -= sz; // split from the largest; the change stays a note
+      caps.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+    }
+    sizes.push(sz);
+    rest -= sz;
   }
   return { sizes, rest };
 }
@@ -464,41 +493,72 @@ export class GloamPrivate {
 
   // ── batch rounds (CloakGloamBatcher on the launch vault) ───────────────
 
-  async roundInfo(): Promise<{ round: bigint; endsAt: number; roundSecs: number }> {
-    if (!this.cfg.batcher) throw new Error("no batcher configured");
+  /**
+   * The batcher that runs rounds for a token: the v4 one once the token's launch market is registered there (the keeper
+   * registers every settled launch), else the V2 one. Without a token: the v4 one if set.
+   */
+  async batcherFor(token?: Address): Promise<Address> {
+    const { batcher, batcherV4 } = this.cfg;
+    if (batcherV4) {
+      if (!token) return batcherV4;
+      const m = await this.cfg.publicClient.readContract({ address: batcherV4, abi: BATCH, functionName: "marketOf", args: [token] });
+      if (m !== zeroAddress || !batcher) return batcherV4;
+    }
+    if (!batcher) throw new Error("no batcher configured");
+    return batcher;
+  }
+
+  async roundInfo(token?: Address): Promise<{ round: bigint; endsAt: number; roundSecs: number }> {
+    const b = await this.batcherFor(token);
     const pub = this.cfg.publicClient;
-    const [round, roundSecs] = await Promise.all([pub.readContract({ address: this.cfg.batcher, abi: BATCH, functionName: "currentRound" }), pub.readContract({ address: this.cfg.batcher, abi: BATCH, functionName: "roundSecs" })]);
+    const [round, roundSecs] = await Promise.all([pub.readContract({ address: b, abi: BATCH, functionName: "currentRound" }), pub.readContract({ address: b, abi: BATCH, functionName: "roundSecs" })]);
     return { round, roundSecs: Number(roundSecs), endsAt: Number((round + 1n) * roundSecs) };
   }
 
   /**
    * Batched private buy or sell: standard-size orders (1, 2, 5 x 10^n), each a whole note spent into the batcher.
-   * The remainder that isn't a standard size stays in the balance. Payouts come back on a later open.
+   * The remainder that isn't a standard size stays in the balance. Each order is recorded, and its payout comes back
+   * as a note on a later open (finishPending), once the round settles.
    */
   async batch(token: Address, side: "buy" | "sell", amount: bigint, opts: { maxOrders?: number; onStatus?: Status } = {}) {
     const core = this.launchCore;
-    if (!core || !this.cfg.batcher) throw new Error("no batcher configured");
+    if (!core) throw new Error("no batcher configured");
+    const batcher = await this.batcherFor(token);
     const onStatus = opts.onStatus ?? (() => {});
-    const { sizes, rest } = standardSizes(amount, opts.maxOrders ?? 6);
-    if (!sizes.length) throw new Error("amount too small for a standard-size order");
     const asset = side === "buy" ? zeroAddress : token;
+    await core.sync(onStatus);
+    const { sizes, rest } = standardSizesFor(amount, core.ownNotes(asset).map((n) => n.amount), opts.maxOrders ?? 6);
+    if (!sizes.length) throw new Error("amount too small for a standard-size order");
     const orders: { id: bigint; size: bigint; round: bigint; txHash: Hex }[] = [];
     const pub = this.cfg.publicClient;
     for (let i = 0; i < sizes.length; i++) {
       onStatus(`Order ${i + 1}/${sizes.length}: preparing…`);
       const note = await core.exactNote(asset, sizes[i], onStatus);
       const nullifier = toHex(note.nullifier, { size: 32 });
-      const { privateKeyToAccount } = await import("viem/accounts");
       const owner = privateKeyToAccount(core.exitKeyFor(nullifier)).address;
       const k = { nullifier, token, buy: side === "buy", size: sizes[i], ownerKey: owner, fallbackTo: owner };
-      const escrow = await pub.readContract({ address: this.cfg.batcher, abi: BATCH, functionName: "escrowFor", args: [k] });
+      const escrow = await pub.readContract({ address: batcher, abi: BATCH, functionName: "escrowFor", args: [k] });
       const s = await core.spendProof(note, escrow, onStatus);
       onStatus(`Order ${i + 1}/${sizes.length}: relaying…`);
-      const txHash = await this.cfg.submit({ kind: "escrow", to: this.cfg.batcher, data: encodeFunctionData({ abi: BATCH, functionName: "place", args: [s, k] }) });
-      const round = await pub.readContract({ address: this.cfg.batcher, abi: BATCH, functionName: "currentRound" });
-      orders.push({ id: BigInt(nullifier), size: sizes[i], round, txHash });
+      const round = await pub.readContract({ address: batcher, abi: BATCH, functionName: "currentRound" });
+      const id = keccak256(encodeAbiParameters([{ type: "tuple", components: [{ name: "nullifier", type: "bytes32" }, { name: "token", type: "address" }, { name: "buy", type: "bool" }, { name: "size", type: "uint128" }, { name: "ownerKey", type: "address" }, { name: "fallbackTo", type: "address" }] }], [k]));
+      // recorded before it's sent, so a payout is never forgotten if the page closes mid-send
+      this.addRecord({ kind: "batchOrder", batcher, id, key: k, round, txHash: "0x" });
+      const txHash = await this.cfg.submit({ kind: "escrow", to: batcher, data: encodeFunctionData({ abi: BATCH, functionName: "place", args: [s, k] }) });
+      this.updateRecord(id, { txHash });
+      orders.push({ id: BigInt(id), size: sizes[i], round, txHash });
     }
     return { orders, rest };
+  }
+
+  private addRecord(r: LaunchRecord) {
+    if (!this.cfg.records) return;
+    this.cfg.records.save([...this.cfg.records.load(), r]);
+  }
+
+  private updateRecord(id: Hex, patch: { txHash: Hex }) {
+    if (!this.cfg.records) return;
+    this.cfg.records.save(this.cfg.records.load().map((r) => ("id" in r && r.id === id ? { ...r, ...patch } : r)));
   }
 
   // ── proof of funds (off chain, for a named reader) ─────────────────────

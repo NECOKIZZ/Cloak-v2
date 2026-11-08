@@ -1,0 +1,24 @@
+{
+  "admitted": 12,
+  "registered": 5,
+  "poolHype": "0.425770382549999994",
+  "cancelled": {
+    "in": "0.3",
+    "back": "0.2985"
+  },
+  "settleBuy": [
+    {
+      "round": "29902790",
+      "action": "settled"
+    }
+  ],
+  "buy": {
+    "hypeIn": "0.006451",
+    "tokensOut": "52.05750655541205502"
+  },
+  "sell": {
+    "orders": 6,
+    "hypeOut": "0.005981395124065276"
+  },
+  "seconds": 89
+}

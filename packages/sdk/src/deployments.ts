@@ -92,7 +92,10 @@ export interface GloamDeployment {
   /** CloakLaunchSwapV4: private swaps through Cloak launches' own Uniswap v4 pools. */
   launchSwapV4?: Address;
   graduation?: Address;
+  /** CloakGloamBatcher: batch rounds through Uniswap V2 pairs. */
   batcher?: Address;
+  /** CloakGloamBatcherV4: batch rounds through launches' own v4 pools; the keeper registers each settled launch. */
+  batcherV4?: Address;
   /** CloakGloamReceive: receive addresses. */
   receive?: Address;
   /** CloakGloamBids on the launch vault: sealed bids from the private balance. */

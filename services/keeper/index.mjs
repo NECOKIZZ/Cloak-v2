@@ -168,7 +168,7 @@ const cloak = new Cloak(publicClient, walletClient, FACTORY, EARLIER);
 // Cloak v2 on Gloam: the loop for follow-ups that need no user secret (gloamLoop.mjs). On when GLOAM_LAUNCH_VAULT or
 // GLOAM_BATCHER or GLOAM_FUNDS_GATE is set. Every GLOAM_LOOP_SECS (default 60): admit settled launches, settle batch
 // rounds, confirm wallets in closed allocation gates, collect fees.
-const gloamLoop = process.env.GLOAM_LAUNCH_VAULT || process.env.GLOAM_BATCHER || process.env.GLOAM_FUNDS_GATE
+const gloamLoop = process.env.GLOAM_LAUNCH_VAULT || process.env.GLOAM_BATCHER || process.env.GLOAM_BATCHER_V4 || process.env.GLOAM_FUNDS_GATE
   ? createGloamLoop({
       publicClient,
       account,
@@ -177,6 +177,8 @@ const gloamLoop = process.env.GLOAM_LAUNCH_VAULT || process.env.GLOAM_BATCHER ||
       launchFactory: process.env.GLOAM_LAUNCH_FACTORY,
       batcher: process.env.GLOAM_BATCHER,
       batcherBlock: BigInt(process.env.GLOAM_BATCHER_BLOCK ?? "0"),
+      batcherV4: process.env.GLOAM_BATCHER_V4,
+      batcherV4Block: BigInt(process.env.GLOAM_BATCHER_V4_BLOCK ?? process.env.GLOAM_BATCHER_BLOCK ?? "0"),
       fundsGate: process.env.GLOAM_FUNDS_GATE,
       relay: gloamRelay,
       log: console.log,

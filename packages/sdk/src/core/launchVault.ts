@@ -46,11 +46,22 @@ export const CLOAK_GRADUATION_ABI = parseAbi([
   "function claimDigest(bytes32 id, address toVault, bytes32 commitment) view returns (bytes32)",
 ]);
 
+const ORDER_KEY = "(bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo)";
+export const CLOAK_GLOAM_BATCHER_ABI = parseAbi([
+  `function claim(${ORDER_KEY} k, ${DEPOSIT_SWAP} d, bytes signature)`,
+  `function idOf(${ORDER_KEY} k) pure returns (bytes32)`,
+  "function owed(bytes32) view returns (address asset, uint256 amount)",
+  "function orders(bytes32) view returns (address token, uint64 round, bool buy, bool paid, uint128 net)",
+  "function claimDigest(bytes32 id, bytes32 commitment) view returns (bytes32)",
+]);
+
 // built from strings, so viem can't type the calls: untyped handles, checked by the e2e runs
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SWAP = CLOAK_LAUNCH_SWAP_ABI as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const GRAD = CLOAK_GRADUATION_ABI as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const BATCHER = CLOAK_GLOAM_BATCHER_ABI as any;
 
 export interface LaunchSwapKey {
   nullifier: Hex;
@@ -73,7 +84,18 @@ export interface GraduationKey {
 }
 
 /** What the app keeps per action until finishPending() reports it done. */
+/** A batch order's key (CloakGloamBatcherBase.OrderKey). */
+export interface BatchOrderKey {
+  nullifier: Hex;
+  token: Address;
+  buy: boolean;
+  size: bigint;
+  ownerKey: Address;
+  fallbackTo: Address;
+}
+
 export type LaunchRecord =
+  | { kind: "batchOrder"; batcher: Address; id: Hex; key: BatchOrderKey; round: bigint; txHash: Hex }
   | { kind: "launchSwap"; router: Address; id: Hex; key: LaunchSwapKey; txHash: Hex }
   | { kind: "graduation"; graduation: Address; id: Hex; key: GraduationKey; txHash: Hex }
   | ({ kind: "bid" } & GloamBidRecord);
@@ -192,7 +214,14 @@ export async function finishPending(
   const out: PendingResult = { waiting: [], done: [], errors: [] };
   for (const r of records) {
     try {
-      const res = r.kind === "launchSwap" ? await finishSwap(core, r, now, onStatus) : r.kind === "bid" ? await finishBid(core, r, onStatus) : await finishGraduation(core, r, now, opts, onStatus);
+      const res =
+        r.kind === "launchSwap"
+          ? await finishSwap(core, r, now, onStatus)
+          : r.kind === "bid"
+            ? await finishBid(core, r, onStatus)
+            : r.kind === "batchOrder"
+              ? await finishBatchOrder(core, r, onStatus)
+              : await finishGraduation(core, r, now, opts, onStatus);
       if (res) out.done.push({ record: r, ...res });
       else out.waiting.push(r);
     } catch (e) {
@@ -228,6 +257,32 @@ async function finishSwap(core: GloamCore, r: Extract<LaunchRecord, { kind: "lau
   const memo = await announce(core, m.deposit.commitment, m.ticket, onStatus);
   if (memo) txHashes.push(memo);
   return { outcome: `leftover of ${amount} back as a note`, txHashes };
+}
+
+/**
+ * A batch order's payout (or its input back, if the round was cancelled) into the launch vault as one note of exactly
+ * what it is owed. Waits while the round is open. An order never placed (the spend didn't land) is dropped once its
+ * note is still unspent and the round is over.
+ */
+async function finishBatchOrder(core: GloamCore, r: Extract<LaunchRecord, { kind: "batchOrder" }>, onStatus: Status) {
+  const pub = core.config.publicClient;
+  const [token, round, , paid] = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "orders", args: [r.id] })) as [Address, bigint, boolean, boolean, bigint];
+  if (paid) return { outcome: "already paid", txHashes: [] as Hex[] };
+  if (round === 0n && token === "0x0000000000000000000000000000000000000000") {
+    const spent = (await pub.readContract({ address: core.config.pool, abi: parseAbi(["function isSpent(bytes32) view returns (bool)"]), functionName: "isSpent", args: [r.key.nullifier] })) as boolean;
+    return spent ? null : { outcome: "never placed, the note stayed in the balance", txHashes: [] as Hex[] };
+  }
+  const [asset, amount] = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "owed", args: [r.id] })) as [Address, bigint];
+  if (amount === 0n) return null; // the round hasn't settled (or been cancelled) yet
+  onStatus("Bringing a batch order's payout into your private balance");
+  const m = await core.depositFor(asset, amount);
+  const digest = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "claimDigest", args: [r.id, m.deposit.commitment] })) as Hex;
+  const signature = await signer(core, r.key.nullifier).sign({ hash: digest });
+  const txHashes: Hex[] = [await core.config.submit({ kind: "escrow", to: r.batcher, data: encodeFunctionData({ abi: BATCHER, functionName: "claim", args: [r.key, m.deposit, signature] }) })];
+  core.track({ commitment: m.note.commitment, asset, amount, secret: m.note.secret });
+  const memo = await announce(core, m.deposit.commitment, m.ticket, onStatus);
+  if (memo) txHashes.push(memo);
+  return { outcome: `batch payout of ${amount} back as a note`, txHashes };
 }
 
 async function finishGraduation(

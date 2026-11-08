@@ -890,3 +890,17 @@ Cloak's launches open Uniswap v4 pools behind `CloakV4Hook`, and `CloakLaunchSwa
 - the Receive page: an outside wallet paid its address 0.2 HYPE, the open page moved it into the private balance, and the address list shows "Received 0.2 HYPE".
 
 Screenshots are `measurements/part8-*.png`.
+
+### 16.21 Batch rounds on Cloak's real v4 launches, and payouts that come back on their own (Nov 8)
+
+- **The contract:** `CloakGloamBatcherV4` on the launch vault. The batcher was split into `CloakGloamBatcherBase` plus venues (V2 unchanged, 117/117). The v4 venue trades a round's net through the launch's own `CloakV4Market`, which anyone records with `register(launchIndex)` once the launch has settled. `contracts-v4/test/CloakGloamBatcherV4.t.sol` runs a full round on the real PoolManager behind CloakV4Hook (contracts-v4 at 65/65). The round test had been left unverified. It failed only because the test signed with a key whose address wasn't the order's owner key, which is now fixed.
+- **Keeper loop:** registers every settled launch's market with the v4 batcher (`GLOAM_BATCHER_V4`, `GLOAM_BATCHER_V4_BLOCK`), and settles and cancels rounds on both batchers.
+- **A gap fixed: payouts were never claimed by the app.** `GloamPrivate.batch` placed orders but kept no record, so a trader's tokens (or a cancelled round's refund) sat in the batcher until the 30-day timeout exit paid the one-time owner address. Each order is now a `batchOrder` record, saved before it's sent, and `finishPending` claims its payout into the launch vault as a note of exactly what it is owed.
+- **Orders sized by the notes held.** Gloam spends one note per order, so a plain 1, 2, 5 split could ask for an order bigger than any one note (selling 52 tokens held as 40 + 8 + ...). `standardSizesFor` sizes each order to fit the largest note, the way `exactNote` then spends them, so a fragmented balance still goes in as more, smaller orders.
+- **SDK and site:** `GloamPrivate` takes `batcherV4` and picks it for any token registered there (`batcherFor`), else the V2 batcher. `GLOAM.batcherV4` in the deployment record turns on batch mode for v4 launches on the Trade page, once the keeper has registered the token. The result message says the payout moves in the next time Cloak is open.
+- **Measured:** `e2e-gloam/part14-batch-v4.mjs` on a fork of Elysium testnet (`measurements/part14-batch-v4.json`). The keeper loop registered all 5 settled launches with v4 pools. On the deepest (0.43 HYPE of liquidity):
+  - a 0.3 HYPE buy (0.2 + 0.1) was too big for the 5% impact cap, so the keeper couldn't settle it, cancelled it past the refund time, and the next open brought back 0.2985 HYPE (the input less the vault's 0.5% fee);
+  - a buy sized at 1.5% of the pool went in as 6 orders, settled through the real market, and came back as 52.06 tokens;
+  - selling all of them (6 notes) went in as 6 orders, settled, and came back as HYPE.
+  Parts 5, 7 and 12 still pass.
+- **What to know:** testnet launch pools are thin, so batch orders over about 2% of a pool's HYPE won't settle and get refunded after the refund time (10 minutes). Not yet deployed to testnet (needs the testnet key, see HANDOVER section 2).
