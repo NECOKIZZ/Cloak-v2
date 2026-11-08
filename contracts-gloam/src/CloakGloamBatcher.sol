@@ -47,7 +47,7 @@ interface IERC20B {
  * Never stuck: the money is the note (order reverts whole), or in this contract as an order's payout with claim and
  * the timeout exit, or (if the spend was sent alone) at the order's escrow, where place() picks it up again.
  */
-contract CloakGloamBatcher is IEscrowPayee {
+abstract contract CloakGloamBatcherBase is IEscrowPayee {
     struct Spend {
         bytes proof;
         bytes32 root;
@@ -92,8 +92,6 @@ contract CloakGloamBatcher is IEscrowPayee {
     }
 
     IGloamVault public immutable vault;
-    IV2Factory public immutable factory;
-    IWHYPE public immutable whype;
     uint256 public immutable roundSecs;
     uint256 public immutable maxSlippageBps;
     uint256 public immutable refundAfter;
@@ -107,6 +105,7 @@ contract CloakGloamBatcher is IEscrowPayee {
 
     uint256 private _entered;
     bool private _opening;
+    bool private _settling;
 
     event OrderPlaced(bytes32 indexed id, address indexed token, uint64 indexed round, bool buy, uint256 size, uint256 net);
     event BatchSettled(address indexed token, uint64 indexed round, uint256 tokensForBuyers, uint256 hypeForSellers, int256 netHype);
@@ -132,20 +131,40 @@ contract CloakGloamBatcher is IEscrowPayee {
         _entered = 0;
     }
 
-    constructor(address vault_, address factory_, address whype_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_) {
+    constructor(address vault_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_) {
         require(maxSlippageBps_ <= 200 && roundSecs_ > 0, "params");
         vault = IGloamVault(vault_);
-        factory = IV2Factory(factory_);
-        whype = IWHYPE(whype_);
         roundSecs = roundSecs_;
         maxSlippageBps = maxSlippageBps_;
         refundAfter = refundAfter_;
     }
 
     receive() external payable {
-        // HYPE comes in from an order's escrow as it opens, or from WHYPE while settling
-        if (!_opening && msg.sender != address(whype)) revert Used();
+        // HYPE comes in from an order's escrow as it opens, or from the venue while settling
+        if (!_opening && !_venueMayPay(msg.sender)) revert Used();
     }
+
+    /// @dev A round is being settled (the venue may pay HYPE in).
+    function _inSettle() internal view returns (bool) {
+        return _settling;
+    }
+
+    // ── the venue: where a token's price comes from and where the net trades ──
+
+    /// @dev Whether `token` has a market to trade the net against.
+    function _hasMarket(address token) internal view virtual returns (bool);
+
+    /// @dev The market's HYPE and token reserves, for the round's spot price.
+    function _reserves(address token) internal view virtual returns (uint256 rH, uint256 rT);
+
+    /// @dev Buy tokens with `hypeIn` of HYPE held here; returns what arrived.
+    function _swapHypeForTokens(address token, uint256 hypeIn) internal virtual returns (uint256 out);
+
+    /// @dev Sell `tokensIn` held here for HYPE; returns what arrived.
+    function _swapTokensForHype(address token, uint256 tokensIn) internal virtual returns (uint256 out);
+
+    /// @dev Who may pay HYPE in outside an escrow opening (WHYPE unwrapping, a market paying out while settling).
+    function _venueMayPay(address from) internal view virtual returns (bool);
 
     /// @notice SwapEscrow2 asks where to pay: always here.
     function escrowPayee() external view returns (address) {
@@ -179,7 +198,7 @@ contract CloakGloamBatcher is IEscrowPayee {
         address asset = k.buy ? NATIVE : k.token;
         if (s.nullifier != k.nullifier || s.asset != asset || s.amount != k.size || k.ownerKey == address(0)) revert BadKey();
         if (!isStandard(k.size)) revert NotStandard();
-        if (factory.getPair(address(whype), k.token) == address(0)) revert NoPair();
+        if (!_hasMarket(k.token)) revert NoPair();
         id = idOf(k);
         if (orders[id].round != 0) revert Used();
         address escrow = escrowFor(k);
@@ -196,6 +215,12 @@ contract CloakGloamBatcher is IEscrowPayee {
 
     /// @notice Cross a finished round at spot and trade the net against the pair. Anyone can call it.
     function settle(address token, uint64 round) external nonReentrant {
+        _settling = true;
+        _settle(token, round);
+        _settling = false;
+    }
+
+    function _settle(address token, uint64 round) private {
         Batch storage b = batches[token][round];
         if (b.settled || b.cancelled) revert Done();
         if (uint256(round + 1) * roundSecs > block.timestamp) revert NotYet();
@@ -308,7 +333,36 @@ contract CloakGloamBatcher is IEscrowPayee {
         return (rT * 1e18) / rH;
     }
 
-    function _reserves(address token) private view returns (uint256 rH, uint256 rT) {
+    function _recover(bytes32 digest, bytes calldata sig) private pure returns (address) {
+        if (sig.length != 65) return address(0);
+        return ecrecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
+    }
+}
+
+/**
+ * @title CloakGloamBatcher
+ * @notice The Uniswap V2 venue for CloakGloamBatcherBase: a token's market is its V2 pair with WHYPE.
+ */
+contract CloakGloamBatcher is CloakGloamBatcherBase {
+    IV2Factory public immutable factory;
+    IWHYPE public immutable whype;
+
+    constructor(address vault_, address factory_, address whype_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_)
+        CloakGloamBatcherBase(vault_, roundSecs_, maxSlippageBps_, refundAfter_)
+    {
+        factory = IV2Factory(factory_);
+        whype = IWHYPE(whype_);
+    }
+
+    function _hasMarket(address token) internal view override returns (bool) {
+        return factory.getPair(address(whype), token) != address(0);
+    }
+
+    function _venueMayPay(address from) internal view override returns (bool) {
+        return from == address(whype);
+    }
+
+    function _reserves(address token) internal view override returns (uint256 rH, uint256 rT) {
         address pair = factory.getPair(address(whype), token);
         if (pair == address(0)) revert NoPair();
         (uint112 r0, uint112 r1, ) = IV2Pair(pair).getReserves();
@@ -320,7 +374,7 @@ contract CloakGloamBatcher is IEscrowPayee {
         return (x * rOut) / (rIn * 1000 + x);
     }
 
-    function _swapHypeForTokens(address token, uint256 hypeIn) private returns (uint256 out) {
+    function _swapHypeForTokens(address token, uint256 hypeIn) internal override returns (uint256 out) {
         address pair = factory.getPair(address(whype), token);
         (uint256 rH, uint256 rT) = _reserves(token);
         out = _out(hypeIn, rH, rT);
@@ -332,7 +386,7 @@ contract CloakGloamBatcher is IEscrowPayee {
         out = IERC20B(token).balanceOf(address(this)) - before; // what arrived, for a token that skims
     }
 
-    function _swapTokensForHype(address token, uint256 tokensIn) private returns (uint256 out) {
+    function _swapTokensForHype(address token, uint256 tokensIn) internal override returns (uint256 out) {
         address pair = factory.getPair(address(whype), token);
         uint256 b0 = IERC20B(token).balanceOf(pair);
         require(IERC20B(token).transfer(pair, tokensIn), "t");
@@ -342,10 +396,5 @@ contract CloakGloamBatcher is IEscrowPayee {
         bool hypeIs0 = IV2Pair(pair).token0() == address(whype);
         IV2Pair(pair).swap(hypeIs0 ? out : 0, hypeIs0 ? 0 : out, address(this), "");
         whype.withdraw(out);
-    }
-
-    function _recover(bytes32 digest, bytes calldata sig) private pure returns (address) {
-        if (sig.length != 65) return address(0);
-        return ecrecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
     }
 }

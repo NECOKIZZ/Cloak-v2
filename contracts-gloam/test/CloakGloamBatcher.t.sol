@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test, stdJson} from "forge-std/Test.sol";
 import {ShieldPoolPayments} from "gloam/ShieldPoolPayments.sol";
-import {CloakGloamBatcher} from "../src/CloakGloamBatcher.sol";
+import {CloakGloamBatcher, CloakGloamBatcherBase} from "../src/CloakGloamBatcher.sol";
 import {TestToken} from "../src/TestToken.sol";
 import {AcceptVerifier, ToBindingVerifier, WETH9, V2Factory, V2Pair, FreezeToken} from "./CloakV2PairSwap.t.sol";
 
@@ -56,28 +56,28 @@ contract CloakGloamBatcherTest is Test {
         }
     }
 
-    function _key(bool buy, uint128 size) internal returns (CloakGloamBatcher.OrderKey memory k) {
-        k = CloakGloamBatcher.OrderKey(bytes32(uint256(keccak256(abi.encode(++nonce)))), address(launch), buy, size, vm.addr(ownerPk), fallbackTo);
+    function _key(bool buy, uint128 size) internal returns (CloakGloamBatcherBase.OrderKey memory k) {
+        k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(keccak256(abi.encode(++nonce)))), address(launch), buy, size, vm.addr(ownerPk), fallbackTo);
     }
 
-    function _spend(CloakGloamBatcher.OrderKey memory k) internal view returns (CloakGloamBatcher.Spend memory) {
-        return CloakGloamBatcher.Spend(abi.encode(batcher.escrowFor(k)), pool.currentRoot(), k.nullifier, k.buy ? address(0) : address(launch), k.size);
+    function _spend(CloakGloamBatcherBase.OrderKey memory k) internal view returns (CloakGloamBatcherBase.Spend memory) {
+        return CloakGloamBatcherBase.Spend(abi.encode(batcher.escrowFor(k)), pool.currentRoot(), k.nullifier, k.buy ? address(0) : address(launch), k.size);
     }
 
-    function _order(bool buy, uint128 size) internal returns (CloakGloamBatcher.OrderKey memory k, bytes32 id) {
+    function _order(bool buy, uint128 size) internal returns (CloakGloamBatcherBase.OrderKey memory k, bytes32 id) {
         k = _key(buy, size);
-        CloakGloamBatcher.Spend memory s = _spend(k);
+        CloakGloamBatcherBase.Spend memory s = _spend(k);
         vm.prank(mallory); // any relayer
         id = batcher.place(s, k);
     }
 
-    function _claim(CloakGloamBatcher.OrderKey memory k, uint256 c) internal returns (uint256 amount) {
+    function _claim(CloakGloamBatcherBase.OrderKey memory k, uint256 c) internal returns (uint256 amount) {
         bytes32 id = batcher.idOf(k);
         address asset;
         (asset, amount) = batcher.owed(id);
         bytes32 commitment = bytes32(c);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.claimDigest(id, commitment));
-        batcher.claim(k, CloakGloamBatcher.Deposit(hex"00", commitment, asset, amount), abi.encodePacked(r, s, v));
+        batcher.claim(k, CloakGloamBatcherBase.Deposit(hex"00", commitment, asset, amount), abi.encodePacked(r, s, v));
     }
 
     function _endRound() internal {
@@ -87,9 +87,9 @@ contract CloakGloamBatcherTest is Test {
     // ── crossing ───────────────────────────────────────────────────────────
 
     function test_buys_and_sells_cross_at_spot_and_only_the_net_trades() public {
-        (CloakGloamBatcher.OrderKey memory b1, ) = _order(true, 1e18);
-        (CloakGloamBatcher.OrderKey memory b2, ) = _order(true, 1e18);
-        (CloakGloamBatcher.OrderKey memory s1, ) = _order(false, 1000e18);
+        (CloakGloamBatcherBase.OrderKey memory b1, ) = _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory b2, ) = _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
         uint64 round = batcher.currentRound();
         uint256 hBefore = weth.balanceOf(address(pair));
         _endRound();
@@ -106,7 +106,7 @@ contract CloakGloamBatcherTest is Test {
     }
 
     function test_a_round_of_only_sells() public {
-        (CloakGloamBatcher.OrderKey memory s1, ) = _order(false, 1000e18);
+        (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
         uint64 round = batcher.currentRound();
         _endRound();
         batcher.settle(address(launch), round);
@@ -116,15 +116,15 @@ contract CloakGloamBatcherTest is Test {
     // ── entering ───────────────────────────────────────────────────────────
 
     function test_non_standard_size_is_refused() public {
-        CloakGloamBatcher.OrderKey memory k = _key(true, 3e18);
-        CloakGloamBatcher.Spend memory s = _spend(k);
-        vm.expectRevert(CloakGloamBatcher.NotStandard.selector);
+        CloakGloamBatcherBase.OrderKey memory k = _key(true, 3e18);
+        CloakGloamBatcherBase.Spend memory s = _spend(k);
+        vm.expectRevert(CloakGloamBatcherBase.NotStandard.selector);
         batcher.place(s, k);
     }
 
     function test_copied_order_with_another_owner_cannot_use_the_proof() public {
-        CloakGloamBatcher.OrderKey memory k = _key(true, 1e18);
-        CloakGloamBatcher.Spend memory s = _spend(k);
+        CloakGloamBatcherBase.OrderKey memory k = _key(true, 1e18);
+        CloakGloamBatcherBase.Spend memory s = _spend(k);
         k.ownerKey = mallory;
         vm.expectRevert(); // another escrow: the proof names the first one
         batcher.place(s, k);
@@ -132,8 +132,8 @@ contract CloakGloamBatcherTest is Test {
     }
 
     function test_spend_sent_alone_is_picked_up_by_place() public {
-        CloakGloamBatcher.OrderKey memory k = _key(true, 1e18);
-        CloakGloamBatcher.Spend memory s = _spend(k);
+        CloakGloamBatcherBase.OrderKey memory k = _key(true, 1e18);
+        CloakGloamBatcherBase.Spend memory s = _spend(k);
         vm.prank(mallory);
         pool.unshield(s.proof, s.root, s.nullifier, address(0), batcher.escrowFor(k), s.amount);
         batcher.place(s, k);
@@ -142,48 +142,48 @@ contract CloakGloamBatcherTest is Test {
     }
 
     function test_order_twice_is_refused() public {
-        (CloakGloamBatcher.OrderKey memory k, ) = _order(true, 1e18);
-        CloakGloamBatcher.Spend memory s = _spend(k);
-        vm.expectRevert(CloakGloamBatcher.Used.selector);
+        (CloakGloamBatcherBase.OrderKey memory k, ) = _order(true, 1e18);
+        CloakGloamBatcherBase.Spend memory s = _spend(k);
+        vm.expectRevert(CloakGloamBatcherBase.Used.selector);
         batcher.place(s, k);
     }
 
     // ── leaving ────────────────────────────────────────────────────────────
 
     function test_claim_must_be_the_exact_amount_and_works_once() public {
-        (CloakGloamBatcher.OrderKey memory b1, bytes32 id) = _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory b1, bytes32 id) = _order(true, 1e18);
         uint64 round = batcher.currentRound();
         _endRound();
         batcher.settle(address(launch), round);
         (address asset, uint256 amount) = batcher.owed(id);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.claimDigest(id, bytes32(uint256(7))));
-        vm.expectRevert(abi.encodeWithSelector(CloakGloamBatcher.WrongAmount.selector, amount));
-        batcher.claim(b1, CloakGloamBatcher.Deposit(hex"00", bytes32(uint256(7)), asset, amount + 1), abi.encodePacked(r, s, v));
-        batcher.claim(b1, CloakGloamBatcher.Deposit(hex"00", bytes32(uint256(7)), asset, amount), abi.encodePacked(r, s, v));
-        vm.expectRevert(CloakGloamBatcher.NotYet.selector); // owed is 0 once paid
-        batcher.claim(b1, CloakGloamBatcher.Deposit(hex"00", bytes32(uint256(7)), asset, amount), abi.encodePacked(r, s, v));
+        vm.expectRevert(abi.encodeWithSelector(CloakGloamBatcherBase.WrongAmount.selector, amount));
+        batcher.claim(b1, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(7)), asset, amount + 1), abi.encodePacked(r, s, v));
+        batcher.claim(b1, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(7)), asset, amount), abi.encodePacked(r, s, v));
+        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector); // owed is 0 once paid
+        batcher.claim(b1, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(7)), asset, amount), abi.encodePacked(r, s, v));
     }
 
     function test_claim_needs_the_owner_signature_for_that_note() public {
-        (CloakGloamBatcher.OrderKey memory b1, bytes32 id) = _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory b1, bytes32 id) = _order(true, 1e18);
         uint64 round = batcher.currentRound();
         _endRound();
         batcher.settle(address(launch), round);
         (address asset, uint256 amount) = batcher.owed(id);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.claimDigest(id, bytes32(uint256(7))));
-        vm.expectRevert(CloakGloamBatcher.BadSignature.selector); // mallory's note, the owner's signature for another
-        batcher.claim(b1, CloakGloamBatcher.Deposit(hex"00", bytes32(uint256(0xBAD)), asset, amount), abi.encodePacked(r, s, v));
+        vm.expectRevert(CloakGloamBatcherBase.BadSignature.selector); // mallory's note, the owner's signature for another
+        batcher.claim(b1, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(0xBAD)), asset, amount), abi.encodePacked(r, s, v));
     }
 
     function test_price_moved_too_far_then_cancel_refunds_the_input() public {
-        (CloakGloamBatcher.OrderKey memory b1, ) = _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory b1, ) = _order(true, 1e18);
         uint64 round = batcher.currentRound();
         launch.mint(address(pair), 10_000e18); // someone moves the price 10%
         pair.sync();
         _endRound();
-        vm.expectRevert(CloakGloamBatcher.Slipped.selector);
+        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
         batcher.settle(address(launch), round);
-        vm.expectRevert(CloakGloamBatcher.NotYet.selector);
+        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
         batcher.cancel(address(launch), round);
         vm.warp(block.timestamp + 1 hours);
         batcher.cancel(address(launch), round);
@@ -191,39 +191,39 @@ contract CloakGloamBatcherTest is Test {
     }
 
     function test_timeout_exit_pays_the_fallback_once() public {
-        (CloakGloamBatcher.OrderKey memory b1, bytes32 id) = _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory b1, bytes32 id) = _order(true, 1e18);
         uint64 round = batcher.currentRound();
         _endRound();
         batcher.settle(address(launch), round);
         (, uint256 amount) = batcher.owed(id);
-        vm.expectRevert(CloakGloamBatcher.NotYet.selector);
+        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
         batcher.exitAfterTimeout(b1);
         vm.warp(block.timestamp + 30 days);
         vm.prank(mallory);
         batcher.exitAfterTimeout(b1);
         assertEq(launch.balanceOf(fallbackTo), amount);
-        vm.expectRevert(CloakGloamBatcher.Done.selector);
+        vm.expectRevert(CloakGloamBatcherBase.Done.selector);
         batcher.exitAfterTimeout(b1);
     }
 
     function test_settle_twice_and_settle_early_are_refused() public {
         _order(true, 1e18);
         uint64 round = batcher.currentRound();
-        vm.expectRevert(CloakGloamBatcher.NotYet.selector);
+        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
         batcher.settle(address(launch), round);
         _endRound();
         batcher.settle(address(launch), round);
-        vm.expectRevert(CloakGloamBatcher.Done.selector);
+        vm.expectRevert(CloakGloamBatcherBase.Done.selector);
         batcher.settle(address(launch), round);
     }
 
     function test_a_big_round_against_a_thin_pool_refuses_to_fill_badly() public {
         for (uint256 i = 0; i < 1; i++) pool.shieldBound{value: 50e18}(address(0), 50e18, bytes32(uint256(0xC0)), hex"00");
-        CloakGloamBatcher.OrderKey memory k = CloakGloamBatcher.OrderKey(bytes32(uint256(0xC1)), address(launch), true, 50e18, vm.addr(ownerPk), fallbackTo);
+        CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0xC1)), address(launch), true, 50e18, vm.addr(ownerPk), fallbackTo);
         batcher.place(_spend(k), k);
         uint64 round = batcher.currentRound();
         _endRound();
-        vm.expectRevert(CloakGloamBatcher.Impact.selector); // half the pool's HYPE: far over 5% impact
+        vm.expectRevert(CloakGloamBatcherBase.Impact.selector); // half the pool's HYPE: far over 5% impact
         batcher.settle(address(launch), round);
     }
 
@@ -242,7 +242,7 @@ contract CloakGloamBatcherTest is Test {
         weth.transfer(address(zp), 100e18);
         z.mint(address(zp), 100_000e18);
         zp.sync();
-        CloakGloamBatcher.OrderKey memory k = CloakGloamBatcher.OrderKey(bytes32(uint256(0xD1)), address(z), true, 1e18, vm.addr(ownerPk), fallbackTo);
+        CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0xD1)), address(z), true, 1e18, vm.addr(ownerPk), fallbackTo);
         batcher.place(_spend(k), k);
         uint64 round = batcher.currentRound();
         _endRound();
@@ -252,9 +252,9 @@ contract CloakGloamBatcherTest is Test {
         (address asset, uint256 amount) = batcher.owed(id);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.claimDigest(id, bytes32(uint256(0xD2))));
         vm.expectRevert();
-        batcher.claim(k, CloakGloamBatcher.Deposit(hex"00", bytes32(uint256(0xD2)), asset, amount), abi.encodePacked(r, s, v));
+        batcher.claim(k, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(0xD2)), asset, amount), abi.encodePacked(r, s, v));
         z.freeze(address(batcher), false);
-        batcher.claim(k, CloakGloamBatcher.Deposit(hex"00", bytes32(uint256(0xD2)), asset, amount), abi.encodePacked(r, s, v));
+        batcher.claim(k, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(0xD2)), asset, amount), abi.encodePacked(r, s, v));
         assertTrue(pool.commitmentSeen(bytes32(uint256(0xD2))), "paid once the issuer lets go");
     }
 }

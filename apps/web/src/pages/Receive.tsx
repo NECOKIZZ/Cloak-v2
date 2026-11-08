@@ -165,7 +165,7 @@ export function Receive() {
   return (
     <>
       {back}
-      <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay: an exchange, a bridge or any wallet. What arrives goes straight into your private balance.</p></div></div>
+      <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay: an exchange, a bridge or any wallet. {g ? "What arrives moves into your private balance whenever Cloak is open." : "What arrives goes straight into your private balance."}</p></div></div>
       <div className="grid">
         <div className="card">
           {!cur ? (
