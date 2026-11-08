@@ -129,6 +129,7 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
   const fv = await deploy("GloamFundsVerifierFinal", ourArtifact("GloamFundsVerifierFinal.sol", "GloamFundsVerifierFinal"));
   const rv = await deploy("GloamReceiptVerifierFinal", ourArtifact("GloamReceiptVerifierFinal.sol", "GloamReceiptVerifierFinal"));
   const gate = await deploy("CloakFundsGate", ourArtifact("CloakFundsGate.sol", "CloakFundsGate"), [fv, stack.pool, lv]);
+  const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [stack.pool, lv]);
   const receipts = await deploy("CloakReceiptCheck", ourArtifact("CloakReceiptCheck.sol", "CloakReceiptCheck"), [rv, stack.pool, lv]);
   // realistic: Gloam lists the launch token the only way it can after setup, through the guard's 3-day timelock
   let listing = null;
@@ -144,6 +145,6 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
     }
   }
   const block = await pub.getBlockNumber();
-  const contracts = { usdc, launchVaultGuard: lvGuard, gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
+  const contracts = { usdc, launchVaultGuard: lvGuard, gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, receive, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
   return { contracts, block, stack, listing };
 }

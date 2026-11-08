@@ -840,3 +840,17 @@ Gloam's sends take one note in, so notes never merge privately, and every receiv
 **Message fixed.** It used to say "Combine notes (send to yourself)", which is impossible on Gloam. It now gives Gloam's own remedy (their app says the same) and says that step is public: "A proof can use your four largest private balances, and they don't reach this amount. To combine balances, cash a few out and add them back as one deposit. That step is public."
 
 **What to watch:** an account that gets paid often builds up many small notes. Sends still work, at one transaction per note. A launch gate's minimum, though, has to fit within one user's 4 largest payments. This is a reason to keep gate minimums modest, or to tell users to deposit in one go before a gated launch.
+
+### 16.17 Receive addresses on Gloam (Nov 8)
+
+Gloam has nothing for "a public address anyone can pay that ends up private" (its receive tags are for people who already hold a private balance), so this is new, built from the vault's own rules:
+- **The contract:** `contracts-gloam/src/CloakGloamReceive.sol` gives each owner key and number a fixed `ReceiveBox` address (CREATE2), which anyone can pay HYPE or a token before or after it exists. A vault deposit needs a proof made with the note's secret, so the owner's app makes the proof for a note of exactly the amount, in the vault it chooses. It signs with the address's owner key, which is made from the account's seed and the address's number, so it says nothing about the account. Then anyone (the relay) calls `shield()`, which makes the box on first use, takes the money and deposits it as that note.
+  - A copier can't swap in another note, vault or amount, because the signature names them.
+  - A deposit the vault refuses (asset not listed, cap full) reverts whole and the money stays at the address.
+  - A fee-on-transfer token is refused. No owner, no fee.
+- **SDK:** `GloamPrivate.receiveAddress(n)` and `collectReceived(n)`. The latter moves everything waiting into the vault that takes it (the launch vault for HYPE and launch tokens, Gloam's for USDC), one deposit per per-deposit cap's worth.
+- **Site:** the Receive page (same layout) shows `receiveAddress(n)`, makes a new one with "New address", and moves payments in every 20 seconds while open. The app also moves them in on every unlock. The page's note says money arrives the next time Cloak is opened, because the keeper can't make the proof (it needs the owner's secret). Cloak's "random delay" option is hidden on Gloam, since it was a keeper feature.
+- **Tests:**
+  - forge (117 of 117): paying before the box exists, a second payment to the same address, copiers refused, a payment over the cap moved in 3 deposits, tokens, a refused deposit leaving the money in place, fee-on-transfer refused, and only the factory can move funds.
+  - `e2e-gloam/part11-receive.mjs`, on final keys through the relay: a payer with no Cloak account paid 25 HYPE and 300 USDC to Alice's address. Her app moved the HYPE into the launch vault in 3 deposits (its cap is 10), and the USDC into Gloam's vault. The relay sent every transaction, so her wallet never appeared or paid gas. A later payment to the same address moved in too.
+- **What stays public:** the address, each payment to it, and each deposit (amount, asset, commitment). What the notes do afterwards stays private. A big payment becomes several notes, the fragmentation of 16.16.

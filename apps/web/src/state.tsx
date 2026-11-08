@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { CIRCUITS_CDN, CloakPrivate, GloamPrivate, SharedVaultClient, gloamRelaySubmitter, walletCoreSubmitter, loadProver, loadSharedProver, relayerSubmitter, sharedRelayerSubmitter, sharedWalletSubmitter, walletSubmitter, type Prover, type Wallet } from "@cloakely/sdk";
 import { BATCHER, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, ASSETS, SHARED, SHARED_BATCHER, SHARED_BLOCK, SHARED_ROUTER } from "./config";
 import { chain, CORE, GLOAM, IS_LOCAL } from "./config";
-import { gloamProvers, launchRecords } from "./gloam";
+import { collectOnUnlock, gloamProvers, launchRecords } from "./gloam";
 import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";
 import { connectBurner, connectProvider, ensureElysium, installedWallets, publicClient, silentReconnect, walletConnectProvider, walletFor, type Eip1193, type WalletOption } from "./wallet";
@@ -245,6 +245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           whype: GLOAM.whype,
           launchSwap: GLOAM.launchSwap,
           batcher: GLOAM.batcher,
+          receive: GLOAM.receive,
           records: launchRecords(w.account.address),
           logChunk: 5_000n,
         });
@@ -254,6 +255,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setShared(null);
         setPriv(g);
         g.finishPending().catch(() => {}); // a swap's buffer, a graduation: whatever can finish now
+        collectOnUnlock(g).catch(() => {}); // payments waiting at this account's receive addresses
         return g;
       }
       // The first unlock on this device signs twice to check the wallet signs the same way every time; later unlocks

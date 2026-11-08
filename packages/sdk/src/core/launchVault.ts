@@ -85,7 +85,8 @@ export function launchRoute(path: Address[]): Hex {
  * Posts a new note's sealed self-ticket once the note is in a vault (relays refuse memos for notes not there yet). A
  * failed memo doesn't undo the deposit: this device already tracks the note, and only other devices would miss it.
  */
-async function announce(core: GloamCore, commitment: Hex, ticket: string, onStatus: Status): Promise<Hex | null> {
+/** @internal */
+export async function announce(core: GloamCore, commitment: Hex, ticket: string, onStatus: Status): Promise<Hex | null> {
   try {
     return await core.post(BigInt(commitment), [ticket], onStatus);
   } catch {

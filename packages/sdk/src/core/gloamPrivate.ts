@@ -20,10 +20,11 @@
  */
 import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, toBytes, toHex, zeroAddress, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import * as gloam from "@gloamtrade/sdk";
+import { privateKeyToAccount } from "viem/accounts";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
 import type { Status } from "../private/client.js";
 import { GloamCore, gloamKeysFromSignature, type GloamAccountKeys, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
-import { finishPending, launchRoute, launchSwap, type LaunchRecord } from "./launchVault.js";
+import { announce, finishPending, launchRoute, launchSwap, type LaunchRecord } from "./launchVault.js";
 import { notesFor, type HolderProver } from "./gloamProofs.js";
 import { gloamFundsContext, type FundsProof } from "../private/funds.js";
 
@@ -43,6 +44,8 @@ export interface GloamPrivateConfig {
   launchSwap?: Address;
   /** CloakGloamBatcher on the launch vault. */
   batcher?: Address;
+  /** CloakGloamReceive: receive addresses anyone can pay, moved into the private balance by the app. */
+  receive?: Address;
   /** A claim link's account: spend received payments directly, never sweep them (see GloamCoreConfig). */
   spendReceived?: boolean;
   /** Where the app keeps per-action records for finishPending (a swap's leftover, a graduation). */
@@ -62,6 +65,11 @@ export interface GloamMarket {
 const ERC20 = parseAbi(["function symbol() view returns (string)", "function decimals() view returns (uint8)"]);
 const VAULT = parseAbi(["function withdrawFeeBps() view returns (uint16)", "function launchTokensCount() view returns (uint256)", "function launchTokens(uint256) view returns (address)"]);
 const V2 = parseAbi(["function factory() view returns (address)", "function getPair(address, address) view returns (address)", "function token0() view returns (address)", "function getReserves() view returns (uint112, uint112, uint32)"]);
+const RECEIVE = parseAbi([
+  "function boxOf(address ownerKey, uint256 n) view returns (address)",
+  "function shieldDigest(address box, address vault, address asset, uint256 amount, bytes32 commitment) view returns (bytes32)",
+  "function shield(address ownerKey, uint256 n, address vault, address asset, uint256 amount, bytes32 commitment, bytes proof, bytes signature)",
+]);
 const BATCH = parseAbi([
   "function place((bytes proof, bytes32 root, bytes32 nullifier, address asset, uint256 amount) s, (bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo) k) returns (bytes32)",
   "function escrowFor((bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo) k) view returns (address)",
@@ -505,6 +513,64 @@ export class GloamPrivate {
 
   async planSplitWithdraw(_token: Address, _to: Address, _amount: bigint, _o: { pieces: number; windowSecs: number; onStatus?: Status }): Promise<never[]> {
     throw new Error(NOT_YET);
+  }
+
+  // ── receive addresses (CloakGloamReceive) ─────────────────────────────
+
+  /** The owner key of receive address `n`: made from the account's seed, so it says nothing about the account. */
+  private receiveKey(n: number) {
+    const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+    const k = BigInt(keccak256(encodeAbiParameters([{ type: "string" }, { type: "uint256" }, { type: "uint256" }], ["cloak-gloam-receive-v1", this.cores[0].keys.noteSeed, BigInt(n)])));
+    return privateKeyToAccount(toHex((k % (N - 1n)) + 1n, { size: 32 }));
+  }
+
+  /**
+   * Receive address `n` (0, 1, 2, … give unlinkable addresses): a public address anyone can pay HYPE or a listed
+   * token, whose money collectReceived() moves into this account's private balance.
+   */
+  async receiveAddress(n = 0): Promise<Address> {
+    if (!this.cfg.receive) throw new Error("Receive addresses aren't set up on this deployment yet.");
+    return this.cfg.publicClient.readContract({ address: this.cfg.receive, abi: RECEIVE, functionName: "boxOf", args: [this.receiveKey(n).address, BigInt(n)] });
+  }
+
+  /**
+   * Move what waits at receive address `n` into the private balance: one deposit per vault cap's worth, each a note of
+   * exactly that amount, proved here, signed by the address's owner key, and sent by the relay. Run it on every open.
+   * What a vault can't take now (not listed, cap full) stays at the address for next time.
+   */
+  async collectReceived(n = 0, onStatus: Status = () => {}): Promise<{ asset: Address; amount: bigint; txHash: Hex }[]> {
+    const rx = this.cfg.receive;
+    if (!rx) return [];
+    const pub = this.cfg.publicClient;
+    const key = this.receiveKey(n);
+    const box = await this.receiveAddress(n);
+    const ERC = parseAbi(["function balanceOf(address) view returns (uint256)"]);
+    const LIMIT = parseAbi(["function depositLimit(address) view returns (uint128 perDeposit, uint128 total)", "function deposited(address) view returns (uint256)"]);
+    const assets = [zeroAddress as Address, ...this.markets.filter((m) => lc(m.pool) !== lc(zeroAddress)).map((m) => m.pool)];
+    const done: { asset: Address; amount: bigint; txHash: Hex }[] = [];
+    for (const asset of assets) {
+      let left = asset === zeroAddress ? await pub.getBalance({ address: box }) : await pub.readContract({ address: asset, abi: ERC, functionName: "balanceOf", args: [box] }).catch(() => 0n);
+      for (const c of [...this.cores].reverse()) {
+        while (left > 0n) {
+          const [per, total] = await pub.readContract({ address: c.config.pool, abi: LIMIT, functionName: "depositLimit", args: [asset] });
+          const dep = await pub.readContract({ address: c.config.pool, abi: LIMIT, functionName: "deposited", args: [asset] });
+          const room = total > dep ? total - dep : 0n;
+          let amount = left < per ? left : per;
+          if (amount > room) amount = room;
+          if (amount === 0n) break; // this vault can't take it now: try the next one, or leave it for later
+          onStatus("Moving a payment into your private balance");
+          const m = await c.depositFor(asset, amount);
+          const digest = await pub.readContract({ address: rx, abi: RECEIVE, functionName: "shieldDigest", args: [box, c.config.pool, asset, amount, m.deposit.commitment] });
+          const signature = await key.sign({ hash: digest });
+          const txHash = await this.cfg.submit({ kind: "escrow", to: rx, data: encodeFunctionData({ abi: RECEIVE, functionName: "shield", args: [key.address, BigInt(n), c.config.pool, asset, amount, m.deposit.commitment, m.deposit.proof, signature] }) });
+          c.track({ commitment: m.note.commitment, asset, amount, secret: m.note.secret });
+          await announce(c, m.deposit.commitment, m.ticket, onStatus);
+          done.push({ asset, amount, txHash });
+          left -= amount;
+        }
+      }
+    }
+    return done;
   }
 
   // ── what Cloak's own vaults had and Gloam's don't ──────────────────────

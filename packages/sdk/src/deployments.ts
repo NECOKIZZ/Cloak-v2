@@ -91,6 +91,8 @@ export interface GloamDeployment {
   launchSwap?: Address;
   graduation?: Address;
   batcher?: Address;
+  /** CloakGloamReceive: receive addresses. */
+  receive?: Address;
   fundsGate?: Address;
   receiptCheck?: Address;
   /** The WHYPE the launch swap trades through. */
