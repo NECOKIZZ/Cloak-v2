@@ -24,7 +24,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
 import type { Status } from "../private/client.js";
 import { GloamCore, gloamKeysFromSignature, type GloamAccountKeys, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
-import { announce, finishPending, launchRoute, launchSwap, type LaunchRecord } from "./launchVault.js";
+import { announce, finishPending, launchRoute, launchRouteV4, launchSwap, type LaunchRecord } from "./launchVault.js";
 import { notesFor, type HolderProver } from "./gloamProofs.js";
 import { gloamFundsContext, type FundsProof } from "../private/funds.js";
 
@@ -42,6 +42,11 @@ export interface GloamPrivateConfig {
   whype: Address;
   /** CloakLaunchSwap and the Uniswap V2 factory it trades through. */
   launchSwap?: Address;
+  /**
+   * CloakLaunchSwapV4: private swaps through Cloak launches' own Uniswap v4 pools (their CloakV4Market). When set, a
+   * launch token's market is its auction's market, quoted and routed through it; launchSwap (V2) is the fallback.
+   */
+  launchSwapV4?: Address;
   /** CloakGloamBatcher on the launch vault. */
   batcher?: Address;
   /** CloakGloamReceive: receive addresses anyone can pay, moved into the private balance by the app. */
@@ -60,11 +65,19 @@ export interface GloamMarket {
   pair: Address | null;
   symbol?: string;
   decimals?: number;
+  /** traded through its launch's Uniswap v4 pool (pair is the CloakV4Market) */
+  v4?: boolean;
 }
 
 const ERC20 = parseAbi(["function symbol() view returns (string)", "function decimals() view returns (uint8)"]);
 const VAULT = parseAbi(["function withdrawFeeBps() view returns (uint16)", "function launchTokensCount() view returns (uint256)", "function launchTokens(uint256) view returns (address)"]);
 const V2 = parseAbi(["function factory() view returns (address)", "function getPair(address, address) view returns (address)", "function token0() view returns (address)", "function getReserves() view returns (uint112, uint112, uint32)"]);
+const V4MARKET = parseAbi([
+  "function reserveHype() view returns (uint256)",
+  "function reserveToken() view returns (uint256)",
+  "function getAmountOut(uint256 amountIn, uint256 rIn, uint256 rOut) view returns (uint256)",
+  "function key() view returns ((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks))",
+]);
 const RECEIVE = parseAbi([
   "function boxOf(address ownerKey, uint256 n) view returns (address)",
   "function shieldDigest(address box, address vault, address asset, uint256 amount, bytes32 commitment) view returns (bytes32)",
@@ -143,15 +156,39 @@ export class GloamPrivate {
       const n = await pub.readContract({ address: lv, abi: VAULT, functionName: "launchTokensCount" }).catch(() => 0n);
       let factory: Address | null = null;
       if (this.cfg.launchSwap) factory = await pub.readContract({ address: this.cfg.launchSwap, abi: V2, functionName: "factory" }).catch(() => null);
+      // v4: each launch token's market is its auction's CloakV4Market
+      const v4Markets = this.cfg.launchSwapV4 ? await this.launchMarkets(lv) : new Map<string, Address>();
       for (let i = 0n; i < n; i++) {
         const token = await pub.readContract({ address: lv, abi: VAULT, functionName: "launchTokens", args: [i] });
         const [symbol, decimals] = await Promise.all([pub.readContract({ address: token, abi: ERC20, functionName: "symbol" }).catch(() => "token"), pub.readContract({ address: token, abi: ERC20, functionName: "decimals" }).catch(() => 18)]);
-        const pair = factory ? await pub.readContract({ address: factory, abi: V2, functionName: "getPair", args: [this.cfg.whype, token] }).catch(() => null) : null;
-        out.push({ token, pool: token, pair: pair && pair !== zeroAddress ? pair : null, symbol, decimals: Number(decimals) });
+        const v4 = v4Markets.get(lc(token));
+        const pair = v4 ?? (factory ? await pub.readContract({ address: factory, abi: V2, functionName: "getPair", args: [this.cfg.whype, token] }).catch(() => null) : null);
+        out.push({ token, pool: token, pair: pair && pair !== zeroAddress ? pair : null, symbol, decimals: Number(decimals), v4: !!v4 });
       }
     }
     for (const m of this.markets) if (!out.some((x) => lc(x.token) === lc(m.token))) out.push(m);
     this.markets = out;
+    return out;
+  }
+
+  /** Token -> its launch's market (auction.pair()), for every launch of the launch vault's factory. */
+  private async launchMarkets(lv: Address): Promise<Map<string, Address>> {
+    const pub = this.cfg.publicClient;
+    const LAUNCH = parseAbi([
+      "function factory() view returns (address)",
+      "function launchesCount() view returns (uint256)",
+      "function launches(uint256) view returns (address auction, address token, address creator, address launchpad, uint256 creatorAlloc, address vesting)",
+      "function pair() view returns (address)",
+    ]);
+    const out = new Map<string, Address>();
+    const factory = await pub.readContract({ address: lv, abi: LAUNCH, functionName: "factory" }).catch(() => null);
+    if (!factory) return out;
+    const n = await pub.readContract({ address: factory, abi: LAUNCH, functionName: "launchesCount" }).catch(() => 0n);
+    for (let i = 0n; i < n; i++) {
+      const [auction, token] = await pub.readContract({ address: factory, abi: LAUNCH, functionName: "launches", args: [i] });
+      const market = await pub.readContract({ address: auction, abi: LAUNCH, functionName: "pair" }).catch(() => zeroAddress);
+      if (market !== zeroAddress) out.set(lc(token), market);
+    }
     return out;
   }
 
@@ -347,9 +384,15 @@ export class GloamPrivate {
   // ── trading (CloakLaunchSwap on the launch vault) ──────────────────────
 
   private async v2Quote(token: Address, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
-    const pair = this.market(token).pair;
+    const m = this.market(token);
+    const pair = m.pair;
     if (!pair) throw new Error("This token has no pool to trade privately against yet.");
     const pub = this.cfg.publicClient;
+    if (m.v4) {
+      // the launch's CloakV4Market quotes its pool at its current fee
+      const [rH, rT] = await Promise.all([pub.readContract({ address: pair, abi: V4MARKET, functionName: "reserveHype" }), pub.readContract({ address: pair, abi: V4MARKET, functionName: "reserveToken" })]);
+      return pub.readContract({ address: pair, abi: V4MARKET, functionName: "getAmountOut", args: side === "buy" ? [amountIn, rH, rT] : [amountIn, rT, rH] });
+    }
     const [r0, r1] = await pub.readContract({ address: pair, abi: V2, functionName: "getReserves" });
     const t0 = await pub.readContract({ address: pair, abi: V2, functionName: "token0" });
     const hypeIs0 = lc(t0) === lc(this.cfg.whype);
@@ -376,7 +419,9 @@ export class GloamPrivate {
    */
   private async swap(token: Address, side: "buy" | "sell", amountIn: bigint, opts: { slippageBps?: number; onStatus?: Status }) {
     const core = this.launchCore;
-    if (!core || !this.cfg.launchSwap) throw new Error("Private trading isn't set up on this deployment yet.");
+    const m = this.market(token);
+    const router = m.v4 ? this.cfg.launchSwapV4 : this.cfg.launchSwap;
+    if (!core || !router) throw new Error("Private trading isn't set up on this deployment yet.");
     const onStatus = opts.onStatus ?? (() => {});
     const assetIn = side === "buy" ? zeroAddress : token;
     await core.sync(onStatus);
@@ -386,10 +431,13 @@ export class GloamPrivate {
     const expected = await this.v2Quote(token, side, released);
     const amountOut = (expected * BigInt(10_000 - (opts.slippageBps ?? 100))) / 10_000n;
     if (amountOut === 0n) throw new Error("amount too small to trade");
-    const path = side === "buy" ? [this.cfg.whype, token] : [token, this.cfg.whype];
+    // V2: the path through WHYPE. v4: the launch's own pool key (native HYPE, behind Cloak's hook)
+    const route = m.v4
+      ? launchRouteV4([await this.cfg.publicClient.readContract({ address: m.pair!, abi: V4MARKET, functionName: "key" })])
+      : launchRoute(side === "buy" ? [this.cfg.whype, token] : [token, this.cfg.whype]);
     // the chain's clock, not this device's: the contract checks the deadline against block time
     const deadline = (await this.cfg.publicClient.getBlock()).timestamp + 600n;
-    const rec = await launchSwap(core, { router: this.cfg.launchSwap, route: launchRoute(path), assetIn, amountIn, assetOut, amountOut, deadline }, onStatus);
+    const rec = await launchSwap(core, { router, route, assetIn, amountIn, assetOut, amountOut, deadline }, onStatus);
     this.remember(rec);
     // take the buffer back at once when it can be; otherwise the next open does
     await this.finishPending(onStatus).catch(() => {});

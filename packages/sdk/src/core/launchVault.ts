@@ -76,6 +76,14 @@ export type LaunchRecord =
   | { kind: "launchSwap"; router: Address; id: Hex; key: LaunchSwapKey; txHash: Hex }
   | { kind: "graduation"; graduation: Address; id: Hex; key: GraduationKey; txHash: Hex };
 
+/** A Uniswap v4 route as CloakLaunchSwapV4 reads it: abi.encode(PoolKey[]), pools from the input to the output. */
+export function launchRouteV4(keys: readonly { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address }[]): Hex {
+  return encodeAbiParameters(
+    [{ type: "tuple[]", components: [{ name: "currency0", type: "address" }, { name: "currency1", type: "address" }, { name: "fee", type: "uint24" }, { name: "tickSpacing", type: "int24" }, { name: "hooks", type: "address" }] }],
+    [keys.map((k) => ({ currency0: k.currency0, currency1: k.currency1, fee: k.fee, tickSpacing: k.tickSpacing, hooks: k.hooks }))],
+  );
+}
+
 /** A Uniswap V2 path as the launch swap router reads it: abi.encode(address[]), WHYPE for HYPE. */
 export function launchRoute(path: Address[]): Hex {
   return encodeAbiParameters([{ type: "address[]" }], [path]);

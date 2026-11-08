@@ -45,7 +45,7 @@ interface IERC20L {
  *      given to pairs (they are paid by transfer), and the vault's approval is reset to zero after each deposit.
  *      A bad pair or token can at most cost the swap that uses it.
  */
-contract CloakLaunchSwap is IEscrowPayee {
+abstract contract CloakLaunchSwapBase is IEscrowPayee {
     struct Spend {
         bytes proof;
         bytes32 root;
@@ -85,14 +85,13 @@ contract CloakLaunchSwap is IEscrowPayee {
     bytes32 private constant EXIT_DOMAIN = keccak256("cloak.launch-swap.exit.v1");
 
     IGloamVault public immutable vault;
-    IV2FactoryL public immutable factory;
-    IWETHL public immutable weth;
 
     /// @notice What each swap (by keccak256 of its SwapKey) is owed: its leftover, or its whole input after a rescue.
     mapping(bytes32 => Owed) public owed;
 
     uint256 private _entered;
-    bool private _opening;
+    bool private _openingNow;
+    bool private _swappingNow;
 
     event LaunchSwap(bytes32 indexed id, address indexed assetIn, address indexed assetOut, uint256 amountIn, uint256 amountOut, uint256 leftover);
     event Rescued(bytes32 indexed id, address indexed asset, uint256 amount);
@@ -123,17 +122,36 @@ contract CloakLaunchSwap is IEscrowPayee {
         _entered = 0;
     }
 
-    constructor(address vault_, address factory_, address weth_) {
-        if (vault_ == address(0) || factory_ == address(0) || weth_ == address(0)) revert ZeroAddress();
+    constructor(address vault_) {
+        if (vault_ == address(0)) revert ZeroAddress();
         vault = IGloamVault(vault_);
-        factory = IV2FactoryL(factory_);
-        weth = IWETHL(weth_);
     }
 
-    /// @notice HYPE comes in from an escrow as it opens, or from WHYPE during a swap.
-    receive() external payable {
-        if (!_opening && msg.sender != address(weth)) revert NativeRefused();
+    /// @notice HYPE comes in from an escrow as it opens. A venue lets its own contracts pay in during a swap.
+    receive() external payable virtual {
+        if (!_openingNow) revert NativeRefused();
     }
+
+    /// @dev An escrow is opening (paying this contract).
+    function _opening() internal view returns (bool) {
+        return _openingNow;
+    }
+
+    /// @dev A swap is running (between paying the venue and taking its output).
+    function _inSwap() internal view returns (bool) {
+        return _swappingNow;
+    }
+
+    /// @dev The venue's own contracts, where money sent in an exit would stop.
+    function _stopsHere(address) internal view virtual returns (bool) {
+        return false;
+    }
+
+    /// @dev Buy exactly `amountOut` of `assetOut` with at most `maxIn` of `assetIn` held here, leaving the output here.
+    function _swapExactOut(address assetIn, address assetOut, uint256 amountOut, uint256 maxIn, bytes calldata route)
+        internal
+        virtual
+        returns (uint256 amountIn);
 
     /// @notice SwapEscrow2 asks where to pay: always here.
     function escrowPayee() external view returns (address) {
@@ -194,7 +212,9 @@ contract CloakLaunchSwap is IEscrowPayee {
         returns (uint256 amountIn)
     {
         uint256 outBefore = _balance(d.asset);
+        _swappingNow = true;
         amountIn = _swapExactOut(assetIn, d.asset, d.amount, available, route);
+        _swappingNow = false;
         uint256 got = _balance(d.asset) - outBefore;
         if (got < d.amount) revert ShortOutput(got, d.amount);
         _deposit(d.asset, d.amount, d.commitment, d.proof);
@@ -233,7 +253,7 @@ contract CloakLaunchSwap is IEscrowPayee {
     function exit(bytes32 id, address to, bytes calldata signature) external nonReentrant {
         Owed memory o = owed[id];
         if (o.amount == 0) revert NothingOwed();
-        if (to == address(0) || to == address(this) || to == address(vault)) revert BadExit();
+        if (to == address(0) || to == address(this) || to == address(vault) || to == o.asset || _stopsHere(to)) revert BadExit();
         if (_recover(exitDigest(id, to), signature) != o.ownerKey) revert BadSignature();
         delete owed[id];
         if (o.asset == NATIVE) {
@@ -253,18 +273,69 @@ contract CloakLaunchSwap is IEscrowPayee {
         uint256 before = _balance(token);
         bytes memory code = abi.encodePacked(type(SwapEscrow2).creationCode, abi.encode(token));
         address e;
-        _opening = true;
+        _openingNow = true;
         assembly {
             e := create2(0, add(code, 0x20), mload(code), salt)
         }
-        _opening = false;
+        _openingNow = false;
         if (e == address(0)) revert Used();
         arrived = _balance(token) - before;
         if (arrived == 0) revert Used();
     }
 
+    function _deposit(address asset, uint256 amount, bytes32 commitment, bytes calldata proof) private {
+        if (asset == NATIVE) {
+            vault.shieldBound{value: amount}(NATIVE, amount, commitment, proof);
+            return;
+        }
+        _call(asset, abi.encodeWithSelector(0x095ea7b3, address(vault), amount));
+        vault.shieldBound(asset, amount, commitment, proof);
+        _call(asset, abi.encodeWithSelector(0x095ea7b3, address(vault), 0));
+    }
+
+    function _balance(address token) internal view returns (uint256) {
+        return token == NATIVE ? address(this).balance : IERC20L(token).balanceOf(address(this));
+    }
+
+    function _call(address token, bytes memory data) internal {
+        (bool ok, bytes memory ret) = token.call(data);
+        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TokenCallFailed();
+    }
+
+    function _recover(bytes32 digest, bytes calldata sig) private pure returns (address) {
+        if (sig.length != 65) return address(0);
+        return ecrecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
+    }
+}
+
+/**
+ * @title CloakLaunchSwap
+ * @notice The Uniswap V2 venue for CloakLaunchSwapBase: routes through the pairs the immutable V2 factory reports.
+ *         route = abi.encode(address[] path), WHYPE standing for HYPE, at most 3 hops.
+ */
+contract CloakLaunchSwap is CloakLaunchSwapBase {
+    IV2FactoryL public immutable factory;
+    IWETHL public immutable weth;
+
+    constructor(address vault_, address factory_, address weth_) CloakLaunchSwapBase(vault_) {
+        if (factory_ == address(0) || weth_ == address(0)) revert ZeroAddress();
+        factory = IV2FactoryL(factory_);
+        weth = IWETHL(weth_);
+    }
+
+    /// @notice HYPE comes in from an escrow as it opens, or from WHYPE during a swap (an unwrap).
+    receive() external payable override {
+        if (_opening()) return;
+        if (!_inSwap() || msg.sender != address(weth)) revert NativeRefused();
+    }
+
+    function _stopsHere(address to) internal view override returns (bool) {
+        return to == address(weth) || to == address(factory);
+    }
+
     function _swapExactOut(address assetIn, address assetOut, uint256 amountOut, uint256 maxIn, bytes calldata route)
-        private
+        internal
+        override
         returns (uint256 amountIn)
     {
         address[] memory path = abi.decode(route, (address[]));
@@ -301,29 +372,5 @@ contract CloakLaunchSwap is IEscrowPayee {
     function _reserves(address pair, address tokenIn) private view returns (uint256 rIn, uint256 rOut) {
         (uint112 r0, uint112 r1,) = IV2PairL(pair).getReserves();
         (rIn, rOut) = IV2PairL(pair).token0() == tokenIn ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
-    }
-
-    function _deposit(address asset, uint256 amount, bytes32 commitment, bytes calldata proof) private {
-        if (asset == NATIVE) {
-            vault.shieldBound{value: amount}(NATIVE, amount, commitment, proof);
-            return;
-        }
-        _call(asset, abi.encodeWithSelector(0x095ea7b3, address(vault), amount));
-        vault.shieldBound(asset, amount, commitment, proof);
-        _call(asset, abi.encodeWithSelector(0x095ea7b3, address(vault), 0));
-    }
-
-    function _balance(address token) private view returns (uint256) {
-        return token == NATIVE ? address(this).balance : IERC20L(token).balanceOf(address(this));
-    }
-
-    function _call(address token, bytes memory data) private {
-        (bool ok, bytes memory ret) = token.call(data);
-        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TokenCallFailed();
-    }
-
-    function _recover(bytes32 digest, bytes calldata sig) private pure returns (address) {
-        if (sig.length != 65) return address(0);
-        return ecrecover(digest, uint8(sig[64]), bytes32(sig[0:32]), bytes32(sig[32:64]));
     }
 }

@@ -89,6 +89,8 @@ export interface GloamDeployment {
   /** First block to scan both vaults from. */
   block: bigint;
   launchSwap?: Address;
+  /** CloakLaunchSwapV4: private swaps through Cloak launches' own Uniswap v4 pools. */
+  launchSwapV4?: Address;
   graduation?: Address;
   batcher?: Address;
   /** CloakGloamReceive: receive addresses. */

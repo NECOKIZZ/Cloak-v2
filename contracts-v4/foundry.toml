@@ -17,8 +17,12 @@ remappings = [
   "solmate/=lib/solmate/",
   "cloak/=../contracts/src/",
   "forge-std/=../contracts/lib/forge-std/src/",
+  "gloam/=../vendor/gloam/contracts/src/",
+  "cloak-gloam/=../contracts-gloam/src/",
 ]
-allow_paths = ["../contracts"]
+# Cloak v2 on Gloam's v4 venue is tested here against the real PoolManager (test/CloakLaunchSwapV4.t.sol)
+allow_paths = ["../contracts", "../vendor", "../contracts-gloam"]
+fs_permissions = [{ access = "read", path = "../vendor/gloam/contracts/test/fixtures" }]
 
 # Uniswap's own settings, for building the PoolManager that goes on testnet (must match mainnet byte for byte)
 [profile.uniswap]

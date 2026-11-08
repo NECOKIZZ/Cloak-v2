@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test, stdJson} from "forge-std/Test.sol";
 import {ShieldPoolCore} from "gloam/ShieldPoolCore.sol";
 import {CloakLaunchVault} from "../src/CloakLaunchVault.sol";
-import {CloakLaunchSwap} from "../src/CloakLaunchSwap.sol";
+import {CloakLaunchSwap, CloakLaunchSwapBase} from "../src/CloakLaunchSwap.sol";
 import {TestToken} from "../src/TestToken.sol";
 import {YesVerifier, ToVerifier, FakeAuction, FakeFactory} from "./CloakLaunchVault.t.sol";
 import {V2Factory, V2Pair, WETH9} from "./CloakV2PairSwap.t.sol";
@@ -79,16 +79,16 @@ contract CloakLaunchSwapTest is Test {
     }
 
     struct Call {
-        CloakLaunchSwap.Spend s;
-        CloakLaunchSwap.Deposit d;
+        CloakLaunchSwapBase.Spend s;
+        CloakLaunchSwapBase.Deposit d;
         bytes route;
         uint256 deadline;
     }
 
     /// A HYPE note into exactly `out` launch tokens; the stand-in unshield proof names the swap's escrow.
     function _buy(uint256 n, uint256 out) internal view returns (Call memory c) {
-        c.s = CloakLaunchSwap.Spend(hex"", vault.currentRoot(), bytes32(n), address(0), NOTE);
-        c.d = CloakLaunchSwap.Deposit(hex"00", bytes32(n + 0x1000), address(launch), out);
+        c.s = CloakLaunchSwapBase.Spend(hex"", vault.currentRoot(), bytes32(n), address(0), NOTE);
+        c.d = CloakLaunchSwapBase.Deposit(hex"00", bytes32(n + 0x1000), address(launch), out);
         c.route = _path(address(weth), address(launch));
         c.deadline = block.timestamp + 1 hours;
         c.s.proof = abi.encode(router.escrowFor(router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline)));
@@ -125,25 +125,25 @@ contract CloakLaunchSwapTest is Test {
         bytes32 commitment = bytes32(uint256(0x1E57));
         bytes memory sig = _sign(router.claimDigest(id, commitment));
         uint256 before = vault.deposited(address(0));
-        vm.expectRevert(abi.encodeWithSelector(CloakLaunchSwap.WrongAmount.selector, left));
-        router.claim(id, CloakLaunchSwap.Deposit(hex"00", commitment, address(0), left - 1), sig);
-        vm.expectRevert(CloakLaunchSwap.BadSignature.selector);
-        router.claim(id, CloakLaunchSwap.Deposit(hex"00", bytes32(uint256(0xBAD)), address(0), left), sig);
+        vm.expectRevert(abi.encodeWithSelector(CloakLaunchSwapBase.WrongAmount.selector, left));
+        router.claim(id, CloakLaunchSwapBase.Deposit(hex"00", commitment, address(0), left - 1), sig);
+        vm.expectRevert(CloakLaunchSwapBase.BadSignature.selector);
+        router.claim(id, CloakLaunchSwapBase.Deposit(hex"00", bytes32(uint256(0xBAD)), address(0), left), sig);
         vm.prank(relayer);
-        router.claim(id, CloakLaunchSwap.Deposit(hex"00", commitment, address(0), left), sig);
+        router.claim(id, CloakLaunchSwapBase.Deposit(hex"00", commitment, address(0), left), sig);
         assertEq(vault.deposited(address(0)), before + left);
         assertEq(address(router).balance, 0);
-        vm.expectRevert(CloakLaunchSwap.NothingOwed.selector);
-        router.claim(id, CloakLaunchSwap.Deposit(hex"00", commitment, address(0), left), sig);
+        vm.expectRevert(CloakLaunchSwapBase.NothingOwed.selector);
+        router.claim(id, CloakLaunchSwapBase.Deposit(hex"00", commitment, address(0), left), sig);
     }
 
     function test_exitLeftoverInTheClear() public {
         (bytes32 id, uint256 left) = _send(_buy(1, 9_000e18));
         address to = address(0x7070);
         bytes memory sig = _sign(router.exitDigest(id, to));
-        vm.expectRevert(CloakLaunchSwap.BadSignature.selector);
+        vm.expectRevert(CloakLaunchSwapBase.BadSignature.selector);
         router.exit(id, mallory, sig);
-        vm.expectRevert(CloakLaunchSwap.BadExit.selector);
+        vm.expectRevert(CloakLaunchSwapBase.BadExit.selector);
         router.exit(id, address(vault), sig);
         router.exit(id, to, sig);
         assertEq(to.balance, left);
@@ -151,8 +151,8 @@ contract CloakLaunchSwapTest is Test {
 
     function test_sellLaunchForHype() public {
         Call memory c;
-        c.s = CloakLaunchSwap.Spend(hex"", vault.currentRoot(), bytes32(uint256(0x1A)), address(launch), 5_000e18);
-        c.d = CloakLaunchSwap.Deposit(hex"00", bytes32(uint256(0x2A)), address(0), 4e18);
+        c.s = CloakLaunchSwapBase.Spend(hex"", vault.currentRoot(), bytes32(uint256(0x1A)), address(launch), 5_000e18);
+        c.d = CloakLaunchSwapBase.Deposit(hex"00", bytes32(uint256(0x2A)), address(0), 4e18);
         c.route = _path(address(launch), address(weth));
         c.deadline = block.timestamp + 1 hours;
         c.s.proof = abi.encode(router.escrowFor(router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline)));
@@ -195,26 +195,26 @@ contract CloakLaunchSwapTest is Test {
     function test_deadline() public {
         Call memory c = _buy(1, 9_000e18);
         vm.warp(c.deadline + 1);
-        vm.expectRevert(CloakLaunchSwap.Expired.selector);
+        vm.expectRevert(CloakLaunchSwapBase.Expired.selector);
         _send(c);
     }
 
     function test_spendSentAloneThenSwapped() public {
         Call memory c = _buy(1, 9_000e18);
-        CloakLaunchSwap.SwapKey memory k = router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline);
+        CloakLaunchSwapBase.SwapKey memory k = router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline);
         vault.unshield(c.s.proof, c.s.root, c.s.nullifier, address(0), router.escrowFor(k), NOTE);
         (, uint256 left) = _send(c);
         assertTrue(vault.commitmentSeen(c.d.commitment));
         assertGt(left, 0);
-        vm.expectRevert(CloakLaunchSwap.Used.selector);
+        vm.expectRevert(CloakLaunchSwapBase.Used.selector);
         _send(c);
     }
 
     function test_spendSentAloneThenRescued() public {
         Call memory c = _buy(1, 9_000e18);
-        CloakLaunchSwap.SwapKey memory k = router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline);
+        CloakLaunchSwapBase.SwapKey memory k = router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline);
         vault.unshield(c.s.proof, c.s.root, c.s.nullifier, address(0), router.escrowFor(k), NOTE);
-        vm.expectRevert(CloakLaunchSwap.NotYet.selector);
+        vm.expectRevert(CloakLaunchSwapBase.NotYet.selector);
         router.rescue(k);
         vm.warp(c.deadline + 1);
         vm.prank(mallory);
@@ -224,19 +224,19 @@ contract CloakLaunchSwapTest is Test {
         assertEq(asset, address(0));
         assertEq(key, ownerKey);
         assertEq(amount, ARRIVES);
-        vm.expectRevert(CloakLaunchSwap.Used.selector);
+        vm.expectRevert(CloakLaunchSwapBase.Used.selector);
         router.rescue(k);
         bytes32 commitment = bytes32(uint256(0xBAC));
         bytes memory sig = _sign(router.claimDigest(id, commitment));
-        router.claim(id, CloakLaunchSwap.Deposit(hex"00", commitment, address(0), ARRIVES), sig);
+        router.claim(id, CloakLaunchSwapBase.Deposit(hex"00", commitment, address(0), ARRIVES), sig);
         assertTrue(vault.commitmentSeen(commitment));
     }
 
     function test_rescueNeedsTheSpend() public {
         Call memory c = _buy(1, 9_000e18);
-        CloakLaunchSwap.SwapKey memory k = router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline);
+        CloakLaunchSwapBase.SwapKey memory k = router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline);
         vm.warp(c.deadline + 1);
-        vm.expectRevert(CloakLaunchSwap.Used.selector);
+        vm.expectRevert(CloakLaunchSwapBase.Used.selector);
         router.rescue(k);
     }
 
@@ -245,13 +245,13 @@ contract CloakLaunchSwapTest is Test {
         bytes memory wrong = _path(address(launch), address(weth));
         c.route = wrong;
         c.s.proof = abi.encode(router.escrowFor(router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline)));
-        vm.expectRevert(CloakLaunchSwap.BadRoute.selector);
+        vm.expectRevert(CloakLaunchSwapBase.BadRoute.selector);
         _send(c);
         TestToken other = new TestToken("O", "O", 18);
         c.route = _path(address(weth), address(other));
         c.d.asset = address(other);
         c.s.proof = abi.encode(router.escrowFor(router.keyOf(c.s, c.d, c.route, ownerKey, c.deadline)));
-        vm.expectRevert(abi.encodeWithSelector(CloakLaunchSwap.NoPair.selector, address(weth), address(other)));
+        vm.expectRevert(abi.encodeWithSelector(CloakLaunchSwapBase.NoPair.selector, address(weth), address(other)));
         _send(c);
     }
 
@@ -264,10 +264,10 @@ contract CloakLaunchSwapTest is Test {
 
     function test_basicChecks() public {
         Call memory c = _buy(1, 9_000e18);
-        vm.expectRevert(CloakLaunchSwap.BadKey.selector);
+        vm.expectRevert(CloakLaunchSwapBase.BadKey.selector);
         router.swap(c.s, c.d, c.route, address(0), c.deadline);
         c.d.asset = address(0);
-        vm.expectRevert(CloakLaunchSwap.SameAsset.selector);
+        vm.expectRevert(CloakLaunchSwapBase.SameAsset.selector);
         router.swap(c.s, c.d, c.route, ownerKey, c.deadline);
     }
 }

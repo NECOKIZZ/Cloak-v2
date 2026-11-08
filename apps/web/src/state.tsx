@@ -244,6 +244,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           submit: RELAYER_URL ? gloamRelaySubmitter(RELAYER_URL) : walletCoreSubmitter(publicClient, w),
           whype: GLOAM.whype,
           launchSwap: GLOAM.launchSwap,
+          launchSwapV4: GLOAM.launchSwapV4,
           batcher: GLOAM.batcher,
           receive: GLOAM.receive,
           records: launchRecords(w.account.address),

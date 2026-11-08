@@ -68,9 +68,14 @@ async function v2Reserves(pair: Address): Promise<[bigint, bigint]> {
   return t0.toLowerCase() === GLOAM!.whype.toLowerCase() ? [r0, r1] : [r1, r0];
 }
 
-/** Launch tokens admitted to the launch vault that have a V2 pool with WHYPE. A market's pool id is its token. */
+/**
+ * Launch tokens admitted to the launch vault that Cloak v2 on Gloam can trade: through their launch's own Uniswap v4
+ * market (CloakV4Market, quoted like Cloak's pairs) when the v4 venue is deployed, else through a V2 pool with WHYPE.
+ * A market's pool id is its token.
+ */
 async function gloamMarkets(): Promise<Market[]> {
   const g = GLOAM;
+  if (g?.launchSwapV4) return gloamV4Markets(g.launchVault);
   if (!g?.launchSwap) return [];
   const lv = g.launchVault;
   const n = await publicClient.readContract({ address: lv, abi: GLOAM_READS, functionName: "launchTokensCount" });
@@ -134,6 +139,40 @@ async function checked(ms: Market[]): Promise<Market[] | null> {
  * Every launch token with a private market, plus pool prices: from the keeper's snapshot when it's fresh and its
  * addresses check out on chain, else from the chain. `force` always reads the chain (fresh reserves after a trade).
  */
+const LAUNCHES = parseAbi([
+  "function factory() view returns (address)",
+  "function launchesCount() view returns (uint256)",
+  "function launches(uint256) view returns (address auction, address token, address creator, address launchpad, uint256 creatorAlloc, address vesting)",
+  "function pair() view returns (address)",
+  "function isLaunchToken(address) view returns (bool)",
+]);
+
+/** Admitted launch tokens with their launch's v4 market (auction.pair(), a CloakV4Market): reserves, price, quotes. */
+async function gloamV4Markets(lv: Address): Promise<Market[]> {
+  const factory = await publicClient.readContract({ address: lv, abi: LAUNCHES, functionName: "factory" });
+  const n = await publicClient.readContract({ address: factory, abi: LAUNCHES, functionName: "launchesCount" });
+  const rows = await Promise.all(
+    Array.from({ length: Number(n) }, async (_, i): Promise<Market | null> => {
+      const [auction, token] = await publicClient.readContract({ address: factory, abi: LAUNCHES, functionName: "launches", args: [BigInt(i)] });
+      const [admitted, pair] = await Promise.all([
+        publicClient.readContract({ address: lv, abi: LAUNCHES, functionName: "isLaunchToken", args: [token] }),
+        publicClient.readContract({ address: auction, abi: LAUNCHES, functionName: "pair" }).catch(() => "0x0000000000000000000000000000000000000000" as Address),
+      ]);
+      if (!admitted || pair === "0x0000000000000000000000000000000000000000") return null;
+      const [symbol, name, reserveHype, reserveToken, price] = await Promise.all([
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "symbol" }),
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "name" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveHype" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
+        publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "price" }),
+      ]);
+      // batch rounds run on V2 pairs (CloakGloamBatcher), so v4 launches trade instantly only for now
+      return { token, pool: token, pair, symbol, name, price, reserveHype, reserveToken, batchable: false };
+    }),
+  );
+  return rows.filter((x): x is Market => x !== null).reverse();
+}
+
 export async function loadMarkets(force = false): Promise<Market[]> {
   if (CORE === "gloam") {
     if (!force && cache && Date.now() - cache.at < 15_000) return cache.data;
@@ -198,7 +237,7 @@ export function useFeePct(): string {
 export async function quote(m: Market, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
   if (amountIn <= 0n) return 0n;
   amountIn -= (amountIn * BigInt(await withdrawFeeBps())) / 10_000n; // what the router actually trades
-  if (CORE === "gloam") {
+  if (CORE === "gloam" && !GLOAM?.launchSwapV4) {
     // Uniswap V2 (0.3%), on live reserves
     const [rH, rT] = await v2Reserves(m.pair);
     const [rIn, rOut] = side === "buy" ? [rH, rT] : [rT, rH];
