@@ -45,8 +45,10 @@ contract BidAccount {
  *         account bids, and what the auction pays back comes back into the vault as new notes.
  *
  * The bid's account is a CREATE2 address derived from its BidKey: the note (nullifier, amount), the auction, the
- * bid commitment and the sealed bid, the owner key, the fallback address and the timeout. The vault's unshield proof
- * names it as `to`, so a copied call that changes anything gets another address and the proof fails.
+ * owner key, the fallback address and the timeout. The vault's unshield proof names it as `to`, so a copied call that
+ * changes any of them gets another address and the proof fails. The bid itself (CloakAuction's commitment, which
+ * names the bidder, so it can't be part of the address) is signed by the owner key: a copier can't swap in a bid of
+ * its own (one never revealed would be fined).
  *
  * Never stuck. At every moment the money is in one of three places, each with a way out:
  *  - the vault, as the note (if place() reverts, nothing moved);
@@ -84,14 +86,13 @@ contract CloakGloamBids {
         bytes32 nullifier;
         uint256 amount;
         address auction;
-        bytes32 commitment;
-        bytes32 sealedBidHash;
         address ownerKey;
         address fallbackTo;
         uint256 exitAfter;
     }
 
     IGloamVault public immutable vault;
+    bytes32 private constant PLACE_DOMAIN = keccak256("cloak.gloam.bid.place.v1");
     bytes32 private constant FINISH_DOMAIN = keccak256("cloak.gloam.bid.finish.v1");
     bytes32 private constant EXIT_DOMAIN = keccak256("cloak.gloam.bid.exit.v1");
     bytes32 public constant ACCOUNT_CODE_HASH = keccak256(type(BidAccount).creationCode);
@@ -139,21 +140,41 @@ contract CloakGloamBids {
      *      bidder works it out before proving. When the note was already spent to this account, it bids with what
      *      waits there.
      */
-    function place(Spend calldata s, BidKey calldata k, bytes calldata sealedBid) external nonReentrant returns (uint256 bidId) {
+    function place(Spend calldata s, BidKey calldata k, bytes32 commitment, bytes calldata sealedBid, bytes calldata signature)
+        external
+        nonReentrant
+        returns (uint256 bidId)
+    {
+        address account = _admit(s, k, commitment, sealedBid, signature);
+        bidId = _bid(k, account, commitment, sealedBid);
+    }
+
+    /// @dev Checks the spend and the owner's signature, and takes the note out to the account unless that happened.
+    function _admit(Spend calldata s, BidKey calldata k, bytes32 commitment, bytes calldata sealedBid, bytes calldata signature)
+        private
+        returns (address account)
+    {
         if (s.nullifier != k.nullifier || s.amount != k.amount || s.asset != address(0)) revert BadKey();
-        if (keccak256(sealedBid) != k.sealedBidHash) revert BadKey();
-        address account = accountFor(k);
+        account = accountFor(k);
+        _checkSigned(placeDigest(account, commitment, sealedBid), signature, k.ownerKey);
         if (closed[account] || bidIdPlus1[account] != 0) revert Closed();
         if (!vault.isSpent(s.nullifier)) {
             vault.unshield(s.proof, s.root, s.nullifier, s.asset, account, s.amount);
         }
+    }
+
+    function _bid(BidKey calldata k, address account, bytes32 commitment, bytes calldata sealedBid) private returns (uint256 bidId) {
         BidAccount a = _open(k, account);
         uint256 deposit = account.balance;
         if (deposit == 0) revert NothingHere();
-        bytes memory ret = a.run(k.auction, deposit, abi.encodeCall(ISealedAuction.commit, (k.commitment, sealedBid)));
-        bidId = abi.decode(ret, (uint256));
+        bidId = abi.decode(a.run(k.auction, deposit, abi.encodeCall(ISealedAuction.commit, (commitment, sealedBid))), (uint256));
         bidIdPlus1[account] = bidId + 1;
         emit BidPlaced(account, k.auction, bidId, deposit);
+    }
+
+    /// @notice What the owner key signs to bid: this account, this commitment and sealed bid.
+    function placeDigest(address account, bytes32 commitment, bytes calldata sealedBid) public view returns (bytes32) {
+        return keccak256(abi.encode(PLACE_DOMAIN, block.chainid, address(this), account, commitment, keccak256(sealedBid)));
     }
 
     /// @notice What the owner key signs to put the account's money back into the vault as exactly these notes.
@@ -256,6 +277,10 @@ contract CloakGloamBids {
             if (ds[i].asset != address(0) && IERC20Bal(ds[i].asset).balanceOf(account) != 0) return;
         }
         closed[account] = true;
+    }
+
+    function _checkSigned(bytes32 digest, bytes calldata signature, address key) private pure {
+        if (key == address(0) || _recover(digest, signature) != key) revert BadSignature();
     }
 
     function _recover(bytes32 digest, bytes calldata sig) private pure returns (address) {

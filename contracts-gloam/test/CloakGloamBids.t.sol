@@ -94,8 +94,14 @@ contract CloakGloamBidsTest is Test {
         }
     }
 
-    function _key(uint256 nul, bytes memory sealedBid) internal view returns (CloakGloamBids.BidKey memory k) {
-        k = CloakGloamBids.BidKey(bytes32(nul), NOTE, address(auction), keccak256("commitment"), keccak256(sealedBid), vm.addr(ownerPk), fallbackTo, block.timestamp + 30 days);
+    bytes32 constant COMMITMENT = keccak256("commitment");
+
+    function _key(uint256 nul, bytes memory) internal view returns (CloakGloamBids.BidKey memory k) {
+        k = CloakGloamBids.BidKey(bytes32(nul), NOTE, address(auction), vm.addr(ownerPk), fallbackTo, block.timestamp + 30 days);
+    }
+
+    function _placeSig(CloakGloamBids.BidKey memory k, bytes memory sealedBid) internal view returns (bytes memory) {
+        return _sign(bids.placeDigest(bids.accountFor(k), COMMITMENT, sealedBid));
     }
 
     function _spend(CloakGloamBids.BidKey memory k) internal view returns (CloakGloamBids.Spend memory) {
@@ -106,8 +112,10 @@ contract CloakGloamBidsTest is Test {
         bytes memory sealedBid = "sealed";
         k = _key(nul, sealedBid);
         account = bids.accountFor(k);
+        CloakGloamBids.Spend memory s = _spend(k);
+        bytes memory sig = _placeSig(k, sealedBid);
         vm.prank(relayer);
-        bids.place(_spend(k), k, sealedBid);
+        bids.place(s, k, COMMITMENT, sealedBid, sig);
     }
 
     function _deps(uint256 tokens, uint256 hype, uint256 c) internal view returns (CloakGloamBids.Deposit[] memory ds) {
@@ -160,9 +168,10 @@ contract CloakGloamBidsTest is Test {
         bytes memory sealedBid = "sealed";
         CloakGloamBids.BidKey memory k = _key(0xAA, sealedBid);
         CloakGloamBids.Spend memory s = _spend(k);
+        bytes memory sig = _placeSig(k, sealedBid);
         vm.warp(block.timestamp + 2 hours);
         vm.expectRevert(bytes("commit closed"));
-        bids.place(s, k, sealedBid);
+        bids.place(s, k, COMMITMENT, sealedBid, sig);
         assertFalse(pool.isSpent(k.nullifier), "note unspent");
     }
 
@@ -172,7 +181,7 @@ contract CloakGloamBidsTest is Test {
         CloakGloamBids.Spend memory s = _spend(k);
         vm.prank(mallory);
         pool.unshield(s.proof, s.root, s.nullifier, address(0), bids.accountFor(k), NOTE);
-        bids.place(s, k, sealedBid);
+        bids.place(s, k, COMMITMENT, sealedBid, _placeSig(k, sealedBid));
         (, uint256 deposit, , ) = auction.bids(0);
         assertEq(deposit, ARRIVES);
     }
@@ -232,8 +241,9 @@ contract CloakGloamBidsTest is Test {
     function test_place_twice_is_refused() public {
         (CloakGloamBids.BidKey memory k, ) = _place(0xAA);
         CloakGloamBids.Spend memory s = _spend(k);
+        bytes memory sig = _placeSig(k, "sealed");
         vm.expectRevert(CloakGloamBids.Closed.selector);
-        bids.place(s, k, "sealed");
+        bids.place(s, k, COMMITMENT, "sealed", sig);
     }
 
     function test_finish_replay_is_refused() public {
@@ -256,15 +266,21 @@ contract CloakGloamBidsTest is Test {
         bids.finish(k, ds, sig);
     }
 
-    function test_a_copied_place_with_another_sealed_bid_is_refused() public {
+    function test_a_copied_place_with_another_bid_or_key_is_refused() public {
         bytes memory sealedBid = "sealed";
         CloakGloamBids.BidKey memory k = _key(0xAA, sealedBid);
         CloakGloamBids.Spend memory s = _spend(k);
-        vm.expectRevert(CloakGloamBids.BadKey.selector);
-        bids.place(s, k, "other");
-        k.sealedBidHash = keccak256("other"); // a different key is a different account: the proof names the old one
+        bytes memory sig = _placeSig(k, sealedBid);
+        // a copier swaps in its own bid (one it would never reveal, to get the bidder fined): the signature fails
+        vm.expectRevert(CloakGloamBids.BadSignature.selector);
+        bids.place(s, k, COMMITMENT, "other", sig);
+        vm.expectRevert(CloakGloamBids.BadSignature.selector);
+        bids.place(s, k, keccak256("other"), sealedBid, sig);
+        // or changes the key (a fallback of its own): another account, and the proof names the old one
+        k.fallbackTo = mallory;
+        bytes memory sig2 = _placeSig(k, sealedBid);
         vm.expectRevert();
-        bids.place(s, k, "other");
+        bids.place(s, k, COMMITMENT, sealedBid, sig2);
     }
 
     function test_only_the_factory_moves_an_account() public {
@@ -283,9 +299,10 @@ contract CloakGloamBidsTest is Test {
         MockAuction za = new MockAuction(TestToken(address(z)), block.timestamp + 1 hours);
         z.mint(address(za), 1000e18);
         bytes memory sealedBid = "sealed";
-        CloakGloamBids.BidKey memory k = CloakGloamBids.BidKey(bytes32(uint256(0xAB)), NOTE, address(za), keccak256("c"), keccak256(sealedBid), vm.addr(ownerPk), fallbackTo, block.timestamp + 30 days);
+        CloakGloamBids.BidKey memory k = CloakGloamBids.BidKey(bytes32(uint256(0xAB)), NOTE, address(za), vm.addr(ownerPk), fallbackTo, block.timestamp + 30 days);
         address account = bids.accountFor(k);
-        bids.place(CloakGloamBids.Spend(abi.encode(account), pool.currentRoot(), k.nullifier, address(0), NOTE), k, sealedBid);
+        bytes memory psig = _sign(bids.placeDigest(account, COMMITMENT, sealedBid));
+        bids.place(CloakGloamBids.Spend(abi.encode(account), pool.currentRoot(), k.nullifier, address(0), NOTE), k, COMMITMENT, sealedBid, psig);
         z.freeze(account, true); // the token blocks the account: its claim can't pay tokens
         za.settle(0, 100e18, 0.5e18);
         CloakGloamBids.Deposit[] memory ds = new CloakGloamBids.Deposit[](1);

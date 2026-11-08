@@ -1,0 +1,39 @@
+{
+  "auction": "CloakAuction from Cloak's live v4 factory (on a fork)",
+  "escrow": "CloakGloamBids",
+  "gas": {
+    "deploy test USDC": {
+      "n": 1,
+      "median": 487124
+    },
+    "deploy PoseidonT3": {
+      "n": 1,
+      "median": 2157126
+    },
+    "deploy CloakGloamBids": {
+      "n": 1,
+      "median": 2184584
+    },
+    "queue listing (guard)": {
+      "n": 1,
+      "median": 59862
+    },
+    "relayed memo": {
+      "n": 3,
+      "median": 91570
+    },
+    "relayed transfer": {
+      "n": 1,
+      "median": 1792575
+    },
+    "relayed escrow": {
+      "n": 2,
+      "median": 2192582
+    },
+    "execute listing (guard)": {
+      "n": 1,
+      "median": 57925
+    }
+  },
+  "wallMs": 93925
+}

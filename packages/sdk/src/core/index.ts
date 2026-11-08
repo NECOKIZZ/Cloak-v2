@@ -8,3 +8,4 @@ export function coreKindFrom(value: string | undefined | null): CoreKind {
   return value?.toLowerCase() === "gloam" ? "gloam" : "cloak";
 }
 export * from "./gloamSwap.js";
+export * from "./gloamBids.js";
