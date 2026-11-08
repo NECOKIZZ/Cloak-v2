@@ -110,8 +110,12 @@ contract CloakGraduation is IEscrowPayee {
 
     /// @notice The address an entry's unshield proof must name.
     function escrowFor(EntryKey calldata k) public view returns (address) {
-        bytes32 codeHash = keccak256(abi.encodePacked(type(SwapEscrow2).creationCode, abi.encode(k.token)));
-        return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), idOf(k), codeHash)))));
+        return _escrowAt(idOf(k), k.token);
+    }
+
+    function _escrowAt(bytes32 salt, address token) private view returns (address) {
+        bytes32 codeHash = keccak256(abi.encodePacked(type(SwapEscrow2).creationCode, abi.encode(token)));
+        return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, codeHash)))));
     }
 
     function currentRound() public view returns (uint64) {
@@ -185,6 +189,8 @@ contract CloakGraduation is IEscrowPayee {
     // ── internals ──────────────────────────────────────────────────────
 
     function _openEscrow(bytes32 salt, address token) private returns (uint256 arrived) {
+        // an opened escrow keeps one byte of code: refuse it before a second deploy fails there and burns the gas sent
+        if (_escrowAt(salt, token).code.length != 0) revert Used();
         uint256 before = IERC20G(token).balanceOf(address(this));
         bytes memory code = abi.encodePacked(type(SwapEscrow2).creationCode, abi.encode(token));
         address e;

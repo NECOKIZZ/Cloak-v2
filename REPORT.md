@@ -611,3 +611,17 @@ Steps, each tested on anvil and pushed:
 - No owner and no fee of its own. Graduating costs the launch vault's fee once. Gloam charges nothing on deposits.
 - Limits that stay: the token and the sizes are public. Gloam still has to list the token in its own vault (its 3-day wait). Privacy grows with the number of entries per round.
 - Tests in `contracts-gloam/test/CloakGraduation.t.sol` (12, all pass): graduate into Gloam's vault, many entries per round, back into the launch vault, Gloam full then back, the signature binds the vault and the note, copiers refused, a spend sent alone picked up, key checks, timeout exit. Full suite 77 of 77.
+
+### 16.3 Graduation is holder by holder (Nov 8)
+
+You asked whether graduation could move a token's whole vault, every note, to Gloam's vault at once. It can't without a new import function in Gloam's vault. Gloam's vault proves every deposit's amount, nobody (by design) knows which notes are already spent, and an import would let Cloak add balances to Gloam's vault on trust. So graduation is an event per token: Cloak announces it, the launch vault's limit for the token is lowered to zero at once (`lowerDepositLimit`), Gloam lists the token, and each holder's app moves their balance through CloakGraduation the next time it opens. Holders who never return can cash out at any time.
+
+### 16.4 Step 3 done: CloakLaunchSwap (Nov 8)
+
+`contracts-gloam/src/CloakLaunchSwap.sol` gives private swaps between launch vault notes through Uniswap V2 pairs, and gives the price buffer back to the trader.
+- Why Gloam's swap base can't: a deposit needs its exact amount up front, and the leftover is known only after the swap runs, so Gloam's base sends it to its treasury (`_trySweep` is private, so it can't be changed by extending the base). Cloak's router is its own contract on the same pattern instead.
+- The leftover is owed to the swap's key. The owner's app takes it back as one note of exactly that amount (`claim`, signed, sent by anyone), or in the clear to an address it signs for (`exit`).
+- Same protections as Gloam's: a one-time escrow from the swap's key (spend, new note, route, owner key, deadline), so copiers fail. A spend sent alone can be swapped again before the deadline, or rescued after it (the whole input is then owed back the same way).
+- No owner, fee or allowlist. A hop may use only the pair the immutable V2 factory reports. HYPE goes through WHYPE.
+- Also fixed in this step: CloakLaunchSwap and CloakGraduation now refuse an already-opened escrow before trying CREATE2 again. Without that, a repeat call burned all the gas sent (about 1 billion in a test), as Gloam's own base notes.
+- Tests in `contracts-gloam/test/CloakLaunchSwap.t.sol` (14, all pass): buy and sell, leftover owed and claimed as a note, exit in the clear, signature checks, greedy swaps revert with the note untouched, copiers refused, deadline, a spend sent alone then swapped or rescued, route checks, stray HYPE refused. Full suite 91 of 91.
