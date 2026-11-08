@@ -2,6 +2,19 @@
 
 Questions 1 to 9 and the upgrade list were answered by Gloam's founder (Duke) on Nov 8: see "Answers from Gloam's founder" below, which overrides the LLM-read answers further down wherever they differ. Background for each is in REPORT.md.
 
+## Founder's partnership answers (Nov 8, evening), vetted
+
+"We're in. Let's make Cloak the first privacy app on Elysium powered by Gloam." Checked against Gloam's repo at `083c544`:
+- **Shared vault:** USDC, HYPE (after launch) and approved ecosystem tokens go in their vault (a bigger anonymity set). Experimental launch tokens can have their own instance, which is our `CloakLaunchVault`. Their vault is guarded, with a multisig controller. *The repo allows a plain-wallet controller as a fallback if Elysium has no Safe, so we ask.*
+- **Fees:** 0.5% on cash outs. *His first note says partner interface fees are sent privately. His second note and `partners.ts` say not yet (no fee output in the circuit). We take ours in the clear in our escrows.* The fee share came through as "[fee share]", a placeholder, so we ask again.
+- **Relayer:** theirs on Elysium from day one, gas in HYPE. We may run our own (the vault is permissionless). Our escrows are added after their review, and a per-partner budget is possible. *Matches the repo (the relay only calls Gloam's contracts today).*
+- **Escrow pattern:** general, as their router does it. They'll review our escrows. *Matches.*
+- **2-in sends:** need a new circuit and ceremony, not soon. **Recipient-bound notes:** roadmap, not this month.
+- **Audits:** Kann covered the vault (gloam.trade/security). The router, relay and circuit reviews are being booked, and partner escrows can be a separate scope. *Matches `SECURITY.md`: routers and the guard have had internal review only.*
+- **Blacklisting:** a reverted cash out leaves the note unspent. The real risk is a token blacklisting the vault, hence listing only after review. **We vet every token before asking for a listing.**
+- **SDK:** pinned versions, at least 2 weeks' notice of breaking changes, and a release with 99801 and 99901 plus the change seed. **Grant:** none, but technical support, audit coordination and co-marketing. **Branding:** "Powered by Gloam" approved, and they list Cloak as a live partner on Elysium after our mainnet launch. **Keys:** final ceremony keys work on Elysium.
+- The second note repeats the Nov 8 answers (above). The brief for him, with the questions still open, is `docs/FOR-GLOAM.md`.
+
 ## What we need, for testnet now and for mainnet (Nov 9)
 
 Checked on Nov 8, night: Gloam's promised testnet vault (`0x39E28Cde55CAB798874746ac52cb4B5Cc99a0194`) has no code on chain 99801 yet.
