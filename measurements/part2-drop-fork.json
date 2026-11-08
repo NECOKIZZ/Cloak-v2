@@ -1,0 +1,35 @@
+{
+  "drop": "CloakDrop from Cloak's live drop factory (on a fork)",
+  "escrow": "CloakGloamBids",
+  "gas": {
+    "deploy test USDC": {
+      "n": 1,
+      "median": 487124
+    },
+    "deploy PoseidonT3": {
+      "n": 1,
+      "median": 2157126
+    },
+    "deploy CloakGloamBids": {
+      "n": 1,
+      "median": 2414118
+    },
+    "relayed memo": {
+      "n": 3,
+      "median": 57370
+    },
+    "relayed transfer": {
+      "n": 1,
+      "median": 1792563
+    },
+    "relayed escrow": {
+      "n": 4,
+      "median": 731510
+    },
+    "claim (anyone)": {
+      "n": 1,
+      "median": 216458
+    }
+  },
+  "wallMs": 201669
+}
