@@ -33,3 +33,20 @@ jobs:
           node e2e/spots.mjs
           node e2e/drops-break.mjs
           node e2e/mcp-drops.mjs
+  gloam:
+    # Cloak v2 on Gloam: Gloam's vault (pinned submodule), Cloak's escrow venues, and the GloamCore runs on anvil.
+    # The fork runs (part0 --fork, part2-swap*.mjs) need Elysium testnet's RPC and run by hand.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: cd vendor/gloam/contracts && forge build
+      - run: cd contracts-gloam && forge test -vv
+      - run: pnpm --filter @cloakely/sdk build
+      - run: node e2e-gloam/part0.mjs
+      - run: node e2e-gloam/part1.mjs
