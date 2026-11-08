@@ -189,7 +189,21 @@ tokens and refund come back after settlement with a second relayed call.
   that holds a token can do better than this against its issuer.
 - **A treasury that can't receive.** It never blocks a swap.
 
-### 3.10 Things that worked as promised
+### 3.10 Relayer economics without a relayer fee
+
+Gloam's proofs carry no fee for whoever submits them. Cloak's do today, and that fee pays the keeper's gas and earns
+Cloak an income. On Gloam the relay pays gas from its own wallet, so it has to protect itself.
+`services/keeper/gloam.mjs` serves only known targets and functions and simulates every call first. Even so, a
+spammer can post junk memos (or junk escrow calls that succeed) until the hourly budget runs out. In `part3-relay.mjs`
+a 0.05 HYPE budget ran out after about 170 memos of 8 KB. Then the relay answers 429 until the hour resets, and users
+must send their own calls, which links their wallet. Gas on Elysium is cheap (a memo is about 0.0003 HYPE), so the
+budget can be generous, but this is a cost Cloak carries with no income on the other side. Options:
+
+- an interface fee taken inside the escrows;
+- a small fee note per relayed call;
+- relaying only for unlocked accounts with a proof of funds.
+
+### 3.11 Things that worked as promised
 
 - Final ceremony keys on chain 99801: the key gate passes and dev-key proofs are refused on chain.
 - Kinetiq's test USDC works in the vault (no transfer fee, plain `transferFrom`).
@@ -235,7 +249,7 @@ tokens and refund come back after settlement with a second relayed call.
 | Proof of funds, usable on chain | works with changes | 4 notes, nullifiers public as today; we deploy the verifier (3.7) |
 | SDK functions | works with changes | features call `PrivateCore`; escrow helpers in `core/` |
 | MCP server and its limits | not built yet | needs the MCP tools moved onto `PrivateCore` (estimate in section 8) |
-| Keeper and relayer | not built yet | stops relaying vault actions; relays escrow calls and memos; queues listings at launch creation |
+| Keeper and relayer | works with changes | `services/keeper/gloam.mjs` (POST /gloam/relay) relays vault transfers and cash outs, memos and escrow calls, and refuses unknown targets, other vault functions, spent notes and calls that would revert (simulated first, no gas lost). With no relayer fee in the proof, its gas is a cost Cloak carries under an hourly budget: memo spam can use the budget up, and then users must send their own calls, which links their wallet (3.10). Listing queues at launch creation and settling batch rounds are not wired into the keeper loop yet |
 | Volume page and revenue | works with changes | 0.5% to Gloam on every exit; Cloak's own relayer-fee income is gone (proofs carry no relayer fee) |
 
 ## 5. Measurements

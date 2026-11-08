@@ -58,3 +58,13 @@ export function walletCoreSubmitter(publicClient: PublicClient, wallet: WalletCl
     return hash;
   };
 }
+
+/** Submits through a Cloak keeper's Gloam relay (POST /gloam/relay): the keeper pays gas and is the only sender seen. */
+export function gloamRelaySubmitter(url: string): CoreSubmitter {
+  return async (call) => {
+    const r = await fetch(`${url.replace(/\/+$/, "")}/gloam/relay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: call.kind, to: call.to, data: call.data }) });
+    const j = (await r.json().catch(() => ({}))) as { txHash?: Hex; error?: string };
+    if (!r.ok || !j.txHash) throw new Error(j.error ?? `relay answered ${r.status}`);
+    return j.txHash;
+  };
+}

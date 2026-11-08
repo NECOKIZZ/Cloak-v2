@@ -24,6 +24,7 @@ import { startLeaves } from "./leaves.mjs";
 import { startSchedule } from "./schedule.mjs";
 import { startReceive } from "./receive.mjs";
 import { startFeeCollector } from "./fees.mjs";
+import { createGloamRelay } from "./gloam.mjs";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakDropFactoryAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
@@ -101,6 +102,10 @@ const snapshot = reg && process.env.SNAPSHOT !== "0"
 
 const account = privateKeyToAccount(PK);
 const walletClient = createWalletClient({ chain, transport, account });
+// Cloak v2 on Gloam: POST /gloam/relay, on when GLOAM_VAULT and GLOAM_MEMO are set (GLOAM_ESCROWS: comma separated)
+const gloamRelay = process.env.GLOAM_VAULT && process.env.GLOAM_MEMO
+  ? createGloamRelay({ publicClient, walletClient, vault: process.env.GLOAM_VAULT, memoBoard: process.env.GLOAM_MEMO, escrows: (process.env.GLOAM_ESCROWS ?? "").split(",").filter(Boolean), log: console.log })
+  : null;
 
 // One wallet sends everything (reveals, settles, payouts and relays, which arrive at any time), so its transactions go
 // out one at a time, each mined before the next: two sends can never pick the same nonce.
@@ -742,6 +747,23 @@ const send = (req, res, code, obj) => {
 createServer((req, res) => {
   const path = (req.url ?? "/").split("?")[0];
   if (req.method === "OPTIONS") return send(req, res, 204, {});
+  if (req.method === "POST" && path === "/gloam/relay") {
+    if (!gloamRelay) return send(req, res, 503, { error: "Gloam relay is off on this keeper" });
+    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > MAX_BODY) req.destroy();
+    });
+    req.on("end", async () => {
+      try {
+        send(req, res, 200, { txHash: await gloamRelay(JSON.parse(body)) });
+      } catch (e) {
+        send(req, res, e.status ?? 400, { error: e.status ? e.message : "malformed request" });
+      }
+    });
+    return;
+  }
   if (req.method === "POST" && (path === "/relay" || path === "/relay-shared")) {
     if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
     let body = "";

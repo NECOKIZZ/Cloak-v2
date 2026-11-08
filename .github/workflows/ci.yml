@@ -52,3 +52,4 @@ jobs:
       - run: node e2e-gloam/part1.mjs
       - run: node e2e-gloam/part1-links.mjs
       - run: node e2e-gloam/part3-funds.mjs
+      - run: node e2e-gloam/part3-relay.mjs
