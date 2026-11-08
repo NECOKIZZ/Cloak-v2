@@ -20,7 +20,8 @@ contract CloakGloamBatcherV4Test is CloakLaunchSwapV4Test {
     }
 
     function _key(bytes32 n, bool buy, uint128 size) internal view returns (CloakGloamBatcherBase.OrderKey memory) {
-        return CloakGloamBatcherBase.OrderKey(n, address(token), buy, size, owner, owner);
+        address key = vm.addr(ownerPk); // the address of the key that signs the claim
+        return CloakGloamBatcherBase.OrderKey(n, address(token), buy, size, key, key);
     }
 
     function _place(bytes32 n, bool buy, uint128 size) internal returns (CloakGloamBatcherBase.OrderKey memory k, bytes32 id) {
