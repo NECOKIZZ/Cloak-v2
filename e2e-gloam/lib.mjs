@@ -246,7 +246,7 @@ export async function rejects(p, msg) {
  * A fresh local Gloam stack on anvil (chain 99801): test USDC, PoseidonT3, the guarded vault and the memo board.
  * Returns everything a test needs; call stop() at the end.
  */
-export async function localGloam({ port = 8547, blockTime, forkUrl } = {}) {
+export async function localGloam({ port = 8547, blockTime, forkUrl, extraAssets = [] } = {}) {
   const anvil = await startAnvil({ port, blockTime, forkUrl });
   const dep = clients(anvil.rpcUrl, ANVIL_KEYS[0], ELYSIUM_TESTNET_ID);
   const tok = ourArtifact("TestToken.sol", "TestToken");
@@ -259,6 +259,7 @@ export async function localGloam({ port = 8547, blockTime, forkUrl } = {}) {
     assets: [
       { address: "0x0000000000000000000000000000000000000000", perDeposit: 10n ** 21n, total: 10n ** 23n },
       { address: usdc, perDeposit: 500n * 10n ** 6n, total: 25000n * 10n ** 6n },
+      ...extraAssets,
     ],
     feeBps: 50,
     feeRecipient: clients(anvil.rpcUrl, ANVIL_KEYS[3], ELYSIUM_TESTNET_ID).account.address,
@@ -266,4 +267,19 @@ export async function localGloam({ port = 8547, blockTime, forkUrl } = {}) {
   });
   const poolBlock = await dep.pub.getBlockNumber();
   return { ...anvil, dep, usdc, poseidon, stack, poolBlock, tok };
+}
+
+/** An artifact from Gloam's own build (vendor/gloam/contracts/out), for deploying their contracts unchanged. */
+export function gloamArtifact(file, name) {
+  const p = join(GLOAM_CONTRACTS, `out/${file}/${name}.json`);
+  if (!existsSync(p)) execFileSync("forge", ["build", "--offline", "--root", GLOAM_CONTRACTS], { env: toolEnv(), stdio: "ignore" });
+  const j = JSON.parse(readFileSync(p, "utf8"));
+  return { abi: j.abi, bytecode: j.bytecode.object };
+}
+
+/** A raw JSON-RPC call (anvil cheats on local chains). */
+export async function rpc(rpcUrl, method, params = []) {
+  const r = await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }).then((x) => x.json());
+  if (r.error) throw new Error(`${method}: ${r.error.message}`);
+  return r.result;
 }

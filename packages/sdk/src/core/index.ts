@@ -7,3 +7,4 @@ export type CoreKind = "cloak" | "gloam";
 export function coreKindFrom(value: string | undefined | null): CoreKind {
   return value?.toLowerCase() === "gloam" ? "gloam" : "cloak";
 }
+export * from "./gloamSwap.js";

@@ -22,7 +22,7 @@ import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha256";
 import { randomBytes } from "@noble/hashes/utils";
 import { poseidon2 as poseidonHash2 } from "poseidon-lite/poseidon2";
-import { encodeFunctionData, hexToBytes, parseAbi, toHex, zeroAddress, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
+import { encodeAbiParameters, encodeFunctionData, hexToBytes, keccak256, parseAbi, toHex, zeroAddress, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import * as gloam from "@gloamtrade/sdk";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
 import type { CoreSubmitter, PrivateCore, SendResult } from "./types.js";
@@ -132,23 +132,23 @@ export class GloamCore implements PrivateCore {
 
   // ── notes ──────────────────────────────────────────────────────────────
 
-  private ownSecret(nonce: bigint): bigint {
+  /** @internal */ ownSecret(nonce: bigint): bigint {
     return poseidonHash2([this.keys.noteSeed, nonce]);
   }
 
-  private async freshOwn(asset: Address, amount: bigint) {
+  /** @internal */ async freshOwn(asset: Address, amount: bigint) {
     const nonce = field(randomBytes(31));
     const secret = this.ownSecret(nonce);
     const commitment = await gloam.noteCommitmentPoseidon(secret, amount, asset);
     return { nonce, secret, commitment, asset, amount };
   }
 
-  private async selfTicket(n: { nonce: bigint; asset: Address; amount: bigint }): Promise<string> {
+  /** @internal */ async selfTicket(n: { nonce: bigint; asset: Address; amount: bigint }): Promise<string> {
     const body = SELF_PREFIX + JSON.stringify({ v: 1, n: n.nonce.toString(), a: n.asset, w: n.amount.toString(), ch: this.cfg.chainId });
     return gloam.sealToReceiveTag(body, this.keys.receiveTag);
   }
 
-  private async post(commitment: bigint, tickets: string[], onStatus: Status): Promise<Hex | null> {
+  /** @internal */ async post(commitment: bigint, tickets: string[], onStatus: Status): Promise<Hex | null> {
     if (!tickets.length) return null;
     onStatus("Posting the sealed note");
     const memo = toHex(new TextEncoder().encode(tickets.join("\n")));
@@ -342,7 +342,7 @@ export class GloamCore implements PrivateCore {
     return memo ? [tx, memo] : [tx];
   }
 
-  private async pathOf(commitment: bigint) {
+  /** @internal */ async pathOf(commitment: bigint) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.tree = await gloam.syncTree(this.cfg.publicClient as any, { pool: this.cfg.pool, fromBlock: this.cfg.poolBlock, chunkSize: this.cfg.logChunk });
     const p = await this.tree.pathForCommitment(h32(commitment));
@@ -365,6 +365,65 @@ export class GloamCore implements PrivateCore {
     }
     if (left > 0n) throw new Error("Not enough private balance.");
     return out;
+  }
+
+  // ── escrow building blocks (swaps, bids, batch orders, drop bids) ─────
+
+  /** Remembers a note this account made, until sync finds it in the tree. */
+  track(c: { commitment: bigint; asset: Address; amount: bigint; secret: bigint }) {
+    this.candidates.push({ ...c, own: true });
+  }
+
+  /** One own note of exactly `amount`, splitting a larger one first when none matches (one extra transfer). */
+  async exactNote(asset: Address, amount: bigint, onStatus: Status = () => {}): Promise<OwnedGloamNote> {
+    await this.sync(onStatus);
+    const hit = this.ownNotes(asset).find((n) => n.amount === amount);
+    if (hit) return hit;
+    const big = [...this.ownNotes(asset)].reverse().find((n) => n.amount > amount);
+    if (!big) throw new Error("Not enough private balance in one note for this.");
+    await this.transferOne(big, amount, undefined, onStatus);
+    await this.sync(onStatus);
+    const n = this.ownNotes(asset).find((x) => x.amount === amount);
+    if (!n) throw new Error("split did not land");
+    return n;
+  }
+
+  /** The unshield proof that spends `note` (whole) to `to`, without sending it. An escrow call carries it. */
+  async spendProof(note: OwnedGloamNote, to: Address, onStatus: Status = () => {}) {
+    const path = await this.pathOf(note.commitment);
+    onStatus("Proving the spend");
+    const { proofBytes } = await this.cfg.provers.unshield({
+      root: path.root.toString(),
+      nullifier: note.nullifier.toString(),
+      asset: assetField(note.asset).toString(),
+      amount: note.amount.toString(),
+      recipient: BigInt(to).toString(),
+      secret: note.secret.toString(),
+      pathElements: path.pathElements.map((x: bigint) => x.toString()),
+      pathIndices: path.pathIndices.map(String),
+    });
+    return { proof: proofBytes, root: h32(path.root), nullifier: h32(note.nullifier), asset: note.asset, amount: note.amount };
+  }
+
+  /** A note of exactly `amount` of `asset` for this account, with its shield proof, for an escrow to deposit. */
+  async depositFor(asset: Address, amount: bigint) {
+    const n = await this.freshOwn(asset, amount);
+    const { proofBytes } = await this.cfg.provers.shield({ commitment: n.commitment.toString(), amount: amount.toString(), asset: assetField(asset).toString(), secret: n.secret.toString() });
+    return { deposit: { proof: proofBytes, commitment: h32(n.commitment), asset, amount }, note: n, ticket: await this.selfTicket(n) };
+  }
+
+  /**
+   * A one-time key for one escrow action, made from this account's seed and the note it spends, so it says nothing
+   * about the account and any device that holds the signature can make it again.
+   */
+  exitKeyFor(nullifier: Hex): Hex {
+    const n = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+    const k = BigInt(keccak256(encodeAbiParameters([{ type: "string" }, { type: "uint256" }, { type: "bytes32" }], ["cloak-gloam-exit-v1", this.keys.noteSeed, nullifier])));
+    return toHex((k % (n - 1n)) + 1n, { size: 32 });
+  }
+
+  get config() {
+    return this.cfg;
   }
 
   async send(asset: Address, to: string, amount: bigint, onStatus: Status = () => {}): Promise<SendResult> {
