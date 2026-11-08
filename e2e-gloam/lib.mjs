@@ -58,12 +58,13 @@ export function clients(rpcUrl, pk, id) {
 }
 
 /** Starts anvil as Elysium testnet (chain id 99801). Returns { rpcUrl, stop }. */
-export async function startAnvil({ port = 8547, blockTime } = {}) {
+export async function startAnvil({ port = 8547, blockTime, forkUrl } = {}) {
   const args = ["--chain-id", String(ELYSIUM_TESTNET_ID), "--port", String(port), "--balance", "1000000", "--silent"];
   if (blockTime) args.push("--block-time", String(blockTime));
+  if (forkUrl) args.push("--fork-url", forkUrl);
   const proc = spawn("anvil", args, { env: toolEnv(), stdio: "ignore" });
   const rpcUrl = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 300; i++) {
     try {
       const r = await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) });
       if (r.ok) return { rpcUrl, stop: () => proc.kill() };
@@ -72,6 +73,19 @@ export async function startAnvil({ port = 8547, blockTime } = {}) {
   }
   proc.kill();
   throw new Error("anvil did not start");
+}
+
+/** On a local fork only: moves `amount` of `token` from `holder` to `to` by impersonating the holder. */
+export async function forkFund(rpcUrl, token, holder, to, amount) {
+  const call = (method, params) => fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }).then((r) => r.json());
+  await call("anvil_impersonateAccount", [holder]);
+  await call("anvil_setBalance", [holder, "0x3635c9adc5dea00000"]);
+  const data = "0xa9059cbb" + to.slice(2).toLowerCase().padStart(64, "0") + amount.toString(16).padStart(64, "0");
+  const sent = await call("eth_sendTransaction", [{ from: holder, to: token, data, gas: "0x30d40" }]);
+  if (sent.error) throw new Error("fork fund: " + sent.error.message);
+  const rc = await call("eth_getTransactionReceipt", [sent.result]);
+  if (rc.result?.status !== "0x1") throw new Error("fork fund: transfer reverted (holder short of tokens?)");
+  await call("anvil_stopImpersonatingAccount", [holder]);
 }
 
 /** Gas used per labelled action, written into the report's measurements. */

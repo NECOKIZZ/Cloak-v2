@@ -1,0 +1,54 @@
+{
+  "where": "elysium-testnet-fork",
+  "sdk": "@gloamtrade/sdk@0.6.0",
+  "gloamCommit": "16dac34",
+  "stack": {
+    "pool": "0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07",
+    "guard": "0x04C89607413713Ec9775E14b954286519d836FEf",
+    "dual": "0x1429859428C0aBc9C2C47C8Ee9FBaf82cFA0F20f",
+    "shieldVerifier": "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0",
+    "payMemo": "0xD8a5a9b31c3C0232E196d518E89Fd8bF83AcAd43",
+    "deployMs": 4278
+  },
+  "proofs": {
+    "shield": {
+      "n": 3,
+      "min": 103,
+      "median": 105,
+      "max": 138
+    },
+    "transfer": {
+      "n": 4,
+      "min": 458,
+      "median": 470,
+      "max": 495
+    },
+    "unshield": {
+      "n": 4,
+      "min": 422,
+      "median": 428,
+      "max": 449
+    }
+  },
+  "gas": {
+    "deploy PoseidonT3": 2157126,
+    "shield HYPE": 1141747,
+    "approve USDC": 56350,
+    "shield USDC": 1153397,
+    "approve USDC over limit": 56362,
+    "private send HYPE (1 in, 2 out)": 1787612,
+    "post memo": 57370,
+    "private send HYPE #2": 1787648,
+    "payer spends the payee's unswept note": 330747,
+    "sweep received note (1 in, 2 out)": 1782422,
+    "cash out HYPE (whole note)": 313599,
+    "split for partial cash out": 1787660,
+    "cash out USDC (partial, after split)": 350422,
+    "collectFees USDC": 77458
+  },
+  "machine": {
+    "cpus": 4,
+    "node": "v22.23.4"
+  },
+  "wallMs": 12814
+}

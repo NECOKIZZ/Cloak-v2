@@ -1,6 +1,7 @@
 // Part 0: Gloam's stack on (local) Elysium testnet, driven by their published SDK, measured.
 //
 //   node e2e-gloam/part0.mjs                 # local: starts anvil as chain 99801, deploys everything
+//   node e2e-gloam/part0.mjs --fork          # local fork of Elysium testnet: Kinetiq's real test USDC, real chain state
 //   RPC_URL=... GLOAM_TESTNET_PK=... node e2e-gloam/part0.mjs --live   # Elysium testnet (fresh testnet key only)
 //
 // Checks: Gloam's own key gate (final-key proofs accepted, dev-key proofs refused) and the guard, then shield HYPE
@@ -25,10 +26,16 @@ import {
   startAnvil,
   writeMeasurements,
   ELYSIUM_TESTNET_ID,
+  ELYSIUM_TESTNET_RPC,
+  ELYSIUM_TESTNET_USDC,
+  forkFund,
 } from "./lib.mjs";
 
 const sdk = await import("@gloamtrade/sdk");
 const LIVE = process.argv.includes("--live");
+const FORK = process.argv.includes("--fork");
+/** Cloak's live USDC vault on Elysium testnet: the holder a local fork borrows test USDC from (fork only, never live). */
+const FORK_USDC_HOLDER = "0x3d5cB722490D9908a118f8B3151f83fcE943E4F0";
 const MEMO_ABI = parseAbi([
   "function postMemo(bytes32 paymentCommitment, bytes memo)",
   "event PaymentMemo(bytes32 indexed paymentCommitment, bytes memo)",
@@ -37,7 +44,7 @@ const MEMO_ABI = parseAbi([
 let anvil;
 let rpcUrl = process.env.RPC_URL;
 if (!LIVE) {
-  anvil = await startAnvil();
+  anvil = await startAnvil(FORK ? { forkUrl: process.env.RPC_URL ?? ELYSIUM_TESTNET_RPC } : {});
   rpcUrl = anvil.rpcUrl;
 }
 const keys = LIVE ? [process.env.GLOAM_TESTNET_PK] : ANVIL_KEYS;
@@ -52,13 +59,19 @@ const treasury = LIVE ? dep.account.address : clients(rpcUrl, keys[3], ELYSIUM_T
 const pub = dep.pub;
 
 try {
-  console.log(`Part 0 on ${LIVE ? "Elysium testnet" : "anvil (chain 99801)"}`);
+  const WHERE = LIVE ? "elysium-testnet" : FORK ? "elysium-testnet-fork" : "anvil";
+  console.log(`Part 0 on ${WHERE}`);
 
   // ── tokens and the stack ────────────────────────────────────────────────
-  const tok = ourArtifact("TestToken.sol", "TestToken");
-  const usdcR = await sendAndLog(pub, "deploy test USDC", dep.wallet.deployContract({ ...tok, args: ["Test USDC", "USDC", 6] }));
-  const USDC = usdcR.contractAddress;
-  await sendAndLog(pub, "mint USDC", alice.wallet.writeContract({ address: USDC, abi: ERC20_ABI, functionName: "mint", args: [alice.account.address, parseUnits("10000", 6)] }));
+  let USDC = ELYSIUM_TESTNET_USDC;
+  if (FORK) {
+    await forkFund(rpcUrl, USDC, FORK_USDC_HOLDER, alice.account.address, parseUnits("280", 6));
+  } else if (!LIVE) {
+    const tok = ourArtifact("TestToken.sol", "TestToken");
+    const usdcR = await sendAndLog(pub, "deploy test USDC", dep.wallet.deployContract({ ...tok, args: ["Test USDC", "USDC", 6] }));
+    USDC = usdcR.contractAddress;
+    await sendAndLog(pub, "mint USDC", alice.wallet.writeContract({ address: USDC, abi: ERC20_ABI, functionName: "mint", args: [alice.account.address, parseUnits("10000", 6)] }));
+  }
 
   const poseidon = await deployPoseidon(dep);
   const stack = await deployGloamStack({
@@ -171,7 +184,7 @@ try {
   assert((await pub.readContract({ address: USDC, abi: ERC20_ABI, functionName: "balanceOf", args: [treasury] })) >= owed, "anyone can push owed fees, they land at the fee recipient");
 
   const summary = summarize();
-  writeMeasurements(`part0-${LIVE ? "elysium-testnet" : "anvil"}`, { where: LIVE ? "Elysium testnet" : "anvil 99801", sdk: "@gloamtrade/sdk@0.6.0", gloamCommit: "16dac34", stack: { ...stack, forgeLog: undefined }, ...summary, wallMs: Math.round(performance.now() - t0) });
+  writeMeasurements(`part0-${WHERE}`, { where: WHERE, sdk: "@gloamtrade/sdk@0.6.0", gloamCommit: "16dac34", stack: { ...stack, forgeLog: undefined }, ...summary, wallMs: Math.round(performance.now() - t0) });
   console.log("\nproof times (ms):", summary.proofs);
   console.log("gas:", summary.gas);
   console.log(`\nPart 0 passed in ${Math.round((performance.now() - t0) / 1000)} s`);
