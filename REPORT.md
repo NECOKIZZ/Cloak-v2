@@ -600,3 +600,14 @@ Steps, each tested on anvil and pushed:
 - Every other asset, the verifiers and the fee still go through setup, then the 3-day timelock. The owner can still lower limits and the fee at once, and still has no function that moves user funds.
 - The cash-out fee goes to Cloak. Gloam's `_withdrawFee` isn't virtual, so the vault can't exempt the graduation escrow without changing Gloam's code. Safer choice taken: no exemption, graduating pays the launch vault fee once.
 - Tests in `contracts-gloam/test/CloakLaunchVault.t.sol` (14, all pass): admission, unsettled and unknown launches refused, per-deposit and total caps, re-admit after a lowered limit, other tokens need the timelock, deposit then send then cash out with Cloak's fee collected, fee cap, setup checks. The verifiers there are stand-ins. The proof checks are Gloam's unchanged code, so Gloam's final keys work as in Gloam's vault (to be shown in the live run, step 7).
+
+### 16.2 Step 2 done: CloakGraduation (Nov 8)
+
+`contracts-gloam/src/CloakGraduation.sol` moves a launch token from Cloak's launch vault into Gloam's vault in rounds. It reuses the escrow pattern of `CloakGloamBatcher` and Gloam's `SwapEscrow2`.
+- In: one note of a standard size (1, 2 or 5 x 10^n) is cashed out of the launch vault to a one-time escrow made from the entry's key. A copier who swaps in their own key or fallback gets another escrow, so the proof fails.
+- Out: after the round ends, the owner key signs a deposit of exactly what arrived, and anyone (a relayer) sends it. The signature names the vault: Gloam's, or back into the launch vault if Gloam hasn't listed the token or its cap is full.
+- Never stuck: 30 days after the round, anyone can push an unclaimed entry to its fallback address.
+- `roundEntries` counts each round's entries, so the app can wait for a crowd before leaving.
+- No owner and no fee of its own. Graduating costs the launch vault's fee once. Gloam charges nothing on deposits.
+- Limits that stay: the token and the sizes are public. Gloam still has to list the token in its own vault (its 3-day wait). Privacy grows with the number of entries per round.
+- Tests in `contracts-gloam/test/CloakGraduation.t.sol` (12, all pass): graduate into Gloam's vault, many entries per round, back into the launch vault, Gloam full then back, the signature binds the vault and the note, copiers refused, a spend sent alone picked up, key checks, timeout exit. Full suite 77 of 77.
