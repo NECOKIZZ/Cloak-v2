@@ -86,33 +86,6 @@ try {
     if (opens >= now) await warp(opens - now + 1n);
   };
 
-  // 1. too big for the pool: 0.3 HYPE (0.2 + 0.1) can't settle within the batcher's 5% impact cap, so after the
-  //    refund time the keeper cancels the round and the next open brings the input back
-  // started 2 s before a round ends, so the two orders land in two rounds: each round is held and cancelled on its own
-  { const n = (await pub.getBlock()).timestamp; await warp(((n / 60n) + 1n) * 60n - n - 2n); }
-  const big = await A.batch(token, "buy", parseEther("0.3"));
-  assert(big.orders.length === 2 && big.rest === 0n, `0.3 HYPE went in as ${big.orders.length} standard-size orders (0.2 + 0.1)`);
-  assert(saved.filter((r) => r.kind === "batchOrder").length === 2, "each order is recorded for the next open");
-  const early = await A.finishPending();
-  assert(early.waiting.length === 2 && early.done.length === 0, "before the round ends, the orders wait");
-  await roundEnd(big.orders);
-  const held = await loop.tick();
-  assert(!held.rounds.length, "the keeper can't settle a round that would move the pool too far");
-  await warp(601n);
-  const c = await loop.tick();
-  const bigRounds = [...new Set(big.orders.map((o) => o.round))];
-  assert(bigRounds.every((r) => c.rounds.some((x) => x.action === "cancelled" && x.round === r)), `past its refund time the keeper cancelled it (${bigRounds.length} round(s))`);
-  const hypeBeforeRefund = await A.balance(A.hypeMarket.pool);
-  const back = await A.finishPending();
-  assert(back.errors.length === 0 && back.done.length === 2 && back.waiting.length === 0, `the next open took both inputs back (${back.done.map((d) => d.outcome).join(", ")})`);
-  const refunded = (await A.balance(A.hypeMarket.pool)) - hypeBeforeRefund;
-  out.cancelled = { in: "0.3", back: formatEther(refunded) };
-  assert(refunded >= (parseEther("0.3") * 990n) / 1000n, `${formatEther(refunded)} HYPE came back (the input less the vault's 0.5% fee on the way in)`);
-
-  // 2. sized for the pool: about 1.5% of its HYPE, in standard sizes
-  const buyIn = bestR / 66n;
-  const placed = await A.batch(token, "buy", buyIn);
-  assert(placed.orders.length > 0, `${formatEther(buyIn)} HYPE went in as ${placed.orders.length} orders (${formatEther(placed.rest)} held back as not a standard size)`);
   // the keeper ticks (every minute in production) and the app opens, until every order is paid. A round that lands
   // after another round's net trade moved the pool waits until its own average catches up (it can't cross at a price
   // the pool no longer offers), so it can take a few ticks.
@@ -133,6 +106,24 @@ try {
   };
   const rounds = (orders) => [...new Set(orders.map((o) => String(o.round)))];
 
+  // 1. too big for the pool: a round's side holds at most 4% of the pool's HYPE (review CL-06), so a 0.3 HYPE buy
+  //    is cut to what fits, the rest stays in the balance, and the round still settles for everyone in it
+  const room = await A.batchRoom(token, "buy");
+  assert(room <= (bestR * 4n) / 100n, `the round takes at most 4% of the pool's HYPE (${formatEther(room)})`);
+  const big = await A.batch(token, "buy", parseEther("0.3"));
+  const bigIn = big.orders.reduce((x, o) => x + o.size, 0n);
+  assert(bigIn <= room && big.rest >= parseEther("0.3") - room, `0.3 HYPE went in as ${formatEther(bigIn)} (${big.orders.length} orders), ${formatEther(big.rest)} stayed in the balance`);
+  assert(saved.filter((r) => r.kind === "batchOrder").length === big.orders.length, "each order is recorded for the next open");
+  const early = await A.finishPending();
+  assert(early.waiting.length === big.orders.length && early.done.length === 0, "before the round settles, the orders wait");
+  const s0 = await settleAll(big.orders);
+  out.cappedBuy = { asked: "0.3", in: formatEther(bigIn), orders: big.orders.length };
+  assert(s0.settled.length >= 1 && s0.waiting === 0 && s0.done.length === big.orders.length, "the capped round settled and every payout came back");
+
+  // 2. sized for the pool: about 1.5% of its HYPE, in standard sizes
+  const buyIn = bestR / 66n;
+  const placed = await A.batch(token, "buy", buyIn);
+  assert(placed.orders.length > 0, `${formatEther(buyIn)} HYPE went in as ${placed.orders.length} orders (${formatEther(placed.rest)} held back as not a standard size)`);
   const s1 = await settleAll(placed.orders);
   out.settleBuy = s1.settled.map((r) => ({ round: String(r.round), action: r.action }));
   assert(s1.settled.length === rounds(placed.orders).length, `the keeper loop settled ${s1.settled.length} round(s) through the real CloakV4Market`);

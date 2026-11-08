@@ -280,14 +280,34 @@ contract CloakGloamBatcherTest is Test {
         batcher.settle(address(launch), round);
     }
 
-    function test_a_big_round_against_a_thin_pool_refuses_to_fill_badly() public {
-        for (uint256 i = 0; i < 1; i++) pool.shieldBound{value: 50e18}(address(0), 50e18, bytes32(uint256(0xC0)), hex"00");
+    /// review CL-06: one huge order can't stop a round. It doesn't fit (each side holds at most 4% of the pool), so it
+    /// reverts whole with its note unspent, and the round it tried to join settles for everyone else.
+    function test_CL06_a_whale_order_cant_stop_the_round() public {
+        (CloakGloamBatcherBase.OrderKey memory honest, ) = _order(true, 1e18);
+        pool.shieldBound{value: 50e18}(address(0), 50e18, bytes32(uint256(0xC0)), hex"00");
         CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0xC1)), address(launch), true, 50e18, vm.addr(ownerPk), fallbackTo);
-        batcher.place(_spend(k), k);
+        CloakGloamBatcherBase.Spend memory sp = _spend(k);
+        vm.expectRevert(CloakGloamBatcherBase.RoundFull.selector); // half the pool's HYPE
+        batcher.place(sp, k);
+        assertFalse(pool.isSpent(k.nullifier), "the whale's note is still in the vault");
         uint64 round = batcher.currentRound();
         _endRound();
-        vm.expectRevert(CloakGloamBatcherBase.Impact.selector); // half the pool's HYPE: far over 5% impact
         batcher.settle(address(launch), round);
+        assertGt(_claim(honest, 0xC2), 0, "the honest order filled");
+    }
+
+    function test_a_full_side_still_settles_inside_the_impact_cap() public {
+        // 4 HYPE of buys against 100 HYPE of depth: exactly the side cap, and the net trade stays inside 5% impact
+        pool.shieldBound{value: 2e18}(address(0), 2e18, bytes32(uint256(0xC3)), hex"00");
+        pool.shieldBound{value: 2e18}(address(0), 2e18, bytes32(uint256(0xC4)), hex"00");
+        CloakGloamBatcherBase.OrderKey memory k1 = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0xC3)), address(launch), true, 2e18, vm.addr(ownerPk), fallbackTo);
+        CloakGloamBatcherBase.OrderKey memory k2 = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0xC4)), address(launch), true, 2e18, vm.addr(ownerPk), fallbackTo);
+        batcher.place(_spend(k1), k1);
+        batcher.place(_spend(k2), k2);
+        uint64 round = batcher.currentRound();
+        _endRound();
+        batcher.settle(address(launch), round);
+        assertGt(_claim(k1, 0xC5), 0);
     }
 
     function test_isStandard() public view {

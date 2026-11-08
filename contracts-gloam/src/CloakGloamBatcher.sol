@@ -100,6 +100,10 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     uint256 public immutable maxSlippageBps;
     uint256 public immutable refundAfter;
     uint256 public constant MAX_IMPACT_BPS = 500;
+    /// @notice Each side of a round holds at most this share of the market's depth (4%), so its net trade stays inside
+    ///         MAX_IMPACT_BPS and the round settles: one huge order can't make every order in it wait for a refund
+    ///         (review CL-06, as Cloak v1's batchers). An order that doesn't fit goes in a later round.
+    uint256 public constant MAX_SIDE_BPS = 400;
     uint256 public constant EXIT_DELAY = 30 days;
     address internal constant NATIVE = address(0);
     bytes32 private constant CLAIM_DOMAIN = keccak256("cloak.gloam.batch.claim.v1");
@@ -128,6 +132,7 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     error WrongAmount(uint256 owed);
     error NoPair();
     error TooLate();
+    error RoundFull();
 
     modifier nonReentrant() {
         if (_entered == 1) revert Reentrancy();
@@ -225,6 +230,10 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         }
         if (k.buy) b.buyHype += uint128(net);
         else b.sellTokens += uint128(net);
+        {
+            (uint256 rH, uint256 rT) = _reserves(k.token);
+            if (k.buy ? uint256(b.buyHype) * 10_000 > rH * MAX_SIDE_BPS : uint256(b.sellTokens) * 10_000 > rT * MAX_SIDE_BPS) revert RoundFull();
+        }
         orders[id] = Order(k.token, round, k.buy, false, uint128(net));
         emit OrderPlaced(id, k.token, round, k.buy, k.size, net);
     }

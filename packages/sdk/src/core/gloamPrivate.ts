@@ -94,6 +94,7 @@ const BATCH = parseAbi([
   "function roundSecs() view returns (uint256)",
   "function marketOf(address) view returns (address)",
   "function orders(bytes32) view returns (address token, uint64 round, bool buy, bool paid, uint128 net)",
+  "function batches(address, uint64) view returns (uint128 buyHype, uint128 sellTokens, uint128 tokensForBuyers, uint128 hypeForSellers, uint256 spotStart, uint64 settledAt, bool settled, bool cancelled, uint256 cumStart, uint64 tStart)",
 ]);
 
 const UNSHIELD = parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]);
@@ -417,6 +418,38 @@ export class GloamPrivate {
 
   // ── trading (CloakLaunchSwap on the launch vault) ──────────────────────
 
+  /** The market's HYPE and token depth (the launch's CloakV4Market, or its V2 pair with WHYPE). */
+  private async depth(token: Address): Promise<{ rH: bigint; rT: bigint }> {
+    const pub = this.cfg.publicClient;
+    // the v4 batcher's own record of the launch's market first, then the markets loaded for swaps
+    const v4 = this.cfg.batcherV4 ? await pub.readContract({ address: this.cfg.batcherV4, abi: BATCH, functionName: "marketOf", args: [token] }) : zeroAddress;
+    const m = v4 !== zeroAddress ? { pair: v4 as Address, v4: true } : this.market(token);
+    const pair = m.pair;
+    if (!pair) throw new Error("This token has no pool to trade privately against yet.");
+    if (m.v4) {
+      const [rH, rT] = await Promise.all([pub.readContract({ address: pair, abi: V4MARKET, functionName: "reserveHype" }), pub.readContract({ address: pair, abi: V4MARKET, functionName: "reserveToken" })]);
+      return { rH, rT };
+    }
+    const [r0, r1] = await pub.readContract({ address: pair, abi: V2, functionName: "getReserves" });
+    const hypeIs0 = lc(await pub.readContract({ address: pair, abi: V2, functionName: "token0" })) === lc(this.cfg.whype);
+    return hypeIs0 ? { rH: BigInt(r0), rT: BigInt(r1) } : { rH: BigInt(r1), rT: BigInt(r0) };
+  }
+
+  /**
+   * How much more one side of the current round takes: each side holds at most 4% of the market's depth (the
+   * batcher's MAX_SIDE_BPS, so the round always settles). Counted on what's already in, and on the order's full size
+   * (what lands is less the vault's fee), so an order sized to it fits.
+   */
+  async batchRoom(token: Address, side: "buy" | "sell"): Promise<bigint> {
+    const batcher = await this.batcherFor(token);
+    const pub = this.cfg.publicClient;
+    const [round, { rH, rT }] = await Promise.all([pub.readContract({ address: batcher, abi: BATCH, functionName: "currentRound" }), this.depth(token)]);
+    const b = await pub.readContract({ address: batcher, abi: BATCH, functionName: "batches", args: [token, round] });
+    const cap = ((side === "buy" ? rH : rT) * 400n) / 10_000n;
+    const used = side === "buy" ? b[0] : b[1];
+    return cap > used ? cap - used : 0n;
+  }
+
   private async v2Quote(token: Address, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
     const m = this.market(token);
     const pair = m.pair;
@@ -530,8 +563,13 @@ export class GloamPrivate {
     const onStatus = opts.onStatus ?? (() => {});
     const asset = side === "buy" ? zeroAddress : token;
     await core.sync(onStatus);
-    const { sizes, rest } = standardSizesFor(amount, core.ownNotes(asset).map((n) => n.amount), opts.maxOrders ?? 6);
-    if (!sizes.length) throw new Error("amount too small for a standard-size order");
+    // a round's side holds at most 4% of the pool: what doesn't fit stays in the balance for a later round
+    const room = await this.batchRoom(token, side);
+    const fits = amount < room ? amount : room;
+    const sized = standardSizesFor(fits, core.ownNotes(asset).map((n) => n.amount), opts.maxOrders ?? 6);
+    const sizes = sized.sizes;
+    const rest = sized.rest + (amount - fits);
+    if (!sizes.length) throw new Error(room === 0n ? "This batch round is full. Try the next round, or swap instantly." : "amount too small for a standard-size order");
     const orders: { id: bigint; size: bigint; round: bigint; txHash: Hex }[] = [];
     const pub = this.cfg.publicClient;
     for (let i = 0; i < sizes.length; i++) {

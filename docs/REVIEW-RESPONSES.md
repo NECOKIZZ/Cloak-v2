@@ -1,8 +1,27 @@
 # Responses to outside reviews (Nov 8)
 
-## Report 1 (Google Doc)
+## Report 1: Haider Ali's AI-assisted review (Nov 7)
 
-Not read yet. This environment can't reach docs.google.com, so it needs pasting in.
+All 12 findings were handled in Cloak v1 on Nov 7 (v1's `SECURITY.md`). The contracts they touch are **byte-identical in this repo** (`contracts/src`, checked file by file against v1's `main`), and v1's regression suite passes here (274 of 274). What each one means for v2, which runs on Gloam's vault:
+
+| ID | v1 outcome (same code here) | On v2's Gloam path |
+|---|---|---|
+| CL-01 drop tie lottery steerable | Fixed: the draw also takes the hash of the block after settlement, which nobody knows while bids can still be opened | Same drops. Residual: Elysium's single sequencer could in principle grind that hash. Bidders can't. A drand round after the reveal deadline would remove even that, so we propose it for the next drop factory. |
+| CL-02 dust bid sets an undersubscribed price | By design: the uniform-price rule, in RULES.md, and the creator sets the minimum price | Same. Report 2 raises the same last-look, and the keeper now publishes unopenable bids. **Decision for Bob:** a notional floor per tick, as the reviewer suggests, would close it in the next factory. |
+| CL-03 one actor fills the deposit cap | Accepted: the caps are temporary until the audit | Same for launches. Also check v2's own caps: the launch vault's HYPE total (1,000 on testnet) and Gloam's 25,000 USDC can be filled the same way. That only blocks new deposits and moves nobody's money. |
+| CL-04 creator shill ladder | Mitigated: unopened drop bids lose 25% (was 10%) | Same drops |
+| CL-05 `createPool` locks a token out of the shared vault | Fixed (`CloakVaults` refuses Uniswap launches) | Cloak's own vaults only. The v2 analogue, `CloakLaunchVault.admitLaunch`, is permissionless and one-shot, gives every factory launch the same fixed caps, and has no second path to lock a token out. |
+| CL-06 one huge order stops a batch round | Fixed in v1's batchers (each side at most 4% of depth) | **Was present in v2's Gloam batcher. Fixed now:** `CloakGloamBatcherBase.MAX_SIDE_BPS = 400` (`RoundFull`). The SDK sizes orders to the room left (`batchRoom`) and keeps the rest in the balance. Tests: `test_CL06_a_whale_order_cant_stop_the_round`, and a full side still settles inside the 5% impact cap. On a fork, a 0.3 HYPE buy against a 0.43 HYPE pool went in as 0.017 and settled. |
+| CL-07 no minimum naming window | Fixed: at least one day | Same spot book |
+| CL-08 v4 sell proceeds refused by `PrivateRouter` | Fixed | Cloak's own router only. v2's `CloakLaunchSwapV4` takes HYPE from the PoolManager during its own swap, tested on the real PoolManager. |
+| CL-09 withdraw fee skipped via the relayer fee | Fixed (the relayer fee pays the same protocol fee) | Cloak's own vaults only. Gloam's proofs carry no relayer fee, and their vault charges every cash out. |
+| A-1 WHYPE donation forces the V2 fallback | Documented (testnet only; mainnet launches use the v4 hook) | n/a: v2 trades v4 launches |
+| A-2 dirty `ownerOf` bricks escrow claims | Fixed (whole word compared) | Same |
+| A-3 escrow rotation steerable | Fixed as CL-01 | Same |
+
+**Not covered by the review, and still open for v2:**
+- The reviewer didn't check the compiled circuits against the verifying keys. For v2 this is Gloam's circuits and final keys, covered by Gloam's own process and their `CheckCeremonyKeys`.
+- Our escrows and `CloakLaunchVault` weren't in scope. They go to Gloam's partner-escrow review and an outside review.
 
 ## Report 2: the auction's sealed bids, and the batcher's price window
 
