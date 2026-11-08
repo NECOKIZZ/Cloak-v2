@@ -163,8 +163,17 @@ export class GloamPrivate {
 
   // ── balances ───────────────────────────────────────────────────────────
 
+  /**
+   * This account's private address in the site's format: `cloak:` then Gloam's receive tag (`gloamr1.…`). Any Gloam app
+   * pays the part after `cloak:`; Cloak takes either form.
+   */
   async address(): Promise<string> {
-    return this.cores[0].address();
+    return `cloak:${await this.cores[0].address()}`;
+  }
+
+  /** A recipient as GloamCore takes it: the gloamr1. tag, with or without Cloak's `cloak:` in front. */
+  static tagOf(to: string): string {
+    return to.startsWith("cloak:gloamr1.") ? to.slice("cloak:".length) : to;
   }
 
   /** Reads both vaults; received payments are swept into own notes (GloamCore's autoSweep). */
@@ -259,7 +268,7 @@ export class GloamPrivate {
   async send(token: Address, to: string, amount: bigint, onStatus: Status = () => {}): Promise<Hex> {
     const asset = this.assetOf(token);
     const c = await this.coreFor(asset, amount);
-    const r = await c.send(asset, to, amount, onStatus);
+    const r = await c.send(asset, GloamPrivate.tagOf(to), amount, onStatus);
     return r.txHashes[0];
   }
 
@@ -285,7 +294,7 @@ export class GloamPrivate {
       await c.sync(onStatus);
       const have = c.ownNotes(asset).reduce((a, n) => a + n.amount, 0n);
       if (have === 0n) continue;
-      const hs = to.startsWith("0x") ? await c.withdraw(asset, to as Address, "max", onStatus) : (await c.send(asset, to, have, onStatus)).txHashes;
+      const hs = to.startsWith("0x") ? await c.withdraw(asset, to as Address, "max", onStatus) : (await c.send(asset, GloamPrivate.tagOf(to), have, onStatus)).txHashes;
       txHash ??= hs[hs.length - 1];
       amount += have;
     }

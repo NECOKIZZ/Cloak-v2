@@ -360,7 +360,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
         setBusy("Loading the prover…");
         await (cur.market?.shared ? getSharedProver() : getProver());
         if (kind === "send") {
-          if (!to.startsWith("cloak:")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
+          if (!to.startsWith("cloak:") && !to.startsWith("gloamr1.")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
           if (cur.market?.shared && shared) {
             await getProver(); // the relayer's fee is proven from your private HYPE
             const tx = await shared.send(cur.key as Address, a, to, setBusy);
@@ -454,7 +454,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                   ? `Shielding is the one public step: your wallet deposits ${cur?.symbol ?? "it"}. It lands on a one-time key, so it can't be linked to anything you do next.${cur && cur.key !== "HYPE" ? ` ${cur.symbol} needs two confirmations the first time: an approval, then the deposit.` : ""} Then swap privately into other tokens on Trade.`
                   : kind === "send"
                     ? <>A transfer inside the vault. The chain only sees that a private transaction happened. No cloak: address to send to? <Link to="/app/links" className="link">Send it as a link</Link> they can claim to any wallet.</>
-                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and the relayer takes a small fee for gas.`}
+                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and ${CORE === "gloam" ? "the relayer pays the gas." : "the relayer takes a small fee for gas."}`}
               </p>
             </>
           )}

@@ -13,3 +13,4 @@ circuits/build/
 circuits/package-lock.json
 contracts-gloam/out/
 contracts-gloam/cache/
+apps/web/public/circuits/gloam/

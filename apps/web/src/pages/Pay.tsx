@@ -50,7 +50,7 @@ export function Pay() {
   if (!req) return null;
   const t: LinkToken = req.token;
   const dec = TOKEN_DECIMALS[t];
-  const toCloak = req.to.startsWith("cloak:");
+  const toCloak = req.to.startsWith("cloak:") || req.to.startsWith("gloamr1.");
 
   /** Exact amount owed (in units) and what leaves the private balance for it, fees included. */
   async function plan() {

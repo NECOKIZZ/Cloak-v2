@@ -56,7 +56,7 @@ try {
   assert((await A.maxSpendable(H)) === parseEther("3") && (await A.relayFee("transact", H)).fee === 0n, "no relayer fee comes out of the balance");
   assert((await A.afterFee(H, parseEther("1"))) === parseEther("0.995"), "afterFee takes the vault's 0.5%");
   const bobAddr = await B.address();
-  assert(bobAddr.startsWith("gloamr1."), `one private address for both vaults (${bobAddr.slice(0, 16)}…)`);
+  assert(bobAddr.startsWith("cloak:gloamr1."), `one private address for both vaults, in the site's cloak: format (${bobAddr.slice(0, 16)}…)`);
   const sendTx = await A.send(A.hypeMarket.token, bobAddr, parseEther("0.5"));
   assert(/^0x[0-9a-f]{64}$/.test(sendTx), "send(hypeMarket.token, …) returns its transaction hash, as the pages expect");
   assert((await B.balance(H)) === parseEther("0.5"), "Bob's balance shows the payment (swept into his own note on sync)");

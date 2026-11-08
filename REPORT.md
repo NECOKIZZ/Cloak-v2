@@ -729,3 +729,20 @@ Same pages and site map. Only the backend changes, chosen by one build setting, 
   - `e2e-gloam/part7-adapter.mjs` calls each method the way the pages do, on final keys through the relay. It passes, including the site's proof checker passing a v2 proof and failing it for another reader.
   - `e2e-gloam/stack.mjs` now holds the deploy steps, shared with `live-elysium.mjs`, whose anvil rehearsal passes again after the move.
   - The site type-checks and builds with both settings. SDK tests 16 of 16.
+
+### 16.10 The real site on the Gloam backend, in a browser (Nov 8)
+
+`e2e-gloam/part8-site.mjs` runs the actual site (`apps/web`, `VITE_CORE=gloam`) in Chromium against a local fork of Elysium testnet, where the Nov 8 live-run contracts exist. A local relay sends the private calls (never the live keeper), and an injected test wallet signs with an anvil dev account. It passes:
+- the first-visit welcome and the getting-started checklist appear as before;
+- "Connect wallet" then "Unlock private account" opens the account with one signature, and the Portfolio page shows a `cloak:` address built from Gloam's receive tag;
+- the Shield page deposits 1 HYPE (the browser proves with Gloam's final shield key), and the Assets card shows 1 HYPE private;
+- the Withdraw page sends 0.5 HYPE to a fresh address, proved in the browser and relayed, and 0.4975 arrives;
+- the Trade page buys the launch token privately through its V2 pool, relayed ("Swapped privately for ~22.5 CLT").
+
+Screenshots are in `measurements/part8-*.png`.
+
+Backend changes this needed, with no layout change:
+- **Addresses:** GloamPrivate shows its address as `cloak:` plus Gloam's `gloamr1.` tag, so every page that expects `cloak:` works. Sending takes either form, so a Cloak user can also pay a Gloam user's bare `gloamr1.` address.
+- **Trade data:** the Trade page's data layer (`pages/markets.ts`) has a Gloam branch: markets are the launch vault's admitted tokens with their V2 pools, quotes use V2's 0.3% maths on live reserves, the fee is read from the launch vault, and batch mode uses CloakGloamBatcher. On the Gloam backend the page doesn't download Cloak's own circuit.
+- **Fee notes:** the Withdraw and Trade notes now state the backend's real terms. On Gloam that is 0.5%, and the relayer pays the gas, with the trade's unused amount coming back.
+- **Circuit copies:** `apps/web/public/circuits/gloam/` (the site's self-hosted copy of Gloam's circuits) is git-ignored. The test copies the files there because jsDelivr is blocked in this container.

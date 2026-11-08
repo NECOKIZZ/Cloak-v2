@@ -2,7 +2,7 @@ import { markDone } from "../guide";
 import { useEffect, useMemo, useState } from "react";
 import { formatEther, parseEther, parseEventLogs, type Address, type Hex } from "viem";
 import { privateBatcherAbi, splitStandard } from "@cloakely/sdk";
-import { BATCHER, SHARED_BATCHER, txLink } from "../config";
+import { BATCHER as CLOAK_BATCHER, CORE, GLOAM, SHARED_BATCHER, txLink } from "../config";
 import { hype, tokens } from "../format";
 import { Link, useRoute } from "../router";
 import { getProver, getSharedProver, useApp } from "../state";
@@ -13,6 +13,9 @@ import { isHidden } from "../hidden";
 import { usePrivateBalances } from "../balances";
 import { Skel } from "../skel";
 import { publicClient } from "../wallet";
+
+/** The batcher behind batch mode: Cloak's own, or CloakGloamBatcher on the launch vault (Cloak v2 on Gloam). */
+const BATCHER = (CORE === "gloam" ? GLOAM?.batcher : CLOAK_BATCHER) as Address | undefined;
 import { every } from "../every";
 
 /** Placed batch orders, followed until each is paid or refunded (B4). */
@@ -188,7 +191,7 @@ export function Trade() {
     if (!p) return;
     try {
       setBusy("Loading the prover…");
-      await getProver();
+      if (CORE !== "gloam") await getProver(); // Cloak v2 on Gloam loads Gloam's circuits itself
       if (mode === "batch") {
         if (market.shared && !shared) throw new Error("Unlock your private account again to trade this token.");
         if (market.shared && side === "sell") await getSharedProver();
@@ -287,7 +290,7 @@ export function Trade() {
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               {tracked && <div className={tracked.tone === "warn" ? "err" : tracked.tone === "ok" ? "okmsg" : "summary small"} style={{ marginTop: 8 }} aria-live="polite">{tracked.tone === "wait" && <span className="dot live" style={{ marginRight: 8 }} />}{tracked.text}</div>}
             </div>
-            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees: {feePct} Cloak fee on the amount traded, plus a small relayer fee that covers gas, both taken from your private balance.</p>
+            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees: {feePct} Cloak fee on the amount traded{CORE === "gloam" ? ". The relayer pays the gas, and whatever the trade didn't need comes back to your private balance." : ", plus a small relayer fee that covers gas, both taken from your private balance."}</p>
           </div>
           <div className="col">
             <div className="card">
