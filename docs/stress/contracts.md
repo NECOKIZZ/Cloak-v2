@@ -1,0 +1,74 @@
+# Cloak v2 contracts: stress test (Nov 8)
+
+Scope: Cloak's own contracts around Gloam's vault (`contracts-gloam/src`, plus `CloakV4Hook` / `CloakV4Market` where the v4 venues use them). Gloam's vault (`vendor/gloam`) was not attacked or changed. Everything ran locally in forge. Nothing was sent to any chain.
+
+New tests: 31 in `contracts-gloam/test/stress/` and 2 in `contracts-v4/test/stress/` (the v4 file inherits the v4 batcher suite, so its run shows 26). No existing file was changed. All existing tests still pass (contracts-gloam: 153 = 122 old + 31 new).
+
+## What was attacked
+
+- **Fund theft from every escrow:** copied proofs with changed keys, rescue with a changed key, and a greedy swap reaching other traders' leftovers.
+- **Signatures:** malleated (high-s) signatures on claim, owner call and shield, and zero owner keys.
+- **Front-running and grief:** front-running `place` / `swap` / `enter` / `shield` with the public proof (the spend sent alone).
+- **Hostile tokens:** a lying-balance token and its own pair in the batcher, fee-on-transfer, unlisted tokens.
+- **Stuck funds:** timeouts, cancel after settle, claim after cancel, double claim, empty rounds, a zero fallback, payouts above vault caps, a full vault.
+- **Batcher price:** pinning the opening spot, pushing the pool inside the band in the settling transaction (sandwich), held moves.
+- **Batcher sizes:** the 4% side cap (squatting, over-cap orders), non-standard and 1-wei orders paid from outside the vault.
+- **Launch vault:** admission races with the pauser, re-admission after the owner lowered limits, pauser powers, unsettled launches.
+- **Bids:** dust top-ups against the auction's bid cap, exit replay, stray HYPE.
+- **Graduation:** crowd padding.
+- **Funds gate:** one note in two slots, double entry, entry after the close, double confirm.
+- **v4 venue:** the batcher's opening-band grief and the settle sandwich, repeated on the real PoolManager behind CloakV4Hook.
+
+## Findings
+
+Nothing found lets anyone take money that isn't theirs from an escrow, the launch vault, a receive box or a bid account. The worst issues are griefing, value leaking through the batcher's net trade, and money that waits (sometimes for good) with no exit.
+
+| ID | Severity | Contract:function | What | PoC test | Suggested fix |
+|---|---|---|---|---|---|
+| C-01 | Medium | CloakGloamBatcherBase:place / settle (both venues) | Anyone can void every round of a token for almost nothing. In one transaction they push the pool about 3%, place a 1-wei first order (which sets `spotStart`), and push back. The honest average is then never within 2% of the opening spot, so the round can only be cancelled. Every honest order is locked for the round plus `refundAfter`, then refunded less the vault's 0.5% fee it already paid. Cost: about 0.009 HYPE per round on a 100 HYPE pool, and 0.089 HYPE on the ~1,000 HYPE v4 launch pool. | `test_batcher_openingBandGrief_oneWeiFirstOrderForcesRefundEveryRound`, `test_batcherV4_openingBandGrief_oneWeiFirstOrderForcesRefund` | Don't take the band's reference from one block. Use a time-weighted reference instead: the market's average over the window before the first order (keep a stored `(cum, t)` checkpoint per token, updated on `place` and `settle`), or the last settled round's average. Also add a minimum order size and the net check in C-07, so the first order can't be 1 wei. |
+| C-02 | Medium | CloakGloamBatcherBase:settle (both venues) | `settle` is open to anyone. So one transaction can push the pool just inside the 2% band, settle (the round's net trades at the pushed price and still passes the 5% impact check, which is measured from the average), and swap back. Buyers in a buy-heavy round lost 1.76% of their tokens. Attacker profit: 0.030 HYPE on a 2 HYPE net (V2 mock), and 0.30 HYPE on a 20 HYPE net (real v4 pool). Sell-heavy rounds can be sandwiched the same way. | `test_batcher_settleSandwich_atomicExtractionFromBuyers`, `test_batcherV4_settleSandwich_atomicExtractionFromBuyers` | Bound the net trade by its expected output, not by 5% from the average. Work out `getAmountOut(extra)` on reserves implied by the average and the pool's depth, and require `got >= expected * (1 - ~50 bps)`. Or tighten the pool-vs-average band for the settling transaction (for example 0.5%). |
+| C-03 | Medium | CloakGloamBatcherBase:place | A batcher escrow can be left with no exit. The unshield proof in a pending `place` is public, so anyone can send the spend alone. After that, only `place` can open the escrow, and `place` refuses an order bigger than 4% of the pool (`RoundFull`). If the pool shrinks (the token's price falls about 9% in the test), the order never fits again. Cancel, claim and the timeout exit can't reach it, because the order doesn't exist. The money stays at the escrow until the price recovers, which may be never. The app sizes orders up to the room left, so near-cap orders are normal. | `test_batcher_spentAloneEscrow_lockedWhenTheOrderNoLongerFits` | Give an unplaced escrow a way out, as CloakLaunchSwap's `rescue` does. For example, `place` of a spend already sent alone skips the side cap and records the order as refund-only (owed its input, `claim` / `exitAfterTimeout` as usual). Or add `reclaim(k, d, sig)`, owner-signed, that opens the escrow and deposits the input back. |
+| C-04 | Medium | CloakGloamBatcherBase:claim | A payout bigger than the vault's per-deposit cap can't be claimed. A claim must be one note of exactly what's owed, and the partner deploy lists HYPE at 10 per deposit. A sell order worth more than 10 HYPE (allowed by the 4% cap on any pool over 250 HYPE) waits 30 days, then `exitAfterTimeout` pays the one-time fallback address in the clear. | `test_batcher_sellPayoutOverHypePerDeposit_lockedThirtyDaysThenPublic` | Let `claim` take `Deposit[]` (several notes summing to what's owed, each within the cap), and add an owner-signed `exit(k, to, sig)` like CloakLaunchSwap's. Meanwhile, the SDK should cap a sell order's expected HYPE at the per-deposit cap. |
+| C-05 | Low | CloakGloamBatcherBase:claim (and every escrow that deposits back) | A whale can fill the launch vault's HYPE total cap with its own notes. Its cost is the capital plus 0.5% to leave. While the cap is full, no settled round's HYPE and no cancelled buy can be claimed. The batcher's only other way out is the 30-day timeout. (CloakLaunchSwap and CloakGloamBids still have their signed exits.) | `test_batcher_vaultTotalCapFilledBlocksEveryHypeClaim` | The same signed exit as C-04. |
+| C-06 | Medium | CloakGloamReceive / ReceiveBox | A receive box has no exit. Its money can only go into one of the two vaults, as a note. Anything neither vault takes waits there forever: a token no vault lists, a fee-on-transfer token (refused outright), NFTs, or HYPE beyond a full or lowered cap. That contradicts "every escrow has a timeout exit" in ESCROWS.md. The addresses are public and "anyone can pay", so someone will send a wrong asset. | `test_receive_unlistedTokenIsStuckInTheBox`, `test_receive_hypeOverTheTotalCapWaits` | Add an owner-signed `sweep(ownerKey, n, asset, amount, to, nonce, sig)` that pays out in the clear, with a domain and nonce like the shield digest. |
+| C-07 | Low | CloakGloamBatcherBase:place, CloakGraduation:enter | Orders and entries can be paid from outside the vault. When the nullifier is already spent, `place` / `enter` skip the unshield and take whatever is at the escrow. So anyone can reuse any public spent nullifier, fund the escrow directly with any amount (1 wei, 3.3 HYPE), and get an order or entry with no note and no vault fee. This pads a round's crowd (Graduation's `roundEntries`, which the app waits on), breaks the "standard sizes only" picture, and makes C-01 and C-08 nearly free. | `test_batcher_outsideOrder_anySpentNullifierAnyAmount`, `test_graduation_outsideEntriesPadTheCrowd` | Require what arrived to match a note of `k.size`: `size - maxFee(size) <= net <= size` (maxFee is the vault's 1% ceiling), plus a minimum size. That rules out 1-wei and arbitrary amounts. An outsider must then lock a full standard size, and a crowd count costs real money. |
+| C-08 | Low | CloakGloamBatcherBase:place | The 4% side cap can be squatted. An attacker fills both sides to the cap with its own orders (paid from outside, see C-07). They cross each other at the average with no net trade and no pool fee, so the attacker gets its value back, and every honest order that round hits `RoundFull`. Repeating it costs capital, plus 0.5% each round if the payouts are recycled through the vault. | `test_batcher_sideCapSquat_selfCrossingOrdersBlockHonestOrders` | Cap what can hurt the round: the net imbalance (buy value minus sell value at the opening spot) at 4%, with a looser cap per side (or per order). Together with C-07, squatting then costs real money. |
+| C-09 | Low | CloakGloamBids:place | 1 wei can block a bid at the auction's cap. `place` bids with the account's whole balance, and the account address is in the pending call. A front-runner who sends 1 wei makes a bid at exactly `bidCap` (or the last room under `depositCap`) fail "over cap". If they also send the spend alone, `place` fails for good, and the owner has to `finish` back into the vault (the 0.5% fee is lost) and bid again from a new key. | `test_bids_oneWeiTopUpBlocksABidAtTheCap` | Bid a fixed, signed amount (the note less the vault's fee, or an amount named in the place digest) instead of `account.balance`. Leave any extra for `exit`. |
+| C-10 | Info | CloakGloamBids:exit | An exit signature can be replayed. It has no nonce, and `exit` doesn't check `closed`, so anyone can resend it later. An owner who exited early can't then finish privately: anything that arrives later (the auction's refund, won tokens) can be pushed to the same address in the clear. | `test_bids_exitSignatureReplaysLater` | Add a nonce (as `ownerCall` has), or mark the signature used. |
+| C-11 | Info | CloakGloamBids:receive | `CloakGloamBids` takes HYPE from anyone (it needs to during `finish`), and nothing can send stray HYPE on. | `test_bids_strayHypeIsStuckInTheFactory` | Accept HYPE only while `finish` runs (a flag), as the batcher does. |
+| C-12 | Info | CloakGloamBatcherBase:place / exitAfterTimeout | `fallbackTo` isn't checked (Graduation refuses address 0). A timed-out payout to address 0 is burned: a token transfer to 0, or HYPE sent to 0. | `test_batcher_zeroFallbackBurnsTimedOutHype` | `if (k.fallbackTo == address(0)) revert BadKey();` in `place`. |
+| C-13 | Info | CloakGloamBatcherBase:constructor | `refundAfter = 0` is accepted. Every round is then `TooLate` and only refunds, still taking the 0.5% vault fee on the way in. | `test_batcher_zeroRefundWindowNeverSettles` | `require(refundAfter_ > 0)`. |
+| C-14 | Info | CloakLaunchVault:admitLaunch | Admission is instant and open to anyone, so a pauser's `blockLaunch` can be raced the moment a launch settles. After admission the pauser has no power (by design). Only the owner can lower the limit, through the guard. | `test_launchVault_pauserBlockCanBeFrontRun` | Accept it as designed, or add a short admission delay after settlement during which the pauser can block. |
+
+## Things tried that held
+
+- **Copied keys:** a copier who changes any part of a key gets another escrow, so the proof fails. This holds for every escrow: swap key, order key, entry key, bid key, receive box. A rescue with a changed owner key opens an empty escrow and reverts (`test_launchSwap_rescueWithAChangedKeyGetsNothing`). A bid key with another fallback reaches only its own empty account (`test_bids_otherKeyCantReachTheAccount`).
+- **Other traders' leftovers:** a swap can't spend them. It pays at most what its own note brought in, so a 1 HYPE note asking for 2 HYPE of output reverts while the router holds 8+ HYPE of others' leftovers (`test_launchSwap_greedySwapCantSpendOthersLeftovers`).
+- **Hostile tokens in the batcher:** a token that lies about balances, with its own pair, drains only its own pool's HYPE. HYPE owed to other tokens' rounds is untouched (`test_batcher_hostileTokenRoundCantTouchOtherRoundsHype`). Fee-on-transfer tokens are refused at the box, the vault and the swap.
+- **Malleated (high-s) signatures:** they never give a second payout. The commitment is single-use, the owed amount is deleted, and owner calls carry a nonce (`test_launchSwap_malleatedClaimSignatureOnce`, `test_receive_malleatedSignatureCantDoubleShield`, `test_bids_malleatedOwnerCallCantReplay`).
+- **Zero owner keys:** refused everywhere, so `ecrecover` returning 0 is never a pass (`test_receive_zeroOwnerKeyRefused`, and code read for the batcher, Graduation and the swap).
+- **Cross-contract and cross-chain replay:** every digest carries a domain, the chain id, the contract and the id.
+- **Settle and cancel:** they exclude each other at the boundary. After a claim there is no double pay, an empty-round cancel is harmless, and no order can join a past round (`test_batcher_settleCancelExclusiveAndNoDoublePay`, `test_batcher_emptyRoundCancelHarmless`).
+- **Reentrancy:** every state-changing path that sends HYPE or calls a token is `nonReentrant` and updates state first. `cancel` isn't guarded, but it only flips a flag on a round whose window has passed.
+- **TWAP:** a push in the first order's block, or in the settling transaction, doesn't move the average. The existing tests cover this, and it was re-checked in C-02, where only the net trade's execution is hit.
+- **Launch vault:**
+  - an unsettled launch is refused;
+  - re-admission under another launch index naming the same token can't raise a limit the owner lowered;
+  - the pauser can't lower limits or sweep (`test_launchVault_*`).
+- **Funds gate:**
+  - the same note in two slots of one proof is refused;
+  - each wallet enters once;
+  - nobody enters after the close;
+  - a second confirm is a no-op (`test_fundsGate_*`).
+  - Nullifier aliases above the field size are refused by the real verifier's `checkField` on every public input (read in `GloamFundsVerifierFinal.sol`).
+- **CloakV4Hook:** only the hook can initialise a pool or add liquidity, so a route through "Cloak's hook" can't be a hostile pool. The accumulator counts a price only for the time it was held.
+- **Gas and DoS:** routes are capped at 3 hops, `isStandard` loops at most about 40 times (sizes are uint128), and the only caller-sized loops (`finish`, `exit` token lists, gate `wallets`) cost only the caller.
+
+## Rerun
+
+```
+cd contracts-gloam && ~/.foundry/bin/forge test --offline --match-path 'test/stress/*' -vv
+cd contracts-v4   && ~/.foundry/bin/forge test --offline --match-path 'test/stress/*' --match-test test_batcherV4 -vv
+```
+
+The first v4 build of the new file takes about 2 minutes (via_ir). The `-vv` flag prints the attacker costs and profits quoted above.
