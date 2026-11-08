@@ -2,8 +2,8 @@
   "venue": "Uniswap V2 pair (Elysium testnet factory)",
   "router": "CloakV2PairSwap on GloamVaultSwap2",
   "timingsMs": {
-    "private swap HYPE -> token on a V2 pair": 4786,
-    "private swap token -> HYPE on a V2 pair": 2937
+    "private swap HYPE -> token on a V2 pair": 5600,
+    "private swap token -> HYPE on a V2 pair": 2971
   },
   "gas": {
     "deploy test USDC": {
@@ -24,20 +24,20 @@
     },
     "relayed transfer": {
       "n": 4,
-      "median": 1792085
+      "median": 1792097
     },
     "relayed escrow": {
       "n": 2,
-      "median": 1655749
+      "median": 1655737
     },
     "unshield alone": {
       "n": 1,
-      "median": 341099
+      "median": 341087
     },
     "refund (anyone)": {
       "n": 1,
-      "median": 1180214
+      "median": 1180226
     }
   },
-  "wallMs": 22038
+  "wallMs": 37712
 }

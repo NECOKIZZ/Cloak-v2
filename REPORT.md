@@ -639,3 +639,25 @@ Measured in `e2e-gloam/part4-launch-relay.mjs` on anvil (chain 99801), and the f
 - The relay then collected the 0.005 HYPE fee (0.00495 after gas) and paid a 1.79M-gas private send plus its memo from it, with none of its own budget. The keeper wallet ended up 0.003 HYPE ahead over that send. At anvil's gas price a 1 HYPE cash out's fee paid for about two and a half private sends. The live testnet ratio is still to be measured (step 7).
 - Memo refusals (409 for a repeat, 400 for a made-up payment) and 429 for Gloam vault calls once the base budget is spent.
 - `part3-relay.mjs` updated to the new memo rule and passing.
+
+### 16.6 Step 5 done: the app's follow-ups and the keeper loop (Nov 8)
+
+App side, `packages/sdk/src/core/launchVault.ts` (exported from `@cloakely/sdk`):
+- `launchSwap()` makes a private swap on CloakLaunchSwap. `graduate()` enters a graduation round. Each returns a record the app keeps. A record holds no secrets: the signing key comes back from the account seed and the spent note.
+- `finishPending(core, records)` runs on every app open. A swap's leftover comes back as a note (or the whole input, through `rescue`, when a spend landed alone and the deadline passed). A graduation leaves for Gloam's vault once its round ends, and goes back into the launch vault if Gloam's vault refuses it. It waits for at least 3 entries per round for up to a day, so a lone entry is harder to follow (`minRoundEntries`, `crowdWaitSecs`). A failure on one record is reported and the record kept, never thrown.
+- Memos now go out after a deposit lands, not before, in the new helpers and in `gloamSwap` and `gloamFinishBid`. Relays (Gloam's and Cloak's) take a memo only for a note already in a vault, so "announce first" would be refused. A memo that fails doesn't undo the deposit: this device already tracks the note, and only other devices would miss it until it is posted again.
+
+Keeper side, `services/keeper/gloamLoop.mjs`, every `GLOAM_LOOP_SECS` (60):
+- it admits every settled Cloak launch to the launch vault (`admitLaunch`, so deposits open the moment a launch settles);
+- it settles each CloakGloamBatcher round once it ends, or cancels it after its refund time;
+- it collects the launch vault's fees for the relay.
+- Each call is simulated first, so a round that can't settle yet costs nothing. The keeper still can't do follow-ups that spend or sign for a user (leftovers, payouts, graduation exits, the 30-day graduation timeout), because they need the account's seed or the entry's key. That is why `finishPending` exists.
+- Keeper settings: `GLOAM_LAUNCH_VAULT`, `GLOAM_LAUNCH_FACTORY` (optional), `GLOAM_BATCHER`, `GLOAM_BATCHER_BLOCK`, `GLOAM_LOOP_SECS`.
+
+Measured in `e2e-gloam/part5-launch-auto.mjs` on anvil (chain 99801), all on Gloam's final keys and through the relay:
+- the keeper loop admitted the settled launch on its own, and did nothing the second time;
+- a 2 HYPE private swap for exactly 1000 tokens, then on the next open the 0.977 HYPE buffer came back as a private note (Gloam's base would have sent it to a treasury);
+- a graduation waited for its round, then moved 995 tokens into Gloam's vault. Gloam listed the token through its guard's real 3-day timelock, skipped forward on anvil. A GloamCore pointed at Gloam's vault found the note with the same wallet, and it cashed out with a final-key proof;
+- a private batch buy order, left alone until its round ended, then settled by the keeper loop.
+
+Also rerun and passing: forge (91), `part2-swap`, `part2-swap-v2`, `part2-bid`, `part3-relay`, `part4-launch-relay`, and the SDK tests (16). The bid run and the SDK's seal tests reach drand, and in this container that needs `NODE_USE_ENV_PROXY=1` for Node's fetch.

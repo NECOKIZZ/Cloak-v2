@@ -20,20 +20,20 @@
     },
     "relayed memo": {
       "n": 3,
-      "median": 91600
+      "median": 91570
     },
     "relayed transfer": {
       "n": 1,
-      "median": 1792563
+      "median": 1792611
     },
     "relayed escrow": {
       "n": 2,
-      "median": 2192645
+      "median": 2192609
     },
     "execute listing (guard)": {
       "n": 1,
       "median": 57925
     }
   },
-  "wallMs": 88136
+  "wallMs": 99307
 }

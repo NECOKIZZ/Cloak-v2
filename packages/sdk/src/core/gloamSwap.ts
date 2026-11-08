@@ -111,12 +111,21 @@ export function swapCalldata(x: PreparedSwap): Hex {
 /** Prove and send a private swap. Returns the transactions (the swap, then the memo that lets other devices see the new note). */
 export async function gloamSwap(core: GloamCore, p: Parameters<typeof prepareGloamSwap>[1], onStatus: Status = () => {}): Promise<{ txHashes: Hex[]; prepared: PreparedSwap }> {
   const x = await prepareGloamSwap(core, p, onStatus);
-  // announce first: the memo is harmless if the swap fails, and a swap that lands is always findable
-  const memo = await core.post(BigInt(x.d.commitment), x.tickets, onStatus);
   onStatus("Swapping");
   const tx = await core.config.submit({ kind: "escrow", to: x.router, data: swapCalldata(x) });
   for (const t of x.track) core.track(t);
-  return { txHashes: memo ? [memo, tx] : [tx], prepared: x };
+  // after the swap: relays (Gloam's and Cloak's) take a memo only for a note already in the vault. The out note or the
+  // refund note landed, and the memo carries both tickets, keyed by whichever is in the vault.
+  let memo: Hex | null = null;
+  for (const c of [x.d.commitment, x.r.commitment]) {
+    if (memo) break;
+    try {
+      memo = await core.post(BigInt(c), x.tickets, onStatus);
+    } catch {
+      /* try the other note */
+    }
+  }
+  return { txHashes: memo ? [tx, memo] : [tx], prepared: x };
 }
 
 /** The way out when even the refund can't land: the exit key signs the escrow's money out to `to`, in the clear. */

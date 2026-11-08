@@ -108,11 +108,12 @@ export async function gloamFinishBid(core: GloamCore, rec: GloamBidRecord, back:
   const ds = made.map((m) => m.deposit);
   const digest: Hex = (await pub.readContract({ address: rec.bids, abi: BIDS, functionName: "finishDigest", args: [rec.account, ds] })) as Hex;
   const signature = await privateKeyToAccount(core.exitKeyFor(rec.key.nullifier)).sign({ hash: digest });
-  const memo = made.length ? await core.post(BigInt(ds[0].commitment), made.map((m) => m.ticket), onStatus) : null;
   onStatus("Returning the bid to the private balance");
   const tx = await core.config.submit({ kind: "escrow", to: rec.bids, data: encodeFunctionData({ abi: BIDS, functionName: "finish", args: [rec.key, ds, signature] }) });
   for (const m of made) core.track({ commitment: m.note.commitment, asset: m.note.asset, amount: m.note.amount, secret: m.note.secret });
-  return memo ? [memo, tx] : [tx];
+  // after the deposit: relays take a memo only for a note already in the vault
+  const memo = made.length ? await core.post(BigInt(ds[0].commitment), made.map((m) => m.ticket), onStatus).catch(() => null) : null;
+  return memo ? [tx, memo] : [tx];
 }
 
 /** One owner-signed call from the bid account: a drop's NFTs out to a wallet, for instance. */

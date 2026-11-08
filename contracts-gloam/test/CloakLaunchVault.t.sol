@@ -47,6 +47,10 @@ contract FakeFactory {
         launches.push(Launch(auction, token, address(0xC0), address(0xC1), 0, address(0)));
         return launches.length - 1;
     }
+
+    function launchesCount() external view returns (uint256) {
+        return launches.length;
+    }
 }
 
 contract CloakLaunchVaultTest is Test {

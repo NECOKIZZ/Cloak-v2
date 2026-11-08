@@ -25,6 +25,7 @@ import { startSchedule } from "./schedule.mjs";
 import { startReceive } from "./receive.mjs";
 import { startFeeCollector } from "./fees.mjs";
 import { createGloamRelay } from "./gloam.mjs";
+import { createGloamLoop } from "./gloamLoop.mjs";
 import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakDropFactoryAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
@@ -163,6 +164,34 @@ for (const m of ["writeContract", "sendTransaction"]) {
     });
 }
 const cloak = new Cloak(publicClient, walletClient, FACTORY, EARLIER);
+
+// Cloak v2 on Gloam: the loop for follow-ups that need no user secret (gloamLoop.mjs). On when GLOAM_LAUNCH_VAULT or
+// GLOAM_BATCHER is set. Every GLOAM_LOOP_SECS (default 60): admit settled launches, settle batch rounds, collect fees.
+const gloamLoop = process.env.GLOAM_LAUNCH_VAULT || process.env.GLOAM_BATCHER
+  ? createGloamLoop({
+      publicClient,
+      account,
+      send: (call) => walletClient.writeContract(call),
+      launchVault: process.env.GLOAM_LAUNCH_VAULT,
+      launchFactory: process.env.GLOAM_LAUNCH_FACTORY,
+      batcher: process.env.GLOAM_BATCHER,
+      batcherBlock: BigInt(process.env.GLOAM_BATCHER_BLOCK ?? "0"),
+      relay: gloamRelay,
+      log: console.log,
+    })
+  : null;
+if (gloamLoop) {
+  let running = false;
+  setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      await gloamLoop.tick();
+    } finally {
+      running = false;
+    }
+  }, 1000 * Number(process.env.GLOAM_LOOP_SECS ?? 60)).unref();
+}
 
 const status = { keeper: account.address, commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null, chain: chain.id, config: process.env.CONFIG ?? null, version: reg?.version ?? null, factory: FACTORY, ignoredEnv: ignored, launches: {}, lastTick: 0 };
 const done = new Set(); // auctions fully claimed
