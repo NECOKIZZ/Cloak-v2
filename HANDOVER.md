@@ -4,7 +4,7 @@ For whoever (person or LLM) picks this up next. Read this first, then `REPORT.md
 
 ## 1. Rules (from the owner, Bob / NECOKIZZ). Follow them exactly
 
-- Work only in `NECOKIZZ/Cloak-v2`, branch `main`. **Never push to `NECOKIZZ/cloak` (Cloak v1).** Never touch the live site (Vercel), the live keeper (Render) or npm packages.
+- Work only in `NECOKIZZ/Cloak-v2`. Branch `main` (the Nov 8 night session worked on `claude/zen-edison-pikw3r`, which builds on `main` and is merged there when Bob says). **Never push to `NECOKIZZ/cloak` (Cloak v1).** Never touch the live site (Vercel), the live keeper (Render) or npm packages.
 - Commit as the owner, with **no Claude or AI attribution** (no Co-Authored-By, no session links): `git -c user.name=NECOKIZZ -c user.email=ohukeofficial@gmail.com commit ...`. Commit and push each working step.
 - Testnet only (Elysium testnet, chain 99801), never real funds. Use a fresh testnet key from `.env` (`GLOAM_TESTNET_PK`), never Cloak's deployer or keeper key. `.env` is git-ignored: never commit it or any key. Never paste keys in chat.
 - No pull requests unless asked. Budget is $0, so no paid services.
@@ -19,9 +19,9 @@ For whoever (person or LLM) picks this up next. Read this first, then `REPORT.md
 
 ## 2. The testnet wallet
 
-- Address `0x130292b4d2A3C2aBc1C5B3747b9f18C06CfBBFE5`, about 0.92 testnet HYPE left. Its key lived only in the old container's `.env` and **is probably gone**.
-- If it is gone, generate a new one (`cast wallet new`), write it to `.env` as `GLOAM_TESTNET_PK=0x...` (and `GLOAM_TESTNET_ADDRESS`), `chmod 600`, and ask Bob to fund the address with about 1 testnet HYPE.
-- The deployed contracts below are owned by the old address (guard controller, pauser, fee recipient). A new key means redeploying with `e2e-gloam/deploy-testnet.mjs`, which costs about 0.003 HYPE.
+- **Current key (Nov 8, night):** `0x49C71A0c1d6E394392009922658f294dC2a2bEf5`, in this container's git-ignored `.env` (`GLOAM_TESTNET_PK`, mode 600). Not funded yet: Bob funds it with about 0.05 testnet HYPE. If the container is gone, make a new one the same way (`cast wallet new`) and ask Bob again.
+- The old address `0x130292b4d2A3C2aBc1C5B3747b9f18C06CfBBFE5` (about 0.92 HYPE) owns the deployed guard, pauser and fee recipient. Its key is gone. The contracts still work, since none of them needs the owner day to day. A full redeploy (`e2e-gloam/deploy-testnet.mjs`, about 0.003 HYPE) moves those roles to the new key, and is due anyway when Gloam's own vault goes live.
+- Ownerless additions (like the v4 batcher, `e2e-gloam/deploy-batcher-v4.mjs`) need no redeploy.
 
 ## 3. Repo map (what matters)
 
@@ -67,21 +67,14 @@ For whoever (person or LLM) picks this up next. Read this first, then `REPORT.md
   - There is no batcher there yet.
 - **Real site test** (`part8-site.mjs`, on a fork of that deployment): unlock, shield, withdraw, a buy of FRTN through its real v4 pool, a link claimed by a wallet-less guest, and the Receive page, all passing.
 
-## 5. Unfinished work (uncommitted at the time, committed with this file)
+## 5. Done on Nov 8 (night), see REPORT 16.21 to 16.24
 
-1. **CloakGloamBatcherV4** (`contracts-gloam/src/CloakGloamBatcherV4.sol`), batch rounds on v4 launches:
-   - The batcher was split into `CloakGloamBatcherBase` plus venues. The V2 venue is unchanged and its tests pass (117/117).
-   - The v4 venue gets each token's market (`CloakV4Market`, from `auction.pair()`) through a permissionless `register(launchIndex)`.
-   - Test: `contracts-v4/test/CloakGloamBatcherV4.t.sol`. Register and no-market pass. The round test failed with `Impact()` because Cloak's hook charges a 10% anti-snipe fee for 300 s after listing. The test was then changed to settle after that window, **but that run was interrupted, so it is unverified.** Run:
-     ```
-     cd contracts-v4 && ~/.foundry/bin/forge test --match-contract CloakGloamBatcherV4Test
-     ```
-   - Then still to do:
-     - add `register` to the keeper loop (`gloamLoop.mjs`: call `register(i)` for each settled launch);
-     - make `GloamPrivate.batch` and `markets.ts` (`batchable: true` for v4 when `GLOAM.batcherV4` is set) use it;
-     - add `batcherV4` to `GloamDeployment` and deploy it to testnet;
-     - write a REPORT entry.
-2. **Receive page subtitle** (`apps/web/src/pages/Receive.tsx`): on the Gloam backend it now reads "What arrives moves into your private balance whenever Cloak is open." Type-checked, not yet in a REPORT entry.
+- **v4 batch rounds, end to end:** the round test passes (the test had signed with the wrong key's address). The keeper loop registers settled launches and settles both batchers. The SDK picks the v4 batcher per token, records each order and claims payouts in `finishPending` (before this, batch payouts were never claimed by the app). Orders are sized by the notes held (`standardSizesFor`). The site turns batch mode on for registered v4 launches. `part14-batch-v4.mjs` on a fork covers a cancel with refund, a buy round and a sell round on real launches.
+- **Founder answers** are in `GLOAM_QUESTIONS.md`. The packs for Bob to send are in `docs/gloam-pack/`.
+- **Spread-out withdrawals on Gloam:** proved up front (Gloam keeps every root), queued by the keeper's schedule through the Gloam relay (new dry run), and dropped if cancelled. `part15-split-withdraw.mjs`.
+- **MCP on Gloam:** the default where the deployment has `gloam`. `part16-mcp.mjs`. Payment links in the agent tools are still to do.
+- **CI** runs v2 only (Gloam stack, v4 contracts, SDK, MCP, site on Gloam, 13 anvil runs). **The site defaults to the Gloam backend** (`VITE_CORE=cloak` for the old one).
+- **Network:** this session's cloud environment is "Cloak-v2", which allows the Elysium testnet RPC, drand and soliditylang, and has a setup script that installs Foundry 1.5.1, solc and deps. The script hasn't been proven in a fresh session yet.
 
 ## 6. Gloam's founder (Duke) answered our questions. What it means for the build
 
@@ -125,18 +118,13 @@ His answers, and what to do about each:
 
 ## 7. Next steps, in order
 
-1. Verify and finish CloakGloamBatcherV4 (section 5), then commit.
-2. Write the founder's answers into `GLOAM_QUESTIONS.md` and a short REPORT entry (section 6).
-3. Prepare the three packs for Bob to send Gloam (as markdown files in the repo, not sent by you):
-   - escrow review (addresses, functions, what each can move);
-   - the launch vault diff;
-   - the factory token contract and the v4 pool key list.
-4. When Gloam's testnet vault is live: switch to it and their verifiers, redeploy what takes the vault address, update `deployments.ts`, and rerun `part8-site.mjs` on a fork plus the live script.
-5. Remaining build items:
-   - spread-out withdrawals on Gloam (`GloamPrivate.planSplitWithdraw` currently throws "not on the new private layer yet");
-   - the MCP tools (`packages/mcp`) moved onto `GloamPrivate`;
-   - bundle size (replace heavy Poseidon libraries with `poseidon-lite` where possible).
-6. Only when Bob says Gloam's side is proven: remove Cloak's own private layer from v2 (list in REPORT section 17). Cloak v1 keeps it.
+1. **Deploy the v4 batcher live** once the new key is funded: `NODE_USE_ENV_PROXY=1 node e2e-gloam/deploy-batcher-v4.mjs`. Then put `batcherV4` in `deployments.ts` (`gloam`), and give the keeper `GLOAM_BATCHER_V4`, `GLOAM_BATCHER_V4_BLOCK` and the address in `GLOAM_ESCROWS`.
+2. **Mainnet page and version dropdown** (Bob's plan): Testnet v1 goes to cloak.boblabs.tech, Testnet v2 to gloak.boblabs.tech, and Private mainnet shows an invite-only access-code page with no codes and no backend. Do it in this repo first. Touching Cloak v1 needs Bob's explicit go.
+3. **Before the repo goes public:** a secret scan of the history, and decide whether `GLOAM_QUESTIONS.md` and the partnership parts of `REPORT.md` move somewhere private.
+4. **Hosting v2:** a Vercel project (same account) for gloak.boblabs.tech with `VITE_CORE=gloam`, and a keeper on a new Render account, no custom domain, CORS including gloak. Keeper env: the `GLOAM_*` variables from `services/keeper/index.mjs`.
+5. When Gloam's testnet vault is live: switch to it and their verifiers, redeploy what takes the vault address, update `deployments.ts`, rerun `part8-site.mjs` on a fork and the live script.
+6. Still open: payment links in the MCP tools; bundle size (`poseidon-lite`); the relay funded from the swap buffer; escrows posting memos in the same transaction.
+7. Only when Bob says Gloam's side is proven: remove Cloak's own private layer from v2 (REPORT section 17).
 
 ## 8. How to run things
 
