@@ -6,5 +6,6 @@ export * from "./seal.js";
 export * from "./cloak.js";
 export * from "./drops.js";
 export * from "./private/index.js";
+export * from "./core/index.js";
 export * from "./spots.js";
 export * from "./names.js";

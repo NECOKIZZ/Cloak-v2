@@ -1,0 +1,66 @@
+{
+  "sdk": "@gloamtrade/sdk@0.6.0 via @cloakely/sdk GloamCore",
+  "timingsMs": {
+    "unlock (one signature)": 36,
+    "shield HYPE (prove + deposit + memo)": 722,
+    "restore on a new device (cold sync)": 13,
+    "private send (prove + transfer + memo)": 779,
+    "receive + sweep (sync)": 731,
+    "send 35 USDC from five 10 USDC notes": 2980,
+    "receive + sweep 4 payments": 3022,
+    "withdraw 1 HYPE (split + cash out)": 1401,
+    "withdraw max USDC (4 notes)": 2191
+  },
+  "proofsMs": {
+    "shield": {
+      "n": 7,
+      "median": 106,
+      "max": 306
+    },
+    "transfer": {
+      "n": 11,
+      "median": 484,
+      "max": 522
+    },
+    "unshield": {
+      "n": 5,
+      "median": 425,
+      "max": 461
+    }
+  },
+  "gas": {
+    "deploy test USDC": {
+      "n": 1,
+      "median": 487124
+    },
+    "deploy PoseidonT3": {
+      "n": 1,
+      "median": 2157126
+    },
+    "mint USDC": {
+      "n": 2,
+      "median": 68257
+    },
+    "relayed memo": {
+      "n": 18,
+      "median": 57370
+    },
+    "relayed transfer": {
+      "n": 11,
+      "median": 1787146
+    },
+    "forged memo": {
+      "n": 1,
+      "median": 56470
+    },
+    "forged self memo": {
+      "n": 1,
+      "median": 56440
+    },
+    "relayed unshield": {
+      "n": 5,
+      "median": 323420
+    }
+  },
+  "wallMs": 18529
+}

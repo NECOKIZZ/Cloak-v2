@@ -93,6 +93,9 @@ importers:
 
   e2e-gloam:
     dependencies:
+      '@cloakely/sdk':
+        specifier: workspace:*
+        version: link:../packages/sdk
       '@gloamtrade/sdk':
         specifier: 0.6.0
         version: 0.6.0(snarkjs@0.7.5)(typescript@5.6.3)(zod@4.6.7)
@@ -130,6 +133,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@gloamtrade/sdk':
+        specifier: 0.6.0
+        version: 0.6.0(snarkjs@0.7.5)(typescript@5.6.3)(zod@4.6.7)
       '@noble/ciphers':
         specifier: 1.0.0
         version: 1.0.0

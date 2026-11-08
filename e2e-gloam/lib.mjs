@@ -30,7 +30,12 @@ export const ANVIL_KEYS = [
   "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
   "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
   "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
-  "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926e",
+  "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+  "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+  "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+  "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+  "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+  "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
 ];
 
 /** Elysium testnet's chain id. Local runs use it too, because Gloam's deploy refuses any other. */
@@ -235,4 +240,30 @@ export async function rejects(p, msg) {
     return String(e?.shortMessage ?? e?.message ?? e);
   }
   throw new Error("FAIL (did not revert): " + msg);
+}
+
+/**
+ * A fresh local Gloam stack on anvil (chain 99801): test USDC, PoseidonT3, the guarded vault and the memo board.
+ * Returns everything a test needs; call stop() at the end.
+ */
+export async function localGloam({ port = 8547, blockTime, forkUrl } = {}) {
+  const anvil = await startAnvil({ port, blockTime, forkUrl });
+  const dep = clients(anvil.rpcUrl, ANVIL_KEYS[0], ELYSIUM_TESTNET_ID);
+  const tok = ourArtifact("TestToken.sol", "TestToken");
+  const usdc = (await sendAndLog(dep.pub, "deploy test USDC", dep.wallet.deployContract({ ...tok, args: ["Test USDC", "USDC", 6] }))).contractAddress;
+  const poseidon = await deployPoseidon(dep);
+  const stack = await deployGloamStack({
+    rpcUrl: anvil.rpcUrl,
+    pk: ANVIL_KEYS[0],
+    poseidon,
+    assets: [
+      { address: "0x0000000000000000000000000000000000000000", perDeposit: 10n ** 21n, total: 10n ** 23n },
+      { address: usdc, perDeposit: 500n * 10n ** 6n, total: 25000n * 10n ** 6n },
+    ],
+    feeBps: 50,
+    feeRecipient: clients(anvil.rpcUrl, ANVIL_KEYS[3], ELYSIUM_TESTNET_ID).account.address,
+    controller: dep.account.address,
+  });
+  const poolBlock = await dep.pub.getBlockNumber();
+  return { ...anvil, dep, usdc, poseidon, stack, poolBlock, tok };
 }
