@@ -63,7 +63,12 @@ export function notesFor(core: GloamCore, asset: Address, threshold: bigint): Ow
     sum += n.amount;
   }
   if (sum < threshold) {
-    throw new Error(out.length === gloam.FUNDS_PROOF_SLOTS ? "Your four largest private notes don't reach this amount. Combine notes (send to yourself) and try again." : "Not enough private balance for this.");
+    // Gloam's sends take one note in, so notes can't be merged privately: the only way to combine is public
+    throw new Error(
+      out.length === gloam.FUNDS_PROOF_SLOTS
+        ? "A proof can use your four largest private balances, and they don't reach this amount. To combine balances, cash a few out and add them back as one deposit. That step is public."
+        : "Not enough private balance for this.",
+    );
   }
   return out;
 }

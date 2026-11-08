@@ -829,3 +829,14 @@ Payment links now run on the Gloam backend with the same pages and the same link
 - The Ethereum-only gas ceiling and swap floor.
 
 The relay is still not funded from the swap buffer, which `CloakLaunchSwap` returns to the user.
+
+### 16.16 Fragmented balances (Nov 8)
+
+Gloam's sends take one note in, so notes never merge privately, and every received payment stays its own note after its sweep. `e2e-gloam/part10-fragmentation.mjs` measures what that means:
+- **The pile-up:** 10 payments of 0.1 HYPE to Alice leave 10 notes.
+- **Sending from it:** a 0.75 HYPE send from those 10 notes arrives in full. It took 8 pieces (7 whole notes and part of an eighth), 7.1 s, and the recipient gets 8 separate payments.
+- **Gates:** with 0.85 HYPE spread over 9 notes, a 0.4 HYPE gate passes on the 4 largest. A 0.6 HYPE gate can't be met by any 4 of them, although the balance would cover it.
+
+**Message fixed.** It used to say "Combine notes (send to yourself)", which is impossible on Gloam. It now gives Gloam's own remedy (their app says the same) and says that step is public: "A proof can use your four largest private balances, and they don't reach this amount. To combine balances, cash a few out and add them back as one deposit. That step is public."
+
+**What to watch:** an account that gets paid often builds up many small notes. Sends still work, at one transaction per note. A launch gate's minimum, though, has to fit within one user's 4 largest payments. This is a reason to keep gate minimums modest, or to tell users to deposit in one go before a gated launch.

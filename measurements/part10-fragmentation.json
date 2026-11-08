@@ -1,0 +1,8 @@
+{
+  "notes": 10,
+  "sendMs": 7123,
+  "notesAfterSend": 3,
+  "notesForGate": 9,
+  "gateMessage": "A proof can use your four largest private balances, and they don't reach this amount. To combine balances, cash a few out and add them back as one deposit. That step is public.",
+  "seconds": 54
+}
