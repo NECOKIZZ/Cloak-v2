@@ -142,9 +142,23 @@ export function walletSubmitter(publicClient: PublicClient, wallet: Wallet, rout
 
 export type Status = (msg: string) => void;
 
+/**
+ * A Gloam vault cash out proved ahead of time (Cloak v2 on Gloam): `data` is the vault's unshield call, whose proof
+ * fixes the recipient and amount. Gloam's vault keeps every root valid for good, so it stays sendable until its note
+ * is spent.
+ */
+export interface GloamScheduledCall {
+  kind: "gloamUnshield";
+  /** the vault */
+  to: Address;
+  data: Hex;
+  /** the note it spends, to check whether it went out */
+  nullifier: Hex;
+}
+
 /** One piece of a split withdrawal: a proved relay call, and the earliest time a relayer may send it (unix seconds). */
 export interface ScheduledPiece {
-  call: RelayCall;
+  call: RelayCall | GloamScheduledCall;
   notBefore: number;
   /** what this piece withdraws (before the vault's withdrawal fee) */
   amount: bigint;

@@ -91,7 +91,7 @@ const SHARED_BATCHER_BLOCK = reg?.entries.findLast((e) => e.kind === "sharedBatc
 const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
 
 // split withdrawals: proved pieces held until their time, then relayed like any other (POST/GET /schedule)
-const schedule = startSchedule({ check: (call) => relay(call, { dryRun: true }), send: (call) => relay(call), log: (m) => console.log(`[schedule] ${m}`) });
+
 
 // every vault's public note list, for an app's fast first sync (GET /leaves)
 const leaves = reg ? startLeaves(publicClient, { vaults: VAULTS, vaultsBlock: reg.vaultsBlock, shared: SHARED, sharedBlock: SHARED_BLOCK }) : null;
@@ -118,6 +118,16 @@ const gloamRelay = process.env.GLOAM_MEMO && (process.env.GLOAM_VAULT || process
       log: console.log,
     })
   : null;
+
+// split withdrawals: proved pieces held until their time, then relayed like any other (POST/GET /schedule). Gloam vault
+// cash outs (Cloak v2 on Gloam) go through the Gloam relay; only a vault's unshield is accepted for those.
+const gloamPiece = (call) => ({ to: call.to, data: call.data });
+const schedule = startSchedule({
+  check: (call) => relay(call, { dryRun: true }),
+  send: (call) => relay(call),
+  gloam: gloamRelay ? { check: (call) => gloamRelay(gloamPiece(call), { dryRun: true, sender: "schedule" }), send: (call) => gloamRelay(gloamPiece(call), { sender: "schedule" }) } : undefined,
+  log: (m) => console.log(`[schedule] ${m}`),
+});
 
 // One wallet sends everything (reveals, settles, payouts and relays, which arrive at any time), so its transactions go
 // out one at a time, each mined before the next: two sends can never pick the same nonce.

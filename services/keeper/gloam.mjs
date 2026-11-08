@@ -164,6 +164,8 @@ export function createGloamRelay({
   /**
    * @param body {to, data}
    * @param ctx.sender who asks (the keeper passes the caller's IP); unnamed callers share one allowance
+   * @param ctx.dryRun run every check and the simulation, send nothing and spend no budget (scheduled pieces are checked
+   *        this way when they're handed over, and sent for real when due)
    */
   async function relay(body, ctx = {}) {
     if (!body || typeof body !== "object" || typeof body.to !== "string" || typeof body.data !== "string" || !/^0x[0-9a-fA-F]*$/.test(body.data)) throw fail(400, "malformed request");
@@ -212,6 +214,14 @@ export function createGloamRelay({
       expireLocks();
       if (inflight.has(spendKey)) throw fail(409, "this spend is already being relayed");
       await assertEarlierSendSettled(spendKey);
+    }
+    if (ctx.dryRun) {
+      try {
+        await publicClient.estimateGas({ account: walletClient.account, to: body.to, data: body.data });
+      } catch (e) {
+        throw fail(400, `this call would fail: ${e.shortMessage ?? e.message}`);
+      }
+      return null;
     }
 
     roll();

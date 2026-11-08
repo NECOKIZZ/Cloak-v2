@@ -432,15 +432,17 @@ export class GloamCore implements PrivateCore {
   }
 
   /** One own note of exactly `amount`, splitting a larger one first when none matches (one extra transfer). */
-  async exactNote(asset: Address, amount: bigint, onStatus: Status = () => {}): Promise<OwnedGloamNote> {
+  /** @param exclude commitments of notes not to use (already set aside for something else) */
+  async exactNote(asset: Address, amount: bigint, onStatus: Status = () => {}, exclude: Set<bigint> = new Set()): Promise<OwnedGloamNote> {
     await this.sync(onStatus);
-    const hit = this.ownNotes(asset).find((n) => n.amount === amount);
+    const free = () => this.ownNotes(asset).filter((n) => !exclude.has(n.commitment));
+    const hit = free().find((n) => n.amount === amount);
     if (hit) return hit;
-    const big = [...this.ownNotes(asset)].reverse().find((n) => n.amount > amount);
+    const big = [...free()].reverse().find((n) => n.amount > amount);
     if (!big) throw new Error("Not enough private balance in one note for this.");
     await this.transferOne(big, amount, undefined, onStatus);
     await this.sync(onStatus);
-    const n = this.ownNotes(asset).find((x) => x.amount === amount);
+    const n = free().find((x) => x.amount === amount);
     if (!n) throw new Error("split did not land");
     return n;
   }

@@ -22,7 +22,7 @@ import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, toBytes, 
 import * as gloam from "@gloamtrade/sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
-import type { Status } from "../private/client.js";
+import { splitAmount, type ScheduledPiece, type Status } from "../private/client.js";
 import { GloamCore, gloamKeysFromSignature, type GloamAccountKeys, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
 import { announce, finishPending, launchRoute, launchRouteV4, launchSwap, type LaunchRecord } from "./launchVault.js";
 import { notesFor, type HolderProver } from "./gloamProofs.js";
@@ -94,6 +94,8 @@ const BATCH = parseAbi([
   "function roundSecs() view returns (uint256)",
   "function marketOf(address) view returns (address)",
 ]);
+
+const UNSHIELD = parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]);
 
 const lc = (a: string) => a.toLowerCase();
 const NOT_YET = "This part of Cloak isn't on the new private layer yet. It's coming soon.";
@@ -671,8 +673,40 @@ export class GloamPrivate {
     return { txHash, tokens };
   }
 
-  async planSplitWithdraw(_token: Address, _to: Address, _amount: bigint, _o: { pieces: number; windowSecs: number; onStatus?: Status }): Promise<never[]> {
-    throw new Error(NOT_YET);
+  /**
+   * A withdrawal sent later in 2 to 4 pieces of different sizes, so the amount coming out doesn't match anything that
+   * went in. Done now, on this device:
+   *   1. private self-sends split the balance into one exact note per piece (one relayed send per piece that needs it),
+   *   2. each piece's cash out is proved, its recipient and amount fixed by the proof.
+   * Hand the pieces to the relayer with `scheduleRelay`: it can only send each one (after `notBefore`) or refuse it,
+   * never change where it goes. Gloam's vault keeps every root valid, so a proof made now still works later. Spending
+   * a piece's note before it goes out cancels that piece.
+   * `token` is a launch token or asset, or hypeMarket.token for HYPE.
+   */
+  async planSplitWithdraw(token: Address, to: Address, amount: bigint, o: { pieces?: number; windowSecs?: number; onStatus?: Status } = {}): Promise<ScheduledPiece[]> {
+    const onStatus = o.onStatus ?? (() => {});
+    const k = Math.min(4, Math.max(2, o.pieces ?? 3));
+    const windowSecs = Math.max(600, o.windowSecs ?? 3600);
+    const asset = this.assetOf(token);
+    const core = await this.coreFor(asset, amount);
+    const amounts = splitAmount(amount, k);
+    const notes: OwnedGloamNote[] = [];
+    for (let i = 0; i < amounts.length; i++) {
+      onStatus(`Splitting your balance privately (${i + 1} of ${amounts.length})…`);
+      // a note already set aside for an earlier piece is never used again
+      notes.push(await core.exactNote(asset, amounts[i], onStatus, new Set(notes.map((n) => n.commitment))));
+    }
+    // times are spread over the window by the chain's clock, not the device's
+    const now = Number((await this.cfg.publicClient.getBlock()).timestamp);
+    const times = Array.from({ length: notes.length }, () => now + 60 + Math.floor(Math.random() * (windowSecs - 60))).sort((a, b) => a - b);
+    const out: ScheduledPiece[] = [];
+    for (let i = 0; i < notes.length; i++) {
+      onStatus(`Proving withdrawal ${i + 1} of ${notes.length}…`);
+      const s = await core.spendProof(notes[i], to, onStatus);
+      const data = encodeFunctionData({ abi: UNSHIELD, functionName: "unshield", args: [s.proof, s.root, s.nullifier, s.asset, to, s.amount] });
+      out.push({ call: { kind: "gloamUnshield", to: core.config.pool, data, nullifier: s.nullifier }, notBefore: times[i], amount: s.amount, to });
+    }
+    return out;
   }
 
   // ── receive addresses (CloakGloamReceive) ─────────────────────────────

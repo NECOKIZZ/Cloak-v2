@@ -433,7 +433,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                 <div className="field spread">
                   <label className="check">
                     <input type="checkbox" checked={spread} onChange={(e) => setSpread(e.target.checked)} />
-                    <span><b>Send it in pieces over time</b><span className="xs mute"> 3 pieces of different sizes at random times, so the amount coming out doesn't match anything that went in. It costs a few small relayer fees more than one withdrawal</span></span>
+                    <span><b>Send it in pieces over time</b><span className="xs mute"> 3 pieces of different sizes at random times, so the amount coming out doesn't match anything that went in. {CORE === "gloam" ? "Each piece pays the usual withdrawal fee, so it costs the same as one withdrawal" : "It costs a few small relayer fees more than one withdrawal"}</span></span>
                   </label>
                   {spread && (
                     <select className="input" value={windowSecs} onChange={(e) => setWindowSecs(Number(e.target.value))} aria-label="Over how long">
