@@ -80,8 +80,13 @@ contract CloakGloamBatcherTest is Test {
         batcher.claim(k, CloakGloamBatcherBase.Deposit(hex"00", commitment, asset, amount), abi.encodePacked(r, s, v));
     }
 
+    /// @dev To the first moment the current round can settle: it has ended and its average covers a whole round.
     function _endRound() internal {
-        vm.warp((block.timestamp / ROUND + 1) * ROUND);
+        _endRound(address(launch));
+    }
+
+    function _endRound(address token) internal {
+        vm.warp(batcher.settleOpens(token, batcher.currentRound()));
     }
 
     // ── crossing ───────────────────────────────────────────────────────────
@@ -178,16 +183,74 @@ contract CloakGloamBatcherTest is Test {
     function test_price_moved_too_far_then_cancel_refunds_the_input() public {
         (CloakGloamBatcherBase.OrderKey memory b1, ) = _order(true, 1e18);
         uint64 round = batcher.currentRound();
-        launch.mint(address(pair), 10_000e18); // someone moves the price 10%
-        pair.sync();
         _endRound();
-        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
+        launch.mint(address(pair), 10_000e18); // someone moves the price 10% just before settling
+        pair.sync();
+        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector); // the pool is far from its average over the round
         batcher.settle(address(launch), round);
         vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
         batcher.cancel(address(launch), round);
         vm.warp(block.timestamp + 1 hours);
+        vm.expectRevert(CloakGloamBatcherBase.TooLate.selector); // past the settling window: only a cancel now
+        batcher.settle(address(launch), round);
         batcher.cancel(address(launch), round);
         assertEq(_claim(b1, 0x11), 0.995e18, "the order's own HYPE back, as a note");
+    }
+
+    // ── the crossing price can't be set by one transaction (review, Nov 8) ─────
+
+    function test_a_push_in_the_settling_transaction_doesnt_set_the_price() public {
+        _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
+        uint64 round = batcher.currentRound();
+        _endRound();
+        // inside the 2% band: 1.5% more tokens per HYPE, pushed in the same transaction as settle
+        launch.mint(address(pair), 1500e18);
+        pair.sync();
+        batcher.settle(address(launch), round);
+        uint256 hype = _claim(s1, 0x21);
+        // priced at the spot after the push, the seller would get about 0.980 HYPE; at the round's average, 0.995
+        assertApproxEqRel(hype, 0.995e18, 0.001e18, "the seller is paid at the round's average, not the pushed spot");
+    }
+
+    function test_a_push_in_the_first_orders_block_doesnt_pin_the_price() public {
+        // the pool is pushed 1.5%, the first order lands, and the push is undone, all in one block
+        launch.mint(address(pair), 1500e18);
+        pair.sync();
+        _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
+        vm.prank(address(pair));
+        launch.transfer(address(0xdead), 1500e18);
+        pair.sync();
+        uint64 round = batcher.currentRound();
+        _endRound();
+        batcher.settle(address(launch), round);
+        assertApproxEqRel(_claim(s1, 0x22), 0.995e18, 0.001e18, "a push held for no time doesn't count");
+    }
+
+    function test_a_price_held_through_the_round_is_the_price() public {
+        _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
+        uint64 round = batcher.currentRound();
+        vm.warp(block.timestamp + 1);
+        launch.mint(address(pair), 10_000e18); // the market moves 10% and stays there
+        pair.sync();
+        _endRound();
+        batcher.settle(address(launch), round);
+        // held for all but the first second of the window: the seller gets close to the new price
+        assertApproxEqRel(_claim(s1, 0x23), uint256(0.995e18) * 1000 / 1100, 0.01e18, "a real move held all round sets the price");
+    }
+
+    function test_the_average_always_covers_a_whole_round() public {
+        vm.warp((block.timestamp / ROUND + 1) * ROUND - 1); // the last second of a round
+        (CloakGloamBatcherBase.OrderKey memory b1, ) = _order(true, 1e18);
+        uint64 round = batcher.currentRound();
+        vm.warp((uint256(round) + 1) * ROUND); // the round has ended, but its first order is one second old
+        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
+        batcher.settle(address(launch), round);
+        vm.warp(block.timestamp + ROUND - 1);
+        batcher.settle(address(launch), round);
+        assertGt(_claim(b1, 0x24), 0);
     }
 
     function test_timeout_exit_pays_the_fallback_once() public {
@@ -245,7 +308,7 @@ contract CloakGloamBatcherTest is Test {
         CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0xD1)), address(z), true, 1e18, vm.addr(ownerPk), fallbackTo);
         batcher.place(_spend(k), k);
         uint64 round = batcher.currentRound();
-        _endRound();
+        _endRound(address(z));
         batcher.settle(address(z), round);
         z.freeze(address(batcher), true);
         bytes32 id = batcher.idOf(k);

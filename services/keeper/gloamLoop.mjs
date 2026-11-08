@@ -34,7 +34,8 @@ const BATCHER_ABI = parseAbi([
   "function cancel(address token, uint64 round)",
   "function roundSecs() view returns (uint256)",
   "function refundAfter() view returns (uint256)",
-  "function batches(address, uint64) view returns (uint128 buyHype, uint128 sellTokens, uint128 tokensForBuyers, uint128 hypeForSellers, uint256 spotStart, uint64 settledAt, bool settled, bool cancelled)",
+  "function batches(address, uint64) view returns (uint128 buyHype, uint128 sellTokens, uint128 tokensForBuyers, uint128 hypeForSellers, uint256 spotStart, uint64 settledAt, bool settled, bool cancelled, uint256 cumStart, uint64 tStart)",
+  "function settleOpens(address token, uint64 round) view returns (uint256)",
 ]);
 const GATE_ABI = parseAbi([
   "function gatesCount() view returns (uint256)",
@@ -148,8 +149,9 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
         open.delete(k);
         continue;
       }
-      const { roundSecs, refundAfter } = await timingOf(addr);
-      const ends = (BigInt(round) + 1n) * roundSecs;
+      const { refundAfter } = await timingOf(addr);
+      // a round settles once it has ended and its average covers a whole round, within refundAfter of that
+      const ends = await publicClient.readContract({ address: addr, abi: BATCHER_ABI, functionName: "settleOpens", args: [token, round] });
       if (now < ends) continue;
       const settle = { address: addr, abi: BATCHER_ABI, functionName: "settle", args: [token, round] };
       if (await ok(settle)) {

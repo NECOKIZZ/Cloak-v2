@@ -55,7 +55,7 @@ contract CloakGloamBatcherV4Test is CloakLaunchSwapV4Test {
         uint64 round = batcher.currentRound();
         vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
         batcher.settle(address(token), round);
-        vm.warp((uint256(round) + 1) * ROUND);
+        vm.warp(batcher.settleOpens(address(token), round)); // the round has ended and its average covers a whole round
         // right after listing, Cloak's hook charges a 10% anti-snipe fee falling to the base over 300 s: a round that
         // settled inside it would lose more than the batcher's 5% impact cap, so it waits (the keeper tries each tick)
         uint256 listed = block.timestamp;

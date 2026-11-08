@@ -546,12 +546,15 @@ export class Cloak {
 
   /**
    * Decrypt every sealed bid whose drand round has passed and reveal them in batches. Anyone can run this — it needs no
-   * key material, only the public beacon. Bids whose ciphertext is garbage are skipped (and get penalised at claim).
+   * key material, only the public beacon. Bids whose ciphertext is garbage are skipped (and get penalised at claim
+   * unless their bidder reveals them), and returned in `unopenable`, so anyone can see a bid that could still be
+   * revealed by its bidder alone after watching every other reveal.
    */
   async revealAll(auction: Address, opts: { fromBlock?: bigint; batchSize?: number; log?: (m: string) => void } = {}) {
     const log = opts.log ?? (() => {});
     const logs = await this.committedLogs(auction, opts.fromBlock ?? 0n);
     const reveals: { id: bigint; tick: number; quantity: bigint; salt: Hex }[] = [];
+    const unopenable: { id: bigint; bidder: Address; deposit: bigint; why: string }[] = [];
     for (const l of logs) {
       const bid = await this.publicClient.readContract({
         address: auction,
@@ -568,6 +571,7 @@ export class Cloak {
         reveals.push({ id: l.args.id, tick: p.tick, quantity: p.quantity, salt: p.salt });
       } catch (e) {
         log(`bid #${l.args.id}: cannot unseal (${(e as Error).message})`);
+        unopenable.push({ id: l.args.id, bidder: bid.bidder, deposit: bid.deposit, why: (e as Error).message });
       }
     }
     const size = opts.batchSize ?? 40;
@@ -583,7 +587,7 @@ export class Cloak {
       txs.push(txHash);
       log(`revealed ${Math.min(i + size, reveals.length)}/${reveals.length}`);
     }
-    return { revealed: reveals.length, txs };
+    return { revealed: reveals.length, txs, unopenable };
   }
 
   /** Claim on behalf of every bidder (tokens and refunds always go to the bidder, never the caller). */

@@ -926,3 +926,10 @@ His answers are in `GLOAM_QUESTIONS.md` ("Answers from Gloam's founder"), each m
 - **Circuits:** downloaded from Gloam's repo at the pinned commit and hash-checked, or read from `GLOAM_CIRCUITS_DIR` (the SDK's circuit loader now takes `file://` sources).
 - **Not yet:** payment links in the agent tools. On Gloam they say to use the site for now.
 - **Measured:** `e2e-gloam/part16-mcp.mjs` has an agent call the tools over MCP (in memory) against a local stack and the keeper's real relay over HTTP. It shielded 3 HYPE, a 6 HYPE shield was refused by the 5 HYPE limit, it bought privately with the buffer back, placed a 2-order batch whose payout arrived on the next call after the keeper settled, paid a second agent 0.4 HYPE privately, and withdrew 1 HYPE (0.995 arrived). The MCP's own tests pass (7/7), and so does the site's Gloam build.
+
+### 16.25 Review fixes: the batcher's price, unopenable sealed bids (Nov 8)
+
+An outside reviewer asked about the batcher's price window and the auction's unchecked ciphertexts. Details and the reply are in `docs/REVIEW-RESPONSES.md`.
+- **The batcher's price:** `CloakGloamBatcherBase` crossed at the instant spot when anyone called `settle`. It now crosses at the market's time-weighted average (V2 cumulative prices, or `CloakV4Hook`'s accumulator) over at least one whole round. It can settle only within `refundAfter` of `settleOpens`, with the pool near that average (`Slipped`) and the net trade within 5% of it (`Impact`). The first order's spot no longer anchors anything. 121 of 121 and 65 of 65 pass, with 4 new tests. The keeper settles from `settleOpens`.
+- **SDK:** `batch()` now reports the round each order actually landed in, not the round when it was proved.
+- **Unopenable sealed bids:** `revealAll` returns them, and the keeper publishes them at `GET /unopenable?auction=` once the drand round passes. Not covered by an end-to-end run yet: the auction's e2e is Cloak v1's (`e2e/run.mjs`).

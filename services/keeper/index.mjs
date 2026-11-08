@@ -90,6 +90,9 @@ const SHARED_BATCHER_BLOCK = reg?.entries.findLast((e) => e.kind === "sharedBatc
 // v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
 const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
 
+/** Per auction: sealed bids whose drand ciphertext didn't open to their commitment (from the last reveal pass). */
+const unopenable = new Map();
+
 // split withdrawals: proved pieces held until their time, then relayed like any other (POST/GET /schedule)
 
 
@@ -250,6 +253,9 @@ async function tick() {
       if (s.phase === "reveal" && s.reveals < s.commits && Date.now() / 1000 >= drandRoundTime(s.tlockRound)) {
         const r = await cloak.revealAll(auction, { fromBlock: START_BLOCK, log: (m) => log(auction, m) });
         if (r.revealed) log(auction, `auto-revealed ${r.revealed} bids`);
+        // sealed bids the beacon can't open: only their bidder can still reveal them, after seeing every other reveal.
+        // Published (GET /unopenable?auction=) so the launch page can show them while the reveal window is open.
+        unopenable.set(auction.toLowerCase(), r.unopenable.map((b) => ({ id: String(b.id), bidder: b.bidder, deposit: String(b.deposit), why: b.why })));
       } else if (s.phase === "settle" && now >= s.revealEnd) {
         const h = await cloak.settle(auction);
         log(auction, `settled ${h}`);
@@ -940,6 +946,11 @@ createServer((req, res) => {
       }
     });
     return;
+  }
+  if (req.method === "GET" && path === "/unopenable") {
+    const a = (new URL(req.url, "http://x").searchParams.get("auction") ?? "").toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(a)) return send(req, res, 400, { error: "pass ?auction=0x…" });
+    return send(req, res, 200, { auction: a, checked: unopenable.has(a), bids: unopenable.get(a) ?? [] });
   }
   if (req.method === "GET" && path === "/leaves") {
     if (!leaves) return send(req, res, 404, { error: "not found" });

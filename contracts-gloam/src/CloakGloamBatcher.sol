@@ -11,6 +11,8 @@ interface IV2Factory {
 interface IV2Pair {
     function token0() external view returns (address);
     function getReserves() external view returns (uint112, uint112, uint32);
+    function price0CumulativeLast() external view returns (uint256);
+    function price1CumulativeLast() external view returns (uint256);
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external;
 }
 
@@ -85,10 +87,12 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         uint128 sellTokens;
         uint128 tokensForBuyers;
         uint128 hypeForSellers;
-        uint256 spotStart; // tokens per HYPE, 1e18 fixed point, when the round's first order landed
+        uint256 spotStart; // tokens per HYPE, 1e18 fixed point, when the round's first order landed (shown, not priced on)
         uint64 settledAt;
         bool settled;
         bool cancelled;
+        uint256 cumStart; // the market's price accumulator when the round's first order landed
+        uint64 tStart; // and when
     }
 
     IGloamVault public immutable vault;
@@ -123,6 +127,7 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     error BadSignature();
     error WrongAmount(uint256 owed);
     error NoPair();
+    error TooLate();
 
     modifier nonReentrant() {
         if (_entered == 1) revert Reentrancy();
@@ -156,6 +161,13 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
 
     /// @dev The market's HYPE and token reserves, for the round's spot price.
     function _reserves(address token) internal view virtual returns (uint256 rH, uint256 rT);
+
+    /// @dev The market's price accumulator now (wraps; only differences mean anything). It must count a price only for
+    ///      the time it was held, as Uniswap V2's cumulative prices and CloakV4Hook's do, so one transaction can't move it.
+    function _cumulative(address token) internal view virtual returns (uint256);
+
+    /// @dev The average price, in wei of HYPE per 1e18 token units, from an accumulator difference over `dt` seconds.
+    function _averagePrice(uint256 dCum, uint256 dt) internal pure virtual returns (uint256);
 
     /// @dev Buy tokens with `hypeIn` of HYPE held here; returns what arrived.
     function _swapHypeForTokens(address token, uint256 hypeIn) internal virtual returns (uint256 out);
@@ -206,14 +218,25 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         uint256 net = _openEscrow(id, asset);
         uint64 round = currentRound();
         Batch storage b = batches[k.token][round];
-        if (b.buyHype == 0 && b.sellTokens == 0) b.spotStart = _spot(k.token);
+        if (b.buyHype == 0 && b.sellTokens == 0) {
+            b.spotStart = _spot(k.token);
+            b.cumStart = _cumulative(k.token);
+            b.tStart = uint64(block.timestamp);
+        }
         if (k.buy) b.buyHype += uint128(net);
         else b.sellTokens += uint128(net);
         orders[id] = Order(k.token, round, k.buy, false, uint128(net));
         emit OrderPlaced(id, k.token, round, k.buy, k.size, net);
     }
 
-    /// @notice Cross a finished round at spot and trade the net against the pair. Anyone can call it.
+    /**
+     * @notice Cross a finished round at the market's average price over the round and trade the net against it. Anyone
+     *         can call it, from `settleOpens` until `refundAfter` later; after that the round can only be cancelled.
+     * @dev The price is time-weighted from the round's first order to now, over at least one round, so moving the pool
+     *      in the settling transaction (or pinning it in the block of the first order) shifts it only by the share of
+     *      time the moved price was held, against arbitrage. The pool must also be within maxSlippageBps of that
+     *      average when the net trades, and the net trade within MAX_IMPACT_BPS of it.
+     */
     function settle(address token, uint64 round) external nonReentrant {
         _settling = true;
         _settle(token, round);
@@ -223,11 +246,19 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     function _settle(address token, uint64 round) private {
         Batch storage b = batches[token][round];
         if (b.settled || b.cancelled) revert Done();
-        if (uint256(round + 1) * roundSecs > block.timestamp) revert NotYet();
-        uint256 spot = _spot(token);
-        uint256 lo = spot < b.spotStart ? spot : b.spotStart;
-        uint256 hi = spot < b.spotStart ? b.spotStart : spot;
-        if ((hi - lo) * 10_000 > b.spotStart * maxSlippageBps) revert Slipped();
+        uint256 opens = settleOpens(token, round);
+        if (block.timestamp < opens) revert NotYet();
+        if (block.timestamp >= opens + refundAfter) revert TooLate();
+        uint256 avgHypePerToken;
+        unchecked {
+            avgHypePerToken = _averagePrice(_cumulative(token) - b.cumStart, block.timestamp - b.tStart);
+        }
+        if (avgHypePerToken == 0) revert Slipped();
+        uint256 spot = (1e36) / avgHypePerToken; // the crossing price, tokens per HYPE (1e18 fixed point)
+        uint256 now_ = _spot(token);
+        uint256 lo = now_ < spot ? now_ : spot;
+        uint256 hi = now_ < spot ? spot : now_;
+        if ((hi - lo) * 10_000 > spot * maxSlippageBps) revert Slipped();
         uint256 sellsInHype = (uint256(b.sellTokens) * 1e18) / spot;
         int256 netHype;
         if (b.buyHype >= sellsInHype) {
@@ -254,10 +285,17 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     function cancel(address token, uint64 round) external {
         Batch storage b = batches[token][round];
         if (b.settled || b.cancelled) revert Done();
-        if (uint256(round + 1) * roundSecs + refundAfter > block.timestamp) revert NotYet();
+        if (settleOpens(token, round) + refundAfter > block.timestamp) revert NotYet();
         b.cancelled = true;
         b.settledAt = uint64(block.timestamp);
         emit BatchCancelled(token, round);
+    }
+
+    /// @notice When a round can first be settled: once it has ended and its average covers at least one round.
+    function settleOpens(address token, uint64 round) public view returns (uint256) {
+        uint256 ends = uint256(round + 1) * roundSecs;
+        uint256 minWindow = uint256(batches[token][round].tStart) + roundSecs;
+        return ends > minWindow ? ends : minWindow;
     }
 
     /// @notice What an order is owed now (0 before its round settles or is cancelled), and in which asset.
@@ -367,6 +405,27 @@ contract CloakGloamBatcher is CloakGloamBatcherBase {
         if (pair == address(0)) revert NoPair();
         (uint112 r0, uint112 r1, ) = IV2Pair(pair).getReserves();
         (rH, rT) = IV2Pair(pair).token0() == address(whype) ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
+    }
+
+    /// @dev The pair's cumulative HYPE-per-token price now (UQ112x112 × seconds), as Uniswap's oracle library computes it.
+    function _cumulative(address token) internal view override returns (uint256 c) {
+        address pair = factory.getPair(address(whype), token);
+        if (pair == address(0)) revert NoPair();
+        bool hypeIs0 = IV2Pair(pair).token0() == address(whype);
+        c = hypeIs0 ? IV2Pair(pair).price1CumulativeLast() : IV2Pair(pair).price0CumulativeLast();
+        (uint112 r0, uint112 r1, uint32 tLast) = IV2Pair(pair).getReserves();
+        uint32 t = uint32(block.timestamp);
+        if (tLast != t && r0 != 0 && r1 != 0) {
+            (uint256 rH, uint256 rT) = hypeIs0 ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
+            unchecked {
+                c += ((rH << 112) / rT) * (t - tLast);
+            }
+        }
+    }
+
+    function _averagePrice(uint256 dCum, uint256 dt) internal pure override returns (uint256) {
+        if (dt == 0) return 0;
+        return ((dCum / dt) * 1e18) >> 112;
     }
 
     function _out(uint256 amountIn, uint256 rIn, uint256 rOut) private pure returns (uint256) {

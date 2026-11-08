@@ -76,24 +76,32 @@ try {
   console.log(`  batching ${token}, pool holds ${formatEther(bestR)} HYPE`);
 
   await A.shieldHype(alice.wallet, parseEther("1"));
-  const roundEnd = async () => {
-    const { endsAt } = await A.roundInfo(token);
-    await warp(BigInt(endsAt) - (await pub.getBlock()).timestamp + 1n);
+  // to when the current round can settle: it has ended and its average covers a whole round
+  const OPENS = parseAbi(["function settleOpens(address token, uint64 round) view returns (uint256)"]);
+  // orders placed over several seconds can land in two rounds: wait for the last round's
+  const roundEnd = async (orders) => {
+    const round = orders ? orders.reduce((m, o) => (o.round > m ? o.round : m), 0n) : (await A.roundInfo(token)).round;
+    const opens = await pub.readContract({ address: batcherV4, abi: OPENS, functionName: "settleOpens", args: [token, round] });
+    const now = (await pub.getBlock()).timestamp;
+    if (opens >= now) await warp(opens - now + 1n);
   };
 
   // 1. too big for the pool: 0.3 HYPE (0.2 + 0.1) can't settle within the batcher's 5% impact cap, so after the
   //    refund time the keeper cancels the round and the next open brings the input back
+  // started 2 s before a round ends, so the two orders land in two rounds: each round is held and cancelled on its own
+  { const n = (await pub.getBlock()).timestamp; await warp(((n / 60n) + 1n) * 60n - n - 2n); }
   const big = await A.batch(token, "buy", parseEther("0.3"));
   assert(big.orders.length === 2 && big.rest === 0n, `0.3 HYPE went in as ${big.orders.length} standard-size orders (0.2 + 0.1)`);
   assert(saved.filter((r) => r.kind === "batchOrder").length === 2, "each order is recorded for the next open");
   const early = await A.finishPending();
   assert(early.waiting.length === 2 && early.done.length === 0, "before the round ends, the orders wait");
-  await roundEnd();
+  await roundEnd(big.orders);
   const held = await loop.tick();
   assert(!held.rounds.length, "the keeper can't settle a round that would move the pool too far");
-  await warp(600n);
+  await warp(601n);
   const c = await loop.tick();
-  assert(c.rounds.some((r) => r.action === "cancelled" && r.round === big.orders[0].round), "past its refund time the keeper cancelled it");
+  const bigRounds = [...new Set(big.orders.map((o) => o.round))];
+  assert(bigRounds.every((r) => c.rounds.some((x) => x.action === "cancelled" && x.round === r)), `past its refund time the keeper cancelled it (${bigRounds.length} round(s))`);
   const hypeBeforeRefund = await A.balance(A.hypeMarket.pool);
   const back = await A.finishPending();
   assert(back.errors.length === 0 && back.done.length === 2 && back.waiting.length === 0, `the next open took both inputs back (${back.done.map((d) => d.outcome).join(", ")})`);
@@ -105,14 +113,30 @@ try {
   const buyIn = bestR / 66n;
   const placed = await A.batch(token, "buy", buyIn);
   assert(placed.orders.length > 0, `${formatEther(buyIn)} HYPE went in as ${placed.orders.length} orders (${formatEther(placed.rest)} held back as not a standard size)`);
-  const round = placed.orders[0].round;
-  await roundEnd();
-  const s1 = await loop.tick();
-  out.settleBuy = s1.rounds.map((r) => ({ round: String(r.round), action: r.action }));
-  assert(s1.rounds.some((r) => r.action === "settled" && r.round === round), `the keeper loop settled round ${round} through the real CloakV4Market`);
-  const fin = await A.finishPending();
-  assert(fin.errors.length === 0, `the payouts came back cleanly${fin.errors.length ? `: ${fin.errors.map((e) => e.error).join("; ")}` : ""}`);
-  assert(fin.done.length === placed.orders.length && fin.waiting.length === 0, `the next open brought every payout back (${fin.done.map((d) => d.outcome).join(", ")})`);
+  // the keeper ticks (every minute in production) and the app opens, until every order is paid. A round that lands
+  // after another round's net trade moved the pool waits until its own average catches up (it can't cross at a price
+  // the pool no longer offers), so it can take a few ticks.
+  const settleAll = async (orders) => {
+    await roundEnd(orders);
+    const settled = [];
+    const done = [];
+    let fin;
+    for (let i = 0; i < 12; i++) {
+      settled.push(...(await loop.tick()).rounds.filter((r) => r.action === "settled"));
+      fin = await A.finishPending();
+      assert(fin.errors.length === 0, `payouts came back cleanly${fin.errors.length ? `: ${fin.errors.map((e) => e.error).join("; ")}` : ""}`);
+      done.push(...fin.done);
+      if (fin.waiting.length === 0) break;
+      await warp(30n);
+    }
+    return { settled, done, waiting: fin.waiting.length };
+  };
+  const rounds = (orders) => [...new Set(orders.map((o) => String(o.round)))];
+
+  const s1 = await settleAll(placed.orders);
+  out.settleBuy = s1.settled.map((r) => ({ round: String(r.round), action: r.action }));
+  assert(s1.settled.length === rounds(placed.orders).length, `the keeper loop settled ${s1.settled.length} round(s) through the real CloakV4Market`);
+  assert(s1.done.length === placed.orders.length && s1.waiting === 0, `the next open brought every payout back (${s1.done.length} orders)`);
   const got = await A.balance(token);
   out.buy = { hypeIn: formatEther(buyIn - placed.rest), tokensOut: formatEther(got) };
   assert(got > 0n, `${formatEther(got)} tokens arrived in the private balance as notes`);
@@ -120,12 +144,11 @@ try {
   // a sell: standard sizes of what came back
   const sold = await A.batch(token, "sell", got);
   assert(sold.orders.length > 0, `${sold.orders.length} sell orders placed`);
-  await roundEnd();
-  const s2 = await loop.tick();
-  assert(s2.rounds.some((r) => r.action === "settled"), "the keeper loop settled the sell round");
   const hypeBefore = await A.balance(A.hypeMarket.pool);
-  const fin2 = await A.finishPending();
-  assert(fin2.errors.length === 0 && fin2.waiting.length === 0, `every sell payout came back (${fin2.done.length} orders)`);
+  const s2 = await settleAll(sold.orders);
+  out.sellRounds = rounds(sold.orders).length;
+  assert(s2.settled.length === rounds(sold.orders).length, `the keeper loop settled the sell round(s) (${s2.settled.length})`);
+  assert(s2.done.length === sold.orders.length && s2.waiting === 0, `every sell payout came back (${s2.done.length} orders)`);
   const hypeAfter = await A.balance(A.hypeMarket.pool);
   out.sell = { orders: sold.orders.length, hypeOut: formatEther(hypeAfter - hypeBefore) };
   assert(hypeAfter > hypeBefore, `${formatEther(hypeAfter - hypeBefore)} HYPE came back privately from the sell round`);

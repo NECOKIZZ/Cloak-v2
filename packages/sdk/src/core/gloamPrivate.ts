@@ -93,6 +93,7 @@ const BATCH = parseAbi([
   "function currentRound() view returns (uint64)",
   "function roundSecs() view returns (uint256)",
   "function marketOf(address) view returns (address)",
+  "function orders(bytes32) view returns (address token, uint64 round, bool buy, bool paid, uint128 net)",
 ]);
 
 const UNSHIELD = parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]);
@@ -547,8 +548,10 @@ export class GloamPrivate {
       // recorded before it's sent, so a payout is never forgotten if the page closes mid-send
       this.addRecord({ kind: "batchOrder", batcher, id, key: k, round, txHash: "0x" });
       const txHash = await this.cfg.submit({ kind: "escrow", to: batcher, data: encodeFunctionData({ abi: BATCH, functionName: "place", args: [s, k] }) });
-      this.updateRecord(id, { txHash });
-      orders.push({ id: BigInt(id), size: sizes[i], round, txHash });
+      // the round it actually landed in (the clock may have turned over while it was proved and sent)
+      const landed = (await pub.readContract({ address: batcher, abi: BATCH, functionName: "orders", args: [id] }))[1];
+      this.updateRecord(id, { txHash, round: landed || round });
+      orders.push({ id: BigInt(id), size: sizes[i], round: landed || round, txHash });
     }
     return { orders, rest };
   }
@@ -558,7 +561,7 @@ export class GloamPrivate {
     this.cfg.records.save([...this.cfg.records.load(), r]);
   }
 
-  private updateRecord(id: Hex, patch: { txHash: Hex }) {
+  private updateRecord(id: Hex, patch: { txHash: Hex; round?: bigint }) {
     if (!this.cfg.records) return;
     this.cfg.records.save(this.cfg.records.load().map((r) => ("id" in r && r.id === id ? { ...r, ...patch } : r)));
   }

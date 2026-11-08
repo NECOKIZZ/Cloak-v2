@@ -51,13 +51,25 @@ contract V2Pair {
         (token0, token1) = a < b ? (a, b) : (b, a);
     }
 
+    uint32 tLast;
+    uint256 public price0CumulativeLast; // Uniswap V2's: token1 per token0, UQ112x112 × seconds
+    uint256 public price1CumulativeLast;
+
     function getReserves() external view returns (uint112, uint112, uint32) {
-        return (r0, r1, 0);
+        return (r0, r1, tLast);
     }
 
     function sync() public {
+        uint32 t = uint32(block.timestamp);
+        unchecked {
+            if (t != tLast && r0 != 0 && r1 != 0) {
+                price0CumulativeLast += ((uint256(r1) << 112) / r0) * (t - tLast);
+                price1CumulativeLast += ((uint256(r0) << 112) / r1) * (t - tLast);
+            }
+        }
         r0 = uint112(TestToken(token0).balanceOf(address(this)));
         r1 = uint112(TestToken(token1).balanceOf(address(this)));
+        tLast = t;
     }
 
     function swap(uint256 out0, uint256 out1, address to, bytes calldata) external {

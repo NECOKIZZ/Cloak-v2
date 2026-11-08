@@ -18,6 +18,8 @@ interface ILaunchAuctionB {
 /// @notice Cloak's market for a v4 launch: its own pool, quoted and traded with native HYPE.
 interface ICloakV4Market {
     function reserves() external view returns (uint256 rHype, uint256 rToken, uint32 last);
+    /// @notice Σ price × seconds (wei of HYPE per 1e18 token units), from CloakV4Hook: only a price held counts.
+    function cumulativeNow() external view returns (uint256 cum, uint64 at);
     function swapExactHypeForTokens(uint256 minOut, address to) external payable returns (uint256 out);
     function swapExactTokensForHype(uint256 amountIn, uint256 minOut, address to) external returns (uint256 out);
 }
@@ -71,6 +73,14 @@ contract CloakGloamBatcherV4 is CloakGloamBatcherBase {
     /// @dev While settling, the market pays HYPE out through the PoolManager (a take), so it comes from there.
     function _venueMayPay(address) internal view override returns (bool) {
         return _inSettle();
+    }
+
+    function _cumulative(address token) internal view override returns (uint256 c) {
+        (c,) = marketOf[token].cumulativeNow();
+    }
+
+    function _averagePrice(uint256 dCum, uint256 dt) internal pure override returns (uint256) {
+        return dt == 0 ? 0 : dCum / dt;
     }
 
     function _reserves(address token) internal view override returns (uint256 rH, uint256 rT) {
