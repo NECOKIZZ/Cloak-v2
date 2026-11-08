@@ -874,3 +874,19 @@ Cloak's launches open Uniswap v4 pools behind `CloakV4Hook`, and `CloakLaunchSwa
 - **No 3-day wait:** the token is admitted to the launch vault the moment the launch settles, so the won tokens are private at once. Through Gloam's own vault (Part 2c) they had to wait for a 3-day listing.
 - **Measured:** `e2e-gloam/part13-bids.mjs` ran on a fork of Elysium testnet, with a new launch on Cloak's live v4 factory and the launch vault on that factory, under Gloam's guard. Alice bid privately (sent by the relay, her wallet nowhere), the bid was revealed from drand and settled, the keeper loop admitted the token at settlement, and the next open brought 100,000 GBID into her private balance.
 - **Site:** `GLOAM.bids` in the deployment record turns this on. The launch page's "from private balance" bid then uses it.
+
+### 16.20 Production-shaped deployment on Elysium testnet (Nov 8)
+
+`e2e-gloam/deploy-testnet.mjs` (rehearsed on a fork with `--fork` first) deployed Cloak v2 on Gloam to Elysium testnet for 0.0027 HYPE. The addresses are in `deployments/elysium-testnet-gloam.json` and in the SDK's deployment record (`gloam`), which the site's Gloam backend reads:
+- **Gloam's vault:** Cloak's instance of Gloam's guarded vault, set up as Gloam's Elysium vault will be (USDC only, Kinetiq's test USDC, 500 per deposit and 25,000 in total), with its memo board. Gloam's deploy key gate passed.
+- **The launch vault:** `CloakLaunchVault` on Cloak's live v4 launch factory, on the same final-key verifiers, under its own `VaultOwnerGuard`. All 12 read-back checks passed. HYPE is listed (10 per deposit), and all 12 settled launches are admitted (the keeper loop admits new ones as they settle).
+- **Around it:** `CloakLaunchSwapV4` (real launch pools behind CloakV4Hook), `CloakGloamReceive`, `CloakGloamBids`, `CloakGraduation` (into Gloam's vault, 1-hour rounds), `CloakFundsGate` and `CloakReceiptCheck`, with their final-key verifiers.
+- **Stand-ins:** the deploy wallet stands in for Cloak's multisig (guard controller, launch pauser) and the relay (fee recipient). There's no batcher on this deployment, because batch rounds still trade through V2 pairs (16.18). The Nov 8 stand-in run's results stay in `measurements/live-elysium.json`.
+
+**The real site on it** (`part8-site.mjs`, on a fork of this deployment, with Cloak's real launches), all passing:
+- unlock, shield, the balance showing, and a withdrawal proved in the browser;
+- the Trade page buying FRTN, a real Cloak launch, privately through its live v4 pool ("Swapped privately for ~40.08 FRTN");
+- a payment link made and claimed by a wallet-less guest;
+- the Receive page: an outside wallet paid its address 0.2 HYPE, the open page moved it into the private balance, and the address list shows "Received 0.2 HYPE".
+
+Screenshots are `measurements/part8-*.png`.

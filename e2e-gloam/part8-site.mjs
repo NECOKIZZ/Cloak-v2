@@ -26,7 +26,7 @@ const keeperWallet = createWalletClient({ chain, account: privateKeyToAccount(AN
 const user = privateKeyToAccount(ANVIL_KEYS[1]).address;
 
 // the local relay: POST /gloam/relay only; everything else the site asks the keeper for answers 404
-const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.graduation, G.batcher, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("1") });
+const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.launchSwapV4, G.receive, G.bids, G.graduation, G.batcher, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("1") });
 let relayed = 0;
 const relayServer = createServer((req, res) => {
   const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "content-type": "application/json" };
@@ -162,13 +162,14 @@ try {
   // 5. an instant private buy on the Trade page: the launch token, through its V2 pool, the buffer back as a note
   await page.getByRole("link", { name: "Trade" }).first().click();
   await page.getByLabel("Amount").waitFor({ timeout: 60_000 });
-  await page.getByLabel("Amount").fill("0.05");
+  await page.getByLabel("Amount").fill("0.005"); // testnet launch pools are shallow
   await page.waitForFunction(() => Number((document.querySelector("input[aria-label='Estimated output']") || {}).value || 0) > 0, null, { timeout: 60_000 });
   const est = await page.getByLabel("Estimated output").inputValue();
   await page.getByRole("button", { name: "Swap privately" }).click();
   await page.getByText(/Swapped privately/).waitFor({ timeout: 180_000 });
   await shot("5-swapped");
-  console.log(`  ok  the Trade page bought the launch token privately (estimate ${est}), sent by the relay`);
+  const tradedSym = (await page.locator(".swap-box").nth(1).innerText()).split("\n").pop();
+  console.log(`  ok  the Trade page bought a real Cloak launch token privately through its v4 pool (estimate ${est} ${tradedSym}), sent by the relay`);
 
   // 6. a payment link from the Links page, claimed to a wallet in another browser that has no wallet at all
   await page.getByRole("link", { name: "Payment links" }).first().click();
@@ -201,6 +202,19 @@ try {
   await guest.waitForTimeout(2000);
   await guest.screenshot({ path: join(REPO, "measurements", "part8-7-link-claimed.png") });
   assert(got2 === parseEther("0.0995"), `a guest with no wallet claimed the link to a fresh wallet: ${formatEther(got2)} HYPE (0.1 less the vault's 0.5%)`);
+
+  // 7. the Receive page: a public address anyone can pay, moved into the private balance while the page is open
+  await page.getByRole("link", { name: "Portfolio" }).first().click();
+  await page.getByRole("link", { name: "Receive" }).first().click();
+  const addrEl = page.locator(".mono").filter({ hasText: /^0x[0-9a-fA-F]{40}$/ }).first();
+  await addrEl.waitFor({ timeout: 60_000 });
+  const rxAddr = await addrEl.innerText();
+  const payer = createWalletClient({ chain, account: privateKeyToAccount(ANVIL_KEYS[6]), transport: http(rpcUrl) });
+  await pub.waitForTransactionReceipt({ hash: await payer.sendTransaction({ to: rxAddr, value: parseEther("0.2") }) });
+  for (let i = 0; i < 90 && (await pub.getBalance({ address: rxAddr })) > 0n; i++) await page.waitForTimeout(1000);
+  assert((await pub.getBalance({ address: rxAddr })) === 0n, `the Receive page's address ${rxAddr.slice(0, 10)}… was paid 0.2 HYPE by an outside wallet, and the open page moved it into the private balance`);
+  await page.locator(".pill.ok", { hasText: "Received" }).first().waitFor({ timeout: 30_000 });
+  await shot("8-received");
 
   const errs = logs.filter((l) => !/favicon|404|keeper|snapshot|leaves|Failed to load resource/i.test(l));
   if (errs.length) console.log("  browser errors:", errs.slice(0, 5));

@@ -146,20 +146,21 @@ export const deployments: Record<number, CloakDeployment> = {
     whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
     relayerUrl: "https://keeper.boblabs.tech",
     circuitsUrl: "https://cloak.boblabs.tech/circuits",
-    // Cloak v2 on Gloam, live test run of Nov 8 (deployments/elysium-testnet-gloam.json): Cloak's own instance of
-    // Gloam's guarded vault (Gloam's isn't on this chain yet) and a stand-in launch, WHYPE and V2 pool
+    // Cloak v2 on Gloam (deployments/elysium-testnet-gloam.json), production-shaped: Cloak's instance of Gloam's
+    // guarded vault (USDC only, as Gloam's Elysium vault will be; Gloam's own isn't on this chain yet) and Cloak's
+    // launch vault on Cloak's live v4 launch factory, under Gloam's VaultOwnerGuard; real launches, no stand-ins
     gloam: {
-      gloamVault: "0x86c0aeE66BeDDEd8eDfb757C08a673579A01E4ec",
-      memoBoard: "0x02978536F12BB1e53326f88026E5D6B7c0a42aA2",
-      launchVault: "0x7959498ba49aa47c3917c6f072d29a81d2ff7c00",
-      block: 26174234n,
-      launchSwap: "0xa17fec8acced08f062a1b36e41c10c10e10e194f",
-      graduation: "0x8dfc5976915617a0494c2e9fbabf886affd6479e",
-      batcher: "0x7101131a194559f0e397cee506288303042a2bb2",
-      fundsGate: "0xd8b51bc3860849b47caf1af078c3733cb4fc0591",
-      receiptCheck: "0xb4ab89ee537d28a3232866ffcdd0b96626e1bb64",
-      whype: "0xcaf668de7a7ccb061b691945ae4f0a0541cbfd88",
-      standIns: true,
+      gloamVault: "0x8D15BA46071D5AB2e59d746c22d51C906281cB44",
+      memoBoard: "0xf6816854b68CC4B67213289927d8e44050BA62D3",
+      launchVault: "0x8e38155ae9e753874415482e1ab1c169bbc7d1a2",
+      block: 26230337n,
+      launchSwapV4: "0xd540527d3eef9b4de63f741159036d5e35204541",
+      receive: "0x4a11f7948513fe7517ef7c6efee88c5681bb06c4",
+      bids: "0x0c3f42b10569a4550fe75785f86b2b019905f31b",
+      graduation: "0x51756969b91f8b6a8c941250691b974c769c97fa",
+      fundsGate: "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c",
+      receiptCheck: "0x2236b68e231cebd7dd04e23fe756efdae726e325",
+      whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
     },
     assets: [
       // Elysium testnet USDC (bridged from Circle's USDC on HyperEVM): private sends and withdrawals
