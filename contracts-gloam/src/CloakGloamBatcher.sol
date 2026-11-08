@@ -268,6 +268,15 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         uint256 lo = now_ < spot ? now_ : spot;
         uint256 hi = now_ < spot ? spot : now_;
         if ((hi - lo) * 10_000 > spot * maxSlippageBps) revert Slipped();
+        // and the average must be within maxSlippageBps of the spot when the round opened, so a moved price held
+        // through the round can't shift what the other side gets past that (as Cloak v1's batchers, KupiaSec, Nov 6).
+        // Outside it the round is refunded, never crossed at the band's edge: the opening spot can be pinned in one
+        // transaction, and refusing (rather than clamping) leaves a pinned spot nothing to pull on.
+        {
+            uint256 o = b.spotStart;
+            uint256 d = spot > o ? spot - o : o - spot;
+            if (d * 10_000 > o * maxSlippageBps) revert Slipped();
+        }
         uint256 sellsInHype = (uint256(b.sellTokens) * 1e18) / spot;
         int256 netHype;
         if (b.buyHype >= sellsInHype) {

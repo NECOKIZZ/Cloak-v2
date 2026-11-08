@@ -960,3 +960,19 @@ An outside reviewer asked about the batcher's price window and the auction's unc
 - **Mainnet path:**
   - `e2e-gloam/deploy-partner.mjs` deploys v2 next to Gloam's own vault from a config and hands the guard to a Safe. It was rehearsed on a fork for 0.022 HYPE.
   - The roadmap and to-do list are in `docs/MAINNET-V2.md`.
+- **Replaced the same night:** the band around the opening spot was added (below), so the live v4 batcher is now `0x77a5e45c5044dc98a1f3ef50fc63beca3674ea1b` (block 26402635), and `0x5963…96a3` is retired.
+
+### 16.28 Batch rounds: refuse, don't clamp, outside the opening band (v1 and v2) (Nov 8)
+
+Two reports pull in opposite directions:
+- **KupiaSec (Nov 6):** a moved price held through the round shifts the crossing price. v1's fix was to clamp to ±2% of the opening spot.
+- **Ghost (Nov 8):** the opening spot can be pinned in one transaction (push, first order, push back), and the clamp then drags an honest average toward it. The settler also chose when the window ended.
+
+The fix that answers both:
+- A round crosses at its time-weighted average.
+- It is **refused, and later refunded, when that average is more than 2% from the opening spot**, rather than clamped. A pinned spot then has nothing to pull on, and a held move can't cross.
+- It settles only before its refund time (`TooLate`).
+
+**Where it applies:**
+- **v2's `CloakGloamBatcherBase`:** forge 123 of 123, with tests for a big held move refunded and a small held move setting the price. Part 14 passes on a fork. The live v4 batcher was redeployed.
+- **v1's `PrivateBatcher` and `SharedBatcher`:** in this repo's copies, 287 of 287, with tests `test_ghost_pinnedOpeningPriceDoesntSetTheCrossingPrice` and `test_ghost_settleClosesAtTheRefundTime`. The two KupiaSec tests are updated to expect a refund instead of a clamp. `docs/patches/v1-batcher-band-and-deadline.patch` applies cleanly to v1's `main`.

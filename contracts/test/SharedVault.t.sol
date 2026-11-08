@@ -505,7 +505,7 @@ contract SharedVaultTest is Test {
 
     /// A round whose net trade would move the pool more than 5% can't settle, and is refunded instead.
     /// In a quiet round the first order can land seconds before the end: settling still waits one full round after it,
-    /// and moving the pool for that whole window shifts the crossing price by at most the slippage bound.
+    /// and moving the pool for that whole window makes the round refund instead of crossing at the moved price.
     function test_batch_quietRoundCrossingPriceIsBounded() public {
         _admit(0);
         _shieldHype(10 ether);
@@ -523,10 +523,9 @@ contract SharedVaultTest is Test {
         batcher.settle(address(a), r);
         vm.warp(R + 28 + 30);
         assertGt(batcher.twapOf(address(a), r), (open * 12) / 10, "the pool's average really did move");
+        // outside the band around the opening price: refused (then refunded), not crossed at the band's edge
+        vm.expectRevert(SharedBatcher.PriceMoved.selector);
         batcher.settle(address(a), r);
-        (,, uint128 tokensForBuyers,,,,,,,) = batcher.batches(address(a), r);
-        uint256 floor = (1 ether * 1e18) / ((open * (10_000 + batcher.maxSlippageBps())) / 10_000);
-        assertGe(tokensForBuyers, floor - 1, "the buyer pays at most the opening price plus the slippage bound");
     }
 
     /// An order too big for the pool's depth never gets into a round, so it can't make the round refund for everyone.

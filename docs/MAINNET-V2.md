@@ -15,7 +15,7 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 
 ## Stage 1: testnet complete (now)
 
-- [ ] **Bob:** say go to deploy the v4 batcher on testnet with the funded key (`deploy-batcher-v4.mjs`, rehearsed). Then **Claude** adds `batcherV4` to `deployments.ts` and the keeper's env.
+- [x] The v4 batcher is live on testnet (`0x77a5…ea1b`, with the opening band), registered for all 5 v4 launches and in `deployments.ts`. The keeper's env (`GLOAM_BATCHER_V4`) is set at hosting.
 - [ ] **Gloam:** their testnet vault at `0x39E2…0194` (no code yet), with the guard, memo board, block and verifiers. Then **Claude** runs `deploy-partner.mjs` against it on testnet (that moves graduation, receive, the gate and the receipt check onto it, and the launch vault onto their verifiers), points `deployments.ts` at it, and reruns `part8-site.mjs` on a fork and the live script.
 - [ ] **Gloam:** a Cloak partner account with `relayApproved`, and the reviews (packs in `docs/gloam-pack/`, brief `docs/FOR-GLOAM.md`).
 - [ ] **Gloam:** the SDK release that knows 99801 and 99901, plus the change-note seed. Then **Claude** bumps it, uses the seed, and reruns all parts.
@@ -69,7 +69,7 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 ## Security and review follow-ups
 
 - [ ] **Bob:** apply `docs/patches/v1-min-reveal-window.patch` to Cloak v1 (it applies cleanly to v1's `main`). It's needed in v1's mainnet contracts too.
-- [ ] **Bob:** v1's `PrivateBatcher` and `SharedBatcher` still anchor the price band to the first order's spot (report 2, and the reply promised a fix). Say whether **Claude** should write the v1 patch now, or hold it with B1 and B3.
+- [ ] **Bob:** apply `docs/patches/v1-batcher-band-and-deadline.patch` to Cloak v1 (the fix promised to Ghost: refuse instead of clamp, plus a settling deadline). It applies cleanly to v1's `main`.
 - [ ] **Bob:** the launch no-reveal penalty floor (10% today, 25% on drops), and a notional floor per price tick (CL-02) in the next factory.
 - [ ] **Claude, next factory:** seed the drop lottery from a drand round after the reveal deadline (removes the sequencer's last influence on CL-01).
 - [ ] Haider's feedback files, if he sends them.

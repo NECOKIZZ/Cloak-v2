@@ -228,7 +228,7 @@ contract CloakGloamBatcherTest is Test {
         assertApproxEqRel(_claim(s1, 0x22), 0.995e18, 0.001e18, "a push held for no time doesn't count");
     }
 
-    function test_a_price_held_through_the_round_is_the_price() public {
+    function test_a_big_move_held_through_the_round_is_refunded() public {
         _order(true, 1e18);
         (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
         uint64 round = batcher.currentRound();
@@ -236,9 +236,21 @@ contract CloakGloamBatcherTest is Test {
         launch.mint(address(pair), 10_000e18); // the market moves 10% and stays there
         pair.sync();
         _endRound();
+        // a move held through the round is past the band around the opening price: refunded, not crossed there
+        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
         batcher.settle(address(launch), round);
-        // held for all but the first second of the window: the seller gets close to the new price
-        assertApproxEqRel(_claim(s1, 0x23), uint256(0.995e18) * 1000 / 1100, 0.01e18, "a real move held all round sets the price");
+    }
+
+    function test_a_small_move_held_through_the_round_sets_the_price() public {
+        _order(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
+        uint64 round = batcher.currentRound();
+        vm.warp(block.timestamp + 1);
+        launch.mint(address(pair), 1000e18); // the market moves 1% and stays there: inside the band
+        pair.sync();
+        _endRound();
+        batcher.settle(address(launch), round);
+        assertApproxEqRel(_claim(s1, 0x25), uint256(0.995e18) * 1000 / 1010, 0.002e18, "a real move inside the band sets the price");
     }
 
     function test_the_average_always_covers_a_whole_round() public {

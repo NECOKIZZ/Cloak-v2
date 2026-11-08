@@ -9,22 +9,22 @@
   },
   "settleBuy": [
     {
-      "round": "29902911",
+      "round": "29903014",
       "action": "settled"
     },
     {
-      "round": "29902912",
+      "round": "29903015",
       "action": "settled"
     }
   ],
   "buy": {
     "hypeIn": "0.006451",
-    "tokensOut": "182.359348913664203984"
+    "tokensOut": "182.359348913664203983"
   },
   "sellRounds": 1,
   "sell": {
     "orders": 6,
     "hypeOut": "0.016727256533455598"
   },
-  "seconds": 100
+  "seconds": 96
 }

@@ -101,6 +101,7 @@ contract PrivateBatcher {
     error PriceMoved();
     error TooEarly();
     error TooSoon();
+    error TooLate();
     error RoundFull();
     error BadConfig();
 
@@ -211,16 +212,19 @@ contract PrivateBatcher {
         CloakPair pair = router.pairOf(token);
         // the average must cover at least one round, so a price has to be held that long (against arbitrage) to count
         if (block.timestamp < uint256(b.tStart) + roundSecs) revert TooSoon();
+        // the settler can't stretch the average's window: a round settles before its refund time or not at all
+        if (block.timestamp >= roundEnd(round) + refundAfter) revert TooLate();
         uint256 mid = twapOf(token, round); // the crossing price
         uint256 spot = midPrice(token);
         uint256 dev = spot > mid ? spot - mid : mid - spot;
         if (dev * 10_000 > mid * maxSlippageBps) revert PriceMoved();
-        // and it stays within maxSlippageBps of the price when the round opened, so moving the pool after orders are in
-        // can shift what the other side gets by at most that much
+        // and it must be within maxSlippageBps of the price when the round opened, so a price held after orders are in
+        // can't move what the other side gets past that (KupiaSec, Nov 6). Outside the band the round is refunded
+        // rather than crossed at the band's edge: the opening price can be pinned by pushing the pool around the first
+        // order in one transaction, and a clamp would then drag an honest average toward it (review, Nov 8).
         uint256 lo = (b.spotStart * (10_000 - maxSlippageBps)) / 10_000;
         uint256 hi = (b.spotStart * (10_000 + maxSlippageBps)) / 10_000;
-        if (mid < lo) mid = lo;
-        else if (mid > hi) mid = hi;
+        if (mid < lo || mid > hi) revert PriceMoved();
 
         uint256 B = b.buyHype;
         uint256 S = b.sellTokens;

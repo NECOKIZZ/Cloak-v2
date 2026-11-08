@@ -25,8 +25,8 @@
   "admittedAtDeploy": 12,
   "costHype": "0.002736412810997472",
   "previousRun": "Nov 8 live run (stand-in launch): see measurements/live-elysium.json",
-  "batcherV4": "0x5963bb45ed8d33d51f6de06ef9a21800a59496a3",
-  "batcherV4Block": 26392134,
+  "batcherV4": "0x77a5e45c5044dc98a1f3ef50fc63beca3674ea1b",
+  "batcherV4Block": 26402635,
   "batcherV4Rounds": {
     "roundSecs": 60,
     "maxSlippageBps": 200,

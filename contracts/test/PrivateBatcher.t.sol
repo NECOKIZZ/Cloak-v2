@@ -197,9 +197,9 @@ contract PrivateBatcherTest is Test {
         batcher.settle(address(token), r);
     }
 
-    /// Moving the pool after a round's orders are in shifts the crossing price by at most maxSlippageBps from where the
-    /// round opened, even if the move is held for the whole averaging window (a net-sell round, so the rest sells into
-    /// the moved pool and the round settles).
+    /// Moving the pool after a round's orders are in, and holding it for the whole averaging window, can't move what
+    /// the other side gets: the average is outside the band around the opening price, so the round is refunded rather
+    /// than crossed (KupiaSec, Nov 6; refused instead of clamped since the review of Nov 8).
     function test_crossingPriceStaysWithinTheSlippageOfTheOpeningPrice() public {
         uint64 r = batcher.currentRound();
         vm.warp(batcher.roundEnd(r) - 2);
@@ -209,10 +209,33 @@ contract PrivateBatcherTest is Test {
         pair.swapExactHypeForTokens{value: 300 ether}(0, address(this)); // held for the whole window
         vm.warp(batcher.roundEnd(r) - 2 + batcher.roundSecs());
         assertGt(batcher.twapOf(address(token), r), (open * 12) / 10, "the pool's average really did move");
+        vm.expectRevert(PrivateBatcher.PriceMoved.selector);
         batcher.settle(address(token), r);
-        (,, uint128 tokensForBuyers,,,,,,,) = batcher.batches(address(token), r);
-        uint256 hi = (open * (10_000 + batcher.maxSlippageBps())) / 10_000;
-        assertGe(tokensForBuyers, (1 ether * 1e18) / hi - 1, "the buyer pays at most the opening price plus the slippage bound");
+    }
+
+    /// Review (Nov 8): pinning the opening price by pushing the pool around the round's first order, in one go, and
+    /// pushing it back. The opening price is off, the average is honest, so the round is refused (refunded) and
+    /// nobody crosses at the pinned price.
+    function test_ghost_pinnedOpeningPriceDoesntSetTheCrossingPrice() public {
+        uint64 r = batcher.currentRound();
+        uint256 got = pair.swapExactHypeForTokens{value: 100 ether}(0, address(this)); // push
+        _order(hypePool, 1 ether); // the first order: the opening price is the pushed one
+        token.approve(address(pair), got);
+        pair.swapExactTokensForHype(got, 0, address(this)); // and back, in the same block
+        _order(tokenPool, 500e18);
+        vm.warp(batcher.roundEnd(r) + batcher.roundSecs());
+        vm.expectRevert(PrivateBatcher.PriceMoved.selector);
+        batcher.settle(address(token), r);
+    }
+
+    /// Review (Nov 8): the settler can't stretch the averaging window past the refund time.
+    function test_ghost_settleClosesAtTheRefundTime() public {
+        uint64 r = batcher.currentRound();
+        _order(hypePool, 1 ether);
+        _order(tokenPool, 500e18);
+        vm.warp(batcher.roundEnd(r) + batcher.refundAfter());
+        vm.expectRevert(PrivateBatcher.TooLate.selector);
+        batcher.settle(address(token), r);
     }
 
     /// The same move with a net-buy round: the rest would have to buy into the moved pool, so the round doesn't settle

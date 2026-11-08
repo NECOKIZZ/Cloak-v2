@@ -1,0 +1,152 @@
+diff --git a/contracts/src/shielded/PrivateBatcher.sol b/contracts/src/shielded/PrivateBatcher.sol
+index 5d95ef1..c646538 100644
+--- a/contracts/src/shielded/PrivateBatcher.sol
++++ b/contracts/src/shielded/PrivateBatcher.sol
+@@ -101,6 +101,7 @@ contract PrivateBatcher {
+     error PriceMoved();
+     error TooEarly();
+     error TooSoon();
++    error TooLate();
+     error RoundFull();
+     error BadConfig();
+ 
+@@ -211,16 +212,19 @@ contract PrivateBatcher {
+         CloakPair pair = router.pairOf(token);
+         // the average must cover at least one round, so a price has to be held that long (against arbitrage) to count
+         if (block.timestamp < uint256(b.tStart) + roundSecs) revert TooSoon();
++        // the settler can't stretch the average's window: a round settles before its refund time or not at all
++        if (block.timestamp >= roundEnd(round) + refundAfter) revert TooLate();
+         uint256 mid = twapOf(token, round); // the crossing price
+         uint256 spot = midPrice(token);
+         uint256 dev = spot > mid ? spot - mid : mid - spot;
+         if (dev * 10_000 > mid * maxSlippageBps) revert PriceMoved();
+-        // and it stays within maxSlippageBps of the price when the round opened, so moving the pool after orders are in
+-        // can shift what the other side gets by at most that much
++        // and it must be within maxSlippageBps of the price when the round opened, so a price held after orders are in
++        // can't move what the other side gets past that (KupiaSec, Nov 6). Outside the band the round is refunded
++        // rather than crossed at the band's edge: the opening price can be pinned by pushing the pool around the first
++        // order in one transaction, and a clamp would then drag an honest average toward it (review, Nov 8).
+         uint256 lo = (b.spotStart * (10_000 - maxSlippageBps)) / 10_000;
+         uint256 hi = (b.spotStart * (10_000 + maxSlippageBps)) / 10_000;
+-        if (mid < lo) mid = lo;
+-        else if (mid > hi) mid = hi;
++        if (mid < lo || mid > hi) revert PriceMoved();
+ 
+         uint256 B = b.buyHype;
+         uint256 S = b.sellTokens;
+diff --git a/contracts/src/shielded/SharedBatcher.sol b/contracts/src/shielded/SharedBatcher.sol
+index dfabe95..d814316 100644
+--- a/contracts/src/shielded/SharedBatcher.sol
++++ b/contracts/src/shielded/SharedBatcher.sol
+@@ -119,6 +119,7 @@ contract SharedBatcher {
+     error PriceMoved();
+     error TooEarly();
+     error TooSoon();
++    error TooLate();
+     error RoundFull();
+     error BadConfig();
+ 
+@@ -244,16 +245,19 @@ contract SharedBatcher {
+         ISharedBatchMarket pair = _market(token);
+         // the average must cover at least one round, so a price has to be held that long (against arbitrage) to count
+         if (block.timestamp < uint256(b.tStart) + roundSecs) revert TooSoon();
++        // the settler can't stretch the average's window: a round settles before its refund time or not at all
++        if (block.timestamp >= roundEnd(round) + refundAfter) revert TooLate();
+         uint256 mid = twapOf(token, round); // the crossing price
+         uint256 spot = midPrice(token);
+         uint256 dev = spot > mid ? spot - mid : mid - spot;
+         if (dev * 10_000 > mid * maxSlippageBps) revert PriceMoved();
+-        // and it stays within maxSlippageBps of the price when the round opened, so moving the pool after orders are in
+-        // can shift what the other side gets by at most that much
++        // and it must be within maxSlippageBps of the price when the round opened, so a price held after orders are in
++        // can't move what the other side gets past that (KupiaSec, Nov 6). Outside the band the round is refunded
++        // rather than crossed at the band's edge: the opening price can be pinned by pushing the pool around the first
++        // order in one transaction, and a clamp would then drag an honest average toward it (review, Nov 8).
+         uint256 lo = (b.spotStart * (10_000 - maxSlippageBps)) / 10_000;
+         uint256 hi = (b.spotStart * (10_000 + maxSlippageBps)) / 10_000;
+-        if (mid < lo) mid = lo;
+-        else if (mid > hi) mid = hi;
++        if (mid < lo || mid > hi) revert PriceMoved();
+ 
+         uint256 B = b.buyHype;
+         uint256 S = b.sellTokens;
+diff --git a/contracts/test/PrivateBatcher.t.sol b/contracts/test/PrivateBatcher.t.sol
+index b997a91..18d5df1 100644
+--- a/contracts/test/PrivateBatcher.t.sol
++++ b/contracts/test/PrivateBatcher.t.sol
+@@ -197,9 +197,9 @@ contract PrivateBatcherTest is Test {
+         batcher.settle(address(token), r);
+     }
+ 
+-    /// Moving the pool after a round's orders are in shifts the crossing price by at most maxSlippageBps from where the
+-    /// round opened, even if the move is held for the whole averaging window (a net-sell round, so the rest sells into
+-    /// the moved pool and the round settles).
++    /// Moving the pool after a round's orders are in, and holding it for the whole averaging window, can't move what
++    /// the other side gets: the average is outside the band around the opening price, so the round is refunded rather
++    /// than crossed (KupiaSec, Nov 6; refused instead of clamped since the review of Nov 8).
+     function test_crossingPriceStaysWithinTheSlippageOfTheOpeningPrice() public {
+         uint64 r = batcher.currentRound();
+         vm.warp(batcher.roundEnd(r) - 2);
+@@ -209,10 +209,33 @@ contract PrivateBatcherTest is Test {
+         pair.swapExactHypeForTokens{value: 300 ether}(0, address(this)); // held for the whole window
+         vm.warp(batcher.roundEnd(r) - 2 + batcher.roundSecs());
+         assertGt(batcher.twapOf(address(token), r), (open * 12) / 10, "the pool's average really did move");
++        vm.expectRevert(PrivateBatcher.PriceMoved.selector);
++        batcher.settle(address(token), r);
++    }
++
++    /// Review (Nov 8): pinning the opening price by pushing the pool around the round's first order, in one go, and
++    /// pushing it back. The opening price is off, the average is honest, so the round is refused (refunded) and
++    /// nobody crosses at the pinned price.
++    function test_ghost_pinnedOpeningPriceDoesntSetTheCrossingPrice() public {
++        uint64 r = batcher.currentRound();
++        uint256 got = pair.swapExactHypeForTokens{value: 100 ether}(0, address(this)); // push
++        _order(hypePool, 1 ether); // the first order: the opening price is the pushed one
++        token.approve(address(pair), got);
++        pair.swapExactTokensForHype(got, 0, address(this)); // and back, in the same block
++        _order(tokenPool, 500e18);
++        vm.warp(batcher.roundEnd(r) + batcher.roundSecs());
++        vm.expectRevert(PrivateBatcher.PriceMoved.selector);
++        batcher.settle(address(token), r);
++    }
++
++    /// Review (Nov 8): the settler can't stretch the averaging window past the refund time.
++    function test_ghost_settleClosesAtTheRefundTime() public {
++        uint64 r = batcher.currentRound();
++        _order(hypePool, 1 ether);
++        _order(tokenPool, 500e18);
++        vm.warp(batcher.roundEnd(r) + batcher.refundAfter());
++        vm.expectRevert(PrivateBatcher.TooLate.selector);
+         batcher.settle(address(token), r);
+-        (,, uint128 tokensForBuyers,,,,,,,) = batcher.batches(address(token), r);
+-        uint256 hi = (open * (10_000 + batcher.maxSlippageBps())) / 10_000;
+-        assertGe(tokensForBuyers, (1 ether * 1e18) / hi - 1, "the buyer pays at most the opening price plus the slippage bound");
+     }
+ 
+     /// The same move with a net-buy round: the rest would have to buy into the moved pool, so the round doesn't settle
+diff --git a/contracts/test/SharedVault.t.sol b/contracts/test/SharedVault.t.sol
+index e214838..1bdb002 100644
+--- a/contracts/test/SharedVault.t.sol
++++ b/contracts/test/SharedVault.t.sol
+@@ -505,7 +505,7 @@ contract SharedVaultTest is Test {
+ 
+     /// A round whose net trade would move the pool more than 5% can't settle, and is refunded instead.
+     /// In a quiet round the first order can land seconds before the end: settling still waits one full round after it,
+-    /// and moving the pool for that whole window shifts the crossing price by at most the slippage bound.
++    /// and moving the pool for that whole window makes the round refund instead of crossing at the moved price.
+     function test_batch_quietRoundCrossingPriceIsBounded() public {
+         _admit(0);
+         _shieldHype(10 ether);
+@@ -523,10 +523,9 @@ contract SharedVaultTest is Test {
+         batcher.settle(address(a), r);
+         vm.warp(R + 28 + 30);
+         assertGt(batcher.twapOf(address(a), r), (open * 12) / 10, "the pool's average really did move");
++        // outside the band around the opening price: refused (then refunded), not crossed at the band's edge
++        vm.expectRevert(SharedBatcher.PriceMoved.selector);
+         batcher.settle(address(a), r);
+-        (,, uint128 tokensForBuyers,,,,,,,) = batcher.batches(address(a), r);
+-        uint256 floor = (1 ether * 1e18) / ((open * (10_000 + batcher.maxSlippageBps())) / 10_000);
+-        assertGe(tokensForBuyers, floor - 1, "the buyer pays at most the opening price plus the slippage bound");
+     }
+ 
+     /// An order too big for the pool's depth never gets into a round, so it can't make the round refund for everyone.
