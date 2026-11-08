@@ -1,6 +1,6 @@
 # Questions for the Gloam founder
 
-Saved for later. Not sent. The founder hasn't seen Cloak's designs yet, so these wait until they have. Background for each is in REPORT.md.
+Questions 1 to 9 and the upgrade list were answered by Gloam's founder (Duke) on Nov 8: see "Answers from Gloam's founder" below, which overrides the LLM-read answers further down wherever they differ. Background for each is in REPORT.md.
 
 ## From REPORT §14 (Nov 8)
 
@@ -36,6 +36,25 @@ Saved for later. Not sent. The founder hasn't seen Cloak's designs yet, so these
 
 10. **The graduation escrow and the fee.** Cloak's launch vault (`CloakLaunchVault`, REPORT §16.1) is your `ShieldPoolCore` plus instant admission of settled Cloak launches. A token graduating to your vault is cashed out of Cloak's vault into an escrow that deposits it into yours. `_withdrawFee` isn't virtual, so the escrow pays Cloak's fee on the way out. Would you make the fee hook virtual (or add a fee-exempt address) in a later release, so a graduation pays no double fee? Until then it pays once.
 11. **Standing behind CloakLaunchVault.** It changes nothing in your vault code and adds one function. Would you review it, and may Cloak say it's built on your vault and keys?
+
+## Answers from Gloam's founder (Nov 8)
+
+What he said, what it confirms or overrides from the code-read answers below, and what we do.
+
+1. **Testnet vault:** goes up "this week" at `0x39E28Cde55CAB798874746ac52cb4B5Cc99a0194`, the same address on every chain. Guard and memo board addresses to follow. *Answers the open item.* We: keep testing on our own instance until it's live, then set `gloam.gloamVault`, `memoBoard` and `block` in `deployments.ts` and redeploy what takes Gloam's vault in its constructor (`CloakGraduation`, `CloakGloamReceive`, `CloakFundsGate`, `CloakReceiptCheck`).
+2. **HYPE and caps:** mainnet opens USDC only, at 500 per deposit and 25,000 in total. HYPE comes after launch, and every change takes the 3-day timelock. *Confirms the code read.* Our design already fits: HYPE and launch tokens live in Cloak's launch vault, USDC in Gloam's. `stack.mjs`'s realistic mode stays the default.
+3. **Interface fee:** take it in the clear inside our own escrows. *Confirms.* Today Cloak's only fee is the launch vault's 0.5% cash-out fee. A fee on Gloam-vault flows (USDC sends have none) would have to be an escrow fee, and that is Bob's call. No fee is added without his approval.
+4. **Relay:** Gloam will review our escrows, then add them to their relay, and can set up a per-partner budget. *Overrides "we run our own relay" as the long-term answer.* We keep running ours until their review is done. Pack for Bob: `docs/gloam-pack/ESCROWS.md`.
+5. **Their router on Elysium:** they'll deploy it once our v4 launch pools exist and allowlist the pools we name. New pools still wait 3 days. *Answers the open item.* `CloakLaunchSwapV4` trades instantly without them, so it stays the main path. Pool key list for Bob: `docs/gloam-pack/FACTORY-AND-POOLS.md`.
+6. **Launch tokens:** listing in Gloam's main vault stays on the 3-day timelock, even for factory tokens. Launch tokens stay in Cloak's own vault until they list them. *Confirms, and this is exactly our design* (CloakLaunchVault plus graduation). They'll review the factory token contract once, after which listings go quickly. Pack for Bob: `docs/gloam-pack/FACTORY-AND-POOLS.md`.
+7. **Bearer notes:** recipient-bound notes are on their roadmap, not this month. *Confirms.* We keep the sweep on every open and the pending balance shown.
+8. **Fee split:** a share to be confirmed. He's open to a lower rate on exits into reviewed partner escrows. *Still open, now with a direction.* No code change.
+9. **SDK:** a release that knows 99801 and 99901 with the final keys comes around mainnet, npm will match the repo, and a change-note secret input for `buildTransferWitness` is in that release. *Answers the open items.* When it ships: bump `@gloamtrade/sdk`, rerun `part1.mjs` and parts 3 to 14, and use the change seed so change notes are recoverable from the account seed.
+10. **Our launch vault:** use their deployed verifiers (any vault can call them). They'll review the diff of our one function (`admitLaunch` plus the pauser). *Answers 11 in part.* It isn't covered by Kann's audit, so it still needs our own outside review before mainnet. Pack for Bob: `docs/gloam-pack/LAUNCH-VAULT-DIFF.md`.
+11. **Graduation caps:** when a token graduates, they'll set its caps high enough for a full graduation round. *Answers the open item in 10.* `CloakGraduation` already works this way, and `finishPending` falls back to the launch vault if Gloam's vault refuses.
+12. **Upgrade list** (partner fees and a relayer fee in the proof, 2-in sends, recipient-bound notes, one-step partial cash outs): on their roadmap, with an order to come after Elysium is live. The swap buffer going to their treasury is by design (ours returns it through `CloakLaunchSwapBase`, which is fine). They'll look at the memo board accepting posts before a note is in the vault.
+
+Still open after his answers: the fee split (8), the guard and memo board addresses (1), the date of their router (5), and the order of the upgrade list (12).
 
 ## Answers read from Gloam's public code (Nov 8)
 

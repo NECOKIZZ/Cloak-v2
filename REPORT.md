@@ -904,3 +904,7 @@ Screenshots are `measurements/part8-*.png`.
   - selling all of them (6 notes) went in as 6 orders, settled, and came back as HYPE.
   Parts 5, 7 and 12 still pass.
 - **What to know:** testnet launch pools are thin, so batch orders over about 2% of a pool's HYPE won't settle and get refunded after the refund time (10 minutes). Not yet deployed to testnet (needs the testnet key, see HANDOVER section 2).
+
+### 16.22 Gloam's founder answered (Nov 8)
+
+His answers are in `GLOAM_QUESTIONS.md` ("Answers from Gloam's founder"), each marked as confirming or overriding the code-read answers. In short: his Elysium testnet vault goes up this week at `0x39E28Cde55CAB798874746ac52cb4B5Cc99a0194`. Mainnet opens USDC only. Launch tokens stay in our launch vault until they're listed, which is our design. Our fee goes in the clear inside our escrows. They'll review our escrows, our launch vault diff and the factory token, then relay our escrows and allowlist our v4 pools on their router. The packs for Bob to send are in `docs/gloam-pack/`. Nothing in the build changes until his vault is live, at which point we redeploy what takes Gloam's vault in its constructor and point the launch vault at his verifiers.
