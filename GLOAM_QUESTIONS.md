@@ -2,6 +2,52 @@
 
 Questions 1 to 9 and the upgrade list were answered by Gloam's founder (Duke) on Nov 8: see "Answers from Gloam's founder" below, which overrides the LLM-read answers further down wherever they differ. Background for each is in REPORT.md.
 
+## What we need, for testnet now and for mainnet (Nov 9)
+
+Checked on Nov 8, night: Gloam's promised testnet vault (`0x39E28Cde55CAB798874746ac52cb4B5Cc99a0194`) has no code on chain 99801 yet.
+
+### Gloam owes us on testnet (promised Nov 8)
+1. Their Elysium testnet vault live at `0x39E2…0194`, plus the guard and memo board addresses and the deploy block.
+2. Their deployed verifier contracts on testnet (unshield and shield), so our launch vault uses theirs, not copies.
+3. Their review of our escrows, then our escrows added to their relay with a per-partner budget (pack: `docs/gloam-pack/ESCROWS.md`).
+4. Their one-time review of the factory token, so launch listings in their vault go quickly (pack: `docs/gloam-pack/FACTORY-AND-POOLS.md`).
+5. Their review of the launch-vault diff (pack: `docs/gloam-pack/LAUNCH-VAULT-DIFF.md`).
+6. The SDK release that knows 99801 and 99901 with the final keys, and the change-note seed in `buildTransferWitness`.
+
+### For mainnet: from Gloam
+1. **The mainnet vault on 99901:** its address (the same `0x39E2…0194`?), guard, memo board, deploy block, and the USDC it lists (address and decimals). Their runbook (`DEPLOY-ELYSIUM.md`) deploys USDC only at 500 per deposit and 25,000 in total.
+2. **Their verifier contracts on 99901**, so `CloakLaunchVault` is deployed on the same final-key verifiers as theirs.
+3. **The fee:** 0.5% on Elysium. Is the split, or a lower rate on exits into reviewed partner escrows, settled before mainnet?
+4. **Relay on mainnet:** does theirs relay our escrows from day one, or do we run ours (ours is ready, paid from the launch vault's fee)?
+5. **Their router on 99901:** they list "no router on Elysium" for now. Our `CloakLaunchSwapV4` doesn't need it.
+6. **Graduation:** when a Cloak token graduates into their mainnet vault, who starts the 3-day listing, and at what caps?
+7. **Permission to say it publicly:** may Cloak say "built on Gloam" (or similar) at launch, and is there wording they want or want to avoid? Their runbook says no partnership wording on their side yet.
+8. Their own launch-day checks: a small deposit, send and cash out done, relayer funded.
+
+### For mainnet: from Elysium (Kinetiq)
+1. **A public RPC for 99901** that serves `eth_getLogs` at our volume (the site, the keeper and the relay all scan logs), and its rate limits. The official one (`rpc-elysium-mainnet.t.conduit.xyz`) answered 403 on Nov 3, and we read mainnet through ElysPump's relay.
+2. **The canonical USDC on 99901**, and whether it's the same token Gloam lists.
+3. **The block explorer and its verification API** (or Sourcify), to verify every contract.
+4. **Confirmation that the Uniswap v4 deployment on 99901 is the one to use:** PoolManager `0xe2e1…23f1`, owner `0x2179…27b6`, an ordinary wallet and not Uniswap governance. Who is that owner, and will it move to governance?
+5. **WHYPE on 99901** is an upgradeable proxy (`0xbA87…5E81`). Who is its admin? (Cloak deploys its own fixed WHYPE either way.)
+6. **The block time and gas** on mainnet: about 1.1 s per block on Nov 3, against about 0.09 s on testnet. Our batch rounds and timeouts are in seconds, so they hold. Does the sequencer show transactions before a block (Gloam asks the same, for partner links)?
+7. Listing in Elysium's ecosystem pages and the explorer's token list, and a contact for incidents.
+
+### For mainnet: from us (Cloak)
+1. **No ceremony needed for v2:** it proves on Gloam's final keys. Cloak v1's own ceremony is only for v1's vaults.
+2. **A multisig** (Safe) on 99901 for the launch vault's guard controller and the launch pauser, and **separate keeper and relayer keys**.
+3. **Cloak's launch factory and v4 hook on 99901:** v2's launch vault admits launches of one factory, fixed at deploy. Does v1's mainnet deploy make that factory, and does v2 point at it?
+4. **An outside review** of our escrows and `CloakLaunchVault` (Kann audited only Gloam's vault). Keep deposit caps low until then.
+5. Deploy and verify, then hosting: gloak.boblabs.tech and the keeper with the `GLOAM_*` settings.
+
+### New questions for Gloam's founder
+1. Is the mainnet vault at the same address as testnet (`0x39E2…0194`), and when exactly does it go up?
+2. Can our escrows be on your mainnet relay from day one, or after your review only?
+3. Is the fee split settled before mainnet, and does a lower rate on exits into reviewed escrows come at launch or later?
+4. May we name Gloam publicly at our launch, and with what wording?
+5. When a Cloak launch token graduates to your vault, can its 3-day listing start at its launch, so it is listed by the time trading settles down?
+6. Which USDC address does your Elysium mainnet vault list?
+
 ## From REPORT §14 (Nov 8)
 
 1. **Your Elysium testnet vault.** When do you deploy it, and at which addresses (vault, memo board, guard)? Until
