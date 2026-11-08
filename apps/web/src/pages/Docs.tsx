@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "../router";
 import { EXPLORER, GITHUB, Icon } from "../ui";
-import { DEPLOYMENT, VERSION } from "../config";
+import { CORE, DEPLOYMENT, GLOAM, VERSION } from "../config";
+
+/** Cloak v2 on Gloam: the contracts and rules this build runs on, when it runs on Gloam's vault. */
+const G = CORE === "gloam" ? GLOAM : undefined;
 
 // every address from the SDK's deployment record, so this table can't drift from what the app uses
 const ADDR = {
@@ -180,12 +183,23 @@ export function Docs() {
 
           <div className="crumb" style={{ marginTop: 60 }}>Privacy</div>
           <h2 id="private-trading">Private trading</h2>
+          {G ? (
+            <>
+              <p>Private balances live in <b>Gloam's vault</b>, run on Gloam's audited contracts, circuits and final ceremony keys. USDC sits in Gloam's main vault. HYPE and launch tokens sit in Cloak's launch vault, which is Gloam's vault code with one addition that lets a settled Cloak launch in at once. A balance is a set of private notes, and your browser proves each spend without saying which notes are yours.</p>
+              <ol>
+                <li><b>Unlock</b>. You sign one message and your keys are made from it on this device.</li>
+                <li><b>Shield</b>. You deposit HYPE, USDC or a launch token. It's the only public step.</li>
+                <li><b>Swap</b>. One note leaves the vault into a one-time escrow that trades through the launch's own Uniswap v4 pool and puts the output back as a new note for you. Whatever the swap didn't need comes back as a note too. The proof fixes every detail, so the relayer can't change them.</li>
+              </ol>
+            </>
+          ) : (<>
           <p>Cloak runs one <b>shielded vault</b> per asset: WHYPE, plus each launch token. A balance is a set of encrypted notes. To spend one, your browser makes a zero-knowledge proof (Groth16, 2-in/2-out) that says "the owner of some notes here approves this," without saying which notes or whose.</p>
           <ol>
             <li><b>Unlock</b>: you sign one message. Your keys are derived from it on this device.</li>
             <li><b>Shield</b>: you deposit HYPE. It's the only public step, and it lands on a one-time key.</li>
             <li><b>Swap</b>: the router spends a note, swaps through the launch's pool, and deposits the output back as a new note for you. The swap details are locked into the proof, so the relayer can't change them.</li>
           </ol>
+          </>)}
 
           <h2 id="batch-auctions">Batch auctions</h2>
           <p>An instant private trade hides <i>who</i> traded, but its size still shows on the public pool. Batch mode hides the size too:</p>
@@ -195,7 +209,11 @@ export function Docs() {
             <li>When it ends, buys and sells <b>cross at the pool's average price over the round</b> (no pool fee, no impact), and only the net trades on the pool.</li>
             <li>Everyone on one side of a round gets the <b>same price</b>, and outputs return as private notes.</li>
           </ul>
+          {G ? (
+            <p>The rules. Orders are standard sizes, and each side of a round holds at most <b>4%</b> of the pool, so a round always settles and anything bigger waits for the next one. A round crosses at the pool's <b>average price over at least a whole round</b>, which nobody can move in one transaction. It won't settle while the pool sits more than <b>2%</b> from that average, or if its net trade would lose more than <b>5%</b> to price impact. If it can't settle within <b>10 minutes</b> every order gets its own input back. Payouts move into your private balance the next time Cloak is open.</p>
+          ) : (
           <p>The rules: orders are standard sizes of at least 0.000001 HYPE. A round won't settle if the pool's price is more than <b>2%</b> away from the round's average (so a settler can't move the pool first), or if its net trade would lose more than <b>5%</b> to price impact (on a very thin pool, a big round simply can't settle). If a round can't settle, every order is refundable as a private note <b>10 minutes</b> after the round ends.</p>
+          )}
 
           <h2 id="private-send">Private send</h2>
           <p>Every account has a <code>cloak:</code> address (shown in Portfolio). Sending to it is a transfer inside the vault. The chain sees that a private transaction happened, but not who paid whom or how much.</p>
@@ -210,7 +228,11 @@ export function Docs() {
           </ul>
           <p>Everything sits after the # in the link, which browsers never send to a server, so the details stay between the people who share it. A claim link is like cash: anyone who has it can claim it. The links you make are kept encrypted in your browser, under Your links.</p>
           <h2 id="private-usdc">Private USDC</h2>
+          {G ? (
+            <p>USDC lives in Gloam's main vault, shared with everyone who uses Gloam, so it hides in the biggest crowd. Shield it on Portfolio (the first time asks for an approval), then send it privately to any <code>cloak:</code> address or withdraw it to a fresh address. Gloam's vault takes at most 500 USDC per deposit and 25,000 in total for now, and caps go up as volume shows up.</p>
+          ) : (
           <p>USDC has its own vault. On Portfolio, pick USDC on the Shield tab and deposit from your wallet (the first time asks for an approval, then the deposit). After that you can send it privately to any <code>cloak:</code> address or withdraw it to a fresh address, like HYPE. The relayer's fee is paid in USDC. During the beta a deposit can be at most 1,000 USDC and the vault holds at most 50,000. Swapping USDC privately for HYPE or launch tokens comes later.</p>
+          )}
           <p>Elysium's USDC is bridged from Circle's USDC on HyperEVM. Circle can freeze the USDC held by the bridge, and the bridge operator can upgrade the Elysium USDC contract. That applies to everyone holding USDC on Elysium, inside Cloak or not.</p>
 
           <h2 id="what-stays-private">What stays private</h2>
@@ -258,7 +280,30 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           </ul>
           <p><b>The full agent (launch, bid, trade privately).</b> This part runs on your own machine with a wallet made just for the agent, signs there, and makes its proofs there, under spending limits per transaction and per day (1 and 10 HYPE by default) with a dry run on every action. By hand: <code>npx -y @cloakely/mcp setup</code> makes the agent's wallet and prints its address to fund from the faucet, then <code>claude mcp add cloak -- npx -y @cloakely/mcp</code> (or the same <code>npx -y @cloakely/mcp</code> command in any other app's MCP settings). Full setup is in the <a href="https://www.npmjs.com/package/@cloakely/mcp" target="_blank" rel="noreferrer">package README</a>.</p>
 
-          <h2 id="contracts">Contracts (Cloak v{VERSION}, Elysium testnet, chain 99801)</h2>
+          <h2 id="contracts">Contracts ({G ? "Cloak v2 on Gloam" : <>Cloak v{VERSION}</>}, Elysium testnet, chain 99801)</h2>
+          {G && (
+            <>
+              <table>
+                <tbody>
+                  <tr><td>Gloam's vault (USDC)</td><td><a href={A(G.gloamVault)} target="_blank" rel="noreferrer"><code>{G.gloamVault}</code></a></td></tr>
+                  <tr><td>Gloam's memo board (how a payment's recipient finds it)</td><td><a href={A(G.memoBoard)} target="_blank" rel="noreferrer"><code>{G.memoBoard}</code></a></td></tr>
+                  <tr><td>CloakLaunchVault (HYPE and launch tokens, on Gloam's code and keys)</td><td><a href={A(G.launchVault)} target="_blank" rel="noreferrer"><code>{G.launchVault}</code></a></td></tr>
+                  {G.launchSwapV4 && <tr><td>CloakLaunchSwapV4 (private swaps through launches' v4 pools)</td><td><a href={A(G.launchSwapV4)} target="_blank" rel="noreferrer"><code>{G.launchSwapV4}</code></a></td></tr>}
+                  {G.batcherV4 && <tr><td>CloakGloamBatcherV4 (batch rounds)</td><td><a href={A(G.batcherV4)} target="_blank" rel="noreferrer"><code>{G.batcherV4}</code></a></td></tr>}
+                  {G.batcher && <tr><td>CloakGloamBatcher (batch rounds, V2 pools)</td><td><a href={A(G.batcher)} target="_blank" rel="noreferrer"><code>{G.batcher}</code></a></td></tr>}
+                  {G.bids && <tr><td>CloakGloamBids (sealed bids from a private balance)</td><td><a href={A(G.bids)} target="_blank" rel="noreferrer"><code>{G.bids}</code></a></td></tr>}
+                  {G.receive && <tr><td>CloakGloamReceive (receive addresses)</td><td><a href={A(G.receive)} target="_blank" rel="noreferrer"><code>{G.receive}</code></a></td></tr>}
+                  {G.graduation && <tr><td>CloakGraduation (launch tokens into Gloam's vault)</td><td><a href={A(G.graduation)} target="_blank" rel="noreferrer"><code>{G.graduation}</code></a></td></tr>}
+                  {G.fundsGate && <tr><td>CloakFundsGate (allocation gates by proof of funds)</td><td><a href={A(G.fundsGate)} target="_blank" rel="noreferrer"><code>{G.fundsGate}</code></a></td></tr>}
+                  {DEPLOYMENT?.factory && <tr><td>CloakFactory (sealed launches into Uniswap v4 pools)</td><td><a href={A(DEPLOYMENT.factory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.factory}</code></a></td></tr>}
+                  {DEPLOYMENT?.v4Hook && <tr><td>CloakV4Hook (seeds each pool, keeps the liquidity, creator fees)</td><td><a href={A(DEPLOYMENT.v4Hook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.v4Hook}</code></a></td></tr>}
+                  {DEPLOYMENT?.dropFactory && <tr><td>CloakDropFactory (sealed NFT drops)</td><td><a href={A(DEPLOYMENT.dropFactory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.dropFactory}</code></a></td></tr>}
+                </tbody>
+              </table>
+              <p>No function in any of these lets anyone, including us, move your money. A note leaves a vault only with its owner's proof, and every escrow has a way out after a timeout. The vaults sit under Gloam's owner guard, so the proof checkers can never be swapped and any new asset or higher cap waits a public 3 days. Source and tests are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
+            </>
+          )}
+          {!G && (<>
           <table>
             <tbody>
               <tr><td>CloakConfig (rules and the list of every Cloak contract)</td><td><a href={A(ADDR.config)} target="_blank" rel="noreferrer"><code>{ADDR.config}</code></a></td></tr>
@@ -282,8 +327,22 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           <p>No function in any of these contracts lets anyone, including us, move funds out of an auction or a vault. Money leaves a vault only with its owner's proof. <code>CloakConfig</code> holds the rules every contract reads: the fees, the deposit caps and the proof verifier, within hard ceilings in the code. Who can change them, and how fast, is under <a href="#governance" onClick={go("governance")}>Who can change what</a>. Source, tests and real testnet runs are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
           <p><b>The vaults are permanent.</b> Every asset has one vault, made once by <code>CloakVaults</code> and never replaced. Routers, batchers and factories are helpers around the vaults: a better one is added next to the old one and nobody's balance moves. Your private account is signed for this chain only, never for a contract, so it and your <code>cloak:</code> address stay the same from now on. <code>CloakConfig</code> keeps the list of every Cloak contract with the block it started. The rules for later upgrades are in <a href={`${GITHUB}/blob/main/docs/VAULT.md`} target="_blank" rel="noreferrer">docs/VAULT.md</a>.</p>
           <p>Cloak's earlier contracts (v1, v2 and v3) are still on-chain. Their launches still show here, their tokens have permanent vaults, and a private balance held in them moves across once from the Portfolio page through <code>CloakMigrator</code>. It stays private, and the relayer can't redirect it.</p>
+          </>)}
 
           <h2 id="fees">Fees & caps</h2>
+          {G ? (
+            <>
+              <table>
+                <tbody>
+                  <tr><td>Deposits and private sends</td><td>Free</td></tr>
+                  <tr><td>Withdrawals, private swaps, batch orders and bids from a private balance</td><td>0.5% of what leaves the vault (Gloam's vault fee on Elysium)</td></tr>
+                  <tr><td>Launch fee</td><td>1.5% of a successful raise, taken at settlement. Nothing if the launch doesn't fill (hard cap 3%)</td></tr>
+                  <tr><td>Relayer</td><td>Free for you. Gas is paid from the launch vault's fee income</td></tr>
+                </tbody>
+              </table>
+              <p>While this is in beta, deposits are capped. Gloam's vault takes 500 USDC per deposit and 25,000 in total, and the launch vault takes 10 HYPE per deposit. Withdrawals are never capped.</p>
+            </>
+          ) : (<>
           <table>
             <tbody>
               <tr><td>Deposits and private sends</td><td>Free</td></tr>
@@ -293,6 +352,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             </tbody>
           </table>
           <p>While Cloak is in beta, deposits are capped: 100 HYPE per deposit and 10,000 HYPE in the HYPE vault, 1,000 USDC per deposit and 50,000 USDC in the USDC vault, 10% of a token's supply per deposit and 50% in total for launch-token vaults, and 100 HYPE per bid and 10,000 HYPE in total for each new launch. Withdrawals are never capped. Caps lift after the audit and the public trusted-setup ceremony.</p>
+          </>)}
           <p>A creator's own share is capped at 20% of the supply and vests over at least 30 days from the end of the auction.</p>
 
           <h2 id="rules">All the rules</h2>
@@ -305,15 +365,15 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>When a launch fails</td><td>Only if no bid was revealed: full refunds, tokens back to the creator</td><td>Contract</td></tr>
               <tr><td>Creator's own share</td><td>At most 20% of supply, vesting over at least 30 days</td><td>Contract</td></tr>
               <tr><td>Launch token</td><td>Fixed supply, no owner, no mint, no tax, no blacklist</td><td>Contract</td></tr>
-              <tr><td>Pool opening price</td><td>Exactly the clearing price, Uniswap V2, 0.3% fee</td><td>Contract</td></tr>
+              <tr><td>Pool opening price</td><td>{G ? "Exactly the clearing price, in a Uniswap v4 pool behind Cloak's hook" : "Exactly the clearing price, Uniswap V2, 0.3% fee"}</td><td>Contract</td></tr>
               <tr><td>LP</td><td>Locked forever with trading fees to the creator, burned, or locked until a date</td><td>Contract</td></tr>
               <tr><td>Creator fees</td><td>Uniswap's 0.3% on every trade; the locked liquidity can never be taken</td><td>Contract</td></tr>
               <tr><td>Winners' window to claim privately</td><td>1 hour after reveals end, then the keeper pushes public claims</td><td>Keeper</td></tr>
               <tr><td>Private swap slippage and deadline</td><td>1% and 10 minutes by default</td><td>App</td></tr>
-              <tr><td>Batch round</td><td>30 s, 2% price guard, 5% impact guard, refunds after 10 min</td><td>Contract</td></tr>
-              <tr><td>Fees</td><td>0.25% on withdrawals, swaps and batch orders (cap 1%), 1.5% of a successful raise (cap 3%), deposits and sends free</td><td>Config</td></tr>
+              <tr><td>Batch round</td><td>{G ? "60 s, priced at the average over at least a round, 4% of the pool per side, 2% price guard, 5% impact guard, refunds after 10 min" : "30 s, 2% price guard, 5% impact guard, refunds after 10 min"}</td><td>Contract</td></tr>
+              <tr><td>Fees</td><td>{G ? "0.5% on what leaves a vault, 1.5% of a successful raise (cap 3%), deposits and sends free" : "0.25% on withdrawals, swaps and batch orders (cap 1%), 1.5% of a successful raise (cap 3%), deposits and sends free"}</td><td>{G ? "Vault, behind a 3-day wait" : "Config"}</td></tr>
               <tr><td>Beta caps</td><td>See Fees & caps. Withdrawals never capped</td><td>Config</td></tr>
-              <tr><td>Relay fee</td><td>Its gas × 1.25, at least 0.1 gwei gas price</td><td>Keeper</td></tr>
+              <tr><td>Relay fee</td><td>{G ? "None, the relay is paid from the launch vault's fee" : "Its gas × 1.25, at least 0.1 gwei gas price"}</td><td>Keeper</td></tr>
             </tbody>
           </table>
 
@@ -326,15 +386,29 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           </ul>
 
           <h2 id="keeper">Keeper & relayer</h2>
+          {G ? (
+            <p>The keeper is a small Node service. It reveals bids once the drand round passes and settles launches. It admits each settled launch to the launch vault and settles batch rounds. It relays private transactions (<code>POST /gloam/relay</code>) with no fee to you, paying gas from the launch vault's fee income, and keeps its last gas each hour for withdrawals and refunds. It can delay or refuse a transaction but can't change one, because the proof binds every field. It also publishes sealed bids the time-lock key couldn't open (<code>GET /unopenable</code>). Anyone can run one with <code>node services/keeper/index.mjs</code>.</p>
+          ) : (
           <p>The keeper is a small Node service. It reveals bids once the drand round passes, settles launches and batch rounds, pays out orders, and relays private transactions (<code>POST /relay</code>). It pays gas, so it's the on-chain sender of every private trade, and takes a fee for that inside the proof (<code>GET /quote</code>): the gas it pays × 1.25, at a gas price of at least 0.1 gwei. A call that doesn't pay it is refused before it costs anything, and each IP can send 20 relay requests a minute. It pushes public claims 1 hour after a launch's reveals end, so winners can claim privately first, and it opens each launch's private vault at settlement. It can delay or refuse a transaction, but it can't change or steal one, because the proof binds every field. Anyone can run one: <code>node services/keeper/index.mjs</code>.</p>
+          )}
 
           <h2 id="limits">Limits & threat model</h2>
           <ul>
             <li>Sealed bids stop <i>ordering</i> games, not many-wallet games. Uniform pricing removes most of the reason to split.</li>
             <li>drand is a threshold network. A threshold collusion could decrypt bids early.</li>
             <li>The relayer sees your IP and can delay you. Anyone can run their own.</li>
-            <li>The Groth16 keys come from a development ceremony. Production needs a public one.</li>
-            <li>Unaudited testnet software. Mainnet is planned for Nov 9, with deposit caps until the audit and trusted-setup ceremony are done.</li>
+            {G ? (
+              <>
+                <li>Proofs use Gloam's final ceremony keys, and Kann audited Gloam's vault. Cloak's own escrows and launch vault are reviewed internally, and an outside review comes next, with deposit caps until it's done.</li>
+                <li>A private payment is spendable by its sender until the recipient's app sweeps it, which happens every time Cloak is open. The pending balance shows it.</li>
+                <li>Testnet software. Mainnet comes in stages, privately first.</li>
+              </>
+            ) : (
+              <>
+                <li>The Groth16 keys come from a development ceremony. Production needs a public one.</li>
+                <li>Unaudited testnet software. Mainnet is planned for Nov 9, with deposit caps until the audit and trusted-setup ceremony are done.</li>
+              </>
+            )}
           </ul>
         </article>
         <aside className="toc">

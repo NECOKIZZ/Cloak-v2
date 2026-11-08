@@ -134,9 +134,32 @@ try {
   const w = await agent("withdraw", { asset: "HYPE", to: dest, amount: "1" });
   assert(w.arrived === "0.995 HYPE" && (await pub.getBalance({ address: dest })) === parseEther("0.995"), `withdrew 1 HYPE, 0.995 arrived (the vault's 0.5%)`);
 
-  let linkErr = "";
-  await agent("create_payment_link", { asset: "HYPE", amount: "0.1" }).catch((e) => (linkErr = e.message));
-  assert(/site/.test(linkErr), "payment links point to the site for now");
+  // payment links: a locked link in 2 shares, claimed by the second agent into its private balance and to a wallet
+  const made = await agent("create_payment_link", { asset: "HYPE", amount: "0.2", shares: 2, passcode: "open sesame", hint: "the magic words" });
+  assert(made.link.includes("/claim#") && made.holds.includes("2 shares"), `a locked link in 2 shares (${made.holds})`);
+  const chk = await other("check_payment_link", { link: made.link, passcode: "open sesame" });
+  assert(chk.holds.HYPE === "0.2 HYPE" && chk.sharesLeft === "2 of 2", `check shows 0.2 HYPE in 2 shares (${chk.holds.HYPE}, ${chk.sharesLeft})`);
+  let wrong = "";
+  await other("claim_payment_link", { link: made.link, passcode: "wrong" }).catch((e) => (wrong = e.message));
+  assert(wrong.length > 0, "a wrong passcode opens nothing");
+  const before = (await other("private_balance")).balances.HYPE;
+  const c1 = await other("claim_payment_link", { link: made.link, passcode: "open sesame" });
+  assert(c1.claimed.length === 1 && c1.claimed[0].claimed === "0.1 HYPE", `one share claimed into the second agent's private balance (${c1.claimed[0].claimed})`);
+  const after = (await other("private_balance")).balances.HYPE;
+  assert(Number(after) - Number(before) > 0.099, `its private balance went from ${before} to ${after} HYPE`);
+  const wallet2 = "0x000000000000000000000000000000000000d00d";
+  const c2 = await other("claim_payment_link", { link: made.link, passcode: "open sesame", to: wallet2 });
+  assert((await pub.getBalance({ address: wallet2 })) === parseEther("0.0995"), `the other share went to a fresh wallet with no gas (${c2.claimed[0].claimed})`);
+  const left = await other("check_payment_link", { link: made.link, passcode: "open sesame" });
+  assert(left.empty && left.status === "claimed", "the link is empty once both shares are claimed");
+
+  // a payment request: the second agent asks, the first pays it privately
+  const req = await other("request_payment_link", { asset: "HYPE", amount: "0.05", note: "coffee" });
+  assert(req.payTo.startsWith("cloak:gloamr1."), "a request link that pays the second agent's cloak: address");
+  const b2 = Number((await other("private_balance")).balances.HYPE);
+  await agent("pay_payment_request", { link: req.link });
+  const a2 = Number((await other("private_balance")).balances.HYPE);
+  assert(Math.abs(a2 - b2 - 0.05) < 1e-9, `paid privately (${b2} to ${a2} HYPE)`);
 
   writeMeasurements("part16-mcp", { seconds: Math.round((performance.now() - t0) / 1000) });
   console.log(`\nPart 16 passed in ${Math.round((performance.now() - t0) / 1000)} s`);

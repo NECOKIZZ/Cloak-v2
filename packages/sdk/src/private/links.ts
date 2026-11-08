@@ -19,6 +19,7 @@
  * Everything sits in the URL fragment (after #), which browsers never send to a server or put in a referrer, so a
  * link stays between the people who share it.
  */
+import { isReceiveTag } from "@gloamtrade/sdk";
 import { scryptAsync } from "@noble/hashes/scrypt";
 import { randomBytes } from "@noble/hashes/utils";
 import { concat, isAddress, keccak256, toBytes, toHex, type Hex } from "viem";
@@ -249,6 +250,11 @@ export function normalizeLinkAmount(input: string, decimals: number): string {
 /** Throws unless `to` is a cloak: address or a 0x address. */
 export function checkPayee(to: string): "cloak" | "wallet" {
   const t = to.trim();
+  if (t.startsWith("cloak:gloamr1.")) {
+    // Cloak v2 on Gloam: the cloak: form of a Gloam receive tag
+    if (!isReceiveTag(t.slice("cloak:".length))) throw new Error("not a cloak: address");
+    return "cloak";
+  }
   if (t.startsWith("cloak:")) {
     parseCloakAddress(t);
     return "cloak";

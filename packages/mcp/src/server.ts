@@ -59,6 +59,10 @@ import {
   gloamProvers,
   gloamRelaySubmitter,
   GLOAM_CIRCUITS_CDN,
+  gloamLinkAddress,
+  gloamLinkCheck,
+  gloamLinkKeys,
+  openGloamLinkKeys,
   type LaunchRecord,
 } from "@cloakely/sdk";
 import type { Settings } from "./config.js";
@@ -92,7 +96,6 @@ type Asset =
   | { kind: "token"; symbol: string; token: Address; pool: Address; pair: Address; decimals: 18; shared?: true };
 
 const LAUNCH_VAULT = parseAbi(["function isLaunchToken(address) view returns (bool)", "function factory() view returns (address)", "function admitLaunch(uint256 launchIndex) returns (address)"]);
-const GLOAM_LINKS = "Payment links aren't in the agent tools on Cloak v2 on Gloam yet. Make or claim one on the site (Links page).";
 
 const j = (x: unknown) => JSON.stringify(x, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2);
 const reply = (x: unknown) => ({ content: [{ type: "text" as const, text: j(x) }] });
@@ -1069,7 +1072,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     "withdraw",
     {
       title: "Withdraw to an address",
-      description: "Move funds from the private balance to a normal 0x address or .ely name (public on purpose). A brand-new address keeps the most privacy. Cloak keeps 0.25%, and the relayer takes a small fee for gas.",
+      description: `Move funds from the private balance to a normal 0x address or .ely name (public on purpose). A brand-new address keeps the most privacy. ${G ? "The vault keeps 0.5%, and the relay pays the gas." : "Cloak keeps 0.25%, and the relayer takes a small fee for gas."}`,
       inputSchema: { asset: z.string().describe('"HYPE", "USDC" or a launch token'), to: z.string().describe("0x address or a .ely name (looked up when sending)"), amount: amt('Amount, or "max"'), dry_run: dry },
       annotations: WRITE,
     },
@@ -1107,9 +1110,19 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   }
   /** A wallet-less client for the private account a claim link opens. */
   async function linkClient(url: string, passcode?: string) {
-    if (G) throw new Error(GLOAM_LINKS);
     const l = parseClaimLink(url);
     if (l.locked && passcode === undefined) throw new Error(`This link is locked. Pass its passcode${l.hint ? ` (the answer to: "${l.hint}")` : ""}.`);
+    if (G) {
+      // the link's own Gloam account: spends what it received directly, through the relay, with no wallet
+      const sources = settings.gloamCircuitsDir ? [`file://${settings.gloamCircuitsDir}`] : [GLOAM_CIRCUITS_CDN];
+      const g = new GloamPrivate(
+        { publicClient: pub, chainId: settings.chain.id, gloamVault: { pool: G.gloamVault, poolBlock: G.block }, launchVault: { pool: G.launchVault, poolBlock: G.block }, payMemo: G.memoBoard, provers: gloamProvers(sources), submit: gloamRelaySubmitter(d.relayerUrl), whype: G.whype, spendReceived: true, logChunk: 5_000n },
+        await openGloamLinkKeys(l, passcode),
+      );
+      await g.loadMarkets();
+      for (const a of d.assets ?? []) g.addAsset(a);
+      return { l, c: g as unknown as CloakPrivate };
+    }
     // a locked link with a check refuses a wrong passcode here, before anything touches the network
     const c = new CloakPrivate(pub, d.router, await openLinkKeys(l, passcode), prover, submit, d.vaultsBlock ?? d.routerBlock, d.batcher, d.migrator);
     for (const a of d.assets ?? []) c.addAsset(a);
@@ -1137,7 +1150,6 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       annotations: WRITE,
     },
     safe(async (x: { asset: string; amount: string; message?: string; from?: string; passcode?: string; hint?: string; shares?: number; cover_claim_fee?: boolean; dry_run?: boolean }) => {
-      if (G) throw new Error(GLOAM_LINKS);
       const { spending } = needWallet();
       const a = await linkAsset(x.asset);
       const whole = amountOf(x.amount, a.decimals);
@@ -1157,9 +1169,17 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       if (isDry(x.dry_run)) return { dryRun: true, wouldLock: `${fmtAmt(a, total)} in ${n} share${n > 1 ? "s" : ""} of ${fmtAmt(a, each)}`, claimFeeCovered: fmtAmt(a, claimFee * BigInt(n)), locked: !!x.passcode };
       return exclusive(async () => {
         const secret = newLinkSecret();
-        const keys = await linkKeys(secret, x.passcode);
-        const to = await linkAddress(keys);
-        const check = x.passcode ? await linkCheck(keys) : undefined;
+        let to: string;
+        let check: string | undefined;
+        if (G) {
+          const gk = await gloamLinkKeys(secret, x.passcode);
+          to = gloamLinkAddress(gk);
+          check = x.passcode ? gloamLinkCheck(gk) : undefined;
+        } else {
+          const keys = await linkKeys(secret, x.passcode);
+          to = await linkAddress(keys);
+          check = x.passcode ? await linkCheck(keys) : undefined;
+        }
         let block = 0n;
         const txs: string[] = [];
         for (let i = 0; i < n; i++) {
@@ -1189,7 +1209,6 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       annotations: READ,
     },
     safe(async ({ link: url, passcode }: { link: string; passcode?: string }) => {
-      if (G) throw new Error(GLOAM_LINKS);
       const { l, c } = await linkClient(url, passcode);
       const out: Record<string, string> = {};
       let notes = 0;
@@ -1217,7 +1236,6 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       annotations: WRITE,
     },
     safe(async ({ link: url, passcode, to, dry_run }: { link: string; passcode?: string; to?: string; dry_run?: boolean }) => {
-      if (G) throw new Error(GLOAM_LINKS);
       const { l, c } = await linkClient(url, passcode);
       const out = to && to !== "private";
       if (out) to = (await resolveRecipient(pub, to!)).address; // a 0x address, or a .ely name resolved now
@@ -1251,7 +1269,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
               if (!l.shares || attempt >= 3 || !/already|spent|nullifier|being used/i.test(String(e))) throw e;
             }
           }
-          const got = out ? await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [r.amount] }) : r.amount;
+          const got = !out ? r.amount : G ? await (c as unknown as GloamPrivate).afterFee(a.pool, r.amount) : await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [r.amount] });
           claimed.push({ claimed: fmtAmt(a, got), tx: link(r.txHash) });
           if (l.shares) break;
         }
@@ -1269,7 +1287,6 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       annotations: READ,
     },
     safe(async ({ asset, amount, note, name, to }: { asset: "HYPE" | "USDC"; amount?: string; note?: string; name?: string; to?: string }) => {
-      if (G) throw new Error(GLOAM_LINKS);
       const payTo = to ?? (await (await priv()).address());
       return { link: buildRequestLink({ to: payTo, token: asset, amount, note, name }), payTo, howTheyPay: payTo.startsWith("cloak:") ? "a private transfer: nobody sees who paid whom, or how much" : "from their private balance to this address: their wallet never shows; the amount and this address are public" };
     }),
@@ -1284,7 +1301,6 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       annotations: WRITE,
     },
     safe(async ({ link: url, amount, dry_run }: { link: string; amount?: string; dry_run?: boolean }) => {
-      if (G) throw new Error(GLOAM_LINKS);
       const { spending } = needWallet();
       const r = parseRequestLink(url);
       const a = await linkAsset(r.token);
@@ -1298,7 +1314,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       let gross = units;
       if (!toCloak) {
         const one = 10n ** BigInt(a.decimals);
-        const after = await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [one] });
+        const after = G ? await (p as unknown as GloamPrivate).afterFee(a.pool, one) : await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [one] });
         gross = after > 0n ? (units * one + after - 1n) / after : units;
       }
       const c = await cost(a, gross);

@@ -934,3 +934,21 @@ An outside reviewer asked about the batcher's price window and the auction's unc
 - **SDK:** `batch()` now reports the round each order actually landed in, not the round when it was proved.
 - **Unopenable sealed bids:** `revealAll` returns them, and the keeper publishes them at `GET /unopenable?auction=` once the drand round passes. Not covered by an end-to-end run yet: the auction's e2e is Cloak v1's (`e2e/run.mjs`).
 - **Review CL-06 (Haider Ali, Nov 7) on v2:** v2's Gloam batcher had no size limit per side, so one huge order could make a round wait for a refund. Each side now holds at most 4% of the market's depth (`RoundFull`), as Cloak v1's batchers do. The SDK sizes orders to the room left (`batchRoom`) and keeps the rest in the balance. 122 of 122 forge tests pass. Part 14 is reworked: a 0.3 HYPE buy on a 0.43 HYPE pool goes in as 0.017 and settles. Every other finding in that review was already fixed or decided in v1, whose contracts are byte-identical here. See `docs/REVIEW-RESPONSES.md`.
+
+### 16.26 The site's docs, payment links in the agent tools, and request links on Gloam (Nov 8)
+
+- **Docs page on Gloam:** it described Cloak v1 (its vaults and contracts, a 0.25% fee, v1's caps, a dev ceremony). On the Gloam backend it now shows v2's own:
+  - the contracts (Gloam's vault, the launch vault, the escrows, the factory and hook);
+  - 0.5% on what leaves a vault, and a free relay;
+  - Gloam's caps;
+  - batch rules (an average over at least a round, 4% per side);
+  - the keeper's Gloam relay and `/unopenable`;
+  - the limits (final keys, bearer notes until swept).
+
+  Checked in a browser on the built site: no v1 text and no errors.
+- **Request links on Gloam were broken.** `checkPayee` only took v1's `cloak:` format, so a request to a `cloak:gloamr1.` address failed on the site's Links and Pay pages and in the agent tools. It now takes a Gloam receive tag (checked with Gloam's `isReceiveTag`).
+- **Payment links in the MCP tools on Gloam:** create, check, claim (into a private balance or to a wallet), request and pay. `part16-mcp.mjs` now covers:
+  - a locked 2-share link, with a wrong passcode refused;
+  - one share claimed privately, and the other to a fresh wallet (0.0995 arrived);
+  - the link reading empty afterwards;
+  - a request paid privately.
