@@ -85,6 +85,12 @@ export async function fetchCircuit(baseUrl: string | string[], names: [string, s
   for (const base of bases) {
     try {
       const get = async (name: string) => {
+        // a local directory (Node: file:///path), for tools and tests that have the files on disk
+        if (base.startsWith("file://")) {
+          const spec = "node:fs/promises";
+          const fs = (await import(/* @vite-ignore */ spec)) as { readFile(p: string): Promise<Uint8Array> };
+          return new Uint8Array(await fs.readFile(`${base.slice("file://".length)}/${name}`));
+        }
         const res = await fetch(`${base}/${name}`);
         if (!res.ok) throw new Error(`could not download ${name} from ${base} (${res.status})`);
         return new Uint8Array(await res.arrayBuffer());

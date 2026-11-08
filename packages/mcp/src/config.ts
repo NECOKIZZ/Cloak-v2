@@ -18,6 +18,13 @@ export interface Settings {
   /** Local circuit files instead of downloading them (hash-checked) from `deployment.circuitsUrl`. */
   circuitsDir?: string;
   privateKey?: Hex;
+  /**
+   * The private layer: "gloam" (Cloak v2 on Gloam's vault, the default wherever the deployment has one) or "cloak"
+   * (Cloak's own vaults). CLOAK_CORE picks one.
+   */
+  core: "cloak" | "gloam";
+  /** Gloam's circuit files on disk (their wasm and final/ zkeys), instead of downloading them (hash-checked). */
+  gloamCircuitsDir?: string;
   dryRun: boolean;
   stateDir: string;
   limits: Limits;
@@ -93,11 +100,16 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     if (!/^\d+(\.\d+)?$/.test(v)) throw new Error(`${name} must be a number, got "${v}"`);
     return v;
   };
+  if (env.CLOAK_CORE && env.CLOAK_CORE !== "cloak" && env.CLOAK_CORE !== "gloam") throw new Error(`CLOAK_CORE must be cloak or gloam, got "${env.CLOAK_CORE}"`);
+  if (env.CLOAK_CORE === "gloam" && !deployment.gloam) throw new Error("CLOAK_CORE=gloam, but this deployment has no Gloam contracts.");
+  const core = env.CLOAK_CORE === "cloak" || !deployment.gloam ? "cloak" : "gloam";
   return {
     network,
     chain,
     rpcUrl,
     deployment,
+    core,
+    gloamCircuitsDir: env.GLOAM_CIRCUITS_DIR,
     launchesFromBlock,
     circuitsDir: env.CLOAK_CIRCUITS_DIR,
     privateKey: key as Hex | undefined,
