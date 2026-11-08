@@ -34,7 +34,7 @@ contract CloakLaunchSwapTest is Test {
         uint256 idx = factory.add(address(auction), address(launch));
         auction.settle();
 
-        vault = new CloakLaunchVault(_poseidon(), address(new ToVerifier()), address(factory), 1_000_000e18, 50_000_000e18);
+        vault = new CloakLaunchVault(_poseidon(), address(new ToVerifier()), address(factory), 1_000_000e18, 50_000_000e18, address(0));
         vault.setShieldVerifier(address(new YesVerifier()));
         vault.setWithdrawFee(50, address(0xFEE));
         vault.turnOnDepositLimits();

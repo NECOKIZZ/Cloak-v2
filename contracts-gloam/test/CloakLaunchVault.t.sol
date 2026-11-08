@@ -5,6 +5,7 @@ import {Test, stdJson} from "forge-std/Test.sol";
 import {IVerifier} from "gloam/interfaces/IVerifier.sol";
 import {ShieldPoolCore} from "gloam/ShieldPoolCore.sol";
 import {ChangeTimelock} from "gloam/lib/ChangeTimelock.sol";
+import {VaultOwnerGuard} from "gloam/VaultOwnerGuard.sol";
 import {CloakLaunchVault} from "../src/CloakLaunchVault.sol";
 import {TestToken} from "../src/TestToken.sol";
 
@@ -65,13 +66,14 @@ contract CloakLaunchVaultTest is Test {
     address cloakFees = address(0xFEE);
     address alice = address(0xA11CE);
     address mallory = address(0xBAD);
+    address pauser = address(0x9A05E);
     uint128 constant PER = 1_000_000e18;
     uint128 constant TOTAL = 50_000_000e18;
 
     function setUp() public {
         vm.warp(1_900_000_000);
         factory = new FakeFactory();
-        vault = new CloakLaunchVault(_poseidon(), address(new ToVerifier()), address(factory), PER, TOTAL);
+        vault = new CloakLaunchVault(_poseidon(), address(new ToVerifier()), address(factory), PER, TOTAL, pauser);
         vault.setShieldVerifier(address(new YesVerifier()));
         vault.setWithdrawFee(50, cloakFees);
         vault.turnOnDepositLimits();
@@ -100,15 +102,15 @@ contract CloakLaunchVaultTest is Test {
     function test_constructorChecks() public {
         address p = _poseidon();
         vm.expectRevert(ShieldPoolCore.ZeroAddress.selector);
-        new CloakLaunchVault(p, address(0), address(0), PER, TOTAL);
+        new CloakLaunchVault(p, address(0), address(0), PER, TOTAL, address(0));
         vm.expectRevert(CloakLaunchVault.BadLaunchCaps.selector);
-        new CloakLaunchVault(p, address(0), address(factory), 0, TOTAL);
+        new CloakLaunchVault(p, address(0), address(factory), 0, TOTAL, address(0));
         vm.expectRevert(CloakLaunchVault.BadLaunchCaps.selector);
-        new CloakLaunchVault(p, address(0), address(factory), TOTAL + 1, TOTAL);
+        new CloakLaunchVault(p, address(0), address(factory), TOTAL + 1, TOTAL, address(0));
     }
 
     function test_setupNeedsVerifiersAndLimits() public {
-        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(0), address(factory), PER, TOTAL);
+        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(0), address(factory), PER, TOTAL, address(0));
         vm.expectRevert(ShieldPoolCore.VerifierNotSet.selector);
         v.endSetup();
         v.setVerifier(address(new YesVerifier()));
@@ -162,7 +164,7 @@ contract CloakLaunchVaultTest is Test {
     }
 
     function test_totalCapHolds() public {
-        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(new YesVerifier()), address(factory), 100e18, 150e18);
+        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(new YesVerifier()), address(factory), 100e18, 150e18, address(0));
         v.setShieldVerifier(address(new YesVerifier()));
         v.turnOnDepositLimits();
         v.endSetup();
@@ -210,7 +212,7 @@ contract CloakLaunchVaultTest is Test {
 
     /// A launch whose token the owner already listed keeps the owner's limits.
     function test_alreadyLimitedTokenKeepsItsLimits() public {
-        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(new YesVerifier()), address(factory), PER, TOTAL);
+        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(new YesVerifier()), address(factory), PER, TOTAL, address(0));
         v.setDepositLimit(address(launch), 10e18, 20e18);
         auction.settle();
         vm.expectRevert(CloakLaunchVault.AlreadyLimited.selector);
@@ -256,8 +258,86 @@ contract CloakLaunchVaultTest is Test {
         assertEq(launch.balanceOf(address(vault)), 0);
     }
 
+    /// The pauser stops one token's admission, or all of them, and nothing else.
+    function test_pauserStopsAdmissions() public {
+        auction.settle();
+        vm.prank(mallory);
+        vm.expectRevert(CloakLaunchVault.NotPauser.selector);
+        vault.blockLaunch(address(launch), true);
+        vm.prank(pauser);
+        vault.blockLaunch(address(launch), true);
+        vm.expectRevert(CloakLaunchVault.AdmissionStopped.selector);
+        vault.admitLaunch(idx);
+        vm.prank(pauser);
+        vault.blockLaunch(address(launch), false);
+        vm.prank(pauser);
+        vault.pauseAdmissions(true);
+        vm.expectRevert(CloakLaunchVault.AdmissionStopped.selector);
+        vault.admitLaunch(idx);
+        vm.prank(pauser);
+        vault.pauseAdmissions(false);
+        vault.admitLaunch(idx);
+        assertTrue(vault.isLaunchToken(address(launch)));
+        // once admitted, pausing changes nothing for it: deposits go on, and only the owner can lower its limit
+        vm.prank(pauser);
+        vault.pauseAdmissions(true);
+        vm.prank(alice);
+        vault.shieldBound(address(launch), 1e18, bytes32(uint256(1)), hex"00");
+        vm.expectRevert(CloakLaunchVault.NotPauser.selector);
+        vault.pauseAdmissions(false);
+    }
+
+    function test_noPauserMeansNoStop() public {
+        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(0), address(factory), PER, TOTAL, address(0));
+        vm.expectRevert(CloakLaunchVault.NotPauser.selector);
+        v.pauseAdmissions(true);
+    }
+
+    /// Gloam's guard owns the vault, as their deploy does: setup ended, then ownership handed over and accepted.
+    function test_underGloamsGuard() public {
+        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(new ToVerifier()), address(factory), PER, TOTAL, pauser);
+        v.setShieldVerifier(address(new YesVerifier()));
+        v.setWithdrawFee(50, cloakFees);
+        v.turnOnDepositLimits();
+        address controller = address(0xC0DE);
+        VaultOwnerGuard guard = new VaultOwnerGuard(address(v), controller);
+        v.transferOwnership(address(guard));
+        vm.prank(controller);
+        vm.expectRevert(); // the guard refuses a vault still in setup
+        guard.acceptVaultOwnership();
+        v.endSetup();
+        vm.prank(controller);
+        guard.acceptVaultOwnership();
+        assertEq(v.owner(), address(guard));
+
+        // admission needs nobody's permission
+        auction.settle();
+        vm.prank(mallory);
+        v.admitLaunch(idx);
+        // the guard can lower an admitted token at once, and re-admitting can't raise it back
+        vm.prank(controller);
+        guard.lowerDepositLimit(address(launch), 0, 0);
+        v.admitLaunch(idx);
+        (uint128 per,) = v.depositLimit(address(launch));
+        assertEq(per, 0);
+        // and list another asset through the 3-day wait
+        bytes memory call = abi.encodeCall(ShieldPoolCore.setDepositLimit, (address(usd), uint128(500e6), uint128(25_000e6)));
+        vm.prank(controller);
+        guard.queueChange(call);
+        vm.warp(block.timestamp + 3 days);
+        vm.prank(controller);
+        guard.executeChange(call);
+        (per,) = v.depositLimit(address(usd));
+        assertEq(per, 500e6);
+        // the verifiers can never be swapped through it
+        bytes memory swapVerifier = abi.encodeCall(ShieldPoolCore.setVerifier, (address(0xBAD)));
+        vm.prank(controller);
+        vm.expectRevert();
+        guard.queueChange(swapVerifier);
+    }
+
     function test_feeCappedAtOnePercent() public {
-        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(0), address(factory), PER, TOTAL);
+        CloakLaunchVault v = new CloakLaunchVault(_poseidon(), address(0), address(factory), PER, TOTAL, address(0));
         vm.expectRevert(ShieldPoolCore.FeeTooHigh.selector);
         v.setWithdrawFee(101, cloakFees);
     }

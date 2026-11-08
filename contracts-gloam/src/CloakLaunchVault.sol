@@ -45,11 +45,27 @@ contract CloakLaunchVault is ShieldPoolCore {
     mapping(address => bool) public isLaunchToken;
     address[] public launchTokens;
 
+    /**
+     * @notice The incident stop for launches not admitted yet (Cloak's multisig, or address(0) for none). Under Gloam's
+     *         VaultOwnerGuard the owner can close a token only once it is admitted (the guard forwards
+     *         lowerDepositLimit, which can't tell "never set" from "lowered to zero"). The pauser can only stop
+     *         admissions, one token or all of them; it can't touch funds, limits or the fee.
+     */
+    address public immutable launchPauser;
+    /// @notice No launch is admitted while this is on.
+    bool public admissionsPaused;
+    /// @notice A token the pauser stopped from being admitted.
+    mapping(address => bool) public launchBlocked;
+
     event LaunchAdmitted(uint256 indexed launchIndex, address indexed token);
+    event AdmissionsPaused(bool paused);
+    event LaunchBlocked(address indexed token, bool blocked);
 
     error NotSettled();
     error AlreadyLimited();
     error BadLaunchCaps();
+    error NotPauser();
+    error AdmissionStopped();
 
     /**
      * @param poseidon2_ Circomlib Poseidon (2 inputs)
@@ -57,10 +73,12 @@ contract CloakLaunchVault is ShieldPoolCore {
      * @param factory_ Cloak's launch factory
      * @param perDeposit_ the largest single deposit of a launch token
      * @param total_ the most of one launch token the vault holds
+     * @param launchPauser_ who may stop admissions (address(0) for nobody)
      */
-    constructor(address poseidon2_, address verifier_, address factory_, uint128 perDeposit_, uint128 total_)
+    constructor(address poseidon2_, address verifier_, address factory_, uint128 perDeposit_, uint128 total_, address launchPauser_)
         ShieldPoolCore(poseidon2_, verifier_)
     {
+        launchPauser = launchPauser_;
         if (factory_ == address(0)) revert ZeroAddress();
         if (perDeposit_ == 0 || perDeposit_ > total_) revert BadLaunchCaps();
         factory = ILaunchFactoryV(factory_);
@@ -74,6 +92,7 @@ contract CloakLaunchVault is ShieldPoolCore {
         (auction, token,,,,) = factory.launches(launchIndex);
         if (!ILaunchAuctionV(auction).settled()) revert NotSettled();
         if (isLaunchToken[token]) return token;
+        if (admissionsPaused || launchBlocked[token]) revert AdmissionStopped();
         // a token the owner already gave limits (in setup or through the timelock) keeps them
         DepositLimit memory cur = depositLimit[token];
         if (cur.perDeposit != 0 || cur.total != 0) revert AlreadyLimited();
@@ -81,6 +100,20 @@ contract CloakLaunchVault is ShieldPoolCore {
         launchTokens.push(token);
         _setDepositLimit(token, launchPerDeposit, launchTotal);
         emit LaunchAdmitted(launchIndex, token);
+    }
+
+    /// @notice Stop (or restart) every new admission. Admitted tokens are untouched.
+    function pauseAdmissions(bool paused) external {
+        if (msg.sender != launchPauser) revert NotPauser();
+        admissionsPaused = paused;
+        emit AdmissionsPaused(paused);
+    }
+
+    /// @notice Stop (or allow again) one token's admission. A token already admitted is untouched (the owner lowers it).
+    function blockLaunch(address token, bool blocked) external {
+        if (msg.sender != launchPauser) revert NotPauser();
+        launchBlocked[token] = blocked;
+        emit LaunchBlocked(token, blocked);
     }
 
     function launchTokensCount() external view returns (uint256) {

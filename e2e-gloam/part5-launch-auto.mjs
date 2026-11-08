@@ -60,7 +60,7 @@ try {
   await write(pair, PAIR_ABI, "sync");
 
   // Cloak's launch vault on Gloam's final-key verifiers, its swap router and the graduation escrow
-  const lv = (await sendAndLog(pub, "deploy CloakLaunchVault", dep.deployContract({ ...ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), args: [L.poseidon, stack.dual, factory, 10n ** 24n, 10n ** 26n] }))).contractAddress;
+  const lv = (await sendAndLog(pub, "deploy CloakLaunchVault", dep.deployContract({ ...ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), args: [L.poseidon, stack.dual, factory, 10n ** 24n, 10n ** 26n, zeroAddress] }))).contractAddress;
   await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
   await write(lv, LV_ABI, "setWithdrawFee", [50, keeper.account.address]);
   await write(lv, LV_ABI, "turnOnDepositLimits");

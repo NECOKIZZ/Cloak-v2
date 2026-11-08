@@ -3,7 +3,7 @@
 // V2 pool stand-in, CloakGraduation, CloakGloamBatcher, CloakFundsGate, CloakReceiptCheck. The launch is a stand-in
 // (FakeFactory and FakeAuction). Used by live-elysium.mjs (live and --anvil) and part7-adapter.mjs.
 import { encodeFunctionData, parseAbi, parseEther, zeroAddress } from "viem";
-import { deployGloamStack, deployPoseidon, ourArtifact, sendAndLog } from "./lib.mjs";
+import { deployGloamStack, deployPoseidon, gloamArtifact, ourArtifact, sendAndLog } from "./lib.mjs";
 
 const FAKE_ABI = parseAbi(["function add(address auction, address token) returns (uint256)", "function settle()"]);
 const TOKEN_ABI = parseAbi(["function mint(address to, uint256 amount)", "function transfer(address to, uint256 amount) returns (bool)", "function deposit() payable"]);
@@ -15,7 +15,48 @@ export const LV_ABI = parseAbi([
   "function setDepositLimit(address asset, uint128 perDeposit, uint128 total)",
   "function endSetup()",
   "function feesOwed(address) view returns (uint256)",
+  "function transferOwnership(address)",
 ]);
+
+const READS = parseAbi([
+  "function owner() view returns (address)",
+  "function setupMode() view returns (bool)",
+  "function verifier() view returns (address)",
+  "function shieldVerifier() view returns (address)",
+  "function withdrawFeeBps() view returns (uint16)",
+  "function feeRecipient() view returns (address)",
+  "function depositLimitsOn() view returns (bool)",
+  "function factory() view returns (address)",
+  "function launchPauser() view returns (address)",
+  "function launchPerDeposit() view returns (uint128)",
+  "function launchTotal() view returns (uint128)",
+  "function sealedSwapVerifier() view returns (address)",
+  "function vault() view returns (address)",
+  "function controller() view returns (address)",
+]);
+
+/** Reads every setting of a deployed launch vault back, as Gloam's guarded deploy reads theirs. Throws on a mismatch. */
+export async function checkLaunchVault(pub, lv, want) {
+  const r = (address, functionName) => pub.readContract({ address, abi: READS, functionName });
+  const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+  const checks = [
+    ["owned by its guard", same(await r(lv, "owner"), want.guard)],
+    ["the guard guards this vault", same(await r(want.guard, "vault"), lv)],
+    ["setup has ended", (await r(lv, "setupMode")) === false],
+    ["Gloam's final-key verifier", same(await r(lv, "verifier"), want.dual)],
+    ["Gloam's final-key shield verifier", same(await r(lv, "shieldVerifier"), want.shieldVerifier)],
+    ["no sealed swap", same(await r(lv, "sealedSwapVerifier"), zeroAddress)],
+    ["deposit limits on", (await r(lv, "depositLimitsOn")) === true],
+    ["0.5% fee", Number(await r(lv, "withdrawFeeBps")) === 50],
+    ["fee to Cloak", same(await r(lv, "feeRecipient"), want.feeRecipient)],
+    ["Cloak's factory", same(await r(lv, "factory"), want.factory)],
+    ["the launch pauser", same(await r(lv, "launchPauser"), want.pauser)],
+    ["launch caps", (await r(lv, "launchPerDeposit")) === want.caps[0] && (await r(lv, "launchTotal")) === want.caps[1]],
+  ];
+  const bad = checks.filter(([, ok]) => !ok).map(([n]) => n);
+  if (bad.length) throw new Error(`launch vault read-back failed: ${bad.join(", ")}`);
+  return checks.length;
+}
 
 /**
  * @param gloamAssets what Cloak's instance of Gloam's vault lists:
@@ -27,7 +68,8 @@ export const LV_ABI = parseAbi([
  * @param seed { hype, tokens }: what the V2 pool starts with (default 0.2 HYPE and 200 tokens: 1 HYPE = 1000 tokens)
  * @param roundSecs graduation and batch rounds
  */
-export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEther("0.2"), tokens: parseEther("200") }, roundSecs = 60n, gloamAssets = "realistic", warp }) {
+export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEther("0.2"), tokens: parseEther("200") }, roundSecs = 60n, gloamAssets = "realistic", warp, pauser }) {
+  pauser ??= me.account.address; // the launch pauser (Cloak's multisig in production)
   const pub = me.pub;
   const wallet = me.wallet;
   const addr = me.account.address;
@@ -66,12 +108,21 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
   await write(launch, TOKEN_ABI, "mint", [pair, seed.tokens]);
   await write(pair, PAIR_ABI, "sync");
 
-  const lv = await deploy("CloakLaunchVault", ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), [poseidon, stack.dual, factory, parseEther("1000000"), parseEther("100000000")]);
+  // Cloak's launch vault, deployed the way Gloam's guarded deploy deploys their vault (MainnetDeploy._deployMainnetGuarded,
+  // which is hardcoded to ShieldPoolPayments): the same final-key verifiers, setup, end of setup, ownership handed to a
+  // VaultOwnerGuard and accepted by its controller, then every setting read back
+  const lvCaps = [parseEther("1000000"), parseEther("100000000")];
+  const lv = await deploy("CloakLaunchVault", ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), [poseidon, stack.dual, factory, ...lvCaps, pauser]);
   await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
   await write(lv, LV_ABI, "setWithdrawFee", [50, addr]);
   await write(lv, LV_ABI, "turnOnDepositLimits");
   await write(lv, LV_ABI, "setDepositLimit", [zeroAddress, parseEther("10"), parseEther("100")]);
   await write(lv, LV_ABI, "endSetup");
+  const guardArt = gloamArtifact("VaultOwnerGuard.sol", "VaultOwnerGuard");
+  const lvGuard = await deploy("VaultOwnerGuard for the launch vault", guardArt, [lv, addr]);
+  await write(lv, LV_ABI, "transferOwnership", [lvGuard]);
+  await write(lvGuard, guardArt.abi, "acceptVaultOwnership");
+  await checkLaunchVault(pub, lv, { guard: lvGuard, dual: stack.dual, shieldVerifier: stack.shieldVerifier, factory, feeRecipient: addr, pauser, caps: lvCaps });
   const router = await deploy("CloakLaunchSwap", ourArtifact("CloakLaunchSwap.sol", "CloakLaunchSwap"), [lv, v2, weth]);
   const graduation = await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [lv, stack.pool, roundSecs]);
   const batcher = await deploy("CloakGloamBatcher", ourArtifact("CloakGloamBatcher.sol", "CloakGloamBatcher"), [lv, v2, weth, roundSecs, 200n, 600n]);
@@ -93,6 +144,6 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
     }
   }
   const block = await pub.getBlockNumber();
-  const contracts = { usdc, gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
+  const contracts = { usdc, launchVaultGuard: lvGuard, gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
   return { contracts, block, stack, listing };
 }

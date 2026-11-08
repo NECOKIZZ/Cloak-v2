@@ -795,3 +795,16 @@ Payment links now run on the Gloam backend with the same pages and the same link
   - `e2e-gloam/part9-links.mjs` covers a locked 2-share link: a wrong passcode refused on the device, the right one in another spelling opens it, one share claimed to a gasless wallet (0.2985 of 0.3), the other into another user's private balance, the claims list showing one wallet and one private, and the sender taking back an unclaimed link.
   - `part8-site.mjs` now also makes a link on the real Links page and claims it in a second browser with no wallet (0.0995 of 0.1 arrived). Screenshots are `part8-6-link-made.png`, `part8-6b-claim-page.png` and `part8-7-link-claimed.png`.
 - **Still not on the Gloam backend:** bids from the private balance, receive addresses, and spread-out withdrawals.
+
+### 16.14 The launch vault under Gloam's guard, with a pauser (Nov 8)
+
+- **Under Gloam's guard:** `e2e-gloam/stack.mjs` deploys `CloakLaunchVault` the way Gloam's guarded deploy deploys their vault. Their `_deployMainnetGuarded` is hardcoded to `ShieldPoolPayments`, so this mirrors it in order: the same final-key verifiers, setup, end of setup, ownership handed to a `VaultOwnerGuard`, and the controller accepting. Then `checkLaunchVault` reads back 12 settings and throws on any mismatch:
+  - the vault is owned by its guard, and the guard guards it;
+  - setup has ended;
+  - both final-key verifiers are set, and there is no sealed swap;
+  - deposit limits are on;
+  - the fee is 0.5% and goes to Cloak;
+  - the factory, the pauser and the launch caps are as deployed.
+- **What the guard allows:** it forwards only `setDepositLimit` and `setWithdrawFee` through the 3-day wait, plus the instant lowering calls. It never forwards a verifier change. Nothing in the vault needs another owner call later, because the factory and the launch caps are fixed at deploy (changing either means a new vault).
+- **The pauser (new):** under the guard, the owner can close a launch token only once it's admitted (`lowerDepositLimit` can't tell "never set" from "lowered to zero", and it can't be overridden). So the vault has a fixed `launchPauser` (Cloak's multisig, or nobody). It can stop all new admissions (`pauseAdmissions`) or one token's (`blockLaunch`). It can't touch funds, limits, the fee, or a token already admitted.
+- **Tests:** forge is at 108 of 108. The new ones cover the pauser, and the guard handover itself: the guard refuses a vault still in setup, admission needs nobody, the guard lowers an admitted token and re-admitting can't raise it, another asset lists through the 3-day wait, and a verifier change is refused. Parts 4 to 9 and the anvil rehearsal of the live run pass with the new constructor.

@@ -51,7 +51,7 @@ try {
 
   // Cloak's launch vault, wired to the same final-key verifiers Gloam's deploy made (stateless, so shared)
   const lvArt = ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault");
-  const lv = (await sendAndLog(pub, "deploy CloakLaunchVault", dep.deployContract({ ...lvArt, args: [L.poseidon, stack.dual, factory, 10n ** 24n, 10n ** 26n] }))).contractAddress;
+  const lv = (await sendAndLog(pub, "deploy CloakLaunchVault", dep.deployContract({ ...lvArt, args: [L.poseidon, stack.dual, factory, 10n ** 24n, 10n ** 26n, zeroAddress] }))).contractAddress;
   await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
   await write(lv, LV_ABI, "setWithdrawFee", [50, keeper.account.address]); // Cloak's fee, paid to the relay's wallet
   await write(lv, LV_ABI, "turnOnDepositLimits");

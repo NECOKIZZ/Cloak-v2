@@ -33,7 +33,7 @@ contract CloakGraduationTest is Test {
         uint256 idx = factory.add(address(auction), address(launch));
         auction.settle();
 
-        lv = new CloakLaunchVault(_poseidon(), address(new ToVerifier()), address(factory), 1_000_000e18, 50_000_000e18);
+        lv = new CloakLaunchVault(_poseidon(), address(new ToVerifier()), address(factory), 1_000_000e18, 50_000_000e18, address(0));
         lv.setShieldVerifier(address(new YesVerifier()));
         lv.setWithdrawFee(50, cloakFees);
         lv.turnOnDepositLimits();

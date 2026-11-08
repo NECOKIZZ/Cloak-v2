@@ -39,7 +39,7 @@ const write = (address, abi, functionName, args = []) => sendAndLog(pub, functio
 try {
   console.log("Part 6 on anvil (chain 99801): allocation gates and receipts on Gloam's final keys");
   const factory = (await sendAndLog(pub, "deploy factory", dep.deployContract({ ...ourArtifact("CloakLaunchVault.t.sol", "FakeFactory") }))).contractAddress;
-  const lv = (await sendAndLog(pub, "deploy CloakLaunchVault", dep.deployContract({ ...ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), args: [L.poseidon, stack.dual, factory, 10n ** 24n, 10n ** 26n] }))).contractAddress;
+  const lv = (await sendAndLog(pub, "deploy CloakLaunchVault", dep.deployContract({ ...ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), args: [L.poseidon, stack.dual, factory, 10n ** 24n, 10n ** 26n, zeroAddress] }))).contractAddress;
   await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
   await write(lv, LV_ABI, "setWithdrawFee", [50, keeper.account.address]);
   await write(lv, LV_ABI, "turnOnDepositLimits");
