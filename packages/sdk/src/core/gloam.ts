@@ -31,6 +31,7 @@ import type { Status } from "../private/client.js";
 export const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const HKDF_INFO = "cloak-gloam-account-v1";
 const SELF_PREFIX = "cloakself1.";
+const LINK_PREFIX = "cloaklink1.";
 const P256_SPKI_HEADER = "3059301306072a8648ce3d020106082a8648ce3d03010703420004";
 
 export const GLOAM_POOL_ABI = parseAbi([
@@ -113,6 +114,8 @@ export class GloamCore implements PrivateCore {
   private notes = new Map<string, OwnedGloamNote>();
   private memoFrom: bigint;
   private seenMemo = new Set<string>();
+  /** Claim links this account made (gloam1. packages), by commitment: claimed or not, see links(). */
+  private linkPacks = new Map<string, string>();
   private candidates: { commitment: bigint; asset: Address; amount: bigint; secret: bigint; own: boolean }[] = [];
 
   constructor(readonly cfg: GloamCoreConfig, readonly keys: GloamAccountKeys) {
@@ -222,7 +225,10 @@ export class GloamCore implements PrivateCore {
       return; // not ours
     }
     try {
-      if (plain.startsWith(SELF_PREFIX)) {
+      if (plain.startsWith(LINK_PREFIX)) {
+        const pack = gloam.decodeNotePackage(plain.slice(LINK_PREFIX.length));
+        if (pack.pool.toLowerCase() === this.cfg.pool.toLowerCase()) this.linkPacks.set(pack.commitment.toLowerCase(), plain.slice(LINK_PREFIX.length));
+      } else if (plain.startsWith(SELF_PREFIX)) {
         const j = JSON.parse(plain.slice(SELF_PREFIX.length));
         if (j.ch !== this.cfg.chainId) return;
         const asset = j.a as Address;
@@ -292,15 +298,23 @@ export class GloamCore implements PrivateCore {
     return hashes;
   }
 
-  /** One 1-in 2-out transfer. `pay` goes to `payTo` (a receive tag) or to this account (undefined). */
-  private async transferOne(n: OwnedGloamNote, pay: bigint, payTo: string | undefined, onStatus: Status): Promise<Hex[]> {
+  /**
+   * One 1-in 2-out transfer. `pay` goes to `payTo`: a receive tag, this account (undefined), or a claim link's note
+   * ({ secret }: the link carries the secret; a copy sealed to this account lets any of its devices take it back).
+   */
+  private async transferOne(n: OwnedGloamNote, pay: bigint, payTo: string | { secret: bigint } | undefined, onStatus: Status): Promise<Hex[]> {
     const path = await this.pathOf(n.commitment);
     const change = await this.freshOwn(n.asset, n.amount - pay);
     let paySecret: bigint;
     let payCommitment: bigint;
     let payTicket: string;
     let mine: Awaited<ReturnType<GloamCore["freshOwn"]>> | null = null;
-    if (payTo) {
+    if (payTo && typeof payTo === "object") {
+      paySecret = payTo.secret;
+      payCommitment = await gloam.noteCommitmentPoseidon(paySecret, pay, n.asset);
+      const pack = gloam.encodeNotePackage({ pool: this.cfg.pool, asset: n.asset, amountWei: pay.toString(), secret: h32(paySecret), commitment: h32(payCommitment), chainId: this.cfg.chainId });
+      payTicket = await gloam.sealToReceiveTag(LINK_PREFIX + pack, this.keys.receiveTag);
+    } else if (payTo) {
       paySecret = await gloam.randomSecretField();
       payCommitment = await gloam.noteCommitmentPoseidon(paySecret, pay, n.asset);
       const pack = gloam.encodeNotePackage({ pool: this.cfg.pool, asset: n.asset, amountWei: pay.toString(), secret: h32(paySecret), commitment: h32(payCommitment), chainId: this.cfg.chainId });
@@ -424,6 +438,53 @@ export class GloamCore implements PrivateCore {
 
   get config() {
     return this.cfg;
+  }
+
+  // ── claim links ────────────────────────────────────────────────────────
+
+  /**
+   * A claim link: `amount` moves into a note whose secret the link carries (Gloam's gloam1. note package, which
+   * Gloam's own app opens too). Whoever opens the link first takes it; until then this account can take it back.
+   */
+  async createClaimLink(asset: Address, amount: bigint, onStatus: Status = () => {}): Promise<{ link: string; commitment: Hex; txHashes: Hex[] }> {
+    await this.sync(onStatus);
+    const [p] = this.plan(asset, amount);
+    if (p.take !== amount) throw new Error("A claim link is paid from one note: not enough in a single note.");
+    const secret = await gloam.randomSecretField();
+    const commitment = await gloam.noteCommitmentPoseidon(secret, amount, asset);
+    const txHashes = await this.transferOne(p.note, amount, { secret }, onStatus);
+    const link = gloam.encodeNotePackage({ pool: this.cfg.pool, asset, amountWei: amount.toString(), secret: h32(secret), commitment: h32(commitment), chainId: this.cfg.chainId });
+    this.linkPacks.set(h32(commitment).toLowerCase(), link);
+    return { link, commitment: h32(commitment), txHashes };
+  }
+
+  /** Take a claim link into this account (a sweep). The same call takes back an unclaimed link of one's own. */
+  async claimLink(link: string, onStatus: Status = () => {}): Promise<{ amount: bigint; asset: Address; txHashes: Hex[] }> {
+    const pack = gloam.decodeNotePackage(link.slice(link.indexOf(gloam.NOTE_PACKAGE_PREFIX)));
+    if (pack.pool.toLowerCase() !== this.cfg.pool.toLowerCase()) throw new Error("That link is for another vault.");
+    const secret = BigInt(pack.secret);
+    const amount = BigInt(pack.amountWei);
+    const commitment = await gloam.noteCommitmentPoseidon(secret, amount, pack.asset);
+    if (commitment !== BigInt(pack.commitment)) throw new Error("That link is damaged.");
+    const nullifier = await gloam.noteNullifierPoseidon(secret, commitment);
+    const spent = await this.cfg.publicClient.readContract({ address: this.cfg.pool, abi: GLOAM_POOL_ABI, functionName: "isSpent", args: [h32(nullifier)] });
+    if (spent) throw new Error("That link has already been claimed.");
+    onStatus("Claiming");
+    const txHashes = await this.transferOne({ asset: pack.asset, amount, secret, commitment, nullifier, own: false }, amount, undefined, onStatus);
+    await this.sync(onStatus);
+    return { amount, asset: pack.asset, txHashes };
+  }
+
+  /** Claim links this account made, with whether each is still open. */
+  async links(): Promise<{ link: string; commitment: Hex; amount: bigint; asset: Address; open: boolean }[]> {
+    const out = [];
+    for (const [c, link] of this.linkPacks) {
+      const pack = gloam.decodeNotePackage(link);
+      const nullifier = await gloam.noteNullifierPoseidon(BigInt(pack.secret), BigInt(pack.commitment));
+      const spent = await this.cfg.publicClient.readContract({ address: this.cfg.pool, abi: GLOAM_POOL_ABI, functionName: "isSpent", args: [h32(nullifier)] });
+      out.push({ link, commitment: c as Hex, amount: BigInt(pack.amountWei), asset: pack.asset, open: !spent });
+    }
+    return out;
   }
 
   async send(asset: Address, to: string, amount: bigint, onStatus: Status = () => {}): Promise<SendResult> {

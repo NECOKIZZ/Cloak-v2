@@ -50,3 +50,5 @@ jobs:
       - run: pnpm --filter @cloakely/sdk build
       - run: node e2e-gloam/part0.mjs
       - run: node e2e-gloam/part1.mjs
+      - run: node e2e-gloam/part1-links.mjs
+      - run: node e2e-gloam/part3-funds.mjs
