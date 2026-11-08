@@ -575,3 +575,19 @@ Gloam ships final ceremony keys for `receipt`, `funds` (solvency) and `payroll_t
 - Gift and airdrop links for launches (`gloam1.` note packages), with take-back from any device (built in Part 1b).
 - A "Graduated to Gloam" badge on tokens that reach Gloam's vault, which markets both.
 - Later: Gloam's `sealedSwap` circuit (v0, not deployed) would hide swap sizes.
+
+## 16. Plan if the founder hasn't answered (no circuit or vault changes asked of Gloam)
+
+Facts checked on Nov 8:
+- Gloam's swaps are cash outs into a swap escrow, so they pay the vault's cash-out fee and nothing else. Gloam's routers charge no fee of their own. The fee is 0.5% on Elysium (testnet and mainnet env files) and 0.25% on Base and Ethereum.
+- Cloak already handles the 3-day delay this way. `CloakVaults` gives a factory launch token its vault as soon as its launch settles, with no wait. Any other token (WHYPE, USDC) needs `CloakConfig` approval, behind the 3-day timelock once setup ends.
+- Sweeps and payout claims need the owner's secret, so only the user's app can do them, never the keeper. The keeper can queue listings, settle rounds and push timeout exits.
+
+Steps, each tested on anvil and pushed:
+1. A Cloak launch vault built from Gloam's `ShieldPoolCore` and final verifiers. It admits factory tokens at once, the same rule as `CloakVaults`, while every other token goes through the 3-day timelock. Cloak sets the fee and receives it. Tests: factory tokens are admitted, other tokens refused, caps hold, and the fee is collected.
+2. A graduation escrow from that vault into Gloam's vault, run in rounds, with a test.
+3. Cloak's own swap router on the launch vault, returning the price buffer to the user as a note.
+4. The relayer paid from the launch vault's fee, plus spam limits (per-client rate limits, memos only for notes in the vault).
+5. App-side automation: sweeps, bid finishes and batch claims run on every open. The keeper loop queues listings, settles rounds and pushes timeout exits.
+6. Allocation gates by proof of funds, and private receipts, using Gloam's final keys.
+7. The live Elysium testnet run, once `GLOAM_TESTNET_PK` is set.
