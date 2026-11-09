@@ -167,7 +167,7 @@ try {
   // 5. an instant private buy on the Trade page: the launch token, through its V2 pool, the buffer back as a note
   await page.getByRole("link", { name: "Trade" }).first().click();
   await page.getByLabel("Amount").waitFor({ timeout: 60_000 });
-  await page.getByLabel("Amount").fill("0.005"); // testnet launch pools are shallow
+  await page.getByLabel("Amount").fill("0.0003"); // testnet launch pools are shallow (GLOAK holds about 0.016 HYPE)
   await page.waitForFunction(() => Number((document.querySelector("input[aria-label='Estimated output']") || {}).value || 0) > 0, null, { timeout: 60_000 });
   const est = await page.getByLabel("Estimated output").inputValue();
   await page.getByRole("button", { name: "Swap privately" }).click();
@@ -180,7 +180,7 @@ try {
   if (G.batcherV4) {
     const fromBlock = await pub.getBlockNumber();
     await page.getByRole("button", { name: /Batch · hides size/ }).click();
-    await page.getByLabel("Amount").fill("0.003");
+    await page.getByLabel("Amount").fill("0.0005"); // within the round's 4% of the pool
     await page.getByRole("button", { name: /Place \d+ sealed orders?/ }).click();
     await page.getByText(/sealed buy orders? placed in round/).waitFor({ timeout: 180_000 });
     await shot("5b-batch-placed");
