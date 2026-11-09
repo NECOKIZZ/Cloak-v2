@@ -47,7 +47,7 @@ export function startSchedule({ check, send, gloam, log = () => {}, now: clock =
       if (p.state !== "waiting" || p.notBefore > now || p.busy) continue;
       p.busy = true;
       try {
-        p.txHash = await viaFor(p.call).send(p.call);
+        p.txHash = await viaFor(p.call).send(p.call, p.requester);
         p.state = "sent";
         log(`${id.slice(0, 10)} sent ${p.txHash}`);
       } catch (e) {
@@ -55,6 +55,8 @@ export function startSchedule({ check, send, gloam, log = () => {}, now: clock =
         if ((e?.status === 409 && /spent/i.test(msg)) || /already spent|NullifierAlreadySpent|AlreadySpent/i.test(msg)) {
           p.state = "dropped";
           p.error = "its note was spent (cancelled)";
+        } else if (e?.status === 429) {
+          p.notBefore = now + 120; // the relay's budget is busy: wait, it isn't this piece's fault (review O-10)
         } else if (++p.tries >= MAX_TRIES) {
           p.state = "dropped";
           p.error = msg;
@@ -75,7 +77,7 @@ export function startSchedule({ check, send, gloam, log = () => {}, now: clock =
     tick,
     stop: () => timer && clearInterval(timer),
     /** Check and queue pieces; returns their ids (already-queued pieces just return their id). */
-    async add(body) {
+    async add(body, requester = "schedule") {
       const pieces = body?.pieces;
       if (!Array.isArray(pieces) || !pieces.length || pieces.length > MAX_PIECES) throw Object.assign(new Error(`send 1 to ${MAX_PIECES} pieces`), { status: 400 });
       const now = clock();
@@ -92,8 +94,8 @@ export function startSchedule({ check, send, gloam, log = () => {}, now: clock =
         }
         const id = idOf(p.call);
         if (!q.has(id)) {
-          await viaFor(p.call).check(p.call); // throws (fee, proof, spent) before anything is queued
-          q.set(id, { call: p.call, notBefore: Math.max(now, Math.floor(p.notBefore)), state: "waiting", tries: 0 });
+          await viaFor(p.call).check(p.call, requester); // throws (fee, proof, spent) before anything is queued
+          q.set(id, { call: p.call, notBefore: Math.max(now, Math.floor(p.notBefore)), state: "waiting", tries: 0, requester });
           log(`${id.slice(0, 10)} queued for ${new Date(Math.max(now, p.notBefore) * 1000).toISOString()}`);
         }
         ids.push(id);

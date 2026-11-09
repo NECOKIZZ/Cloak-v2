@@ -122,13 +122,22 @@ const gloamRelay = process.env.GLOAM_MEMO && (process.env.GLOAM_VAULT || process
     })
   : null;
 
+/** The chain's clock (pieces are timed by it), kept fresh every 20 s and run forward in between. Review O-15. */
+let chainAt = { chain: Math.floor(Date.now() / 1000), local: Date.now() };
+const refreshChainClock = () => publicClient.getBlock().then((b) => (chainAt = { chain: Number(b.timestamp), local: Date.now() })).catch(() => {});
+refreshChainClock();
+setInterval(refreshChainClock, 20_000).unref();
+const chainClock = () => chainAt.chain + Math.floor((Date.now() - chainAt.local) / 1000);
+
 // split withdrawals: proved pieces held until their time, then relayed like any other (POST/GET /schedule). Gloam vault
 // cash outs (Cloak v2 on Gloam) go through the Gloam relay; only a vault's unshield is accepted for those.
 const gloamPiece = (call) => ({ to: call.to, data: call.data });
 const schedule = startSchedule({
   check: (call) => relay(call, { dryRun: true }),
   send: (call) => relay(call),
-  gloam: gloamRelay ? { check: (call) => gloamRelay(gloamPiece(call), { dryRun: true, sender: "schedule" }), send: (call) => gloamRelay(gloamPiece(call), { sender: "schedule" }) } : undefined,
+  // scheduled cash outs count against whoever handed them in (review O-10), not one shared "schedule" sender
+  gloam: gloamRelay ? { check: (call, who) => gloamRelay(gloamPiece(call), { dryRun: true, sender: who }), send: (call, who) => gloamRelay(gloamPiece(call), { sender: who }) } : undefined,
+  now: () => chainClock(),
   log: (m) => console.log(`[schedule] ${m}`),
 });
 
@@ -790,7 +799,17 @@ const MAX_BODY = 64 * 1024;
 const LIMIT = Number(process.env.RELAY_PER_MIN ?? 20); // relay requests per IP per minute
 const hits = new Map();
 setInterval(() => hits.clear(), 60_000).unref();
-const clientIp = (req) => String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
+/**
+ * The caller's address for rate limits and relay shares. A caller can put anything in X-Forwarded-For, and each proxy
+ * in front of us appends the address it saw, so the trustworthy entry is the one our own proxy added: the
+ * TRUSTED_PROXY_HOPS-th from the right (default 1, Render's one proxy; 0 when nothing sits in front). Review O-03.
+ */
+const PROXY_HOPS = Number(process.env.TRUSTED_PROXY_HOPS ?? 1);
+const clientIp = (req) => {
+  const hops = String(req.headers["x-forwarded-for"] ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (PROXY_HOPS > 0 && hops.length >= PROXY_HOPS) return hops[hops.length - PROXY_HOPS];
+  return String(req.socket.remoteAddress ?? "");
+};
 const limited = (req) => {
   const ip = clientIp(req);
   const n = (hits.get(ip) ?? 0) + 1;
@@ -823,9 +842,17 @@ createServer((req, res) => {
     });
     req.on("end", async () => {
       try {
-        send(req, res, 200, { txHash: await gloamRelay(JSON.parse(body), { sender: clientIp(req) }) });
+        let parsed;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          return send(req, res, 400, { error: "malformed request" });
+        }
+        send(req, res, 200, { txHash: await gloamRelay(parsed, { sender: clientIp(req) }) });
       } catch (e) {
-        send(req, res, e.status ?? 400, { error: e.status ? e.message : "malformed request" });
+        // an error with no status is ours (the node, a receipt wait): the call may still land, so say try again
+        if (!e.status) console.error(`[gloam relay] ${e.shortMessage ?? e.message}`);
+        send(req, res, e.status ?? 503, { error: e.status ? e.message : "the relay hit a problem sending this; check your balance before trying again" });
       }
     });
     return;
@@ -939,7 +966,7 @@ createServer((req, res) => {
     req.on("end", async () => {
       if (size > MAX_BODY * 4) return;
       try {
-        const ids = await schedule.add(JSON.parse(body));
+        const ids = await schedule.add(JSON.parse(body), clientIp(req));
         send(req, res, 200, { ids });
       } catch (e) {
         send(req, res, e.status ?? 400, { error: e.status || e.shortMessage ? e.shortMessage ?? e.message : "malformed request" });

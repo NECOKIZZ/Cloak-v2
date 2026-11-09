@@ -113,6 +113,11 @@ export function createGloamRelay({
   const memoed = new Set();
   let windowStart = Date.now();
   let spentWei = 0n; // from the base budget this hour
+  // calls checked but not yet paid for: held against the budgets at once, so calls arriving together can't all pass
+  // the same check (review O-05); settled to the real cost from the receipt
+  let reservedWei = 0n;
+  let reservedMemoWei = 0n;
+  const lastCost = new Map(); // class -> the last real cost seen, the next reservation's guess
   let feeSpentWei = 0n; // from fee income this hour
   let feeCreditWei = 0n; // fee income not spent yet
   let feeIncomeWei = 0n; // all fee income so far
@@ -213,41 +218,75 @@ export function createGloamRelay({
     if (spendKey) {
       expireLocks();
       if (inflight.has(spendKey)) throw fail(409, "this spend is already being relayed");
-      await assertEarlierSendSettled(spendKey);
+      // taken at once, before anything awaits, so the same spend arriving twice together goes out once (review O-04)
+      inflight.set(spendKey, Date.now());
     }
-    if (ctx.dryRun) {
-      try {
-        await publicClient.estimateGas({ account: walletClient.account, to: body.to, data: body.data });
-      } catch (e) {
-        throw fail(400, `this call would fail: ${e.shortMessage ?? e.message}`);
+    let reserved = null; // { amount, memo, mine } once this call holds budget
+    let cls, sender, mine, fromFees;
+    try {
+      if (spendKey) await assertEarlierSendSettled(spendKey);
+      if (ctx.dryRun) {
+        try {
+          await publicClient.estimateGas({ account: walletClient.account, to: body.to, data: body.data });
+        } catch (e) {
+          throw fail(400, `this call would fail: ${e.shortMessage ?? e.message}`);
+        }
+        if (spendKey) inflight.delete(spendKey);
+        return null;
       }
-      return null;
-    }
 
-    roll();
-    const cls = classOf(t, decoded, body.data);
-    const sender = String(ctx.sender ?? "anonymous");
-    const mine = bySender.get(sender) ?? { base: 0n, back: 0n, fee: 0n, reverted: 0n, memo: 0n };
+      roll();
+    cls = classOf(t, decoded, body.data);
+    sender = String(ctx.sender ?? "anonymous");
+    mine = bySender.get(sender) ?? { base: 0n, back: 0n, fee: 0n, reverted: 0n, memo: 0n, held: 0n, heldMemo: 0n };
+    mine.held ??= 0n;
+    mine.heldMemo ??= 0n;
+    bySender.set(sender, mine);
     const limit = (pct) => (hourlySpendWei * pct) / 100n;
     if (mine.reverted > 0n && mine.reverted >= limit(REVERT_PCT)) throw fail(429, "too many of your calls failed on chain this hour, try again later");
     // a call about Cloak's own contracts (a memo for a payment in the launch vault included) may use fee income first;
     // anything else only the base budget, or for memos the memo budget
-    let fromFees = false;
+    fromFees = false;
     if (cloakCall && feeRoom() === 0n) await collectLaunchFees().catch((e) => log(`[gloam relay] fee collect failed: ${e.shortMessage ?? e.message}`));
     if (cloakCall && feeRoom() > 0n && mine.fee < (feeSpendPerHourWei * SENDER_PCT) / 100n) fromFees = true;
     else if (cls === "other") {
       // memos have their own small budget, so free memo posts can never use up what sends need
-      if (memoSpentWei >= limit(MEMO_PCT)) throw fail(429, "the relay's memo budget is used up this hour, try again later or post it yourself");
-      if (mine.memo >= (limit(MEMO_PCT) * SENDER_PCT) / 100n) throw fail(429, "you've used your share of the relay's memo budget this hour");
+      if (memoSpentWei + reservedMemoWei >= limit(MEMO_PCT)) throw fail(429, "the relay's memo budget is used up this hour, try again later or post it yourself");
+      if (mine.memo + mine.heldMemo >= (limit(MEMO_PCT) * SENDER_PCT) / 100n) throw fail(429, "you've used your share of the relay's memo budget this hour");
     } else {
-      if (spentWei >= limit(cls === "new" ? NEW_SEND_PCT : 100n)) {
+      if (spentWei + reservedWei >= limit(cls === "new" ? NEW_SEND_PCT : 100n)) {
         throw fail(429, cls === "exit" ? "the relay's hourly gas budget is used up, try again later or send it yourself" : "the relay is keeping its last gas for refunds and cash outs this hour, try again later or send it yourself");
       }
       // refunds and exits have their own share per sender, so a sender's own sends can never block their refund
-      if (cls === "exit" ? mine.back >= limit(BACK_PCT) : mine.base >= limit(SENDER_PCT)) throw fail(429, "you've used your share of the relay's gas this hour, try again later or send it yourself");
+      if ((cls === "exit" ? mine.back : mine.base) + mine.held >= limit(cls === "exit" ? BACK_PCT : SENDER_PCT)) throw fail(429, "you've used your share of the relay's gas this hour, try again later or send it yourself");
     }
-
-    if (spendKey) inflight.set(spendKey, Date.now());
+    // hold a guess of this call's cost against its budget now, with no await since the checks above
+    if (!fromFees) {
+      const amount = lastCost.get(cls) ?? hourlySpendWei / 50n;
+      if (cls === "other") {
+        reservedMemoWei += amount;
+        mine.heldMemo += amount;
+      } else {
+        reservedWei += amount;
+        mine.held += amount;
+      }
+      reserved = { amount, memo: cls === "other", mine };
+    }
+    } catch (e) {
+      if (spendKey) inflight.delete(spendKey);
+      throw e;
+    }
+    const release = () => {
+      if (!reserved) return;
+      if (reserved.memo) {
+        reservedMemoWei -= reserved.amount;
+        reserved.mine.heldMemo -= reserved.amount;
+      } else {
+        reservedWei -= reserved.amount;
+        reserved.mine.held -= reserved.amount;
+      }
+      reserved = null;
+    };
     if (memoKey) memoed.add(memoKey);
     let sent = false;
     let reverted = false;
@@ -259,14 +298,39 @@ export function createGloamRelay({
       } catch (e) {
         throw fail(400, `this call would fail: ${e.shortMessage ?? e.message}`);
       }
-      const nonce = await publicClient.getTransactionCount({ address: walletClient.account.address, blockTag: "pending" });
-      const hash = await walletClient.sendTransaction({ account: walletClient.account, chain: walletClient.chain, to: body.to, data: body.data, gas: (gas * 12n) / 10n, nonce });
+      // now that the cost is known, hold it all and check again (no await between the two): calls arriving together
+      // can't all pass on a guess
+      if (reserved) {
+        const price = await publicClient.getGasPrice().catch(() => 0n);
+        const est = (gas * 12n * price) / 10n;
+        if (est > reserved.amount) {
+          const extra = est - reserved.amount;
+          const limitPct = (pct) => (hourlySpendWei * pct) / 100n;
+          if (reserved.memo) {
+            reservedMemoWei += extra;
+            reserved.mine.heldMemo += extra;
+            reserved.amount = est;
+            if (memoSpentWei + reservedMemoWei - reserved.amount >= limitPct(MEMO_PCT)) throw fail(429, "the relay's memo budget is used up this hour, try again later or post it yourself");
+          } else {
+            reservedWei += extra;
+            reserved.mine.held += extra;
+            reserved.amount = est;
+            if (spentWei + reservedWei - reserved.amount >= limitPct(cls === "new" ? NEW_SEND_PCT : 100n)) throw fail(429, "the relay's hourly gas budget is used up, try again later or send it yourself");
+            if ((cls === "exit" ? mine.back : mine.base) + mine.held - reserved.amount >= limitPct(cls === "exit" ? BACK_PCT : SENDER_PCT)) throw fail(429, "you've used your share of the relay's gas this hour, try again later or send it yourself");
+          }
+        }
+      }
+      // no nonce of our own: the keeper's wallet sends one transaction at a time and picks it (review O-06)
+      const hash = await walletClient.sendTransaction({ account: walletClient.account, chain: walletClient.chain, to: body.to, data: body.data, gas: (gas * 12n) / 10n });
       sent = true;
       // what was sent for this spend, kept a day: a later request for it waits until this send can no longer land
+      const nonce = (await publicClient.getTransaction({ hash }).catch(() => null))?.nonce;
       if (spendKey) sends.set(spendKey, { hash, nonce, at: Date.now() });
       const r = await publicClient.waitForTransactionReceipt({ hash });
       reverted = r.status !== "success";
       const cost = r.gasUsed * r.effectiveGasPrice;
+      lastCost.set(cls, cost);
+      release();
       if (fromFees) {
         const use = cost < feeCreditWei ? cost : feeCreditWei;
         feeCreditWei -= use;
@@ -298,6 +362,7 @@ export function createGloamRelay({
       if (memoKey && !sent) memoed.delete(memoKey);
       throw e;
     } finally {
+      release();
       // the lock goes only when nothing was sent, or the send provably reverted: never on a timeout or an unknown end
       if (spendKey && (!sent || reverted)) inflight.delete(spendKey);
       if (memoed.size > MAX_MEMOS_REMEMBERED) memoed.clear();
@@ -322,6 +387,7 @@ export function createGloamRelay({
       if (rc.status === "success") throw fail(409, "this spend already went through");
       return; // it reverted: free to try again
     }
+    if (prev.nonce === undefined) throw fail(409, "an earlier send of this spend could still land, try again in a few minutes");
     const used = await publicClient.getTransactionCount({ address: walletClient.account.address, blockTag: "latest" });
     if (used <= prev.nonce) throw fail(409, "an earlier send of this spend could still land, try again in a few minutes");
   }

@@ -155,15 +155,24 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
       if (now < ends) continue;
       const settle = { address: addr, abi: BATCHER_ABI, functionName: "settle", args: [token, round] };
       if (await ok(settle)) {
-        done.push({ batcher: addr, token, round, action: "settled", hash: await send(settle) });
-        open.delete(k);
-        log(`[gloam loop] settled batch round ${round} of ${token}`);
+        const hash = await send(settle);
+        // forgotten only once the chain says so: a settle that reverted (the pool moved in the same block) is tried
+        // again next tick, then cancelled in time (review O-07)
+        const after = await publicClient.readContract({ address: addr, abi: BATCHER_ABI, functionName: "batches", args: [token, round] });
+        if (after[6]) {
+          done.push({ batcher: addr, token, round, action: "settled", hash });
+          open.delete(k);
+          log(`[gloam loop] settled batch round ${round} of ${token}`);
+        } else log(`[gloam loop] settle of round ${round} of ${token} didn't take (${hash}), trying again next tick`);
         continue;
       }
       if (now >= ends + refundAfter) {
         const cancel = { address: addr, abi: BATCHER_ABI, functionName: "cancel", args: [token, round] };
         if (await ok(cancel)) {
-          done.push({ batcher: addr, token, round, action: "cancelled", hash: await send(cancel) });
+          const hash = await send(cancel);
+          const after = await publicClient.readContract({ address: addr, abi: BATCHER_ABI, functionName: "batches", args: [token, round] });
+          if (!after[7]) continue; // didn't take: next tick
+          done.push({ batcher: addr, token, round, action: "cancelled", hash });
           open.delete(k);
           log(`[gloam loop] cancelled batch round ${round} of ${token}: it couldn't settle in time, every order is owed its input back`);
         }
