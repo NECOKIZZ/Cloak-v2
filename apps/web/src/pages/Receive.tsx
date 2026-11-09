@@ -98,8 +98,7 @@ export function Receive() {
     if (priv instanceof GloamPrivate) {
       const go = () => collectIssued(priv, issued).then((n) => void (n && refresh())).catch(() => {});
       go();
-      const t = setInterval(go, 20_000);
-      return () => clearInterval(t);
+      return every(go, 20_000);
     }
     const t = setInterval(() => rewatch(priv, issued), 20 * 60_000);
     return () => clearInterval(t);
@@ -143,7 +142,7 @@ export function Receive() {
       delivered.current = n;
     };
     go();
-    const stop = every(go, 4_000);
+    const stop = every(go, 10_000);
     return () => {
       live = false;
       stop();

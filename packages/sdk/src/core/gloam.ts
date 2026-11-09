@@ -25,6 +25,7 @@ import { poseidon2 as poseidonHash2 } from "poseidon-lite/poseidon2";
 import { encodeAbiParameters, encodeFunctionData, hexToBytes, keccak256, parseAbi, toHex, zeroAddress, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 import * as gloam from "@gloamtrade/sdk";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
+import { GloamTree } from "./gloamTree.js";
 import type { CoreSubmitter, PrivateCore, SendResult } from "./types.js";
 import type { Status } from "../private/client.js";
 
@@ -140,6 +141,9 @@ export function gloamKeysFromBytes(ikm: Uint8Array): GloamAccountKeys {
   };
 }
 
+const noteOut = (n: OwnedGloamNote) => ({ asset: n.asset, amount: n.amount.toString(), secret: n.secret.toString(), commitment: n.commitment.toString(), nullifier: n.nullifier.toString(), own: n.own });
+const noteIn = (x: Record<string, unknown>): OwnedGloamNote => ({ asset: x.asset as Address, amount: BigInt(x.amount as string), secret: BigInt(x.secret as string), commitment: BigInt(x.commitment as string), nullifier: BigInt(x.nullifier as string), own: !!x.own });
+
 export class GloamCore implements PrivateCore {
   readonly kind = "gloam" as const;
   private notes = new Map<string, OwnedGloamNote>();
@@ -156,6 +160,7 @@ export class GloamCore implements PrivateCore {
 
   constructor(readonly cfg: GloamCoreConfig, readonly keys: GloamAccountKeys) {
     this.memoFrom = cfg.poolBlock;
+    this.tree = new GloamTree(cfg.pool, cfg.poolBlock, cfg.logChunk ?? 1_000_000n);
   }
 
   /** Unlock from one wallet signature (the same request Cloak's own account uses). */
@@ -266,15 +271,96 @@ export class GloamCore implements PrivateCore {
 
   // ── sync ───────────────────────────────────────────────────────────────
 
-  private tree?: Awaited<ReturnType<typeof gloam.syncTree>>;
+  /** The vault's tree, read incrementally: each sync reads only new blocks (see gloamTree.ts). */
+  private tree: GloamTree;
+  private syncing: Promise<void> | null = null;
+  private syncedAt = 0;
 
   /** @param opts.sweep sweep received payments now (default: the config's autoSweep) */
   async sync(onStatus: Status = () => {}, opts: { sweep?: boolean } = {}): Promise<void> {
+    const run = this.syncNow(onStatus, opts);
+    if (!this.syncing) this.syncing = run.finally(() => (this.syncing = null)).catch(() => {});
+    await run;
+    this.syncedAt = Date.now();
+  }
+
+  /**
+   * A sync, sharing one that is already running: for reads (balances) that many callers make at once, so one sync
+   * serves them all instead of one each. A read that starts after a sync finished runs a new one, so it always sees
+   * the result of an action that came before it.
+   */
+  async syncFresh(): Promise<void> {
+    if (this.syncing) return this.syncing;
+    return this.sync();
+  }
+
+  /**
+   * What sync has learned, to keep on this device and hand to `importState` next time, so a reload reads only new
+   * blocks. It lists this account's notes with their secrets: store it encrypted (the site seals it with the account's
+   * key). The tree part is public and left out once it's too big for browser storage.
+   */
+  exportState(): Record<string, unknown> {
+    return {
+      v: 1,
+      pool: this.cfg.pool.toLowerCase(),
+      who: this.who(),
+      tree: this.tree.export(),
+      memoFrom: this.memoFrom.toString(),
+      notes: [...this.notes.values()].map(noteOut),
+      spent: [...this.spentNotes.values()].map(noteOut),
+      candidates: this.candidates.map((c) => ({ ...c, commitment: c.commitment.toString(), amount: c.amount.toString(), secret: c.secret.toString() })),
+      links: [...this.linkPacks.entries()],
+    };
+  }
+
+  /** Which account a saved state belongs to (a hash of its public receive tag). */
+  private who(): string {
+    return keccak256(toHex(this.keys.receiveTag)).slice(0, 18);
+  }
+
+  /** Loads `exportState` output into a core that hasn't synced yet. Notes whose commitment doesn't match are dropped. */
+  async importState(o: Record<string, unknown>): Promise<boolean> {
+    if (this.syncedAt || this.notes.size || o?.v !== 1 || o.pool !== this.cfg.pool.toLowerCase() || o.who !== this.who()) return false;
+    try {
+      const t = o.tree as { next: string; c: string } | null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (t) await this.tree.load(GloamTree.unpack(t.c), BigInt(t.next), this.cfg.publicClient as any).catch(() => false);
+      const check = async (n: OwnedGloamNote) => h32(await gloam.noteCommitmentPoseidon(n.secret, n.amount, n.asset)) === h32(n.commitment);
+      for (const x of (o.notes as Record<string, string>[]) ?? []) {
+        const n = noteIn(x);
+        if (await check(n)) this.notes.set(h32(n.commitment), n);
+      }
+      for (const x of (o.spent as Record<string, string>[]) ?? []) {
+        const n = noteIn(x);
+        if (await check(n)) this.spentNotes.set(h32(n.commitment), n);
+      }
+      for (const c of (o.candidates as Record<string, string>[]) ?? []) {
+        const n = { commitment: BigInt(c.commitment), asset: c.asset as Address, amount: BigInt(c.amount), secret: BigInt(c.secret), own: !!c.own };
+        if (!this.candidates.some((x) => x.commitment === n.commitment)) this.candidates.push(n);
+      }
+      for (const [k, v] of (o.links as [string, string][]) ?? []) this.linkPacks.set(k, v);
+      const m = BigInt(o.memoFrom as string);
+      if (m > this.memoFrom) this.memoFrom = m;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Starts the tree from the keeper's public leaf list (GET /leaves), used only if the vault knows its root. */
+  async seedLeaves(src: { block: bigint; leaves: { index: number; commitment: bigint }[] }): Promise<boolean> {
+    const list = [...src.leaves].sort((a, b) => a.index - b.index);
+    if (list.some((l, i) => l.index !== i)) return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this.tree.load(list.map((l) => h32(l.commitment)), src.block + 1n, this.cfg.publicClient as any).catch(() => false);
+  }
+
+  private async syncNow(onStatus: Status, opts: { sweep?: boolean }): Promise<void> {
     const pub = this.cfg.publicClient;
     await this.loadPending();
     onStatus("Reading the vault");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.tree = await gloam.syncTree(pub as any, { pool: this.cfg.pool, fromBlock: this.cfg.poolBlock, chunkSize: this.cfg.logChunk });
+    await this.tree.update(pub as any);
     const head = await pub.getBlockNumber();
     onStatus("Reading sealed notes");
     const logs = await this.memoLogs(this.memoFrom, head);
@@ -555,7 +641,7 @@ export class GloamCore implements PrivateCore {
 
   /** @internal */ async pathOf(commitment: bigint) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.tree = await gloam.syncTree(this.cfg.publicClient as any, { pool: this.cfg.pool, fromBlock: this.cfg.poolBlock, chunkSize: this.cfg.logChunk });
+    await this.tree.update(this.cfg.publicClient as any);
     const p = await this.tree.pathForCommitment(h32(commitment));
     if (!p) throw new Error("That note is not in the vault yet. Sync and try again.");
     return p;

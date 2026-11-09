@@ -4,7 +4,8 @@ jobs:
   gloam:
     # Cloak v2 on Gloam: Gloam's vault (pinned submodule), Cloak's escrows and launch vault, the SDK, the MCP server,
     # the site (Gloam backend) and the anvil end-to-end runs. Cloak's own vaults are tested in Cloak v1's repo.
-    # The fork runs (part0 --fork, part2-swap*.mjs, part12, part13, part14, part8-site) need Elysium testnet's RPC and
+    # The fork runs (part0 --fork, part2-swap*.mjs, part12, part13, part14, part8-site) and part18 (reads Multicall3 from
+    # testnet) need Elysium testnet's RPC and
     # run by hand.
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -38,3 +39,4 @@ jobs:
           node e2e-gloam/part11-receive.mjs
           node e2e-gloam/part15-split-withdraw.mjs
           node e2e-gloam/part16-mcp.mjs
+          node e2e-gloam/part17-sync-cache.mjs

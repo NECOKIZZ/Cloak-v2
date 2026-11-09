@@ -97,7 +97,12 @@ const unopenable = new Map();
 
 
 // every vault's public note list, for an app's fast first sync (GET /leaves)
-const leaves = reg ? startLeaves(publicClient, { vaults: VAULTS, vaultsBlock: reg.vaultsBlock, shared: SHARED, sharedBlock: SHARED_BLOCK }) : null;
+// (Cloak v2: Gloam's vault and Cloak's launch vault too, from GLOAM_VAULT_BLOCK / GLOAM_LAUNCH_VAULT_BLOCK)
+const gloamLeafVaults = [
+  [process.env.GLOAM_VAULT, process.env.GLOAM_VAULT_BLOCK],
+  [process.env.GLOAM_LAUNCH_VAULT, process.env.GLOAM_LAUNCH_VAULT_BLOCK ?? process.env.GLOAM_VAULT_BLOCK],
+].filter(([a, b]) => a && b).map(([address, block]) => ({ address, block }));
+const leaves = reg || gloamLeafVaults.length ? startLeaves(publicClient, { vaults: reg ? VAULTS : undefined, vaultsBlock: reg?.vaultsBlock, shared: reg ? SHARED : undefined, sharedBlock: SHARED_BLOCK, gloam: gloamLeafVaults }) : null;
 
 // public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
 const snapshot = reg && process.env.SNAPSHOT !== "0"
@@ -285,6 +290,7 @@ async function tick() {
           await publicClient.waitForTransactionReceipt({ hash: await walletClient.writeContract({ ...c, functionName: "sweepDust" }) });
         } catch {}
         done.add(auction);
+        delete status.launches[auction];
       }
     } catch (e) {
       log(auction, `error: ${e.shortMessage ?? e.message}`);
@@ -487,6 +493,35 @@ async function tickDrops() {
     await new Promise((r) => setTimeout(r, idle ? Math.max(IDLE_MS, POLL_MS) : POLL_MS));
   }
 })();
+
+// ───────────── staying awake on a free host ─────────────
+// Render's free plan stops a service after 15 minutes with no incoming request, and its loops stop with it. While the
+// keeper has work that can't wait for a visitor (a launch or drop not finished, an open batch round, a withdrawal piece
+// queued, a receive address an app is watching, a relay in the last 15 minutes) it requests its own public address every
+// 10 minutes, which counts as incoming. With nothing pending it lets the host stop it: the next visitor's request starts
+// it again (about a minute on Render), and the site then re-sends anything the keeper forgot. KEEP_AWAKE=0 turns it off;
+// KEEP_AWAKE_URL overrides the address (Render sets RENDER_EXTERNAL_URL itself). OPTIMIZATION.md H1.
+const SELF_URL = (process.env.KEEP_AWAKE_URL ?? process.env.RENDER_EXTERNAL_URL ?? "").replace(/\/+$/, "");
+function pendingWork() {
+  const why = [];
+  // launches it could read and hasn't finished (one it can't read, like a broken contract, doesn't hold it awake)
+  if (Object.keys(status.launches).some((a) => !done.has(a))) why.push("launches");
+  if (Object.keys(status.drops?.live ?? {}).length) why.push("drops");
+  if ([...batchCursors.values()].some((c) => c.open.size > 0)) why.push("batch rounds");
+  if (gloamLoop?.pendingRounds().length) why.push("gloam rounds");
+  if (schedule?.waiting?.()) why.push("scheduled pieces");
+  if (receiver?.hot?.()) why.push("receive addresses");
+  if (Date.now() - work.relayAt < 15 * 60_000) why.push("recent relay");
+  return why;
+}
+status.awake = { selfUrl: !!SELF_URL, why: [] };
+if (SELF_URL && process.env.KEEP_AWAKE !== "0") {
+  setInterval(() => {
+    const why = pendingWork();
+    status.awake.why = why;
+    if (why.length) fetch(`${SELF_URL}/health`, { signal: AbortSignal.timeout(30_000) }).catch(() => {});
+  }, Number(process.env.KEEP_AWAKE_MS ?? 10 * 60_000)).unref();
+}
 
 // ───────────── private-trade relay ─────────────
 const submit = ROUTER ? walletSubmitter(publicClient, walletClient, ROUTER, BATCHER, MIGRATOR) : null;
@@ -912,6 +947,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && path === "/snapshot") {
+    snapshot?.touch();
     const body = snapshot?.get();
     if (!body) return send(req, res, 503, { error: "no snapshot yet" });
     // x-snapshot-at: when the keeper last confirmed it (it can be unchanged for a while: a 304 carries this too)
@@ -990,7 +1026,7 @@ createServer((req, res) => {
         if (!b) return send(req, res, 404, { error: "unknown vault" });
         sendCached(req, res, b);
       })
-      .catch(() => send(req, res, 503, { error: "The network didn't answer. Try again in a moment." }));
+      .catch((e) => (console.error(`[leaves] ${e.shortMessage ?? e.message}`), send(req, res, 503, { error: "The network didn't answer. Try again in a moment." })));
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {

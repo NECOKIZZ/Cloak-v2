@@ -277,8 +277,9 @@ export class GloamPrivate {
   async balance(pool: Address): Promise<bigint> {
     const asset = this.assetOf(pool);
     let sum = 0n;
+    // one sync serves every balance asked for at once (the site asks for each asset together)
     for (const c of this.cores) {
-      await c.sync();
+      await c.syncFresh();
       sum += c.ownNotes(asset).reduce((a, n) => a + n.amount, 0n);
     }
     return sum;
@@ -300,7 +301,7 @@ export class GloamPrivate {
     const asset = this.assetOf(pool);
     const out: (OwnedGloamNote & { spent: boolean; vault: Address })[] = [];
     for (const c of this.cores) {
-      await c.sync();
+      await c.syncFresh();
       for (const n of c.ownNotes(asset)) out.push({ ...n, spent: false, vault: c.config.pool });
       for (const n of c.spentNoteList(asset)) out.push({ ...n, spent: true, vault: c.config.pool });
     }
@@ -839,16 +840,37 @@ export class GloamPrivate {
 
   // ── what Cloak's own vaults had and Gloam's don't ──────────────────────
 
+  // ── sync state kept on the device ──────────────────────────────────────
+
+  /** Both vaults' sync state, for `importSync` after a reload (store it encrypted: it lists notes and their secrets). */
   exportSync(): string {
-    return "";
+    return JSON.stringify({ v: 1, cores: this.cores.map((c) => c.exportState()) });
   }
 
-  async importSync(): Promise<boolean> {
-    return false;
+  /** Loads `exportSync` output before the first sync, so only new blocks are read. */
+  async importSync(data: string): Promise<boolean> {
+    try {
+      const o = JSON.parse(data) as { v?: number; cores?: Record<string, unknown>[] };
+      if (o.v !== 1 || !Array.isArray(o.cores)) return false;
+      const ok = await Promise.all(this.cores.map((c) => {
+        const st = o.cores!.find((x) => x?.pool === c.config.pool.toLowerCase());
+        return st ? c.importState(st) : Promise.resolve(false);
+      }));
+      return ok.some(Boolean);
+    } catch {
+      return false;
+    }
   }
 
-  async seedLeaves(): Promise<boolean> {
-    return false;
+  /** Starts a vault's tree from the keeper's public leaf list (checked against a root the vault knows). */
+  async seedLeaves(pool: Address, src: { block: bigint; leaves: { index: number; commitment: bigint }[] }): Promise<boolean> {
+    const c = this.cores.find((x) => lc(x.config.pool) === lc(pool));
+    return c ? c.seedLeaves(src) : false;
+  }
+
+  /** The vaults this account reads (for the keeper's leaf list). */
+  vaults(): Address[] {
+    return this.cores.map((c) => c.config.pool);
   }
 
   async migrateFrom(): Promise<never[]> {

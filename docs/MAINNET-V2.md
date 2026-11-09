@@ -26,13 +26,15 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
   - a secret scan of the history;
   - decide whether `GLOAM_QUESTIONS.md`, `docs/FOR-GLOAM.md` and the partnership parts of `REPORT.md` move somewhere private.
 - [ ] **Bob:** a Vercel project on the same account, domain gloak.boblabs.tech. The build needs nothing special, since the site defaults to Gloam. Set `VITE_KEEPER_URL` and `VITE_RELAYER_URL` to the v2 keeper.
-- [ ] **Bob:** a v2 keeper on a new Render account (no custom domain yet), with the key in Render's env, never in the repo. Its env:
-  - `KEEPER_PK` and `CONFIG` (for launches);
-  - `GLOAM_VAULT`, `GLOAM_LAUNCH_VAULT`, `GLOAM_MEMO`;
+- [ ] **Bob:** a v2 keeper on a new Render account (free plan, no custom domain yet): New > Blueprint on this repo. `render.yaml` holds the testnet addresses and settings. Set only `KEEPER_PK` in Render's dashboard, never in the repo. The env it sets:
+  - `CONFIG` (launches) and `CORS_ORIGINS` (gloak.boblabs.tech);
+  - `GLOAM_VAULT`, `GLOAM_VAULT_BLOCK`, `GLOAM_LAUNCH_VAULT`, `GLOAM_LAUNCH_VAULT_BLOCK`, `GLOAM_MEMO`;
   - `GLOAM_ESCROWS` (launch swap v4, batcher v4, bids, receive, graduation, funds gate);
-  - `GLOAM_BATCHER_V4`, `GLOAM_BATCHER_V4_BLOCK`, `GLOAM_FUNDS_GATE`.
+  - `GLOAM_BATCHER_V4`, `GLOAM_BATCHER_V4_BLOCK`, `GLOAM_FUNDS_GATE`;
+  - `TRUSTED_PROXY_HOPS=1`.
 
-  CORS must allow gloak.boblabs.tech.
+  The keeper stays awake on its own only while it has work (`docs/OPTIMIZATION.md` H1), so no outside ping is needed.
+- [ ] **Bob:** the hosted checks in `CHECK.md` (hosting, free-plan behaviour, every feature timed, the open stress items).
 - [ ] **Claude:** a run of the hosted site against the hosted keeper once both are up (shield, swap, batch, link, receive, withdraw in pieces).
 - [ ] **Claude, after v2 is hosted (Bob's order):** the version dropdown on gloak (Testnet v1 goes to cloak, Testnet v2 stays, Private mainnet shows the access-code page with no codes and no backend), then the same on Cloak v1 as a patch for Bob.
 
@@ -65,6 +67,19 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - [ ] **Outside review** of our escrows and `CloakLaunchVault` (Kann's audit covers only Gloam's vault). Gloam offered to add partner escrows as a separate scope. Keep low caps until it's done.
 - [ ] **Bob:** the announcement ("Powered by Gloam" is approved). Gloam then lists Cloak as a live partner on Elysium.
 - [ ] **Bob:** the reviewers' credit and thank-you on X (Haider Ali, Ghost), as promised.
+
+## Optimization (Nov 9)
+
+- [x] Free-hosting pass (`docs/OPTIMIZATION.md`):
+  - private balances read only new blocks, with one sync per refresh;
+  - reloads and new devices skip the vault history;
+  - the snapshot rebuilds only while someone uses it;
+  - the keeper sleeps when idle;
+  - the hashing download is about 1 MB smaller;
+  - hidden tabs don't poll.
+
+  Tests: part 17, part 18, the stand-in Poseidon test, and part 8 in a browser.
+- [ ] **Later:** a CDN in front of the keeper (G1), and keeper state that survives restarts (G2).
 
 ## Security and review follow-ups
 

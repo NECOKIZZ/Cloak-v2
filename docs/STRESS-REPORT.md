@@ -111,6 +111,8 @@ Receive addresses are new with this factory. Nobody used the old ones, since v2 
 
 ## Still open (small)
 
+All of these, plus the hosting checks, are in `CHECK.md` as a checklist to run once v2 is hosted.
+
 - **W-10 (unconfirmed):** twice, the account wouldn't unlock again after a reload in the middle of a withdrawal. No funds were affected. Worth a manual check.
 - **W-11 and W-12:** link creation over your balance hangs on "Checking your balance". Dust links are accepted.
 - **W-14 to W-19:** cosmetic. The chart spills into the sidebar, the default bid price shows 18 digits, a dust pool gives no reason, there's no sync progress text, decimals messages differ, and the claim and pay pages log errors when opened without a link.

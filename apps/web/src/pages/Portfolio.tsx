@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { every } from "../every";
 import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { CloakPrivate, GloamPrivate, checkPayee, shieldedPoolAbi } from "@cloakely/sdk";
 import { ASSETS, CHAIN_ID, CLOAK_TOKEN, CORE, GLOAM, MIGRATOR, PREVIOUS, RECEIVE, txLink } from "../config";
@@ -62,10 +63,10 @@ function useHypeUsd(): number | null {
       } catch {}
     };
     go();
-    const t = setInterval(go, 60_000);
+    const stop = every(go, 60_000);
     return () => {
       alive = false;
-      clearInterval(t);
+      stop();
     };
   }, []);
   return px;

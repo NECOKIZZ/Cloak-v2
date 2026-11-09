@@ -40,6 +40,10 @@
       "types": "./dist/bytecode.d.ts",
       "default": "./dist/bytecode.js"
     },
+    "./circomlibjs-lite": {
+      "types": "./dist/circomlibjsLite.d.ts",
+      "default": "./dist/circomlibjsLite.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -14,3 +14,4 @@ export * from "./gloamProofs.js";
 export * from "./gloamPrivate.js";
 export * from "./gloamProvers.js";
 export * from "./gloamLinks.js";
+export * from "./gloamTree.js";

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { every } from "../every";
 import { PageSkel } from "../skel";
 import { isAddress, parseEther, type Address, type Hex } from "viem";
 import { CloakDrops, CloakSpots, drandRoundTime, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
@@ -110,7 +111,7 @@ export function Drop({ drop }: { drop: Address }) {
     const t = setInterval(() => setNow(Date.now() / 1000), 1000);
     // one refresh at a time: a slow one from a network outage must not land after a newer one and undo it
     let inFlight = false;
-    const r = setInterval(() => {
+    const r = every(() => {
       if (inFlight) return;
       inFlight = true;
       // a hung request (a network switch, a stalled connection) must never block the refreshes after it
@@ -128,7 +129,7 @@ export function Drop({ drop }: { drop: Address }) {
         )
         .finally(() => (inFlight = false));
     }, 15000);
-    return () => (clearInterval(t), clearInterval(r));
+    return () => (clearInterval(t), r());
   }, [drop, wallet]);
   useEffect(() => { if (s && !price) setPrice(hype(s.floor, 6).replace(/,/g, "")); }, [s]);
 

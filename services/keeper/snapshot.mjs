@@ -268,13 +268,27 @@ export function startSnapshots(pub, d, { everyMs = Number(process.env.SNAPSHOT_E
     return { head, changed };
   }
 
+  // Rebuilt only while someone uses it: a snapshot nobody asked for in SNAPSHOT_IDLE_MS (10 minutes) isn't rebuilt, so
+  // a quiet night costs no RPC calls (the keeper's own reads were most of its Render bandwidth: OPTIMIZATION.md K1).
+  // The first request after a quiet spell gets the last copy (or the site reads the chain if it's too old) and wakes it.
+  const idleMs = Number(process.env.SNAPSHOT_IDLE_MS ?? 600_000);
+  let askedAt = Date.now();
+  let wake = null;
   (async function loop() {
     for (;;) {
+      if (Date.now() - askedAt > idleMs) {
+        await new Promise((r) => (wake = r));
+        wake = null;
+      }
       const t = Date.now();
       await build().then(({ head, changed }) => log(`[snapshot] block ${head} in ${Date.now() - t} ms, ${body.length} bytes${changed ? "" : " (unchanged)"}`), (e) => log(`[snapshot] failed: ${e.shortMessage ?? e.message}`));
       await new Promise((r) => setTimeout(r, everyMs));
     }
   })();
 
-  return { get: () => body, gz: () => zipped, etag: () => (hash ? `W/"${hash}"` : null), builtAt: () => builtAt };
+  const touch = () => {
+    askedAt = Date.now();
+    wake?.();
+  };
+  return { touch, get: () => body, gz: () => zipped, etag: () => (hash ? `W/"${hash}"` : null), builtAt: () => builtAt };
 }

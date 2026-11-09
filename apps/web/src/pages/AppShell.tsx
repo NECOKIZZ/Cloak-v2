@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRoute } from "../router";
+import { every } from "../every";
 import { useApp } from "../state";
 import { GITHUB, Icon, Logo, MenuButton, Sheet, ThemeSeg, ThemeToggle, WalletButton, useSheet } from "../ui";
 import { STEPS, guideShown, hideGuide, markDone, useGuide, type Step } from "../guide";
@@ -172,13 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     // look again every minute (and when the tab comes back), so a blip doesn't leave it saying offline
     const check = () => fetch(KEEPER_URL!, { cache: "no-store" }).then((r) => setKeeper(r.ok ? "up" : "down")).catch(() => setKeeper("down"));
     check();
-    const t = setInterval(check, 60_000);
-    const vis = () => document.visibilityState === "visible" && check();
-    document.addEventListener("visibilitychange", vis);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", vis);
-    };
+    return every(check, 60_000);
   }, []);
   return (
     <div className="app">

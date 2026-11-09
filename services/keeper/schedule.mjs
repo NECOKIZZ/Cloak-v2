@@ -73,6 +73,8 @@ export function startSchedule({ check, send, gloam, log = () => {}, now: clock =
   timer?.unref();
 
   return {
+    /** Pieces still waiting to go out (the keeper stays awake while any are queued). */
+    waiting: () => [...q.values()].filter((p) => p.state === "waiting").length,
     /** Send what's due now (runs on its own every tickMs; tests call it directly). */
     tick,
     stop: () => timer && clearInterval(timer),

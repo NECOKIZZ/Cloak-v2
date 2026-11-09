@@ -4,6 +4,9 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   define: { global: "globalThis" },
+  // Gloam's SDK imports circomlibjs for Poseidon (about 1.4 MB gzipped). The site gets a stand-in with identical
+  // outputs on poseidon-lite instead (packages/sdk/src/circomlibjsLite.ts, tested against circomlibjs). OPTIMIZATION.md V4
+  resolve: { alias: { circomlibjs: "@cloakely/sdk/circomlibjs-lite" } },
   build: {
     chunkSizeWarningLimit: 1500,
     rollupOptions: {

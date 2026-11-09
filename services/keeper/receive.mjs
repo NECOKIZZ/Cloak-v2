@@ -132,6 +132,11 @@ export function startReceive({ pub, wallet, account, factory, tokens = [], minGa
         }
       }
     },
+    /** Addresses an open app registered recently (watched closely). */
+    hot() {
+      const now = Math.floor(Date.now() / 1000);
+      return [...watched.values()].filter((w) => now - w.seen < HOT_FOR_S).length;
+    },
     deliveries(addresses) {
       return Object.fromEntries(addresses.map((a) => [a, watched.get(a.toLowerCase())?.deliveries ?? []]));
     },

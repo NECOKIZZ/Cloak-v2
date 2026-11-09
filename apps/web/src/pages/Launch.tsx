@@ -334,10 +334,10 @@ function Unopenable({ auction, live }: { auction: Address; live: boolean }) {
         })
         .catch(() => {});
     go();
-    const t = live ? setInterval(go, 20_000) : undefined;
+    const stop = live ? every(go, 60_000) : undefined;
     return () => {
       alive = false;
-      if (t) clearInterval(t);
+      stop?.();
     };
   }, [auction, live]);
   if (!n || n.count === 0) return null;

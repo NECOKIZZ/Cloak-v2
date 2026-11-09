@@ -6,6 +6,7 @@ import { publicClient } from "./wallet";
 import { RELAYER_URL } from "./config";
 import { openBox, sealBox } from "./deviceBox";
 import { useApp } from "./state";
+import { every } from "./every";
 
 /** A split-withdrawal piece as this device keeps it (encrypted): the proved call, so it can be handed back to the
  * relayer if the relayer restarted and lost its queue. */
@@ -66,14 +67,14 @@ export function useScheduled() {
       const next = list
         .map((x, i) => ({ ...x, status: st?.[i]?.state === "unknown" ? x.status : st?.[i] ?? x.status }))
         .filter((x) => !(x.status && x.status.state !== "waiting" && now - x.piece.notBefore > 86_400));
-      await saveScheduled(priv, next);
+      if (toJson(next) !== toJson(list)) await saveScheduled(priv, next);
       if (live) setItems(next);
     };
     go();
-    const t = setInterval(go, 30_000);
+    const stop = every(go, 30_000);
     return () => {
       live = false;
-      clearInterval(t);
+      stop();
     };
   }, [priv]);
   return items;

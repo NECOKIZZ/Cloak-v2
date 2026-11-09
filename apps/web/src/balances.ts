@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { type Address } from "viem";
-import { fetchLeaves, type SharedVaultClient } from "@cloakely/sdk";
+import { GloamPrivate, fetchLeaves, type SharedVaultClient } from "@cloakely/sdk";
 import type { Priv } from "./state";
 import { openBox, sealBox } from "./deviceBox";
 import { ASSETS, KEEPER_URL } from "./config";
@@ -31,11 +31,13 @@ interface Store {
   ready: Promise<void>;
   /** the vault scan's starting point, loaded once (see restoreSync) */
   restored?: Promise<void>;
-  /** the sync progress last saved on this device */
+  /** the sync progress last saved on this device, and when */
   savedSync?: string;
+  savedAt?: number;
 }
 
 const stores = new WeakMap<Priv, Store>();
+const SAVE_SYNC_MS = 120_000;
 
 // ───────────── the encrypted copies on this device ─────────────
 
@@ -65,6 +67,18 @@ async function restoreSync(p: Priv, shared: SharedVaultClient | null, pools: Add
     } catch {}
   }
   if (!KEEPER_URL) return;
+  // Gloam: only the account's own vaults (Gloam's and the launch vault), each by name: not every vault the keeper knows
+  if (p instanceof GloamPrivate) {
+    await Promise.all(
+      p.vaults().map(async (v) => {
+        const r = await fetch(`${KEEPER_URL!.replace(/\/$/, "")}/leaves?pool=${v}`).catch(() => null);
+        if (!r?.ok) return false;
+        const j = (await r.json()) as { block: string; leaves: [number, string, string][] };
+        return p.seedLeaves(v, { block: BigInt(j.block), leaves: j.leaves.map(([index, c]) => ({ index, commitment: BigInt(c) })) }).catch(() => false);
+      }),
+    );
+    return;
+  }
   const leaves = await fetchLeaves(KEEPER_URL);
   await Promise.all([
     ...pools.map((pool) => (leaves.get(pool.toLowerCase()) ? p.seedLeaves(pool, leaves.get(pool.toLowerCase())!).catch(() => false) : false)),
@@ -118,10 +132,12 @@ async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[]
     s.loaded = true;
     s.synced = true;
     if (changed) writeSaved(p, next);
-    // and how far the scan got, so the next visit only reads new blocks
+    // and how far the scan got, so the next visit only reads new blocks. Saved when the balance changed, else at most
+    // every 2 minutes: the scan position moves on every sync, and rewriting storage every 8 s gains nothing.
     const st = JSON.stringify({ p: p.exportSync(), s: shared?.exportSync() });
-    if (st !== s.savedSync) {
+    if (st !== s.savedSync && (changed || !s.savedAt || Date.now() - s.savedAt > SAVE_SYNC_MS)) {
       s.savedSync = st;
+      s.savedAt = Date.now();
       sealBox(p, "sync", st);
     }
   } catch (e) {

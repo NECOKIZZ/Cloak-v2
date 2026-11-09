@@ -6,11 +6,15 @@
 //   GET /leaves?pool=0x…   one vault
 import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
-import { cloakVaultsAbi, sharedVaultAbi, shieldedPoolAbi } from "@cloakely/sdk";
+import { GloamTree, cloakVaultsAbi, sharedVaultAbi, shieldedPoolAbi } from "@cloakely/sdk";
 
 const MIN_REFRESH_MS = 10_000;
 
-export function startLeaves(pub, { vaults, vaultsBlock, shared, sharedBlock }) {
+// Cloak v2 (Gloam vaults, `gloam: [{ address, block }]`): the same list from each vault's Shielded, Transferred and
+// SealedSwapped events (no memo: Gloam's memos are on the memo board), read incrementally and checked against the
+// vault's own leaf count, so the list never has a gap. Apps check its root against the vault before using it.
+export function startLeaves(pub, { vaults, vaultsBlock, shared, sharedBlock, gloam = [] }) {
+  const gloamTrees = gloam.map((g) => new GloamTree(g.address, BigInt(g.block)));
   /** pool (lowercase) → { address, abi, next: next block to read, leaves: [index, commitment hex, memo][] } */
   const pools = new Map();
   let refreshedAt = 0;
@@ -30,6 +34,7 @@ export function startLeaves(pub, { vaults, vaultsBlock, shared, sharedBlock }) {
       for (const p of ps) track(p, shieldedPoolAbi, vaultsBlock);
     }
     if (shared && sharedBlock !== undefined) track(shared, sharedVaultAbi, sharedBlock);
+    await Promise.all(gloamTrees.map((t) => t.update(pub)));
     const latest = await pub.getBlockNumber({ cacheTime: 0 });
     await Promise.all(
       [...pools.values()].map(async (p) => {
@@ -49,8 +54,11 @@ export function startLeaves(pub, { vaults, vaultsBlock, shared, sharedBlock }) {
     cache = null;
   }
 
+  const gloamView = (t) => ({ pool: t.pool, block: (t.scannedTo - 1n).toString(), leaves: t.list().map((c, i) => [i, c, "0x"]) });
+  const views = () => [...[...pools.values()].map(view), ...gloamTrees.filter((t) => t.scannedTo > t.fromBlock).map(gloamView)];
+
   async function fresh() {
-    if (Date.now() - refreshedAt < MIN_REFRESH_MS && pools.size) return;
+    if (Date.now() - refreshedAt < MIN_REFRESH_MS && refreshedAt) return;
     refreshing ??= refresh().finally(() => (refreshing = null));
     await refreshing;
   }
@@ -64,11 +72,12 @@ export function startLeaves(pub, { vaults, vaultsBlock, shared, sharedBlock }) {
       await fresh();
       if (pool) {
         const p = pools.get(pool.toLowerCase());
-        if (!p) return null;
-        return pack(JSON.stringify(view(p)));
+        const g = gloamTrees.find((t) => t.pool.toLowerCase() === pool.toLowerCase());
+        if (!p && !g) return null;
+        return pack(JSON.stringify(p ? view(p) : gloamView(g)));
       }
       if (!cache) {
-        cache = pack(JSON.stringify({ vaults: [...pools.values()].map(view) }));
+        cache = pack(JSON.stringify({ vaults: views() }));
       }
       return cache;
     },
