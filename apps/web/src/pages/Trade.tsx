@@ -233,7 +233,7 @@ export function Trade() {
   if (!wallet) cta = { label: "Connect wallet", act: () => connect() };
   else if (!priv) cta = { label: unlocking ? "Sign in your wallet…" : "Unlock private account", act: unlock, disabled: unlocking };
   else if (busy) cta = { label: busy, disabled: true };
-  else if (amountIn === 0n) cta = { label: "Enter an amount", disabled: true };
+  else if (amountIn <= 0n) cta = { label: "Enter an amount", disabled: true }; // a pasted "-0.01" parses (review W-13)
   else if (short) cta = side === "buy" ? { label: "Shield HYPE first", href: "/app/portfolio/shield" } : { label: `Not enough private ${fromSym}`, disabled: true };
   else if (mode === "batch" && split.sizes.length === 0) cta = { label: "Amount too small", disabled: true };
   else cta = { label: mode === "batch" ? `Place ${split.sizes.length} sealed order${split.sizes.length > 1 ? "s" : ""}` : "Swap privately", act: swap };

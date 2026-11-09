@@ -5,7 +5,7 @@ import { addrLink, DEPLOYMENT, FACTORY, SHARED, txLink, VAULTS } from "./config"
 import { hype, short, tokens } from "./format";
 import { loadSecrets, publicClient, saveSecret } from "./wallet";
 import { sharedFor, useApp } from "./state";
-import { friendly } from "./errors";
+import { friendly, Hint } from "./errors";
 import { markDone } from "./guide";
 import { compressImage, encodeMeta, loadAllMeta } from "./tokenMeta";
 import { Who } from "./who";
@@ -154,6 +154,11 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     setErr("");
     setOk(undefined);
     try {
+      // the sale's caps first: a full sale fails the gas estimate, which reads like an empty wallet (review W-02)
+      const room = s.depositCap > 0n ? (s.depositCap > s.totalDeposits ? s.depositCap - s.totalDeposits : 0n) : undefined;
+      if (room === 0n) throw new Hint("This sale has taken all the deposits it can. No more bids fit.");
+      if (room !== undefined && deposit > room) throw new Hint(`This sale has room for ${hype(room)} HYPE more. Bid a smaller budget.`);
+      if (s.bidCap > 0n && deposit > s.bidCap) throw new Hint(`One bid can deposit at most ${hype(s.bidCap)} HYPE in this sale.`);
       if (from === "private") {
         const p = priv ?? (await unlock());
         if (!p) throw new Error("Unlock your private account to bid from it.");

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
-import { CloakPrivate, shieldedPoolAbi } from "@cloakely/sdk";
+import { CloakPrivate, GloamPrivate, checkPayee, shieldedPoolAbi } from "@cloakely/sdk";
 import { ASSETS, CHAIN_ID, CLOAK_TOKEN, CORE, GLOAM, MIGRATOR, PREVIOUS, RECEIVE, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
@@ -329,7 +329,12 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     const have = balOf(cur.key) ?? 0n;
     if (kind === "shield") {
       // leave a little HYPE for gas
-      const x = cur.key === "HYPE" ? (have > 2_000_000_000_000_000n ? have - 2_000_000_000_000_000n : 0n) : have;
+      let x = cur.key === "HYPE" ? (have > 2_000_000_000_000_000n ? have - 2_000_000_000_000_000n : 0n) : have;
+      // on Gloam, one deposit is capped by the vault: max is what one deposit can be right now
+      if (CORE === "gloam") {
+        const room = await (priv as GloamPrivate).depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => x);
+        if (room < x) x = room;
+      }
       return setAmt(formatUnits(x, cur.decimals));
     }
     if (cur.market?.shared && shared) return setAmt(formatUnits(kind === "send" ? have : await shared.maxWithdraw(cur.key as Address).catch(() => have), cur.decimals));
@@ -352,15 +357,30 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     if (have !== undefined && a > have) return setRes({ err: `You have ${amountOf(cur, have)} ${cur.symbol}${kind === "shield" ? " in your wallet" : " private"}. Enter that or less.` });
     try {
       if (kind === "shield") {
+        if (CORE === "gloam") {
+          const room = await (priv as GloamPrivate).depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => a);
+          if (room === 0n) throw new Hint(`Cloak isn't taking ${cur.symbol} deposits right now. Its private vault is full or doesn't list it yet.`);
+          if (a > room) throw new Hint(`Cloak takes up to ${amountOf(cur, room)} ${cur.symbol} in one deposit right now. Shield it in parts.`);
+        }
         setBusy("Depositing into your private balance…");
         const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a) : cur.market?.shared && shared ? await shared.shield(wallet, cur.key as Address, a, setBusy) : await priv.shieldToken(wallet, cur.key, a, setBusy);
         markDone("shield");
         setRes({ ok: `${amt} ${cur.symbol} is now private.`, tx });
       } else {
+        if (kind === "send") {
+          // the address first, before anything is proved (review W-05)
+          if (!to.startsWith("cloak:") && !to.startsWith("gloamr1.")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
+          const t = to.startsWith("gloamr1.") ? `cloak:${to}` : to;
+          if (CORE === "gloam" && t.startsWith("cloak:") && !t.startsWith("cloak:gloamr1.")) throw new Hint("This is an address from Cloak's first version. Ask them for their new one, which starts with cloak:gloamr1.");
+          try {
+            checkPayee(t);
+          } catch {
+            throw new Hint("This cloak: address isn't complete. Copy it again from their Portfolio page.");
+          }
+        }
         setBusy("Loading the prover…");
         await (cur.market?.shared ? getSharedProver() : getProver());
         if (kind === "send") {
-          if (!to.startsWith("cloak:") && !to.startsWith("gloamr1.")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
           if (cur.market?.shared && shared) {
             await getProver(); // the relayer's fee is proven from your private HYPE
             const tx = await shared.send(cur.key as Address, a, to, setBusy);
@@ -372,8 +392,12 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
         } else {
           // a .ely name is looked up again now: names expire and change hands
           const dest = await recipientNow(to).catch((e) => {
-            throw new Hint(isAddress(to) ? e.message : `${e.message} Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.`);
+            const m = String(e?.message ?? "");
+            throw new Hint(isAddress(to) || /0x address or a \.ely name/.test(m) ? m : `${m} Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.`);
           });
+          // where money would stop: refused before anything is proved (review W-06)
+          const stops = [GLOAM?.gloamVault, GLOAM?.launchVault, GLOAM?.memoBoard, "0x0000000000000000000000000000000000000000"].filter(Boolean).map((x) => String(x).toLowerCase());
+          if (stops.includes(dest.address.toLowerCase())) throw new Hint("That address can't take a withdrawal. The money would stop there, so use a normal wallet address.");
           const name = dest.name ?? `${dest.address.slice(0, 6)}…${dest.address.slice(-4)}`;
           if (spread && !cur.market?.shared) {
             const token = cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address);

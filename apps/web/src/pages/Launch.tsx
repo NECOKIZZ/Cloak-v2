@@ -4,7 +4,7 @@ import { formatEther, parseEther, type Address } from "viem";
 import { Cloak, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, drandRoundTime, privateRouterAbi, sharedVaultAbi, type AuctionState } from "@cloakely/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
 import { CreatorFeesCard, DemandMeter, PrivateBids } from "../launchParts";
-import { addrLink, KEEPER_URL, ROUTER, SHARED, SHARED_BLOCK, VAULTS } from "../config";
+import { addrLink, CORE, GLOAM, KEEPER_URL, ROUTER, SHARED, SHARED_BLOCK, VAULTS } from "../config";
 import { duration, hype, pctChange, short } from "../format";
 import { PriceChart, usePrice } from "../chart";
 import { Link, useRoute } from "../router";
@@ -49,7 +49,7 @@ export function Launch({ auction }: { auction: Address }) {
   const [now, setNow] = useState(Date.now() / 1000);
   const [keeper, setKeeper] = useState<{ keeper: string } | null>(null);
   const [busy, setBusy] = useState("");
-  const [privMarket, setPrivMarket] = useState<boolean | null>(null);
+  const [privMarket, setPrivMarket] = useState<boolean | "soon" | null>(null);
   const [notFound, setNotFound] = useState(false);
   const meta = useTokenMeta(auction);
 
@@ -81,7 +81,16 @@ export function Launch({ auction }: { auction: Address }) {
     if (KEEPER_URL) fetch(KEEPER_URL).then((r) => r.json()).then(setKeeper).catch(() => {});
   }, []);
   useEffect(() => {
-    if (!ROUTER || !s?.settled) return;
+    if (!s?.settled) return;
+    if (CORE === "gloam" && GLOAM) {
+      // Cloak v2 on Gloam: the keeper admits every settled launch to the launch vault by itself (review W-09)
+      publicClient
+        .readContract({ address: GLOAM.launchVault, abi: [{ type: "function", name: "isLaunchToken", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] }] as const, functionName: "isLaunchToken", args: [s.token] })
+        .then((ok) => setPrivMarket(ok ? true : "soon"))
+        .catch(() => {});
+      return;
+    }
+    if (!ROUTER) return;
     (async () => {
       // a token in the shared launch-token vault already trades privately; otherwise it needs a vault of its own
       if (SHARED && (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [s.token] }))) return setPrivMarket(true);
@@ -220,7 +229,9 @@ export function Launch({ auction }: { auction: Address }) {
             <div className="card" style={{ background: "var(--signal-soft)", borderColor: "transparent" }}>
               <div className="card-head"><h3>Trade privately</h3><Icon.lock /></div>
               <p className="small soft" style={{ margin: 0 }}>Buy and sell ${s.tokenSymbol} from your private balance. Your wallet never shows up on the trade.</p>
-              {privMarket === false ? (
+              {privMarket === "soon" ? (
+                <p className="small mute" style={{ marginTop: 14 }}>Private trading opens in a minute or two, once the keeper adds this token to the private vault.</p>
+              ) : privMarket === false ? (
                 <button className="btn btn-ink btn-block" style={{ marginTop: 14 }} disabled={!wallet || !!busy} onClick={enablePrivate}>{busy === "enable" ? "Creating private market…" : wallet ? "Enable private trading" : "Connect a wallet"}</button>
               ) : (
                 <Link to={`/app/trade?token=${s.token}`} className="btn btn-ink btn-block" style={{ marginTop: 14 }}>Trade ${s.tokenSymbol} privately</Link>

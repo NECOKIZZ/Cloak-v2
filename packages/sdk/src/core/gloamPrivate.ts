@@ -371,6 +371,24 @@ export class GloamPrivate {
     throw new Error("No private vault takes this deposit right now (the asset isn't listed, or its cap is full).");
   }
 
+  /**
+   * The most one deposit of `token` (or hypeMarket.token for HYPE) can be right now, in whichever vault takes it: its
+   * per-deposit cap, and what's left under its total cap. 0 when no vault takes it.
+   */
+  async depositRoom(token: Address): Promise<bigint> {
+    const asset = this.assetOf(token);
+    const LIMIT = parseAbi(["function depositLimit(address) view returns (uint128 perDeposit, uint128 total)", "function deposited(address) view returns (uint256)"]);
+    let best = 0n;
+    for (const c of this.cores) {
+      const [per, total] = await this.cfg.publicClient.readContract({ address: c.config.pool, abi: LIMIT, functionName: "depositLimit", args: [asset] }).catch(() => [0n, 0n] as const);
+      const dep = await this.cfg.publicClient.readContract({ address: c.config.pool, abi: LIMIT, functionName: "deposited", args: [asset] }).catch(() => 0n);
+      const left = total > dep ? total - dep : 0n;
+      const room = per < left ? per : left;
+      if (room > best) best = room;
+    }
+    return best;
+  }
+
   // ── in and out ─────────────────────────────────────────────────────────
 
   async shieldHype(wallet: WalletClient, amount: bigint): Promise<Hex> {
