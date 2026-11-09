@@ -55,6 +55,8 @@ export interface GloamPrivateConfig {
   receive?: Address;
   /** CloakGloamBids on the launch vault: sealed bids paid from the private balance. */
   bids?: Address;
+  /** Sweep received payments on every sync (default true). Tools that read without sending turn it off and sweep with syncAll({ sweep: true }). */
+  autoSweep?: boolean;
   /** A claim link's account: spend received payments directly, never sweep them (see GloamCoreConfig). */
   spendReceived?: boolean;
   /**
@@ -165,7 +167,7 @@ export class GloamPrivate {
     const keys = typeof sigOrKeys === "string" ? gloamKeysFromSignature(sigOrKeys) : sigOrKeys;
     const encPriv = toBytes(keccak256(encodeAbiParameters([{ type: "string" }, { type: "uint256" }], ["cloak-gloam-device-v1", keys.noteSeed])));
     this.keys = { encPriv, encPub: toBytes(keccak256(encPriv)) };
-    const base = { publicClient: cfg.publicClient, chainId: cfg.chainId, payMemo: cfg.payMemo, provers: cfg.provers, submit: cfg.submit, logChunk: cfg.logChunk, spendReceived: cfg.spendReceived };
+    const base = { publicClient: cfg.publicClient, chainId: cfg.chainId, payMemo: cfg.payMemo, provers: cfg.provers, submit: cfg.submit, logChunk: cfg.logChunk, spendReceived: cfg.spendReceived, autoSweep: cfg.autoSweep };
     this.cores = [cfg.gloamVault, cfg.launchVault].filter((v): v is { pool: Address; poolBlock: bigint } => !!v).map((v) => new GloamCore({ ...base, pool: v.pool, poolBlock: v.poolBlock, pendingStore: cfg.pendingStore?.(v.pool) }, keys));
     if (!this.cores.length) throw new Error("No vault configured.");
   }
@@ -265,8 +267,8 @@ export class GloamPrivate {
   }
 
   /** Reads both vaults; received payments are swept into own notes (GloamCore's autoSweep). */
-  async syncAll(onStatus: Status = () => {}): Promise<void> {
-    for (const c of this.cores) await c.sync(onStatus);
+  async syncAll(onStatus: Status = () => {}, opts: { sweep?: boolean } = {}): Promise<void> {
+    for (const c of this.cores) await c.sync(onStatus, opts);
   }
 
   async balance(pool: Address): Promise<bigint> {

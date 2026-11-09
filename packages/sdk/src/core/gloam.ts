@@ -76,6 +76,9 @@ export interface GloamCoreConfig {
   pendingStore?: { load(): string | null; save(s: string): void };
 }
 
+/** At most this many received payments are swept per sync; candidates kept waiting for the tree at most. */
+const MAX_SWEEPS_PER_SYNC = 5;
+const MAX_CANDIDATES = 1000;
 /** How long a note made but never seen in the vault is kept trying, and an unposted memo retried. */
 const PENDING_TTL_MS = 3 * 24 * 3600 * 1000;
 
@@ -149,6 +152,7 @@ export class GloamCore implements PrivateCore {
   private pendingOwn = new Map<string, { nonce: string; asset: Address; amount: string; at: number }>();
   private unposted: { commitment: string; tickets: string[]; at: number }[] = [];
   private pendingLoaded = false;
+  private sweeping = false;
 
   constructor(readonly cfg: GloamCoreConfig, readonly keys: GloamAccountKeys) {
     this.memoFrom = cfg.poolBlock;
@@ -264,7 +268,8 @@ export class GloamCore implements PrivateCore {
 
   private tree?: Awaited<ReturnType<typeof gloam.syncTree>>;
 
-  async sync(onStatus: Status = () => {}): Promise<void> {
+  /** @param opts.sweep sweep received payments now (default: the config's autoSweep) */
+  async sync(onStatus: Status = () => {}, opts: { sweep?: boolean } = {}): Promise<void> {
     const pub = this.cfg.publicClient;
     await this.loadPending();
     onStatus("Reading the vault");
@@ -320,22 +325,40 @@ export class GloamCore implements PrivateCore {
       this.unposted = keep;
     }
     if (changed) this.savePending();
-    for (const [k, n] of this.notes) {
-      const spent = await pub.readContract({ address: this.cfg.pool, abi: GLOAM_POOL_ABI, functionName: "isSpent", args: [h32(n.nullifier)] });
-      if (spent) {
+    // every note's spent flag at once (one round trip, not one per note: review O-14)
+    const entries = [...this.notes.entries()];
+    const flags = await Promise.all(entries.map(([, n]) => pub.readContract({ address: this.cfg.pool, abi: GLOAM_POOL_ABI, functionName: "isSpent", args: [h32(n.nullifier)] })));
+    entries.forEach(([k, n], i) => {
+      if (flags[i]) {
         this.spentNotes.set(k, n);
         this.notes.delete(k);
       }
-    }
-    if (this.cfg.autoSweep !== false && !this.cfg.spendReceived) {
-      const received = [...this.notes.values()].filter((x) => !x.own);
-      for (const n of received) {
-        if (!this.notes.has(h32(n.commitment))) continue;
-        onStatus("Securing a received payment");
-        await this.transferOne(n, n.amount, undefined, onStatus);
+    });
+    if ((opts.sweep ?? this.cfg.autoSweep !== false) && !this.cfg.spendReceived && !this.sweeping) {
+      // received payments become own notes. Never more than a few per sync, never a zero payment, and a sweep that
+      // fails (the relay busy, a payer spending it back first) leaves it pending for later instead of failing the sync,
+      // so a stranger's flood of tiny payments can't stop this account from seeing or spending its balance (O-08)
+      const received = [...this.notes.values()].filter((x) => !x.own && x.amount > 0n).sort((a, b) => (a.amount < b.amount ? 1 : -1)).slice(0, MAX_SWEEPS_PER_SYNC);
+      let swept = 0;
+      this.sweeping = true;
+      try {
+        for (const n of received) {
+          if (!this.notes.has(h32(n.commitment))) continue;
+          onStatus("Securing a received payment");
+          try {
+            await this.transferOne(n, n.amount, undefined, onStatus);
+            swept++;
+          } catch {
+            /* left pending: tried again on a later sync */
+          }
+        }
+      } finally {
+        this.sweeping = false;
       }
-      if (received.length) await this.sync(onStatus); // picks up the swept notes, which are this account's own
+      if (swept) await this.sync(onStatus, opts); // picks up the swept notes, which are this account's own
     }
+    // tickets for notes that never show up (anyone can post to a public tag) don't pile up (O-13)
+    if (this.candidates.length > MAX_CANDIDATES) this.candidates = this.candidates.slice(-MAX_CANDIDATES);
   }
 
   private async memoLogs(from: bigint, to: bigint) {

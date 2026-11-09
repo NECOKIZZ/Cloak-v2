@@ -56,6 +56,7 @@ import {
   resolveRecipient,
   CIRCUITS_CDN,
   GloamPrivate,
+  checkPayee,
   gloamProvers,
   gloamRelaySubmitter,
   GLOAM_CIRCUITS_CDN,
@@ -120,6 +121,9 @@ export function explain(e: unknown): string {
 function amountOf(s: string, decimals: number): bigint | null {
   if (s.trim().toLowerCase() === "max") return null;
   if (!/^\d+(\.\d+)?$/.test(s.trim())) throw new Error(`"${s}" isn't an amount: use a number like 0.5, or "max"`);
+  const frac = s.trim().split(".")[1] ?? "";
+  // parseUnits rounds extra digits up: refuse them instead, so nothing moves that wasn't asked for (review O-12)
+  if (frac.length > decimals) throw new Error(`"${s}" has more decimals than this asset has (${decimals})`);
   const a = parseUnits(s.trim(), decimals);
   if (a <= 0n) throw new Error("the amount must be above zero");
   return a;
@@ -227,6 +231,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         receive: g.receive,
         bids: g.bids,
         records,
+        // reads and dry runs send nothing: received payments are swept at the start of each write instead (O-11)
+        autoSweep: false,
         // notes made but not yet seen in a vault, and memos not yet posted (no secrets: nonces and sealed memos)
         pendingStore: (vault: Address) => {
           const f = join(settings.stateDir, `gloam-notes-${wallet.account!.address.toLowerCase()}-${vault.toLowerCase()}.json`);
@@ -282,7 +288,9 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
 
   // one write at a time: two private calls must not pick the same notes, and nonces stay in order
   let queue: Promise<unknown> = Promise.resolve();
-  const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
+  const exclusive = <T>(fn0: () => Promise<T>): Promise<T> => {
+    // on Gloam, payments waiting to be secured are swept here, inside the queue, never by a read or a dry run
+    const fn = G ? async () => (await (await gloamPriv()).syncAll(() => {}, { sweep: true }).catch(() => {}), fn0()) : fn0;
     const run = queue.then(fn, fn);
     queue = run.catch(() => {});
     return run;
@@ -785,6 +793,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const plan = { creator: account.address, ...p, biddingEnds: iso(commitEnd), revealsEnd: iso(revealEnd), topPrice: `${formatEther(params.minPrice + BigInt(params.numTicks - 1) * params.tickSize)} HYPE per token` };
       if (isDry(p.dry_run)) return { dryRun: true, wouldCreate: plan };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check("launches", 1n);
         const l = await cloak.createLaunch(params);
         spending.record("launches", 1n);
         return { created: true, auction: l.auction, token: l.token, tx: link(l.txHash), biddingEnds: plan.biddingEnds, revealsEnd: plan.revealsEnd, next: "Share the auction address. Bids open by themselves after bidding closes, and the keeper settles the launch." };
@@ -809,6 +819,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const plan = { launch: s.tokenSymbol, price: `${formatEther(q.price)} HYPE per token`, quantity, cost: hype(q.cost), deposit: hype(q.deposit), biddingEnds: iso(s.commitEnd) };
       if (isDry(dry_run)) return { dryRun: true, wouldBid: plan };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check("hype", q.deposit);
         const b = await cloak.bid(s.address, { maxPrice: parseEther(max_price), quantity: parseEther(quantity) });
         spending.record("hype", b.deposit);
         saveBid(account.address, b);
@@ -939,13 +951,20 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const p = await priv();
       const out: Record<string, string> = {};
       const tokens: Record<string, { token: Address; balance: string }> = {};
+      // on Gloam, payments received but not yet secured count too (the next write secures them first), shown apart
+      const g = G ? (p as unknown as GloamPrivate) : null;
+      if (g) await g.syncAll(); // reads the vaults (no sweep: reads send nothing)
+      const waiting = g ? await g.pending() : new Map<Address, bigint>();
+      const waitingOut: Record<string, string> = {};
       for (const a of await vaults()) {
-        const b = await balanceOf(a);
+        const w = g ? (waiting.get(g.assetOf(a.token)) ?? 0n) : 0n;
+        if (w > 0n) waitingOut[a.symbol] = formatUnits(w, a.decimals);
+        const b = (await balanceOf(a)) + w;
         if (b === 0n && !include_zero && a.kind === "token") continue;
         if (a.kind === "token") tokens[`${a.symbol} ${a.token.slice(0, 8)}`] = { token: a.token, balance: formatUnits(b, a.decimals) };
         else out[a.symbol] = formatUnits(b, a.decimals);
       }
-      return { cloakAddress: await p.address(), balances: out, launchTokens: tokens };
+      return { cloakAddress: await p.address(), balances: out, launchTokens: tokens, ...(Object.keys(waitingOut).length ? { receivedNotYetSecured: waitingOut, note: "Included above. The next private action secures them first." } : {}) };
     }),
   );
 
@@ -967,6 +986,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       spending.check(c.budget, c.value);
       if (isDry(dry_run)) return { dryRun: true, wouldShield: fmtAmt(a, x), ...(a.kind === "asset" ? { note: "The first time takes two transactions: an approval, then the deposit." } : {}) };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check(c.budget, c.value);
         const p = await priv();
         const h = a.kind === "hype" ? await p.shieldHype(wallet, x) : a.kind === "token" && a.shared ? await (await shared()).shield(wallet, a.token, x) : await p.shieldToken(wallet, a.token, x);
         spending.record(c.budget, c.value);
@@ -998,6 +1019,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const outSym = side === "buy" ? t.symbol : "HYPE";
       if (isDry(dry_run)) return { dryRun: true, wouldSwap: `${formatEther(x)} ${inSym} for about ${formatEther(q.out)} ${outSym}`, relayerFee: `${formatEther(q.fee)} ${inSym}`, slippage: `${(slippage_bps ?? 100) / 100}%` };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check(c.budget, c.value);
         if (t.shared) {
           const sh = await shared();
           const h = side === "buy" ? await sh.buy(t.token, x, { slippageBps: slippage_bps ?? 100 }) : await sh.sell(t.token, x, { slippageBps: slippage_bps ?? 100 });
@@ -1036,6 +1059,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const round = t.shared ? await (await shared()).roundInfo() : G ? await (p as unknown as GloamPrivate).roundInfo(t.token) : await p.roundInfo();
       if (isDry(dry_run)) return { dryRun: true, wouldPlace: `${formatEther(x)} ${side === "buy" ? "HYPE" : t.symbol} as standard-size ${side} orders`, roundEndsAt: iso(round.endsAt) };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check(c.budget, c.value);
         const r = t.shared ? await (await shared()).batch(t.token, side, x) : await p.batch(t.token, side, x);
         const placed = r.orders.reduce((a, o) => a + o.size, 0n);
         const pc = await cost(side === "buy" ? (await vaults())[0] : t, placed);
@@ -1062,6 +1087,11 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     safe(async ({ asset, to, amount, dry_run }: { asset: string; to: string; amount: string; dry_run?: boolean }) => {
       const { spending } = needWallet();
       if (!to.startsWith("cloak:")) throw new Error("The recipient must be a cloak: address (the receiver gets it from unlock or the Portfolio page).");
+      try {
+        checkPayee(to); // a made-up or cut-off cloak: address is refused before anything is proved (review O-12)
+      } catch {
+        throw new Error("That cloak: address isn't valid. Copy it again from the receiver's Portfolio page.");
+      }
       const a = await resolve(asset);
       const p = await priv();
       const sharedTok = a.kind === "token" && a.shared;
@@ -1071,6 +1101,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       spending.check(c.budget, c.value);
       if (isDry(dry_run)) return { dryRun: true, wouldSend: fmtAmt(a, x), to, ...(sharedTok ? { relayerFee: "paid from your private HYPE, so the send doesn't show which token moved" } : {}) };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check(c.budget, c.value);
         if (sharedTok) {
           const h = await (await shared()).send(a.token, x, to);
           await receipt(h);
@@ -1096,6 +1128,9 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     safe(async ({ asset, to, amount, dry_run }: { asset: string; to: string; amount: string; dry_run?: boolean }) => {
       const { spending } = needWallet();
       const dest = await resolveRecipient(pub, to); // a .ely name resolves now: names expire and change hands
+      // where money would stop or be lost, refused before anything is proved, dry runs included (review O-12)
+      const stops = [zeroAddress, d.whype, ...(G ? [G.gloamVault, G.launchVault, G.memoBoard, G.launchSwapV4, G.batcherV4, G.batcher, G.receive, G.bids, G.graduation].filter(Boolean) : [d.router, d.hypePool])].map((x) => String(x).toLowerCase());
+      if (stops.includes(dest.address.toLowerCase())) throw new Error("That address can't take a withdrawal: the money would stop there. Use a normal wallet address.");
       const named = dest.name ? `${dest.name} (${dest.address})` : dest.address;
       to = dest.address;
       const a = await resolve(asset);
@@ -1109,6 +1144,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const arrives = G ? await (p as unknown as GloamPrivate).afterFee(a.pool, x) : await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [x] });
       if (isDry(dry_run)) return { dryRun: true, wouldWithdraw: fmtAmt(a, x), arrives: fmtAmt(a, arrives), to: named };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check(c.budget, c.value);
         const h = a.kind === "hype" ? await p.unshieldHype(to as Address, x) : sharedTok ? await (await shared()).unshield(a.token, x, to as Address) : await p.unshieldToken(a.token, to as Address, x);
         await receipt(h);
         spending.record(c.budget, c.value);
@@ -1185,6 +1222,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       spending.check(c.budget, c.value);
       if (isDry(x.dry_run)) return { dryRun: true, wouldLock: `${fmtAmt(a, total)} in ${n} share${n > 1 ? "s" : ""} of ${fmtAmt(a, each)}`, claimFeeCovered: fmtAmt(a, claimFee * BigInt(n)), locked: !!x.passcode };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check(c.budget, c.value);
         const secret = newLinkSecret();
         let to: string;
         let check: string | undefined;
@@ -1338,6 +1377,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       spending.check(c.budget, c.value);
       if (isDry(dry_run)) return { dryRun: true, wouldPay: fmtAmt(a, units), to: r.to, ...(r.note ? { note: r.note } : {}), ...(r.name ? { requestedBy: r.name } : {}), ...(toCloak ? {} : { leavesYourBalance: fmtAmt(a, gross) }) };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check(c.budget, c.value);
         const h = toCloak ? await p.send(linkTokenOf(p, a), r.to, gross) : a.kind === "hype" ? await p.unshieldHype(r.to as Address, gross) : await p.unshieldToken(a.token, r.to as Address, gross);
         await receipt(h);
         spending.record(c.budget, c.value);
@@ -1373,6 +1414,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const plan = { drop: s.address, quantity: qty, bidLevel: `${formatEther(level)} HYPE each${level < price ? ` (your ${max_price} snaps down to the nearest level)` : ""}`, deposit: hype(deposit), wl, ...(wl ? { ranksAs: `${formatEther((level * BigInt(10_000 + s.wlBoostBps)) / 10_000n)} HYPE each` } : {}), biddingEnds: iso(s.commitEnd) };
       if (isDry(dry_run)) return { dryRun: true, wouldBid: plan };
       return exclusive(async () => {
+        // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
+        spending.check("hype", deposit);
         const b = await c.bid(s.address, { price: level, quantity: qty, wl });
         spending.record("hype", deposit);
         return { placed: true, bidId: b.id.toString(), ...plan, tx: link(b.txHash), next: "The bid opens by itself after bidding closes. Check results with get_drop or my_drop_bids, then claim_drop." };
