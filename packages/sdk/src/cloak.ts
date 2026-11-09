@@ -106,6 +106,13 @@ export interface AuctionState {
 }
 
 /** Everything a bidder must keep to reveal manually; auto-reveal makes losing it harmless. */
+/** Something an address can claim from a launch now. Nothing here ever expires. */
+export type WaitingItem =
+  | { kind: "bids"; auction: Address; token: Address; symbol: string; ids: bigint[]; tokens: bigint; refund: bigint }
+  | { kind: "refund"; auction: Address; token: Address; symbol: string; amount: bigint }
+  | { kind: "proceeds"; auction: Address; token: Address; symbol: string; amount: bigint }
+  | { kind: "fees"; auction: Address; token: Address; symbol: string; hype: bigint; tokens: bigint };
+
 export interface BidSecret extends BidPreimage {
   id: bigint;
   deposit: bigint;
@@ -485,6 +492,78 @@ export class Cloak {
     const txHash = await this.wallet().writeContract({ address: auction, abi: cloakAuctionAbi, functionName: "settle" });
     await this.send(txHash);
     return txHash;
+  }
+
+  /** Pay a settled launch's proceeds to its creator. Anyone can send it, and the money only ever goes to the creator. */
+  async withdrawProceeds(auction: Address): Promise<Hex> {
+    const h = await this.wallet().writeContract({ address: auction, abi: cloakAuctionAbi, functionName: "withdrawProceeds" });
+    await this.send(h);
+    return h;
+  }
+
+  /**
+   * Everything `owner` can claim across this factory's launches: unclaimed bids in settled launches, refunds held for
+   * it, and, for a creator, the launch's proceeds and trading fees. For a notification bell: nothing here expires, so
+   * a bidder who forgot comes back to find it.
+   */
+  async waitingFor(owner: Address, fromBlock = 0n): Promise<WaitingItem[]> {
+    const launches = await this.listLaunches();
+    if (!launches.length) return [];
+    const me = owner.toLowerCase();
+    const latest = await this.publicClient.getBlockNumber({ cacheTime: 0 });
+    const get = (from: bigint, to: bigint) =>
+      this.publicClient.getContractEvents({ address: launches.map((l) => l.auction), abi: cloakAuctionAbi, eventName: "Committed", args: { bidder: owner }, strict: true, fromBlock: from, toBlock: to });
+    let logs: Awaited<ReturnType<typeof get>>;
+    try {
+      logs = await get(fromBlock, latest);
+    } catch {
+      logs = [];
+      for (let from = fromBlock; from <= latest; from += 10_000n) logs.push(...(await get(from, from + 9_999n > latest ? latest : from + 9_999n)));
+    }
+    const bidIds = new Map<string, bigint[]>();
+    for (const l of logs) {
+      const k = l.address.toLowerCase();
+      bidIds.set(k, [...(bidIds.get(k) ?? []), l.args.id]);
+    }
+    const r = this.publicClient;
+    const out = await Promise.all(
+      launches.map(async (l): Promise<WaitingItem[]> => {
+        const c = { address: l.auction, abi: cloakAuctionAbi } as const;
+        const ids = bidIds.get(l.auction.toLowerCase()) ?? [];
+        const isCreator = l.creator.toLowerCase() === me;
+        if (!ids.length && !isCreator) {
+          const held = await r.readContract({ ...c, functionName: "refundOwed", args: [owner] }).catch(() => 0n);
+          if (held === 0n) return [];
+        }
+        const [settled, symbol, held] = await Promise.all([
+          r.readContract({ ...c, functionName: "settled" }),
+          r.readContract({ address: l.token, abi: cloakTokenAbi, functionName: "symbol" }),
+          r.readContract({ ...c, functionName: "refundOwed", args: [owner] }).catch(() => 0n),
+        ]);
+        const items: WaitingItem[] = [];
+        if (held > 0n) items.push({ kind: "refund", auction: l.auction, token: l.token, symbol, amount: held });
+        if (!settled) return items;
+        if (ids.length) {
+          const rows = await Promise.all(
+            ids.map(async (id) => {
+              const [bid, alloc] = await Promise.all([r.readContract({ ...c, functionName: "getBid", args: [id] }), r.readContract({ ...c, functionName: "allocationOf", args: [id] })]);
+              return { id, claimed: bid.claimed, tokens: alloc[0], refund: alloc[1] };
+            }),
+          );
+          const open = rows.filter((x) => !x.claimed && x.tokens + x.refund > 0n);
+          if (open.length)
+            items.push({ kind: "bids", auction: l.auction, token: l.token, symbol, ids: open.map((x) => x.id), tokens: open.reduce((a, x) => a + x.tokens, 0n), refund: open.reduce((a, x) => a + x.refund, 0n) });
+        }
+        if (isCreator) {
+          const owed = await r.readContract({ ...c, functionName: "creatorOwed" }).catch(() => 0n);
+          if (owed > 0n) items.push({ kind: "proceeds", auction: l.auction, token: l.token, symbol, amount: owed });
+          const f = await this.creatorFees(l.auction).catch(() => null);
+          if (f && f.beneficiary.toLowerCase() === me && (f.whype > 0n || f.tokens > 0n)) items.push({ kind: "fees", auction: l.auction, token: l.token, symbol, hype: f.whype, tokens: f.tokens });
+        }
+        return items;
+      }),
+    );
+    return out.flat();
   }
 
   /** Pay out a settled launch's creator proceeds, and send its launch fee to the treasury (anyone can call either). */

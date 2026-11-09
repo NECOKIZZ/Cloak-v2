@@ -1,5 +1,12 @@
 name: CI
-on: [push, pull_request]
+# Run by hand (Actions > CI > Run workflow) or on a pull request, never on every push: the account's free plan has
+# 2,000 minutes a month, and pushes go to two branches. The same checks run locally before every push.
+on:
+  workflow_dispatch:
+  pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   gloam:
     # Cloak v2 on Gloam: Gloam's vault (pinned submodule), Cloak's escrows and launch vault, the SDK, the MCP server,

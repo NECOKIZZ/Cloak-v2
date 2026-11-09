@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRoute } from "../router";
 import { every } from "../every";
 import { useApp } from "../state";
@@ -6,6 +6,7 @@ import { GITHUB, Icon, Logo, MenuButton, Sheet, ThemeSeg, ThemeToggle, WalletBut
 import { STEPS, guideShown, hideGuide, markDone, useGuide, type Step } from "../guide";
 import { navigate } from "../router";
 import { KEEPER_URL, chain } from "../config";
+import { Bell } from "../bell";
 
 function Welcome({ onClose }: { onClose: () => void }) {
   return (
@@ -18,7 +19,7 @@ function Welcome({ onClose }: { onClose: () => void }) {
         <div className="qs">
           <div><span className="n">1</span><span>Connect a wallet. Cloak adds the <b>Elysium testnet</b> network for you.</span></div>
           <div><span className="n">2</span><span>Get testnet HYPE from the <a className="link" href="https://elysium.kinetiq.xyz/testnet-faucet" target="_blank" rel="noreferrer">Elysium faucet</a>.</span></div>
-          <div><span className="n">3</span><span><b>Shield</b> HYPE, USDC or CLOAK and trade privately, or <b>bid</b> in a sealed launch.</span></div>
+          <div><span className="n">3</span><span><b>Shield</b> HYPE or USDC and trade launch tokens privately, or <b>bid</b> in a sealed launch.</span></div>
         </div>
         <div className="summary" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
           <Icon.lock size={16} /><span className="xs mute">Your private account comes from one wallet signature. Nothing is stored on a server, and the same wallet always restores it.</span>
@@ -180,7 +181,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="side" aria-label="App">
         <div className="side-top">
           <Link to="/" className="brand"><Logo size={24} />Cloak</Link>
-          <ThemeToggle />
+          <div className="row-flex" style={{ gap: 2 }}><Bell /><ThemeToggle /></div>
         </div>
         <Network />
         {/* the brand, network and wallet stay put; only the links scroll on a short screen */}
@@ -200,6 +201,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header ref={bar} className="mbar">
         <Link to="/" className="brand"><Logo size={22} /><span>Cloak</span></Link>
         <div className="row-flex" style={{ gap: 6 }}>
+          <Bell />
           <WalletButton />
           <MenuButton open={open} onClick={() => setOpen(!open)} />
         </div>
@@ -226,7 +228,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button className="btn btn-text xs" onClick={() => setError("")}>Dismiss</button>
           </div>
         )}
-        {children}
+        <Suspense fallback={<div className="skel" style={{ height: 240 }} aria-busy="true" />}>{children}</Suspense>
         <footer className="app-foot">
           <span>Cloak on Elysium testnet. Play money only. Not investment advice.</span>
           <span className="row-flex" style={{ gap: 16 }}>

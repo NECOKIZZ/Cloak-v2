@@ -47,7 +47,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | Unsold tokens | Burned to `0x…dEaD`, with any LP reserve the pool didn't use | Contract (fixed) |
 | Getting paid | Pull-based: the creator's proceeds and the fee are withdrawn separately, so a recipient that can't take HYPE can't block anyone. A refund a bidder's address can't take is held for them to withdraw to any address | Contract (fixed) |
 | Private bids | Bids paid from a private balance go through `CloakGloamBids`. Winnings come back into the launch vault once the launch is admitted | Contract (fixed) |
-| Public claims | The keeper pushes tokens and refunds to every unclaimed bidder **1 hour** after the reveal window, so winners can claim privately first. Anyone can push claims at any time | Keeper |
+| Claims | Bidders claim tokens and refunds, and creators withdraw their raise (`withdrawProceeds`), **whenever they like**. Nothing expires. Anyone can push a claim or the raise to its owner, but the keeper doesn't (`PUSH_CLAIMS=1` turns that back on). The app's bell lists what's waiting | Keeper |
 | Presets in the app | Quick (15 min of bidding), Standard (6 hours), Extended (24 hours); every setting can also be set by hand | App |
 
 
@@ -83,7 +83,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 
 | Rule | Value | Where |
 |---|---|---|
-| What it does | Reveals bids once the drand round passes, settles launches, admits them to the launch vault, settles batch rounds, pushes public claims after 1 hour, relays private actions | Keeper |
+| What it does | Reveals bids once the drand round passes, settles launches, admits them to the launch vault, settles batch rounds, collects the launch fee, relays private actions | Keeper |
 | What it can't do | Change, steal or redirect anything: every field is bound by the proof. It can delay or refuse, and it sees your IP | Contract (fixed) |
 | Relay budget | Follows Gloam's relay rules (per-sender shares, an exit share, a revert cap), paid from the launch vault's fee | Keeper |
 | Rate limit | **20** relay requests per IP per minute | Keeper |

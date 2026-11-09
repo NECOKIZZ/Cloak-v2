@@ -35,8 +35,6 @@ services:
         value: "0x59d2cd703747a47288518c7380efa95879295784"
       - key: START_BLOCK
         value: "26707681"
-      - key: CLAIM_DELAY
-        value: "3600"
       - key: CORS_ORIGINS
         value: "https://gloak.boblabs.tech,http://localhost:5173"
       # one proxy (Render's) in front: the client IP for rate limits comes from it (review O-03)

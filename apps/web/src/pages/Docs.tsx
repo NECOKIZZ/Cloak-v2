@@ -311,7 +311,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>Pool opening price</td><td>Exactly the clearing price, in a Uniswap v4 pool behind Cloak's hook</td><td>Contract</td></tr>
               <tr><td>LP</td><td>Locked forever with trading fees to the creator, burned, or locked until a date</td><td>Contract</td></tr>
               <tr><td>Creator fees</td><td>Uniswap's 0.3% on every trade; the locked liquidity can never be taken</td><td>Contract</td></tr>
-              <tr><td>Winners' window to claim privately</td><td>1 hour after reveals end, then the keeper pushes public claims</td><td>Keeper</td></tr>
+              <tr><td>Claiming</td><td>Bidders claim tokens and refunds, and creators withdraw their raise, whenever they like. Nothing expires, and the bell in the app shows what's waiting</td><td>App</td></tr>
               <tr><td>Private swap slippage and deadline</td><td>1% and 10 minutes by default</td><td>App</td></tr>
               <tr><td>Batch round</td><td>60 s, priced at the average over at least a round, 4% of the pool per side, 2% price guard, 5% impact guard, refunds after 10 min</td><td>Contract</td></tr>
               <tr><td>Fees</td><td>0.5% on what leaves a vault, 1.5% of a successful raise (cap 3%), deposits and sends free</td><td>Vault, behind a 3-day wait</td></tr>

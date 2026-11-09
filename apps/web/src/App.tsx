@@ -1,30 +1,34 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import type { Address } from "viem";
 import { Analytics } from "@vercel/analytics/react";
 import { AppShell } from "./pages/AppShell";
-import { Create } from "./pages/Create";
-import { Docs } from "./pages/Docs";
-import { Agents } from "./pages/Agents";
 import { Landing } from "./pages/Landing";
-import { Pitch } from "./pages/Pitch";
-import { Demo } from "./pages/Demo";
-import { Claim } from "./pages/Claim";
-import { Links } from "./pages/Links";
-import { Drop } from "./pages/Drop";
-import { Drops } from "./pages/Drops";
-import { DropCreate } from "./pages/DropCreate";
-import { Pay } from "./pages/Pay";
-import { Launch } from "./pages/Launch";
-import { Launches } from "./pages/Launches";
-import { Portfolio, PortfolioAction } from "./pages/Portfolio";
-import { Receive } from "./pages/Receive";
-import { ProveFunds, ProofPage } from "./pages/Funds";
-import { Sdk } from "./pages/Sdk";
-import { Trade } from "./pages/Trade";
-import { Volume } from "./pages/Volume";
 import { navigate, useRoute } from "./router";
 import { AppProvider } from "./state";
 import { Nav } from "./ui";
+
+// every page but the landing loads on first visit, so the first download is only what that page needs
+const Create = lazy(() => import("./pages/Create").then((m) => ({ default: m.Create })));
+const Docs = lazy(() => import("./pages/Docs").then((m) => ({ default: m.Docs })));
+const Agents = lazy(() => import("./pages/Agents").then((m) => ({ default: m.Agents })));
+const Pitch = lazy(() => import("./pages/Pitch").then((m) => ({ default: m.Pitch })));
+const Demo = lazy(() => import("./pages/Demo").then((m) => ({ default: m.Demo })));
+const Claim = lazy(() => import("./pages/Claim").then((m) => ({ default: m.Claim })));
+const Links = lazy(() => import("./pages/Links").then((m) => ({ default: m.Links })));
+const Drop = lazy(() => import("./pages/Drop").then((m) => ({ default: m.Drop })));
+const Drops = lazy(() => import("./pages/Drops").then((m) => ({ default: m.Drops })));
+const DropCreate = lazy(() => import("./pages/DropCreate").then((m) => ({ default: m.DropCreate })));
+const Pay = lazy(() => import("./pages/Pay").then((m) => ({ default: m.Pay })));
+const Launch = lazy(() => import("./pages/Launch").then((m) => ({ default: m.Launch })));
+const Launches = lazy(() => import("./pages/Launches").then((m) => ({ default: m.Launches })));
+const Portfolio = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.Portfolio })));
+const PortfolioAction = lazy(() => import("./pages/Portfolio").then((m) => ({ default: m.PortfolioAction })));
+const Receive = lazy(() => import("./pages/Receive").then((m) => ({ default: m.Receive })));
+const ProveFunds = lazy(() => import("./pages/Funds").then((m) => ({ default: m.ProveFunds })));
+const ProofPage = lazy(() => import("./pages/Funds").then((m) => ({ default: m.ProofPage })));
+const Sdk = lazy(() => import("./pages/Sdk").then((m) => ({ default: m.Sdk })));
+const Trade = lazy(() => import("./pages/Trade").then((m) => ({ default: m.Trade })));
+const Volume = lazy(() => import("./pages/Volume").then((m) => ({ default: m.Volume })));
 
 function Routes() {
   const { path, query } = useRoute();
@@ -73,7 +77,9 @@ function Routes() {
 export function App() {
   return (
     <AppProvider>
-      <Routes />
+      <Suspense fallback={<div className="wrap section" aria-busy="true" />}>
+        <Routes />
+      </Suspense>
       <Analytics />
     </AppProvider>
   );

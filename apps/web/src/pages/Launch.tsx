@@ -3,7 +3,7 @@ import { PageSkel, Skel } from "../skel";
 import { formatEther, parseAbi, parseEther, type Address } from "viem";
 import { Cloak, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, drandRoundTime, type AuctionState } from "@cloakely/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
-import { CreatorFeesCard, DemandMeter, PrivateBids } from "../launchParts";
+import { CreatorFeesCard, CreatorProceedsCard, DemandMeter, PrivateBids } from "../launchParts";
 import { addrLink, GLOAM, KEEPER_URL } from "../config";
 import { duration, hype, pctChange, short } from "../format";
 import { PriceChart, usePrice } from "../chart";
@@ -226,6 +226,7 @@ export function Launch({ auction }: { auction: Address }) {
             </div>
           )}
           <TradeCard s={s} wallet={wallet} />
+          <CreatorProceedsCard s={s} wallet={wallet} />
           <CreatorFeesCard s={s} wallet={wallet} />
         </div>
       </div>

@@ -86,6 +86,49 @@ export function DemandMeter({ s, now }: { s: AuctionState; now: number }) {
   );
 }
 
+// ───────────────────────────── creator proceeds ─────────────────────────────
+
+/**
+ * A settled launch's raise, waiting for its creator. The contract holds it until someone calls withdrawProceeds, and it
+ * can only ever go to the creator, so the creator takes it whenever they like (anyone else can send it to them too).
+ */
+export function CreatorProceedsCard({ s, wallet }: { s: AuctionState; wallet: Wallet | null }) {
+  const { connect, toast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [paid, setPaid] = useState(false);
+  if (!s.settled || s.creatorOwed === 0n || paid) return null;
+  const mine = wallet?.account.address.toLowerCase() === s.creator.toLowerCase();
+  async function withdraw() {
+    if (!wallet) return connect();
+    setBusy(true);
+    setErr("");
+    try {
+      await new Cloak(publicClient, wallet).withdrawProceeds(s.address);
+      toast(mine ? "Your raise is in your wallet" : "The raise was sent to the creator");
+      setPaid(true);
+    } catch (e) {
+      setErr(friendly(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="card">
+      <div className="card-head"><h3>Creator's raise</h3><span className="pill ok">ready</span></div>
+      <p className="small soft" style={{ marginTop: 0 }}>What the launch raised, after its liquidity and the launch fee. It waits here until the creator takes it, and it can only go to the creator.</p>
+      <div className="summary">
+        <div className="row"><span className="mute">Waiting</span><span className="mono">{hype(s.creatorOwed)} HYPE</span></div>
+        <div className="row"><span className="mute">Paid to</span><span className="mono">{mine ? "you" : short(s.creator)}</span></div>
+      </div>
+      <button className={`btn ${mine ? "btn-primary" : "btn-ghost"} btn-block`} disabled={busy} onClick={withdraw}>
+        {busy ? "Sending…" : !wallet ? "Connect a wallet" : mine ? "Withdraw to my wallet" : "Send it to the creator"}
+      </button>
+      {err && <div className="err">{err}</div>}
+    </div>
+  );
+}
+
 // ───────────────────────────── creator fees ─────────────────────────────
 
 type Fees = Awaited<ReturnType<typeof readCloak.creatorFees>>;

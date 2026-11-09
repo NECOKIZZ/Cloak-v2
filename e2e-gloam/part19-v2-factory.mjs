@@ -69,6 +69,20 @@ try {
   const listed = await creator.listLaunches();
   assert(listed.length === 1 && listed[0].auction.toLowerCase() === l.auction.toLowerCase(), "the new factory lists only its own launch");
 
+  // the app's bell: what each wallet can claim, then claimed by its owner (the keeper no longer pushes it)
+  const waitA = await creator.waitingFor(bidA.account.address, l.block);
+  const bidsA = waitA.find((x) => x.kind === "bids");
+  assert(bidsA && bidsA.tokens > 0n && bidsA.ids.length === 1, `the bell shows bidder A's won tokens (${formatEther(bidsA?.tokens ?? 0n)} GLOAK) waiting`);
+  await new Cloak(pub, bidA.wallet, f.factory).claim(l.auction, bidsA.ids);
+  assert(!(await creator.waitingFor(bidA.account.address, l.block)).some((x) => x.kind === "bids"), "after bidder A claims, the bell is clear for A");
+  const proceeds = (await creator.waitingFor(dep.account.address, l.block)).find((x) => x.kind === "proceeds");
+  assert(proceeds && proceeds.amount > 0n, `the bell shows the creator's raise (${formatEther(proceeds?.amount ?? 0n)} HYPE) waiting`);
+  const hypeBefore = await pub.getBalance({ address: dep.account.address });
+  const pr = await pub.waitForTransactionReceipt({ hash: await creator.withdrawProceeds(l.auction) });
+  const paid = (await pub.getBalance({ address: dep.account.address })) - hypeBefore + pr.gasUsed * pr.effectiveGasPrice;
+  assert(paid === proceeds.amount, "the creator withdrew the raise whenever they liked, the exact amount");
+  assert(!(await creator.waitingFor(dep.account.address, l.block)).some((x) => x.kind === "proceeds"), "and the bell no longer lists it");
+
   // 4. Gloam's vault (stand-in), a launch vault on the NEW factory, the v4 swap on the NEW hook, batch rounds
   const poseidon = await deployPoseidon(dep);
   const stack = await deployGloamStack({ rpcUrl, pk: ANVIL_KEYS[0], poseidon, assets: [{ address: ELYSIUM_TESTNET_USDC, perDeposit: 500n * 10n ** 6n, total: 25_000n * 10n ** 6n }], feeBps: 50, feeRecipient: addr, controller: addr });

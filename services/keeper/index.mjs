@@ -1,7 +1,7 @@
 // Cloak v2 keeper. With a gas wallet and no user secret, it:
 //   1. watches every launch of Cloak v2's factory: decrypts sealed bids once their drand round is out and reveals them
-//      (bidders never come back), settles when the reveal window closes, and after CLAIM_DELAY (so winners can claim
-//      privately first) pushes tokens and refunds to every bidder still unclaimed, then pays the creator and the fee;
+//      (bidders never come back), settles when the reveal window closes and collects Cloak's launch fee. Bidders claim
+//      and creators withdraw their proceeds themselves, whenever they like (PUSH_CLAIMS=1 makes the keeper push them);
 //   2. relays private actions on Gloam's vaults (POST /gloam/relay): the relay pays gas and is the on-chain sender, so
 //      the user's wallet never appears. It can't alter a call: the proof binds every field;
 //   3. runs the Gloam loop (gloamLoop.mjs): admits settled launches to the launch vault, registers them for batch
@@ -27,6 +27,8 @@ const chain = RPC.includes("127.0.0.1") || RPC.includes("localhost") ? anvilLoca
 const PK = process.env.KEEPER_PK;
 const POLL_MS = Number(process.env.POLL_MS ?? 3000);
 const CLAIM_DELAY = Number(process.env.CLAIM_DELAY ?? 3600); // seconds after the reveal window before public claims
+// off by default: bidders and creators pull their own money (the site's bell shows what's waiting)
+const PUSH_CLAIMS = process.env.PUSH_CLAIMS === "1";
 // the SDK's record for this chain (factory, drop factories), or undefined on a chain it doesn't know (a local test chain)
 const KNOWN = (() => {
   try {
@@ -219,19 +221,33 @@ async function tick() {
         const h = await cloak.settle(auction);
         log(auction, `settled ${h}`);
       } else if (s.phase === "settled") {
-        if (now < s.revealEnd + CLAIM_DELAY) {
-          waitUntil.set(auction, s.revealEnd + CLAIM_DELAY); // winners' window to claim privately
-          continue;
+        // Bidders claim their tokens and refunds, and creators withdraw their proceeds, whenever they like: nothing
+        // expires, and the site's bell lists what's waiting. The keeper only collects Cloak's launch fee. With
+        // PUSH_CLAIMS=1 it also pushes unclaimed bids and the creator's proceeds after CLAIM_DELAY, as it used to.
+        if (PUSH_CLAIMS) {
+          if (now < s.revealEnd + CLAIM_DELAY) {
+            waitUntil.set(auction, s.revealEnd + CLAIM_DELAY); // winners' window to claim privately
+            continue;
+          }
+          const r = await cloak.claimAll(auction, { fromBlock: START_BLOCK });
+          if (r.claimed) log(auction, `delivered ${r.claimed} claims`);
+          if (s.creatorOwed > 0n) {
+            const c = { address: auction, abi: cloakAuctionAbi };
+            await publicClient.waitForTransactionReceipt({ hash: await walletClient.writeContract({ ...c, functionName: "withdrawProceeds" }) }).catch((e) => log(auction, `proceeds skipped: ${e.shortMessage ?? e.message}`));
+          }
+          try {
+            const c = { address: auction, abi: cloakAuctionAbi };
+            await publicClient.simulateContract({ ...c, functionName: "sweepDust", account });
+            await publicClient.waitForTransactionReceipt({ hash: await walletClient.writeContract({ ...c, functionName: "sweepDust" }) });
+          } catch {}
         }
-        const r = await cloak.claimAll(auction, { fromBlock: START_BLOCK });
-        if (r.claimed) log(auction, `delivered ${r.claimed} claims`);
-        // pull payments: the creator's proceeds and the launch fee (a recipient that can't take HYPE only blocks itself)
-        for (const h of await cloak.payOut(auction).catch((e) => (log(auction, `payout skipped: ${e.shortMessage ?? e.message}`), []))) log(auction, `paid out ${h}`);
-        try {
+        if (s.feesOwed > 0n) {
           const c = { address: auction, abi: cloakAuctionAbi };
-          await publicClient.simulateContract({ ...c, functionName: "sweepDust", account });
-          await publicClient.waitForTransactionReceipt({ hash: await walletClient.writeContract({ ...c, functionName: "sweepDust" }) });
-        } catch {}
+          await publicClient
+            .waitForTransactionReceipt({ hash: await walletClient.writeContract({ ...c, functionName: "collectFees" }) })
+            .then((r) => log(auction, `launch fee collected ${r.transactionHash}`))
+            .catch((e) => log(auction, `launch fee skipped: ${e.shortMessage ?? e.message}`));
+        }
         done.add(auction);
         delete status.launches[auction];
       }
@@ -471,7 +487,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!gloamRelay, schedule: !!gloamRelay, leaves: leafVaults.map((v) => v.address), claimDelay: CLAIM_DELAY });
+    return send(req, res, 200, { ...status, relay: !!gloamRelay, schedule: !!gloamRelay, leaves: leafVaults.map((v) => v.address), claimDelay: CLAIM_DELAY, pushClaims: PUSH_CLAIMS });
   }
   send(req, res, 404, { error: "not found" });
 }).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${gloamRelay ? ", relaying for Gloam's vaults" : ""}`));
