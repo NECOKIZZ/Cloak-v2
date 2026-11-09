@@ -57,6 +57,11 @@ export interface GloamPrivateConfig {
   bids?: Address;
   /** A claim link's account: spend received payments directly, never sweep them (see GloamCoreConfig). */
   spendReceived?: boolean;
+  /**
+   * Where this device keeps, per vault, notes made but not yet seen in the vault and memos not yet posted (no secrets,
+   * see GloamCoreConfig.pendingStore). Without it they're kept for this session only.
+   */
+  pendingStore?: (vault: Address) => { load(): string | null; save(s: string): void };
   /** Where the app keeps per-action records for finishPending (a swap's leftover, a graduation). */
   records?: { load(): LaunchRecord[]; save(r: LaunchRecord[]): void };
   logChunk?: bigint;
@@ -161,7 +166,7 @@ export class GloamPrivate {
     const encPriv = toBytes(keccak256(encodeAbiParameters([{ type: "string" }, { type: "uint256" }], ["cloak-gloam-device-v1", keys.noteSeed])));
     this.keys = { encPriv, encPub: toBytes(keccak256(encPriv)) };
     const base = { publicClient: cfg.publicClient, chainId: cfg.chainId, payMemo: cfg.payMemo, provers: cfg.provers, submit: cfg.submit, logChunk: cfg.logChunk, spendReceived: cfg.spendReceived };
-    this.cores = [cfg.gloamVault, cfg.launchVault].filter((v): v is { pool: Address; poolBlock: bigint } => !!v).map((v) => new GloamCore({ ...base, pool: v.pool, poolBlock: v.poolBlock }, keys));
+    this.cores = [cfg.gloamVault, cfg.launchVault].filter((v): v is { pool: Address; poolBlock: bigint } => !!v).map((v) => new GloamCore({ ...base, pool: v.pool, poolBlock: v.poolBlock, pendingStore: cfg.pendingStore?.(v.pool) }, keys));
     if (!this.cores.length) throw new Error("No vault configured.");
   }
 
@@ -504,8 +509,9 @@ export class GloamPrivate {
       : launchRoute(side === "buy" ? [this.cfg.whype, token] : [token, this.cfg.whype]);
     // the chain's clock, not this device's: the contract checks the deadline against block time
     const deadline = (await this.cfg.publicClient.getBlock()).timestamp + 600n;
-    const rec = await launchSwap(core, { router, route, assetIn, amountIn, assetOut, amountOut, deadline }, onStatus);
-    this.remember(rec);
+    // the record is saved before the swap is sent, so its buffer is taken back even if the answer is lost
+    const rec = await launchSwap(core, { router, route, assetIn, amountIn, assetOut, amountOut, deadline }, onStatus, (r) => this.remember(r));
+    if ("id" in rec) this.updateRecord(rec.id, { txHash: rec.txHash });
     // take the buffer back at once when it can be; otherwise the next open does
     await this.finishPending(onStatus).catch(() => {});
     return { txHash: rec.txHash, amountOut, expectedOut: amountOut, minOut: amountOut, relayerFee: 0n };

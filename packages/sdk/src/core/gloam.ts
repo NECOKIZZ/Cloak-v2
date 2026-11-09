@@ -68,7 +68,16 @@ export interface GloamCoreConfig {
   spendReceived?: boolean;
   /** getLogs range per call (Elysium's public RPCs cap results, not ranges). */
   logChunk?: bigint;
+  /**
+   * Where this device keeps notes made but not yet seen in the vault, and memos not yet posted, so a dropped relay
+   * answer, a refused memo or a closed page never loses a note. Holds no secrets: an own note is kept as its nonce,
+   * which is worthless without the account's seed, and a memo is already sealed. One store per account and vault.
+   */
+  pendingStore?: { load(): string | null; save(s: string): void };
 }
+
+/** How long a note made but never seen in the vault is kept trying, and an unposted memo retried. */
+const PENDING_TTL_MS = 3 * 24 * 3600 * 1000;
 
 /** What this account derives from its one signature. */
 export interface GloamAccountKeys {
@@ -136,6 +145,10 @@ export class GloamCore implements PrivateCore {
   /** Claim links this account made (gloam1. packages), by commitment: claimed or not, see links(). */
   private linkPacks = new Map<string, string>();
   private candidates: { commitment: bigint; asset: Address; amount: bigint; secret: bigint; own: boolean }[] = [];
+  /** Own notes made and not yet seen in the vault (by commitment), and memos not yet posted: persisted (pendingStore). */
+  private pendingOwn = new Map<string, { nonce: string; asset: Address; amount: string; at: number }>();
+  private unposted: { commitment: string; tickets: string[]; at: number }[] = [];
+  private pendingLoaded = false;
 
   constructor(readonly cfg: GloamCoreConfig, readonly keys: GloamAccountKeys) {
     this.memoFrom = cfg.poolBlock;
@@ -165,6 +178,76 @@ export class GloamCore implements PrivateCore {
     return { nonce, secret, commitment, asset, amount };
   }
 
+  /**
+   * @internal Registers a new own note the moment it is made, before anything is sent: whatever happens to the call
+   * that creates it (an error after it landed, a refused memo, a closed page), the next sync finds it in the tree.
+   */
+  remember(n: { nonce: bigint; secret: bigint; commitment: bigint; asset: Address; amount: bigint }) {
+    if (n.amount === 0n) return;
+    const k = h32(n.commitment);
+    if (!this.candidates.some((c) => c.commitment === n.commitment)) this.candidates.push({ commitment: n.commitment, asset: n.asset, amount: n.amount, secret: n.secret, own: true });
+    if (!this.pendingOwn.has(k)) {
+      this.pendingOwn.set(k, { nonce: n.nonce.toString(), asset: n.asset, amount: n.amount.toString(), at: Date.now() });
+      this.savePending();
+    }
+  }
+
+  private savePending() {
+    this.cfg.pendingStore?.save(JSON.stringify({ v: 1, own: [...this.pendingOwn.entries()], memos: this.unposted }));
+  }
+
+  private async loadPending() {
+    if (this.pendingLoaded) return;
+    this.pendingLoaded = true;
+    const raw = this.cfg.pendingStore?.load();
+    if (!raw) return;
+    try {
+      const j = JSON.parse(raw) as { own?: [string, { nonce: string; asset: Address; amount: string; at: number }][]; memos?: { commitment: string; tickets: string[]; at: number }[] };
+      for (const [k, e] of j.own ?? []) {
+        const secret = this.ownSecret(BigInt(e.nonce));
+        const commitment = await gloam.noteCommitmentPoseidon(secret, BigInt(e.amount), e.asset);
+        if (h32(commitment) !== k) continue; // not this account's (another seed), or corrupted
+        this.pendingOwn.set(k, e);
+        if (!this.candidates.some((c) => c.commitment === commitment)) this.candidates.push({ commitment, asset: e.asset, amount: BigInt(e.amount), secret, own: true });
+      }
+      for (const m of j.memos ?? []) if (typeof m?.commitment === "string" && Array.isArray(m.tickets)) this.unposted.push(m);
+    } catch {
+      /* a corrupted store is ignored: the vault and the memo board still have everything that landed */
+    }
+  }
+
+  /**
+   * Posts a payment's memo, best effort: a refused or failed memo is kept and retried on later syncs, and never fails
+   * the action whose transaction already landed.
+   */
+  /** @internal */ async postSafe(commitment: bigint, tickets: string[], onStatus: Status): Promise<Hex | null> {
+    const k = h32(commitment);
+    try {
+      const h = await this.post(commitment, tickets, onStatus);
+      if (this.unposted.some((m) => m.commitment === k)) {
+        this.unposted = this.unposted.filter((m) => m.commitment !== k);
+        this.savePending();
+      }
+      return h;
+    } catch (e) {
+      if (/already relayed/i.test(String((e as Error)?.message))) return null; // it went out before
+      onStatus("It went through. Its sealed memo will be posted on the next open");
+      if (!this.unposted.some((m) => m.commitment === k)) this.unposted.push({ commitment: k, tickets, at: Date.now() });
+      this.savePending();
+      return null;
+    }
+  }
+
+  /** @internal After a call that spends `nullifier` failed: whether it landed anyway (a lost answer, not a failure). */
+  async landedAnyway(nullifier: bigint): Promise<boolean> {
+    for (let i = 0; i < 4; i++) {
+      const spent = await this.cfg.publicClient.readContract({ address: this.cfg.pool, abi: GLOAM_POOL_ABI, functionName: "isSpent", args: [h32(nullifier)] }).catch(() => false);
+      if (spent) return true;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    return false;
+  }
+
   /** @internal */ async selfTicket(n: { nonce: bigint; asset: Address; amount: bigint }): Promise<string> {
     const body = SELF_PREFIX + JSON.stringify({ v: 1, n: n.nonce.toString(), a: n.asset, w: n.amount.toString(), ch: this.cfg.chainId });
     return gloam.sealToReceiveTag(body, this.keys.receiveTag);
@@ -183,6 +266,7 @@ export class GloamCore implements PrivateCore {
 
   async sync(onStatus: Status = () => {}): Promise<void> {
     const pub = this.cfg.publicClient;
+    await this.loadPending();
     onStatus("Reading the vault");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.tree = await gloam.syncTree(pub as any, { pool: this.cfg.pool, fromBlock: this.cfg.poolBlock, chunkSize: this.cfg.logChunk });
@@ -208,6 +292,34 @@ export class GloamCore implements PrivateCore {
       this.notes.set(h32(c.commitment), { ...c, nullifier });
     }
     this.candidates = stillWaiting;
+    // pending own notes: done once in the tree; given up on after PENDING_TTL_MS (the call that would make them failed)
+    let changed = false;
+    for (const [k, e] of this.pendingOwn) {
+      if (this.tree.indexByCommitment.has(k.toLowerCase()) || Date.now() - e.at > PENDING_TTL_MS) {
+        this.pendingOwn.delete(k);
+        changed = true;
+        if (!this.tree.indexByCommitment.has(k.toLowerCase())) this.candidates = this.candidates.filter((c) => h32(c.commitment) !== k);
+      }
+    }
+    // memos that didn't go out: once their note is in the vault, try again (best effort, kept until they go or expire)
+    if (this.unposted.length) {
+      const keep: typeof this.unposted = [];
+      for (const m of this.unposted) {
+        if (Date.now() - m.at > PENDING_TTL_MS) continue;
+        if (!this.tree.indexByCommitment.has(m.commitment.toLowerCase())) {
+          keep.push(m);
+          continue;
+        }
+        try {
+          await this.post(BigInt(m.commitment), m.tickets, onStatus);
+        } catch (e) {
+          if (!/already relayed/i.test(String((e as Error)?.message))) keep.push(m);
+        }
+      }
+      if (keep.length !== this.unposted.length) changed = true;
+      this.unposted = keep;
+    }
+    if (changed) this.savePending();
     for (const [k, n] of this.notes) {
       const spent = await pub.readContract({ address: this.cfg.pool, abi: GLOAM_POOL_ABI, functionName: "isSpent", args: [h32(n.nullifier)] });
       if (spent) {
@@ -305,6 +417,7 @@ export class GloamCore implements PrivateCore {
   async shield(wallet: WalletClient, asset: Address, amount: bigint, onStatus: Status = () => {}): Promise<Hex[]> {
     const pub = this.cfg.publicClient;
     const n = await this.freshOwn(asset, amount);
+    this.remember(n); // before the deposit: found on the next sync whatever happens after it lands
     onStatus("Proving the deposit");
     const { proofBytes } = await this.cfg.provers.shield({ commitment: n.commitment.toString(), amount: amount.toString(), asset: assetField(asset).toString(), secret: n.secret.toString() });
     const hashes: Hex[] = [];
@@ -322,9 +435,20 @@ export class GloamCore implements PrivateCore {
     onStatus("Depositing");
     // The deposit itself is public (it comes from the wallet); the memo goes through the relayer like everything else.
     await send(this.cfg.pool, encodeFunctionData({ abi: GLOAM_POOL_ABI, functionName: "shieldBound", args: [asset, amount, h32(n.commitment), proofBytes] }), asset === zeroAddress ? amount : 0n);
-    const memo = await this.post(n.commitment, [await this.selfTicket(n)], onStatus);
+    const tickets = [await this.selfTicket(n)];
+    let memo: Hex | null = null;
+    try {
+      memo = await this.post(n.commitment, tickets, onStatus);
+    } catch {
+      // the relay refused (its memo budget is shared by everyone): the wallet that paid the deposit posts it instead
+      try {
+        onStatus("Posting the sealed note from your wallet");
+        await send(this.cfg.payMemo, encodeFunctionData({ abi: GLOAM_MEMO_ABI, functionName: "postMemo", args: [h32(n.commitment), toHex(new TextEncoder().encode(tickets.join("\n")))] }));
+      } catch {
+        memo = await this.postSafe(n.commitment, tickets, onStatus); // queued for a later sync
+      }
+    }
     if (memo) hashes.push(memo);
-    this.candidates.push({ commitment: n.commitment, asset, amount, secret: n.secret, own: true });
     return hashes;
   }
 
@@ -371,21 +495,28 @@ export class GloamCore implements PrivateCore {
       secretChange: change.secret.toString(),
       amountChange: (n.amount - pay).toString(),
     });
+    // the new own notes are known before anything is sent, so they're found even if the answer never comes back
+    if (mine) this.remember(mine);
+    this.remember(change);
     onStatus("Sending");
-    const tx = await this.cfg.submit({
-      kind: "transfer",
-      to: this.cfg.pool,
-      data: encodeFunctionData({ abi: GLOAM_POOL_ABI, functionName: "transfer", args: [proofBytes, h32(path.root), h32(n.nullifier), [h32(payCommitment), h32(change.commitment)]] }),
-    });
+    let tx: Hex | null = null;
+    try {
+      tx = await this.cfg.submit({
+        kind: "transfer",
+        to: this.cfg.pool,
+        data: encodeFunctionData({ abi: GLOAM_POOL_ABI, functionName: "transfer", args: [proofBytes, h32(path.root), h32(n.nullifier), [h32(payCommitment), h32(change.commitment)]] }),
+      });
+    } catch (e) {
+      if (!(await this.landedAnyway(n.nullifier))) throw e;
+      onStatus("It went through, though the relay's answer was lost");
+    }
     this.notes.delete(h32(n.commitment));
     const tickets = [payTicket];
     if (change.amount > 0n) tickets.push(await this.selfTicket(change));
-    const memo = await this.post(payCommitment, tickets, onStatus);
+    const memo = await this.postSafe(payCommitment, tickets, onStatus);
     // the payer knows the payment note's secret: kept so it can prove the payment later (a receipt), never sent anywhere
-    if (!mine) this.sent.push({ commitment: payCommitment, secret: paySecret, asset: n.asset, amount: pay, txHash: tx });
-    if (mine) this.candidates.push({ commitment: mine.commitment, asset: n.asset, amount: pay, secret: mine.secret, own: true });
-    if (change.amount > 0n) this.candidates.push({ commitment: change.commitment, asset: n.asset, amount: change.amount, secret: change.secret, own: true });
-    return memo ? [tx, memo] : [tx];
+    if (!mine) this.sent.push({ commitment: payCommitment, secret: paySecret, asset: n.asset, amount: pay, txHash: tx ?? "0x" });
+    return [tx, memo].filter((x): x is Hex => !!x);
   }
 
   private sent: SentPayment[] = [];
@@ -428,7 +559,7 @@ export class GloamCore implements PrivateCore {
 
   /** Remembers a note this account made, until sync finds it in the tree. */
   track(c: { commitment: bigint; asset: Address; amount: bigint; secret: bigint }) {
-    this.candidates.push({ ...c, own: true });
+    if (!this.candidates.some((x) => x.commitment === c.commitment)) this.candidates.push({ ...c, own: true });
   }
 
   /** One own note of exactly `amount`, splitting a larger one first when none matches (one extra transfer). */
@@ -467,8 +598,13 @@ export class GloamCore implements PrivateCore {
   /** A note of exactly `amount` of `asset` for this account, with its shield proof, for an escrow to deposit. */
   async depositFor(asset: Address, amount: bigint) {
     const n = await this.freshOwn(asset, amount);
+    this.remember(n); // an escrow may deposit it whenever its call lands: found on the next sync whatever the answer was
     const { proofBytes } = await this.cfg.provers.shield({ commitment: n.commitment.toString(), amount: amount.toString(), asset: assetField(asset).toString(), secret: n.secret.toString() });
-    return { deposit: { proof: proofBytes, commitment: h32(n.commitment), asset, amount }, note: n, ticket: await this.selfTicket(n) };
+    const ticket = await this.selfTicket(n);
+    // its memo waits until the note is in the vault (announce posts it then; otherwise a later sync does)
+    this.unposted.push({ commitment: h32(n.commitment), tickets: [ticket], at: Date.now() });
+    this.savePending();
+    return { deposit: { proof: proofBytes, commitment: h32(n.commitment), asset, amount }, note: n, ticket };
   }
 
   /**
@@ -578,7 +714,12 @@ export class GloamCore implements PrivateCore {
         pathIndices: path.pathIndices.map(String),
       });
       onStatus("Withdrawing");
-      out.push(await this.cfg.submit({ kind: "unshield", to: this.cfg.pool, data: encodeFunctionData({ abi: GLOAM_POOL_ABI, functionName: "unshield", args: [proofBytes, h32(path.root), h32(note.nullifier), asset, to, note.amount] }) }));
+      try {
+        out.push(await this.cfg.submit({ kind: "unshield", to: this.cfg.pool, data: encodeFunctionData({ abi: GLOAM_POOL_ABI, functionName: "unshield", args: [proofBytes, h32(path.root), h32(note.nullifier), asset, to, note.amount] }) }));
+      } catch (e) {
+        if (!(await this.landedAnyway(note.nullifier))) throw e;
+        onStatus("It went through, though the relay's answer was lost");
+      }
       this.notes.delete(h32(note.commitment));
     }
     return out;

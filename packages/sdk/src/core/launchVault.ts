@@ -119,12 +119,8 @@ export function launchRoute(path: Address[]): Hex {
  */
 /** @internal */
 export async function announce(core: GloamCore, commitment: Hex, ticket: string, onStatus: Status): Promise<Hex | null> {
-  try {
-    return await core.post(BigInt(commitment), [ticket], onStatus);
-  } catch {
-    onStatus("The note landed; its memo for other devices didn't go out");
-    return null;
-  }
+  // best effort, and kept for a retry on the next sync if it doesn't go out
+  return core.postSafe(BigInt(commitment), [ticket], onStatus);
 }
 
 const signer = (core: GloamCore, nullifier: Hex) => privateKeyToAccount(core.exitKeyFor(nullifier));
@@ -137,6 +133,8 @@ export async function launchSwap(
   core: GloamCore,
   p: { router: Address; route: Hex; assetIn: Address; amountIn: bigint; assetOut: Address; amountOut: bigint; deadline: bigint },
   onStatus: Status = () => {},
+  /** called with the record before the swap is sent, so its buffer is never forgotten if the answer is lost */
+  onRecord: (r: LaunchRecord) => void = () => {},
 ): Promise<LaunchRecord> {
   const pub = core.config.publicClient;
   const note = await core.exactNote(p.assetIn, p.amountIn, onStatus);
@@ -157,9 +155,15 @@ export async function launchSwap(
   const escrow = (await pub.readContract({ address: p.router, abi: SWAP, functionName: "escrowFor", args: [key] })) as Address;
   const id = (await pub.readContract({ address: p.router, abi: SWAP, functionName: "idOf", args: [key] })) as Hex;
   const s = await core.spendProof(note, escrow, onStatus);
+  onRecord({ kind: "launchSwap", router: p.router, id, key, txHash: "0x" });
   onStatus("Swapping");
-  const txHash = await core.config.submit({ kind: "escrow", to: p.router, data: encodeFunctionData({ abi: SWAP, functionName: "swap", args: [s, out.deposit, p.route, key.ownerKey, p.deadline] }) });
-  core.track({ commitment: out.note.commitment, asset: p.assetOut, amount: p.amountOut, secret: out.note.secret });
+  let txHash: Hex = "0x";
+  try {
+    txHash = await core.config.submit({ kind: "escrow", to: p.router, data: encodeFunctionData({ abi: SWAP, functionName: "swap", args: [s, out.deposit, p.route, key.ownerKey, p.deadline] }) });
+  } catch (e) {
+    if (!(await core.landedAnyway(note.nullifier))) throw e;
+    onStatus("It went through, though the relay's answer was lost");
+  }
   // the memo lets the account's other devices find the note; relays take it only once the note is in the vault
   await announce(core, out.deposit.commitment, out.ticket, onStatus);
   return { kind: "launchSwap", router: p.router, id, key, txHash };

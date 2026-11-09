@@ -227,6 +227,23 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         receive: g.receive,
         bids: g.bids,
         records,
+        // notes made but not yet seen in a vault, and memos not yet posted (no secrets: nonces and sealed memos)
+        pendingStore: (vault: Address) => {
+          const f = join(settings.stateDir, `gloam-notes-${wallet.account!.address.toLowerCase()}-${vault.toLowerCase()}.json`);
+          return {
+            load: () => {
+              try {
+                return readFileSync(f, "utf8");
+              } catch {
+                return null;
+              }
+            },
+            save: (v: string) => {
+              mkdirSync(settings.stateDir, { recursive: true });
+              writeFileSync(f, v, { mode: 0o600 });
+            },
+          };
+        },
         logChunk: 5_000n,
       });
       for (const a of d.assets ?? []) p.addAsset(a);

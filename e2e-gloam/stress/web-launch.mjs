@@ -12,7 +12,7 @@ import { createGloamLoop } from "../../services/keeper/gloamLoop.mjs";
 import { ANVIL_KEYS, D, G, connectAndUnlock, dismissIntro, newPage, overflow, recorder, rpc, shot, sleep, startStack, visibleErrors } from "./web-harness.mjs";
 
 const R = recorder("web-launch");
-const S = await startStack({ base: 8660, vitePort: 5210 });
+const S = await startStack({ base: 8660, vitePort: 5210, mineEveryMs: 2000 });
 const nav = (page, p) => page.evaluate((p) => { history.pushState(null, "", p); dispatchEvent(new PopStateEvent("popstate")); }, p);
 const W = (i) => createWalletClient({ chain: S.chain, account: privateKeyToAccount(ANVIL_KEYS[i]), transport: http(S.anvilUrl) });
 const C = (i) => new Cloak(S.pub, W(i), D.factory);
@@ -235,12 +235,14 @@ try {
   await launchShots(bidder.page, mobile.page, A, "commit-bids");
 
   // ── commit boundary: last second and exactly at commitEnd ──
-  while ((await chainNow()) < sA.commitEnd - 4) await sleep(1000);
+  while ((await chainNow()) < sA.commitEnd - 4) { await sleep(1000); await S.mine(); }
+  S.mining.paused = true;
   await rpc(S.anvilUrl, "evm_setNextBlockTimestamp", [sA.commitEnd - 1]);
   const last = await tryTx("bid at commitEnd-1", () => C(3).bid(A, { maxPrice: 20n * unit, quantity: 1000n * 10n ** 18n }));
   await rpc(S.anvilUrl, "evm_setNextBlockTimestamp", [sA.commitEnd]);
   // raw commit (the SDK refuses client-side once the phase is over)
   const atEnd = await tryTx("bid at commitEnd", () => tx(W(3).writeContract({ address: A, abi: cloakAuctionAbi, functionName: "commit", args: [toHex(1n, { size: 32 }), "0x"], value: 1n, gas: 300_000n })));
+  S.mining.paused = false;
   R.check(`boundary: bid at commitEnd-1 ${last.ok ? "accepted" : "refused (" + last.reason + ")"}; at commitEnd ${atEnd.ok ? "ACCEPTED" : "refused (" + atEnd.reason + ")"}`, last.ok && !atEnd.ok);
   // reveal before the drand round: SDK revealAll can't open anything yet
   {
@@ -269,6 +271,8 @@ try {
   const priceBeforeG = await (async () => { const c = await auctionRead(A, "demandCurve"); return c.map(Number); })();
 
   // ── selective reveal: the griefer watches, then opens his bid at the last second ──
+  S.mining.paused = true;
+  while ((await chainNow()) > sA.revealEnd - 3) break;
   await rpc(S.anvilUrl, "evm_setNextBlockTimestamp", [sA.revealEnd - 1]);
   const sel = await tryTx("griefer reveal at revealEnd-1", () => tx(g.writeContract({ address: A, abi: cloakAuctionAbi, functionName: "reveal", args: [BigInt(gId), gTick, gQty, gSalt] })));
   R.check(`selective reveal: the griefer opened his unopenable bid at revealEnd-1: ${sel.ok ? "accepted" : sel.reason}`, true, { sel });
@@ -277,6 +281,7 @@ try {
   const settleEarly = await tryTx("settle at revealEnd-1", async () => { await rpc(S.anvilUrl, "evm_setNextBlockTimestamp", [sA.revealEnd - 1].map((x) => x + 0)); return 0; });
   void settleEarly;
   await S.warp(2);
+  S.mining.paused = false;
   await launchShots(bidder.page, mobile.page, A, "settle-phase");
 
   // ── settle A from the UI ──

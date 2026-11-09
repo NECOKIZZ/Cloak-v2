@@ -76,7 +76,7 @@ export function recorder(name) {
 }
 
 /** Fork + proxy + keeper + vite. Returns everything a script needs; call stop() at the end. */
-export async function startStack({ base = 8650, vitePort = 5200, wantVite = true } = {}) {
+export async function startStack({ base = 8650, vitePort = 5200, wantVite = true, mineEveryMs = 0 } = {}) {
   const anvil = await startAnvil({ port: base, forkUrl: process.env.RPC_URL ?? ELYSIUM_TESTNET_RPC });
   const anvilUrl = anvil.rpcUrl;
 
@@ -181,7 +181,11 @@ export async function startStack({ base = 8650, vitePort = 5200, wantVite = true
   }
   const browser = wantVite ? await chromium.launch() : null;
 
+  // an idle anvil makes no blocks, so the chain clock (and every phase read from it) stands still: mine like a real chain
+  const mining = { paused: false };
+  const miner = mineEveryMs ? setInterval(() => !mining.paused && rpc(anvilUrl, "evm_mine").catch(() => {}), mineEveryMs) : null;
   const stop = async () => {
+    if (miner) clearInterval(miner);
     try { await browser?.close(); } catch {}
     try { process.kill(-vite.pid); } catch {}
     proxy.close();
@@ -194,7 +198,7 @@ export async function startStack({ base = 8650, vitePort = 5200, wantVite = true
     await mine();
     await syncClock();
   };
-  return { anvilUrl, rpcUrl, keeperUrl, site, chain, pub, keeperWallet, relay, schedule, syncClock, unopenable, knobs, keeperKnobs, stats, browser, stop, mine, warp };
+  return { mining, anvilUrl, rpcUrl, keeperUrl, site, chain, pub, keeperWallet, relay, schedule, syncClock, unopenable, knobs, keeperKnobs, stats, browser, stop, mine, warp };
 }
 
 /**

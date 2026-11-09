@@ -1,41 +1,58 @@
 {
   "name": "web-launch",
-  "started": "2026-11-08T23:55:31.479Z",
+  "started": "2026-11-09T00:10:43.193Z",
   "timings": [
     {
       "label": "bidder: connect + unlock",
-      "ms": 29877,
+      "ms": 41818,
       "ok": true,
       "slow": true
     },
     {
       "label": "bidder: shield 2 HYPE",
-      "ms": 56622,
+      "ms": 66016,
       "ok": true,
       "slow": true
     },
     {
       "label": "creator: connect + unlock",
-      "ms": 3726,
+      "ms": 9409,
       "ok": true,
       "slow": false
     },
     {
       "label": "create a launch from the form (click to launch page)",
-      "ms": 17842,
+      "ms": 15553,
       "ok": true
     },
     {
       "label": "public sealed bid from the UI (click to 'Bid sealed')",
-      "ms": 230,
+      "ms": 250,
       "ok": true,
       "slow": false
     },
     {
       "label": "private sealed bid from the UI (click to 'Bid sealed', proof + relay + one-time wallet)",
-      "ms": 15311,
+      "ms": 10422,
       "ok": true,
-      "slow": true
+      "slow": false
+    },
+    {
+      "label": "keeper revealAll on 4 launches (SDK)",
+      "ms": 16224,
+      "ok": true
+    },
+    {
+      "label": "settle from the launch page (click to Trading)",
+      "ms": 4839,
+      "ok": true,
+      "slow": false
+    },
+    {
+      "label": "claim public bid from the launch page",
+      "ms": 227,
+      "ok": true,
+      "slow": false
     }
   ],
   "notes": [],
@@ -183,7 +200,7 @@
       "ok": true
     },
     {
-      "label": "launch A created from the UI: 0x494b3982f7fa649063E753998e7a2f319F2d28De, commitEnd in 212 s, ticks 50, name '<img src=x onerror=alert(1)> 🚀 Ünïcode'",
+      "label": "launch A created from the UI: 0x494b3982f7fa649063E753998e7a2f319F2d28De, commitEnd in 226 s, ticks 50, name '<img src=x onerror=alert(1)> 🚀 Ünïcode'",
       "ok": true
     },
     {
@@ -268,6 +285,97 @@
       "label": "UI bid on a launch whose cap is full says: 'Not enough testnet HYPE in your wallet to cover this and the gas. Get some from the Elysium faucet.'",
       "ok": true,
       "msg": "Not enough testnet HYPE in your wallet to cover this and the gas. Get some from the Elysium faucet."
+    },
+    {
+      "label": "boundary: bid at commitEnd-1 accepted; at commitEnd ACCEPTED",
+      "ok": false
+    },
+    {
+      "label": "revealAll before the drand round passes: revealed 0, unopenable 9",
+      "ok": true
+    },
+    {
+      "label": "revealAll A: revealed 7, unopenable #6 (Expected at least one stanza! (beginning with -->)), #7 (It's too early to decrypt the ciphertext - decryptable at ro)",
+      "ok": true
+    },
+    {
+      "label": "the launch page shows the unopenable bids: '2 sealed bids (0.61 HYPE deposited) couldn't be opened by the time-lock key.'",
+      "ok": true
+    },
+    {
+      "label": "selective reveal: the griefer opened his unopenable bid at revealEnd-1: accepted",
+      "ok": true,
+      "sel": {
+        "ok": true,
+        "status": "success"
+      }
+    },
+    {
+      "label": "A settled at 0.000000999999999968 HYPE/token, sold 1000000, griefer's revealed bid moved the price: tick 49",
+      "ok": true,
+      "clearing": "0.000000999999999968"
+    },
+    {
+      "label": "B (dust): settled=true failed=false price 0.00000001 raised 0.000000009999999999 pool 0x92a7CF88d534345448f56B7d23f9fD2b831647C2",
+      "ok": true,
+      "pair": "0x92a7CF88d534345448f56B7d23f9fD2b831647C2"
+    },
+    {
+      "label": "C (no bids): settled=true failed=true price 0 raised 0 pool 0x0000000000000000000000000000000000000000",
+      "ok": true,
+      "pair": "0x0000000000000000000000000000000000000000"
+    },
+    {
+      "label": "D (cap filled): settled=true failed=false price 0.00000001 raised 0.0099999999999999 pool 0xe174e8D109Ee9a85eDC0df60c88Aae07A3AeD03D",
+      "ok": true,
+      "pair": "0xe174e8D109Ee9a85eDC0df60c88Aae07A3AeD03D"
+    },
+    {
+      "label": "anti-snipe: 0.01 HYPE public buy right after listing got undefined (UI estimate 'undefined', undefined); 6 min later got undefined (estimate 'undefined')",
+      "ok": true,
+      "early": null,
+      "later": null,
+      "listedAt": 1794183721
+    },
+    {
+      "label": "the 'Your private bids' card offers the private claim",
+      "ok": false
+    },
+    {
+      "label": "claim twice: first ok; claimBatch again OK (no-op?); claim(id) again The contract function \"claim\" reverted with the following reason:",
+      "ok": true,
+      "c2": {
+        "ok": true,
+        "status": "sent"
+      }
+    },
+    {
+      "label": "claim someone else's bid: allowed; caller got 0, bidder got 0",
+      "ok": true
+    },
+    {
+      "label": "claimPrivate of someone else's bid: ALLOWED",
+      "ok": false
+    },
+    {
+      "label": "griefer (selectively revealed) gets 5964.214711729622266401 tokens, refund 0.594035785269261232, penalty 0",
+      "ok": true
+    },
+    {
+      "label": "the bid sealed to a far-future round (never opened) gets 0 tokens, refund 0.009, penalty 0.001",
+      "ok": true
+    },
+    {
+      "label": "dust launch B claim ok; B has pool 0x92a7CF88d534345448f56B7d23f9fD2b831647C2, creatorOwed 0.00000000197",
+      "ok": true
+    },
+    {
+      "label": "cap-filled launch D: whale is the only bidder; cleared at 0.00000001 (the minimum 0.00000001), sold 1000000",
+      "ok": true
+    },
+    {
+      "label": "keeper loop after settlement: admitted [\"0x0C8e35fF85fC7EFeCd9D1e82E1Dfb2850c7d2F7F\",\"0x27592dc471F37eC5Df5794d424A7b74F387c5Af1\",\"0x39fD281b14c3a4Cc044057f283B0C0b50dEC4289\",\"0x4e39363e4223fBF654CaDfF78eDB698E8F2c439B\"]",
+      "ok": true
     }
   ]
 }

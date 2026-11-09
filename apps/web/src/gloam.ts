@@ -60,3 +60,28 @@ export async function collectOnUnlock(p: GloamPrivate): Promise<number> {
 export async function gloamDelivered(_p: GloamPrivate, addrs: string[]) {
   return Object.fromEntries(addrs.map((a) => [a, delivered.get(a.toLowerCase()) ?? []]));
 }
+
+/**
+ * Per vault: notes this device made that the vault hasn't shown yet, and memos not yet posted (GloamCore keeps an own
+ * note as its nonce, worthless without the account's signature). Keeps a dropped relay answer or a closed tab from
+ * losing a note.
+ */
+export function gloamPending(wallet: string): (vault: string) => { load(): string | null; save(s: string): void } {
+  return (vault) => {
+    const k = `cloak.gloam.notes.v1.${CHAIN_ID}.${wallet.toLowerCase()}.${vault.toLowerCase()}`;
+    return {
+      load() {
+        try {
+          return localStorage.getItem(k);
+        } catch {
+          return null;
+        }
+      },
+      save(v) {
+        try {
+          localStorage.setItem(k, v);
+        } catch {}
+      },
+    };
+  };
+}

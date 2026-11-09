@@ -1,0 +1,48 @@
+{
+  "name": "web-auction-rules",
+  "started": "2026-11-09T06:44:59.538Z",
+  "timings": [],
+  "notes": [],
+  "checks": [
+    {
+      "label": "commit at commitEnd-1 (ts 1794206773): accepted; at commitEnd (ts 1794206774): refused (reverted)",
+      "ok": true
+    },
+    {
+      "label": "revealAll: revealed 2, unopenable #2, #3, #4 (the griefer, the far-round bid and the two junk commits)",
+      "ok": true
+    },
+    {
+      "label": "settle at revealEnd-2: refused (reveal open.); griefer's own reveal at revealEnd-1: accepted; a reveal at exactly revealEnd: refused (reverted)",
+      "ok": true
+    },
+    {
+      "label": "settle at revealEnd: accepted; settle again: refused (settled.). Cleared at tick 2 (0.00000003 HYPE)",
+      "ok": true
+    },
+    {
+      "label": "selective reveal paid off: griefer gets 250000 tokens, penalty 0 (staying sealed would have cost 0.00775)",
+      "ok": true
+    },
+    {
+      "label": "never-revealed bid: refund 0.0009, penalty 0.0001",
+      "ok": true
+    },
+    {
+      "label": "claim: first accepted, claim again refused (claimed.), claimBatch of the claimed id accepted",
+      "ok": true
+    },
+    {
+      "label": "a stranger claims someone else's bid: accepted; stranger got 0 tokens (paid gas 0.000093948642123105), bidder got 300000",
+      "ok": true
+    },
+    {
+      "label": "claimPrivate of someone else's bid: refused (bidder.)",
+      "ok": true
+    },
+    {
+      "label": "claimPrivate by the bidder with a junk note key (pubKey 1): refused (no vault.) (the launch vault decides)",
+      "ok": true
+    }
+  ]
+}

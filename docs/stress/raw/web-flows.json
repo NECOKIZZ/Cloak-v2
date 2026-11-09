@@ -303,6 +303,13 @@
       "ok": true,
       "got": "0.597",
       "stats": 3
+    },
+    {
+      "label": "refresh during a withdrawal: destination got 0, private balance 1.5 → null (consistent either way?)",
+      "ok": false,
+      "got": "0",
+      "before0": 1.5,
+      "after0": null
     }
   ]
 }
