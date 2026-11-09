@@ -1,0 +1,1389 @@
+{
+  "name": "web-pages",
+  "started": "2026-11-08T23:39:07.569Z",
+  "timings": [
+    {
+      "label": "desktop load /",
+      "ms": 1777,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app",
+      "ms": 448,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/launches",
+      "ms": 15194,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/launch/0x6335069AC7062cefDdb67bca161296c90d0d203a",
+      "ms": 15191,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/launch/0xbC26750B886de86A4C34e5c496cdB1169eEF4E91",
+      "ms": 15229,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/launch/0x000000000000000000000000000000000000dEaD",
+      "ms": 445,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/create",
+      "ms": 278,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/drops",
+      "ms": 224,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/drops/create",
+      "ms": 195,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/portfolio/shield",
+      "ms": 176,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/portfolio/send",
+      "ms": 158,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/portfolio/withdraw",
+      "ms": 155,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/portfolio/receive",
+      "ms": 173,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/portfolio/prove",
+      "ms": 161,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/trade",
+      "ms": 192,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/links",
+      "ms": 165,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/volume",
+      "ms": 148,
+      "ok": true
+    },
+    {
+      "label": "desktop load /claim",
+      "ms": 154,
+      "ok": true
+    },
+    {
+      "label": "desktop load /claim#garbage-not-a-link",
+      "ms": 9,
+      "ok": true
+    },
+    {
+      "label": "desktop load /pay",
+      "ms": 160,
+      "ok": true
+    },
+    {
+      "label": "desktop load /pay?to=hello&amount=-5",
+      "ms": 177,
+      "ok": true
+    },
+    {
+      "label": "desktop load /proof",
+      "ms": 148,
+      "ok": true
+    },
+    {
+      "label": "desktop load /docs",
+      "ms": 197,
+      "ok": true
+    },
+    {
+      "label": "desktop load /sdk",
+      "ms": 215,
+      "ok": true
+    },
+    {
+      "label": "desktop load /agents",
+      "ms": 177,
+      "ok": true
+    },
+    {
+      "label": "desktop load /app/does-not-exist",
+      "ms": 165,
+      "ok": true
+    },
+    {
+      "label": "desktop load /nope",
+      "ms": 172,
+      "ok": true
+    },
+    {
+      "label": "desktop connect + unlock (from click Connect to address shown)",
+      "ms": 8603,
+      "ok": true,
+      "slow": false
+    },
+    {
+      "label": "mobile load /",
+      "ms": 656,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app",
+      "ms": 463,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/launches",
+      "ms": 364,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/launch/0x6335069AC7062cefDdb67bca161296c90d0d203a",
+      "ms": 554,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/launch/0xbC26750B886de86A4C34e5c496cdB1169eEF4E91",
+      "ms": 268,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/launch/0x000000000000000000000000000000000000dEaD",
+      "ms": 202,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/create",
+      "ms": 187,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/drops",
+      "ms": 180,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/drops/create",
+      "ms": 171,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/portfolio/shield",
+      "ms": 190,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/portfolio/send",
+      "ms": 154,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/portfolio/withdraw",
+      "ms": 161,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/portfolio/receive",
+      "ms": 176,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/portfolio/prove",
+      "ms": 157,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/trade",
+      "ms": 164,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/links",
+      "ms": 173,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/volume",
+      "ms": 175,
+      "ok": true
+    },
+    {
+      "label": "mobile load /claim",
+      "ms": 156,
+      "ok": true
+    },
+    {
+      "label": "mobile load /claim#garbage-not-a-link",
+      "ms": 9,
+      "ok": true
+    },
+    {
+      "label": "mobile load /pay",
+      "ms": 163,
+      "ok": true
+    },
+    {
+      "label": "mobile load /pay?to=hello&amount=-5",
+      "ms": 167,
+      "ok": true
+    },
+    {
+      "label": "mobile load /proof",
+      "ms": 169,
+      "ok": true
+    },
+    {
+      "label": "mobile load /docs",
+      "ms": 220,
+      "ok": true
+    },
+    {
+      "label": "mobile load /sdk",
+      "ms": 214,
+      "ok": true
+    },
+    {
+      "label": "mobile load /agents",
+      "ms": 181,
+      "ok": true
+    },
+    {
+      "label": "mobile load /app/does-not-exist",
+      "ms": 181,
+      "ok": true
+    },
+    {
+      "label": "mobile load /nope",
+      "ms": 15167,
+      "ok": true
+    },
+    {
+      "label": "mobile connect + unlock (from click Connect to address shown)",
+      "ms": 2986,
+      "ok": true,
+      "slow": false
+    }
+  ],
+  "notes": [],
+  "checks": [
+    {
+      "label": "desktop / loads in 1777 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/",
+      "ms": 1777,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-landing.png",
+      "text": "Live on Elysium testnet. Sealed launches, private balances and batch trading, all on-chain.Try it × Cloak Launches Private trading Volume Developers Docs Read t"
+    },
+    {
+      "label": "desktop /app loads in 448 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app",
+      "ms": 448,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-portfolio.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/launches loads in 15194 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/launches",
+      "ms": 15194,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-launches.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/launch/0x6335069AC7062cefDdb67bca161296c90d0d203a loads in 15191 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/launch/0x6335069AC7062cefDdb67bca161296c90d0d203a",
+      "ms": 15191,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-launch-settled.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/launch/0xbC26750B886de86A4C34e5c496cdB1169eEF4E91 loads in 15229 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/launch/0xbC26750B886de86A4C34e5c496cdB1169eEF4E91",
+      "ms": 15229,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-launch-failed.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/launch/0x000000000000000000000000000000000000dEaD loads in 445 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/launch/0x000000000000000000000000000000000000dEaD",
+      "ms": 445,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-launch-notfound.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/create loads in 278 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/create",
+      "ms": 278,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-create.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/drops loads in 224 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/drops",
+      "ms": 224,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-drops.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/drops/create loads in 195 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/drops/create",
+      "ms": 195,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-drops-create.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/portfolio/shield loads in 176 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/shield",
+      "ms": 176,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-shield.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/portfolio/send loads in 158 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/send",
+      "ms": 158,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-send.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/portfolio/withdraw loads in 155 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/withdraw",
+      "ms": 155,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-withdraw.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/portfolio/receive loads in 173 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/receive",
+      "ms": 173,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-receive.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/portfolio/prove loads in 161 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/prove",
+      "ms": 161,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-prove.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/trade loads in 192 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/trade",
+      "ms": 192,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-trade.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/links loads in 165 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/links",
+      "ms": 165,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-links.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/volume loads in 148 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/volume",
+      "ms": 148,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-volume.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /claim loads in 154 ms, console errors: Error: This isn't a Cloak claim link.\n    at parseClaimLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:180:15)\n    at http://127.0.0.1:5200/src/pages/Claim.tsx:66",
+      "ok": false,
+      "mode": "desktop",
+      "path": "/claim",
+      "ms": 154,
+      "errs": [
+        "Error: This isn't a Cloak claim link.\n    at parseClaimLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:180:15)\n    at http://127.0.0.1:5200/src/pages/Claim.tsx:66:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at commitPassiveMountOnFiber (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18156:19)\n    at commitPassiveMountEffects_complete (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18129:17)\n    at commitPassiveMountEffects_begin (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18119:15)\n    at commitPassiveMountEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18109:11)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19490:11)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17",
+        "Error: This isn't a Cloak claim link.\n    at parseClaimLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:180:15)\n    at http://127.0.0.1:5200/src/pages/Claim.tsx:66:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at invokePassiveEffectMountInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18324:19)\n    at invokeEffectsInDev (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19701:19)\n    at commitDoubleInvokeEffectsInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19686:15)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19503:13)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17\n    at workLoop (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:197:42)"
+      ],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-claim-nohash.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /claim#garbage-not-a-link loads in 9 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/claim#garbage-not-a-link",
+      "ms": 9,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-claim-garbage.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /pay loads in 160 ms, console errors: Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.",
+      "ok": false,
+      "mode": "desktop",
+      "path": "/pay",
+      "ms": 160,
+      "errs": [
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at commitPassiveMountOnFiber (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18156:19)\n    at commitPassiveMountEffects_complete (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18129:17)\n    at commitPassiveMountEffects_begin (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18119:15)\n    at commitPassiveMountEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18109:11)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19490:11)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)",
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at invokePassiveEffectMountInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18324:19)\n    at invokeEffectsInDev (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19701:19)\n    at commitDoubleInvokeEffectsInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19686:15)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19503:13)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17"
+      ],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-pay-empty.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /pay?to=hello&amount=-5 loads in 177 ms, console errors: Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.",
+      "ok": false,
+      "mode": "desktop",
+      "path": "/pay?to=hello&amount=-5",
+      "ms": 177,
+      "errs": [
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at commitPassiveMountOnFiber (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18156:19)\n    at commitPassiveMountEffects_complete (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18129:17)\n    at commitPassiveMountEffects_begin (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18119:15)\n    at commitPassiveMountEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18109:11)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19490:11)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)",
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at invokePassiveEffectMountInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18324:19)\n    at invokeEffectsInDev (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19701:19)\n    at commitDoubleInvokeEffectsInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19686:15)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19503:13)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17"
+      ],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-pay-garbage.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /proof loads in 148 ms, visible notices: This link doesn't hold a Cloak proof of funds.",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/proof",
+      "ms": 148,
+      "errs": [],
+      "ov": null,
+      "vis": [
+        "This link doesn't hold a Cloak proof of funds."
+      ],
+      "file": "docs/stress/shots/pages-desktop-proof-empty.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /docs loads in 197 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/docs",
+      "ms": 197,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-docs.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /sdk loads in 215 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/sdk",
+      "ms": 215,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-sdk.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /agents loads in 177 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/agents",
+      "ms": 177,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-agents.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /app/does-not-exist loads in 165 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/does-not-exist",
+      "ms": 165,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-unknown.png",
+      "text": "Cloak Elysium Testnet PRIVATE Portfolio Trade Payment links Prove funds Agents LAUNCH Launches Create a launch NFT drops Volume Getting started 0/4 Docs SDK Kee"
+    },
+    {
+      "label": "desktop /nope loads in 172 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/nope",
+      "ms": 172,
+      "errs": [],
+      "ov": null,
+      "vis": [],
+      "file": "docs/stress/shots/pages-desktop-unknown-root.png",
+      "text": "Cloak Launches Private trading Volume Developers Docs Read the docs Open app ↗ Page not found Back home"
+    },
+    {
+      "label": "desktop unlocked, address cloak:gloamr1.MFkwEwYHKo…",
+      "ok": true
+    },
+    {
+      "label": "desktop unlocked /app/launches renders in 15011 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/launches",
+      "ms": 15011,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-launches.png"
+    },
+    {
+      "label": "desktop unlocked /app/create renders in 15 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/create",
+      "ms": 15,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-create.png"
+    },
+    {
+      "label": "desktop unlocked /app/drops renders in 18 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/drops",
+      "ms": 18,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-drops.png"
+    },
+    {
+      "label": "desktop unlocked /app/drops/create renders in 23 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/drops/create",
+      "ms": 23,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-drops-create.png"
+    },
+    {
+      "label": "desktop unlocked /app/portfolio/shield renders in 16 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/shield",
+      "ms": 16,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-shield.png"
+    },
+    {
+      "label": "desktop unlocked /app/portfolio/send renders in 7 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/send",
+      "ms": 7,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-send.png"
+    },
+    {
+      "label": "desktop unlocked /app/portfolio/withdraw renders in 8 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/withdraw",
+      "ms": 8,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-withdraw.png"
+    },
+    {
+      "label": "desktop unlocked /app/portfolio/receive renders in 36 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/receive",
+      "ms": 36,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-receive.png"
+    },
+    {
+      "label": "desktop unlocked /app/portfolio/prove renders in 26 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/portfolio/prove",
+      "ms": 26,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-prove.png"
+    },
+    {
+      "label": "desktop unlocked /app/trade renders in 15005 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/trade",
+      "ms": 15005,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-trade.png"
+    },
+    {
+      "label": "desktop unlocked /app/links renders in 14 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/links",
+      "ms": 14,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-links.png"
+    },
+    {
+      "label": "desktop unlocked /app/volume renders in 7 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/volume",
+      "ms": 7,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-volume.png"
+    },
+    {
+      "label": "desktop unlocked /app/does-not-exist renders in 15009 ms",
+      "ok": true,
+      "mode": "desktop",
+      "path": "/app/does-not-exist",
+      "ms": 15009,
+      "errs": [],
+      "ov": null,
+      "file": "docs/stress/shots/pages-desktop-unlocked-unknown.png"
+    },
+    {
+      "label": "mobile / loads in 656 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/",
+      "ms": 656,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-landing.png",
+      "text": "Live on Elysium testnet. Sealed launches, private balances and batch trading, all on-chain.Try it × Cloak Open app ↗ Launch sealed. Trade unseen. Open app Read "
+    },
+    {
+      "label": "mobile /app loads in 463 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app",
+      "ms": 463,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-portfolio.png",
+      "text": "Cloak Connect wallet Portfolio Your private balance, visible only to you. Private balance Only you $0.00 Connect a wallet to see your private balance. Conne"
+    },
+    {
+      "label": "mobile /app/launches loads in 364 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/launches",
+      "ms": 364,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-launches.png",
+      "text": "Cloak Connect wallet Launches Fair launches with sealed bids. Everyone pays one price, and trading opens on Uniswap with its liquidity locked. Create a launch"
+    },
+    {
+      "label": "mobile /app/launch/0x6335069AC7062cefDdb67bca161296c90d0d203a loads in 554 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/launch/0x6335069AC7062cefDdb67bca161296c90d0d203a",
+      "ms": 554,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-launch-settled.png",
+      "text": "Cloak Connect wallet ← All launches US Uni Shade $USHADE Trading Contract 0xb53A…F1D8 Explorer ↗ Uniswap pool ↗ Copy link Share on X Price 0.0000133 HYPE 1,331×"
+    },
+    {
+      "label": "mobile /app/launch/0xbC26750B886de86A4C34e5c496cdB1169eEF4E91 loads in 268 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/launch/0xbC26750B886de86A4C34e5c496cdB1169eEF4E91",
+      "ms": 268,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-launch-failed.png",
+      "text": "Cloak Connect wallet ← All launches NN Nana $NNN Didn't fill Contract 0x6c14…0240 Explorer ↗ Copy link Share on X This launch didn't fill No valid bids opened,"
+    },
+    {
+      "label": "mobile /app/launch/0x000000000000000000000000000000000000dEaD loads in 202 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/launch/0x000000000000000000000000000000000000dEaD",
+      "ms": 202,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-launch-notfound.png",
+      "text": "Cloak Connect wallet No launch at this address 0x0000…dEaD isn't a Cloak launch on this network. Check the link, or pick one from the list. See all launches C"
+    },
+    {
+      "label": "mobile /app/create loads in 187 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/create",
+      "ms": 187,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-create.png",
+      "text": "Cloak Connect wallet Create a launch A fair, private launch in one transaction. Bids stay sealed until bidding closes, every winner pays one price, and the tok"
+    },
+    {
+      "label": "mobile /app/drops loads in 180 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/drops",
+      "ms": 180,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-drops.png",
+      "text": "Cloak Connect wallet NFT drops Sealed mints with no race, no bots and no gas war. Bid what you'd pay above the creator's price, every winner pays one price, an"
+    },
+    {
+      "label": "mobile /app/drops/create loads in 171 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/drops/create",
+      "ms": 171,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-drops-create.png",
+      "text": "Cloak Connect wallet ← All drops Create a drop Your price is the floor. GTD wallets mint first; everyone else bids sealed, and every winner pays one price. If "
+    },
+    {
+      "label": "mobile /app/portfolio/shield loads in 190 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/shield",
+      "ms": 190,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-shield.png",
+      "text": "Cloak Connect wallet ← Back to Portfolio Shield Your private balance, visible only to you. Private balance Only you $0.00 Connect a wallet to see your privat"
+    },
+    {
+      "label": "mobile /app/portfolio/send loads in 154 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/send",
+      "ms": 154,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-send.png",
+      "text": "Cloak Connect wallet ← Back to Portfolio Send privately Your private balance, visible only to you. Private balance Only you $0.00 Connect a wallet to see you"
+    },
+    {
+      "label": "mobile /app/portfolio/withdraw loads in 161 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/withdraw",
+      "ms": 161,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-withdraw.png",
+      "text": "Cloak Connect wallet ← Back to Portfolio Withdraw Your private balance, visible only to you. Private balance Only you $0.00 Connect a wallet to see your priv"
+    },
+    {
+      "label": "mobile /app/portfolio/receive loads in 176 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/receive",
+      "ms": 176,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-receive.png",
+      "text": "Cloak Connect wallet ← Back to Portfolio Unlock your private account on the Portfolio first. Cloak on Elysium testnet. Play money only. Not investment advice. D"
+    },
+    {
+      "label": "mobile /app/portfolio/prove loads in 157 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/prove",
+      "ms": 157,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-prove.png",
+      "text": "Cloak Connect wallet ← Back to Portfolio Unlock your private account on the Portfolio first. Cloak on Elysium testnet. Play money only. Not investment advice. D"
+    },
+    {
+      "label": "mobile /app/trade loads in 164 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/trade",
+      "ms": 164,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-trade.png",
+      "text": "Cloak Connect wallet Private swap Swap launch tokens from your private balance. A relayer submits for you, so your wallet is never on the trade. Batch mode als"
+    },
+    {
+      "label": "mobile /app/links loads in 173 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/links",
+      "ms": 173,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-links.png",
+      "text": "Cloak Connect wallet Payment links Send money as a link anyone can claim, or ask to be paid with one. Everything stays private, and the details live only in th"
+    },
+    {
+      "label": "mobile /app/volume loads in 175 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/volume",
+      "ms": 175,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-volume.png",
+      "text": "Cloak Connect wallet Volume Everything that has moved through Cloak on Elysium testnet, counted from public on-chain events. Who did what stays private. Live "
+    },
+    {
+      "label": "mobile /claim loads in 156 ms, console errors: Error: This isn't a Cloak claim link.\n    at parseClaimLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:180:15)\n    at http://127.0.0.1:5200/src/pages/Claim.tsx:66",
+      "ok": false,
+      "mode": "mobile",
+      "path": "/claim",
+      "ms": 156,
+      "errs": [
+        "Error: This isn't a Cloak claim link.\n    at parseClaimLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:180:15)\n    at http://127.0.0.1:5200/src/pages/Claim.tsx:66:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at commitPassiveMountOnFiber (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18156:19)\n    at commitPassiveMountEffects_complete (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18129:17)\n    at commitPassiveMountEffects_begin (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18119:15)\n    at commitPassiveMountEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18109:11)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19490:11)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17",
+        "Error: This isn't a Cloak claim link.\n    at parseClaimLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:180:15)\n    at http://127.0.0.1:5200/src/pages/Claim.tsx:66:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at invokePassiveEffectMountInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18324:19)\n    at invokeEffectsInDev (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19701:19)\n    at commitDoubleInvokeEffectsInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19686:15)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19503:13)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17\n    at workLoop (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:197:42)"
+      ],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-claim-nohash.png",
+      "text": "Cloak Connect wallet This link doesn't work This isn't a Cloak claim link. About payment links Cloak on Elysium testnet. Play money only. Not investment advic"
+    },
+    {
+      "label": "mobile /claim#garbage-not-a-link loads in 9 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/claim#garbage-not-a-link",
+      "ms": 9,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-claim-garbage.png",
+      "text": "Cloak Connect wallet This link doesn't work This isn't a Cloak claim link. About payment links Cloak on Elysium testnet. Play money only. Not investment advic"
+    },
+    {
+      "label": "mobile /pay loads in 163 ms, console errors: Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.",
+      "ok": false,
+      "mode": "mobile",
+      "path": "/pay",
+      "ms": 163,
+      "errs": [
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at commitPassiveMountOnFiber (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18156:19)\n    at commitPassiveMountEffects_complete (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18129:17)\n    at commitPassiveMountEffects_begin (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18119:15)\n    at commitPassiveMountEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18109:11)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19490:11)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)",
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at invokePassiveEffectMountInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18324:19)\n    at invokeEffectsInDev (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19701:19)\n    at commitDoubleInvokeEffectsInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19686:15)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19503:13)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17"
+      ],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-pay-empty.png",
+      "text": "Cloak Connect wallet This request doesn't work Pay to a cloak: address or a 0x wallet address. About payment links Cloak on Elysium testnet. Play money only. "
+    },
+    {
+      "label": "mobile /pay?to=hello&amount=-5 loads in 167 ms, console errors: Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.",
+      "ok": false,
+      "mode": "mobile",
+      "path": "/pay?to=hello&amount=-5",
+      "ms": 167,
+      "errs": [
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at commitPassiveMountOnFiber (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18156:19)\n    at commitPassiveMountEffects_complete (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18129:17)\n    at commitPassiveMountEffects_begin (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18119:15)\n    at commitPassiveMountEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18109:11)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19490:11)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)",
+        "Error: Pay to a cloak: address or a 0x wallet address.\n    at checkPayee (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:239:11)\n    at parseRequestLink (http://127.0.0.1:5200/@fs/home/user/Cloak-v2/packages/sdk/dist/private/links.js:266:5)\n    at http://127.0.0.1:5200/src/pages/Pay.tsx:42:17\n    at commitHookEffectListMount (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:16915:34)\n    at invokePassiveEffectMountInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:18324:19)\n    at invokeEffectsInDev (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19701:19)\n    at commitDoubleInvokeEffectsInDEV (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19686:15)\n    at flushPassiveEffectsImpl (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19503:13)\n    at flushPassiveEffects (http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19447:22)\n    at http://127.0.0.1:5200/node_modules/.vite/deps/chunk-BPORFRRV.js?v=4c0e7565:19328:17"
+      ],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-pay-garbage.png",
+      "text": "Cloak Connect wallet This request doesn't work Pay to a cloak: address or a 0x wallet address. About payment links Cloak on Elysium testnet. Play money only. "
+    },
+    {
+      "label": "mobile /proof loads in 169 ms, visible notices: This link doesn't hold a Cloak proof of funds.",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/proof",
+      "ms": 169,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [
+        "This link doesn't hold a Cloak proof of funds."
+      ],
+      "file": "docs/stress/shots/pages-mobile-proof-empty.png",
+      "text": "Cloak Connect wallet Proof of funds Checked in your browser against the Elysium chain. Nothing about the holder is revealed. This link doesn't hold a Cloak pr"
+    },
+    {
+      "label": "mobile /docs loads in 220 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/docs",
+      "ms": 220,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-docs.png",
+      "text": "Cloak Connect wallet On this page · Overview Start here Docs Fair launches and private trading on Elysium, explained without the jargon wall. New here? Watch "
+    },
+    {
+      "label": "mobile /sdk loads in 214 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/sdk",
+      "ms": 214,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-sdk.png",
+      "text": "Cloak Connect wallet @CLOAKELY/SDK Sealed launches and private trading, in one package Give any Elysium launchpad fair launches with locked liquidity, and give"
+    },
+    {
+      "label": "mobile /agents loads in 181 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/agents",
+      "ms": 181,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-agents.png",
+      "text": "Cloak Connect wallet Agents Let Claude, ChatGPT, Cursor or any AI agent launch, bid and trade privately on Cloak. The easy way One sentence Tell your agent "
+    },
+    {
+      "label": "mobile /app/does-not-exist loads in 181 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/does-not-exist",
+      "ms": 181,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-unknown.png",
+      "text": "Cloak Connect wallet Portfolio Your private balance, visible only to you. Private balance Only you $0.00 Connect a wallet to see your private balance. Conne"
+    },
+    {
+      "label": "mobile /nope loads in 15167 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/nope",
+      "ms": 15167,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "vis": [],
+      "file": "docs/stress/shots/pages-mobile-unknown-root.png",
+      "text": "Cloak Open app ↗ Page not found Back home"
+    },
+    {
+      "label": "mobile unlocked, address cloak:gloamr1.MFkwEwYHKo…",
+      "ok": true
+    },
+    {
+      "label": "mobile unlocked /app/launches renders in 60 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/launches",
+      "ms": 60,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-launches.png"
+    },
+    {
+      "label": "mobile unlocked /app/create renders in 14 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/create",
+      "ms": 14,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-create.png"
+    },
+    {
+      "label": "mobile unlocked /app/drops renders in 7 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/drops",
+      "ms": 7,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-drops.png"
+    },
+    {
+      "label": "mobile unlocked /app/drops/create renders in 17 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/drops/create",
+      "ms": 17,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-drops-create.png"
+    },
+    {
+      "label": "mobile unlocked /app/portfolio/shield renders in 29 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/shield",
+      "ms": 29,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-shield.png"
+    },
+    {
+      "label": "mobile unlocked /app/portfolio/send renders in 6 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/send",
+      "ms": 6,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-send.png"
+    },
+    {
+      "label": "mobile unlocked /app/portfolio/withdraw renders in 6 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/withdraw",
+      "ms": 6,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-withdraw.png"
+    },
+    {
+      "label": "mobile unlocked /app/portfolio/receive renders in 34 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/receive",
+      "ms": 34,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-receive.png"
+    },
+    {
+      "label": "mobile unlocked /app/portfolio/prove renders in 7 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/portfolio/prove",
+      "ms": 7,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-prove.png"
+    },
+    {
+      "label": "mobile unlocked /app/trade renders in 15005 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/trade",
+      "ms": 15005,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-trade.png"
+    },
+    {
+      "label": "mobile unlocked /app/links renders in 42 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/links",
+      "ms": 42,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-links.png"
+    },
+    {
+      "label": "mobile unlocked /app/volume renders in 8 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/volume",
+      "ms": 8,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-volume.png"
+    },
+    {
+      "label": "mobile unlocked /app/does-not-exist renders in 15008 ms",
+      "ok": true,
+      "mode": "mobile",
+      "path": "/app/does-not-exist",
+      "ms": 15008,
+      "errs": [],
+      "ov": {
+        "clientWidth": 390,
+        "scrollWidth": 390,
+        "wide": []
+      },
+      "file": "docs/stress/shots/pages-mobile-unlocked-unknown.png"
+    }
+  ]
+}

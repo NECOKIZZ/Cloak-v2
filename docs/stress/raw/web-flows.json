@@ -1,0 +1,308 @@
+{
+  "name": "web-flows",
+  "started": "2026-11-08T23:59:50.287Z",
+  "timings": [
+    {
+      "label": "connect + unlock (desktop, cold fork)",
+      "ms": 32529,
+      "ok": true,
+      "slow": true
+    },
+    {
+      "label": "shield 2 HYPE (click to 'is now private')",
+      "ms": 6799,
+      "ok": true
+    },
+    {
+      "label": "send 0.2 HYPE privately (click to 'Sent')",
+      "ms": 6664,
+      "ok": true
+    },
+    {
+      "label": "recipient sees a private send on Portfolio (page already open)",
+      "ms": 10044,
+      "ok": true
+    },
+    {
+      "label": "withdraw 0.3 HYPE (click to 'withdrawn', proof + relay)",
+      "ms": 8610,
+      "ok": true
+    },
+    {
+      "label": "withdraw 0.6 HYPE in 3 pieces (click to 'goes to … in 3 pieces')",
+      "ms": 24507,
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "checks": [
+    {
+      "label": "shield '' → error: Enter an amount above zero.",
+      "ok": true,
+      "amt": "",
+      "r": {
+        "err": "Enter an amount above zero.",
+        "ms": 48
+      }
+    },
+    {
+      "label": "shield '0' → error: Enter an amount above zero.",
+      "ok": true,
+      "amt": "0",
+      "r": {
+        "err": "Enter an amount above zero.",
+        "ms": 37
+      }
+    },
+    {
+      "label": "shield '-1' → error: Enter an amount above zero.",
+      "ok": true,
+      "amt": "-1",
+      "r": {
+        "err": "Enter an amount above zero.",
+        "ms": 42
+      }
+    },
+    {
+      "label": "shield 'abc' → error: Enter an amount, like 0.01.",
+      "ok": true,
+      "amt": "abc",
+      "r": {
+        "err": "Enter an amount, like 0.01.",
+        "ms": 52
+      }
+    },
+    {
+      "label": "shield '1e3' → error: Enter an amount, like 0.01.",
+      "ok": true,
+      "amt": "1e3",
+      "r": {
+        "err": "Enter an amount, like 0.01.",
+        "ms": 51
+      }
+    },
+    {
+      "label": "shield '0x10' → error: Enter an amount, like 0.01.",
+      "ok": true,
+      "amt": "0x10",
+      "r": {
+        "err": "Enter an amount, like 0.01.",
+        "ms": 40
+      }
+    },
+    {
+      "label": "shield '1,5' → error: Enter an amount, like 0.01.",
+      "ok": true,
+      "amt": "1,5",
+      "r": {
+        "err": "Enter an amount, like 0.01.",
+        "ms": 50
+      }
+    },
+    {
+      "label": "shield '0.0000000000000000001' → error: Enter an amount above zero.",
+      "ok": true,
+      "amt": "0.0000000000000000001",
+      "r": {
+        "err": "Enter an amount above zero.",
+        "ms": 39
+      }
+    },
+    {
+      "label": "shield ' 0.5 ' → OK: 0.5 HYPE is now private. View tx ↗",
+      "ok": true,
+      "amt": " 0.5 ",
+      "r": {
+        "ok": "0.5 HYPE is now private. View tx ↗",
+        "ms": 48663
+      }
+    },
+    {
+      "label": "shield 50 HYPE (over the vault's deposit cap?) → Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+      "ok": true,
+      "r": {
+        "err": "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+        "ms": 3005
+      }
+    },
+    {
+      "label": "shield 'max' fills 999999.497900088736358157",
+      "ok": true
+    },
+    {
+      "label": "shield 2 HYPE in 6799 ms: 2 HYPE is now private. View tx ↗",
+      "ok": true
+    },
+    {
+      "label": "double-click shield 0.1 → wallet paid 0.100055675857280832 HYPE (one deposit plus gas expected): 0.1 HYPE is now private. View tx ↗",
+      "ok": true,
+      "spent": "0.100055675857280832"
+    },
+    {
+      "label": "empty recipient",
+      "ok": true,
+      "r": {
+        "err": "Paste the recipient's cloak: address. They can copy it from their Portfolio page.",
+        "ms": 438
+      }
+    },
+    {
+      "label": "a 0x address",
+      "ok": true,
+      "r": {
+        "err": "Paste the recipient's cloak: address. They can copy it from their Portfolio page.",
+        "ms": 104
+      }
+    },
+    {
+      "label": "a v1 hex cloak: address",
+      "ok": true,
+      "r": {
+        "err": "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+        "ms": 1352
+      }
+    },
+    {
+      "label": "garbage gloamr1",
+      "ok": true,
+      "r": {
+        "err": "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+        "ms": 502
+      }
+    },
+    {
+      "label": "truncated address",
+      "ok": true,
+      "r": {
+        "err": "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+        "ms": 579
+      }
+    },
+    {
+      "label": "address plus one char",
+      "ok": true,
+      "r": {
+        "err": "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+        "ms": 1166
+      }
+    },
+    {
+      "label": "more than the balance",
+      "ok": true,
+      "r": {
+        "err": "You have 2.6 HYPE private. Enter that or less.",
+        "ms": 85
+      }
+    },
+    {
+      "label": "zero",
+      "ok": true,
+      "r": {
+        "err": "Enter an amount above zero.",
+        "ms": 98
+      }
+    },
+    {
+      "label": "send 0.2 HYPE to user B in 6664 ms: Sent privately. The chain can't see who paid whom, or how much. View tx ↗",
+      "ok": true
+    },
+    {
+      "label": "send 0.05 HYPE to your own address → Sent privately. The chain can't see who paid whom, or how much. View tx ↗",
+      "ok": true,
+      "r2": {
+        "ok": "Sent privately. The chain can't see who paid whom, or how much. View tx ↗",
+        "ms": 14217
+      }
+    },
+    {
+      "label": "user B's Portfolio shows 0.2 HYPE",
+      "ok": true
+    },
+    {
+      "label": "empty address",
+      "ok": true,
+      "r": {
+        "err": "Enter a 0x address or a .ely name. Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.",
+        "ms": 127
+      }
+    },
+    {
+      "label": "a cloak: address",
+      "ok": true,
+      "r": {
+        "err": "Enter a 0x address or a .ely name. Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.",
+        "ms": 74
+      }
+    },
+    {
+      "label": "short hex",
+      "ok": true,
+      "r": {
+        "err": "Enter a 0x address or a .ely name. Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.",
+        "ms": 135
+      }
+    },
+    {
+      "label": "non-hex 40 chars",
+      "ok": true,
+      "r": {
+        "err": "Enter a 0x address or a .ely name. Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.",
+        "ms": 136
+      }
+    },
+    {
+      "label": "unknown .ely name",
+      "ok": true,
+      "r": {
+        "err": "nobody-here-xyz.ely isn't registered, or it has expired. Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.",
+        "ms": 330
+      }
+    },
+    {
+      "label": "the zero address",
+      "ok": true,
+      "r": {
+        "err": "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+        "ms": 6492
+      }
+    },
+    {
+      "label": "the launch vault itself",
+      "ok": true,
+      "r": {
+        "err": "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.",
+        "ms": 3646
+      }
+    },
+    {
+      "label": "bad checksum mixed case",
+      "ok": true,
+      "r": {
+        "err": "Enter a 0x address or a .ely name. Enter a 0x address or a .ely name. A brand-new address keeps you unlinkable.",
+        "ms": 46
+      }
+    },
+    {
+      "label": "more than the balance",
+      "ok": true,
+      "r": {
+        "err": "You have 2.4 HYPE private. Enter that or less.",
+        "ms": 31
+      }
+    },
+    {
+      "label": "withdraw 0.3 → 0.2985 landed in 8610 ms: 0.3 HYPE withdrawn to 0xa0Ee…9720. View tx ↗",
+      "ok": true
+    },
+    {
+      "label": "withdraw in pieces → 0.6 HYPE goes to 0x0000…bEEF in 3 pieces: 0.21 around 12:08 AM, 0.17 around 12:14 AM, 0.22 around 12:42 AM. You can close Cloak: the relayer sends them.",
+      "ok": true
+    },
+    {
+      "label": "after warping an hour the keeper's queue paid 0.597 HYPE to the destination (0.597 expected)",
+      "ok": true,
+      "got": "0.597",
+      "stats": 3
+    }
+  ]
+}

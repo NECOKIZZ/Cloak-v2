@@ -1,0 +1,273 @@
+{
+  "name": "web-launch",
+  "started": "2026-11-08T23:55:31.479Z",
+  "timings": [
+    {
+      "label": "bidder: connect + unlock",
+      "ms": 29877,
+      "ok": true,
+      "slow": true
+    },
+    {
+      "label": "bidder: shield 2 HYPE",
+      "ms": 56622,
+      "ok": true,
+      "slow": true
+    },
+    {
+      "label": "creator: connect + unlock",
+      "ms": 3726,
+      "ok": true,
+      "slow": false
+    },
+    {
+      "label": "create a launch from the form (click to launch page)",
+      "ms": 17842,
+      "ok": true
+    },
+    {
+      "label": "public sealed bid from the UI (click to 'Bid sealed')",
+      "ms": 230,
+      "ok": true,
+      "slow": false
+    },
+    {
+      "label": "private sealed bid from the UI (click to 'Bid sealed', proof + relay + one-time wallet)",
+      "ms": 15311,
+      "ok": true,
+      "slow": true
+    }
+  ],
+  "notes": [],
+  "checks": [
+    {
+      "label": "Tokens for sale",
+      "ok": true,
+      "v": "0",
+      "h": "Tokens for sale must be a number above zero."
+    },
+    {
+      "label": "Tokens for sale",
+      "ok": true,
+      "v": "-5",
+      "h": "Tokens for sale must be a number above zero."
+    },
+    {
+      "label": "Tokens for sale",
+      "ok": true,
+      "v": "1e6",
+      "h": "Tokens for sale must be a number above zero."
+    },
+    {
+      "label": "Tokens for sale",
+      "ok": true,
+      "v": "99999999999999999999999999999",
+      "h": "(no hint)"
+    },
+    {
+      "label": "Starting price",
+      "ok": true,
+      "v": "0",
+      "h": "The starting price must be above zero."
+    },
+    {
+      "label": "Starting price",
+      "ok": true,
+      "v": "0.0000000000000000001",
+      "h": "The starting price must be above zero."
+    },
+    {
+      "label": "Price levels",
+      "ok": true,
+      "v": "0",
+      "h": "Price levels must be a whole number from 1 to 256."
+    },
+    {
+      "label": "Price levels",
+      "ok": true,
+      "v": "257",
+      "h": "Price levels must be a whole number from 1 to 256."
+    },
+    {
+      "label": "Price levels",
+      "ok": true,
+      "v": "2.5",
+      "h": "Price levels must be a whole number from 1 to 256."
+    },
+    {
+      "label": "Price levels",
+      "ok": true,
+      "v": "1",
+      "h": "(no hint)"
+    },
+    {
+      "label": "Top price",
+      "ok": true,
+      "v": "0.000000001",
+      "h": "The top price must be above the starting price."
+    },
+    {
+      "label": "Bidding",
+      "ok": true,
+      "v": "0",
+      "h": "Bidding must last at least 1 minute."
+    },
+    {
+      "label": "Bidding",
+      "ok": true,
+      "v": "0.5",
+      "h": "Bidding must last at least 1 minute."
+    },
+    {
+      "label": "Reveal window",
+      "ok": true,
+      "v": "4",
+      "h": "The reveal window must be at least 5 minutes, so every sealed bid can open in time."
+    },
+    {
+      "label": "Reveal window",
+      "ok": true,
+      "v": "99999999",
+      "h": "(no hint)"
+    },
+    {
+      "label": "Pool's share",
+      "ok": true,
+      "v": "101",
+      "h": "The pool's share of the raise must be between 0 and 100%."
+    },
+    {
+      "label": "Pool's share",
+      "ok": true,
+      "v": "-1",
+      "h": "The pool's share of the raise must be between 0 and 100%."
+    },
+    {
+      "label": "Penalty",
+      "ok": true,
+      "v": "5",
+      "h": "The penalty for unrevealed bids must be between 10% and 50%."
+    },
+    {
+      "label": "Penalty",
+      "ok": true,
+      "v": "51",
+      "h": "The penalty for unrevealed bids must be between 10% and 50%."
+    },
+    {
+      "label": "Your own share",
+      "ok": true,
+      "v": "21",
+      "h": "Your own share can be at most 20% of the supply."
+    },
+    {
+      "label": "Your own share",
+      "ok": true,
+      "v": "5",
+      "h": "(no hint)"
+    },
+    {
+      "label": "create form symbol '' → disabled, The symbol should be 1 to 11 letters or numbers, like SHADE.",
+      "ok": true
+    },
+    {
+      "label": "create form symbol '$$$' → disabled, The symbol should be 1 to 11 letters or numbers, like SHADE.",
+      "ok": true
+    },
+    {
+      "label": "create form symbol 'TOOLONGSYMBOL12' → enabled, (no hint)",
+      "ok": true
+    },
+    {
+      "label": "create form symbol 'a b' → disabled, The symbol should be 1 to 11 letters or numbers, like SHADE.",
+      "ok": true
+    },
+    {
+      "label": "launch A created from the UI: 0x494b3982f7fa649063E753998e7a2f319F2d28De, commitEnd in 212 s, ticks 50, name '<img src=x onerror=alert(1)> 🚀 Ünïcode'",
+      "ok": true
+    },
+    {
+      "label": "bid form price '0.000000009' qty '10000' → disabled; Your max price is below this launch's minimum of 1.00e-8 HYPE.; If you win, you pay at most — You lock now —",
+      "ok": true,
+      "p": "0.000000009",
+      "q": "10000",
+      "h": "Your max price is below this launch's minimum of 1.00e-8 HYPE.",
+      "dis": true
+    },
+    {
+      "label": "bid form price '0.00000001' qty '0' → disabled; Enter how many tokens you want.; If you win, you pay at most — You lock now —",
+      "ok": true,
+      "p": "0.00000001",
+      "q": "0",
+      "h": "Enter how many tokens you want.",
+      "dis": true
+    },
+    {
+      "label": "bid form price 'abc' qty '10' → disabled; Enter numbers only, like 0.00002.; If you win, you pay at most — You lock now —",
+      "ok": true,
+      "p": "abc",
+      "q": "10",
+      "h": "Enter numbers only, like 0.00002.",
+      "dis": true
+    },
+    {
+      "label": "bid form price '0.00000001' qty '0.0000000000000000001' → disabled; Enter how many tokens you want.; If you win, you pay at most — You lock now —",
+      "ok": true,
+      "p": "0.00000001",
+      "q": "0.0000000000000000001",
+      "h": "Enter how many tokens you want.",
+      "dis": true
+    },
+    {
+      "label": "bid form price '-1' qty '10' → disabled; Enter numbers only, like 0.00002.; If you win, you pay at most — You lock now —",
+      "ok": true,
+      "p": "-1",
+      "q": "10",
+      "h": "Enter numbers only, like 0.00002.",
+      "dis": true
+    },
+    {
+      "label": "bid form price '0.01' qty '10000' → ENABLED; no hint; If you win, you pay at most 0.01 HYPE You lock now 0.01 HYPE",
+      "ok": true,
+      "p": "0.01",
+      "q": "10000",
+      "h": "",
+      "dis": false
+    },
+    {
+      "label": "bid form price '0.000001' qty '999999999999' → disabled; Your wallet has 999,998 HYPE, which isn't enough for this deposit. Pick a smaller one or get testnet HYPE from the faucet.; If you win, you pay at most 1,000,000 HYPE You lock now 1,000,000 HYPE",
+      "ok": true,
+      "p": "0.000001",
+      "q": "999999999999",
+      "h": "Your wallet has 999,998 HYPE, which isn't enough for this deposit. Pick a smaller one or get testnet HYPE from the faucet.",
+      "dis": true
+    },
+    {
+      "label": "bid form price '0.000001' qty '100000000' → ENABLED; no hint; If you win, you pay at most 100 HYPE You lock now 100 HYPE",
+      "ok": true,
+      "p": "0.000001",
+      "q": "100000000",
+      "h": "",
+      "dis": false
+    },
+    {
+      "label": "bid of 100M tokens at the top price → 'Bid sealed. You can close this tab, it opens by itself. view tx ↗'",
+      "ok": true,
+      "r": "Bid sealed. You can close this tab, it opens by itself. view tx ↗"
+    },
+    {
+      "label": "double-click 'Seal bid' placed 1 bid(s)",
+      "ok": true,
+      "n": 1
+    },
+    {
+      "label": "after the whale fills D's 10000 HYPE deposit cap, an honest bid fails: The contract function \"commit\" reverted with the following reason:",
+      "ok": true
+    },
+    {
+      "label": "UI bid on a launch whose cap is full says: 'Not enough testnet HYPE in your wallet to cover this and the gas. Get some from the Elysium faucet.'",
+      "ok": true,
+      "msg": "Not enough testnet HYPE in your wallet to cover this and the gas. Get some from the Elysium faucet."
+    }
+  ]
+}

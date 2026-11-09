@@ -1,0 +1,80 @@
+{
+  "name": "web-links",
+  "started": "2026-11-08T23:50:40.841Z",
+  "timings": [],
+  "notes": [],
+  "checks": [
+    {
+      "label": "empty",
+      "ok": true,
+      "m": {
+        "cls": "err",
+        "text": "Enter how much the link holds."
+      }
+    },
+    {
+      "label": "zero",
+      "ok": true,
+      "m": {
+        "cls": "err",
+        "text": "Use an amount above zero, or leave it empty."
+      }
+    },
+    {
+      "label": "negative",
+      "ok": true,
+      "m": {
+        "cls": "err",
+        "text": "Use numbers and one dot for the amount, like 25 or 0.5."
+      }
+    },
+    {
+      "label": "garbage",
+      "ok": true,
+      "m": {
+        "cls": "err",
+        "text": "Use numbers and one dot for the amount, like 25 or 0.5."
+      }
+    },
+    {
+      "label": "19 decimals",
+      "ok": true,
+      "m": {
+        "cls": "err",
+        "text": "Use at most 18 decimal places."
+      }
+    },
+    {
+      "label": "more than balance",
+      "ok": false,
+      "m": {
+        "cls": "timeout",
+        "text": "no message"
+      }
+    },
+    {
+      "label": "0 shares",
+      "ok": true,
+      "m": {
+        "cls": "err",
+        "text": "Split into 1 to 20 shares."
+      }
+    },
+    {
+      "label": "99 shares",
+      "ok": true,
+      "m": {
+        "cls": "err",
+        "text": "Split into 1 to 20 shares."
+      }
+    },
+    {
+      "label": "dust in 3 shares",
+      "ok": false,
+      "m": {
+        "cls": "linkbox mono",
+        "text": "http://127.0.0.1:5215/claim#c2VojyxhuJlofh2poqoshmvzQS0LZn6mv7Gv3kseTFYVVt3SvAmT9rLcC548s7GvPBzffinRvvzOGSBBjRp5asYjJFBScAYiXXnOGxr7U1IXxiUVY3GOZR3syE4w96dgQbmyTuUcexSembU7cDcpHW7"
+      }
+    }
+  ]
+}
