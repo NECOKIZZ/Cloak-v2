@@ -1,15 +1,15 @@
 {
   "pieces": [
-    "860000000000000000",
-    "1200000000000000000",
-    "940000000000000000"
+    "940000000000000000",
+    "600000000000000000",
+    "1460000000000000000"
   ],
-  "arrived": "2049700000000000000",
+  "arrived": "1532300000000000000",
   "cancelled": {
-    "id": "0xaa26853fc6912f9ce595cc1c3c8ae17ec3d87685ae09a2a6c5e62a544c247331",
+    "id": "0xd60f4b7f9a1cec4aaf57a1c3ecb8e3421a4b793ff4ae607111cc5c5f9b63f43f",
     "state": "dropped",
-    "notBefore": 1794469705,
+    "notBefore": 1794491482,
     "error": "its note was spent (cancelled)"
   },
-  "seconds": 13
+  "seconds": 18
 }
