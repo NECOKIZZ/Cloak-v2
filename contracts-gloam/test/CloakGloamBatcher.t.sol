@@ -204,12 +204,19 @@ contract CloakGloamBatcherTest is Test {
         (CloakGloamBatcherBase.OrderKey memory s1, ) = _order(false, 1000e18);
         uint64 round = batcher.currentRound();
         _endRound();
-        // inside the 2% band: 1.5% more tokens per HYPE, pushed in the same transaction as settle
+        // 1.5% more tokens per HYPE, pushed in the same transaction as settle: refused, the pool must be within 0.5% of
+        // the round's average when the net trades (review C-02)
+        uint256 snap = vm.snapshotState();
         launch.mint(address(pair), 1500e18);
+        pair.sync();
+        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
+        batcher.settle(address(launch), round);
+        vm.revertToState(snap);
+        // a push inside 0.5% goes through, and the seller is still paid at the round's average
+        launch.mint(address(pair), 400e18);
         pair.sync();
         batcher.settle(address(launch), round);
         uint256 hype = _claim(s1, 0x21);
-        // priced at the spot after the push, the seller would get about 0.980 HYPE; at the round's average, 0.995
         assertApproxEqRel(hype, 0.995e18, 0.001e18, "the seller is paid at the round's average, not the pushed spot");
     }
 

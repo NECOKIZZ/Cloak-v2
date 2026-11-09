@@ -100,8 +100,9 @@ contract ReceiveStressTest is StressBase {
         vm.prank(ownerKey);
         vm.expectRevert(bytes("factory"));
         ReceiveBox(payable(box)).pull(address(rando), 1_000e18);
-        assertEq(rando.balanceOf(box), 1_000e18, "stuck");
-        assertEq(fee.balanceOf(box), 1_000e18, "stuck for good: a fee-on-transfer token can never be shielded");
+        // review C-06, fixed: the owner key signs a sweep, and anyone sends it
+        _sweepOut(box, address(rando), 1_000e18);
+        _sweepOut(box, address(fee), 1_000e18);
     }
 
     /// HYPE over the vault's total cap waits at the box until the vault has room again (or for good, if never).
@@ -113,7 +114,40 @@ contract ReceiveStressTest is StressBase {
         for (uint256 i = 0; i < 10; i++) _shield(va, address(0), 10e18, bytes32(uint256(0x100 + i)));
         vm.expectRevert(ShieldPoolCore.OverDepositLimit.selector);
         this.shieldVia(va, address(0), 10e18, bytes32(uint256(0x200)));
-        assertEq(box.balance, 50e18, "50 HYPE waits at the box with no way out but the full vault");
+        assertEq(box.balance, 50e18, "50 HYPE waits at the box");
+        // review C-06, fixed: its owner can take it out in the clear
+        _sweepHype(box, address(0xF00E), 50e18);
+        assertEq(address(0xF00E).balance, 50e18, "swept out");
+    }
+
+    function _sweepData(address token, uint256 amount) internal pure returns (bytes memory) {
+        return abi.encodeWithSelector(TestToken.transfer.selector, address(0xF00D), amount);
+    }
+
+    function _sweepSig(address box, address token, bytes memory data) internal view returns (bytes memory) {
+        return _sig(ownerPk, rx.sweepDigest(box, token, 0, data, rx.sweepNonce(box)));
+    }
+
+    function _sweepHype(address box, address to, uint256 amount) internal {
+        bytes memory sig = _sig(ownerPk, rx.sweepDigest(box, to, amount, "", rx.sweepNonce(box)));
+        rx.sweep(ownerKey, 0, to, amount, "", sig);
+    }
+
+    function _sweepOut(address box, address token, uint256 amount) internal {
+        bytes memory data = _sweepData(token, amount);
+        bytes memory sig = _sweepSig(box, token, data);
+        rx.sweep(ownerKey, 0, token, 0, data, sig);
+        assertGt(TestToken(token).balanceOf(address(0xF00D)), 0, "swept out by its owner");
+        vm.expectRevert(CloakGloamReceive.BadSignature.selector); // each signature works once
+        rx.sweep(ownerKey, 0, token, 0, data, sig);
+    }
+
+    function test_receive_sweepNeedsTheOwnerKey() public {
+        address box = rx.boxOf(ownerKey, 0);
+        bytes memory data = abi.encodeWithSelector(TestToken.transfer.selector, address(0xF00D), 1);
+        bytes memory sig = _sig(0xBAD, rx.sweepDigest(box, address(0x1234), 0, data, 0));
+        vm.expectRevert(CloakGloamReceive.BadSignature.selector);
+        rx.sweep(ownerKey, 0, address(0x1234), 0, data, sig);
     }
 
     function shieldVia(ShieldPoolPayments v, address asset, uint256 amount, bytes32 c) external {
@@ -229,34 +263,25 @@ contract BidsStressTest is StressBase {
         return CloakGloamBids.Spend(abi.encode(bids.accountFor(k)), pool.currentRoot(), k.nullifier, address(0), NOTE);
     }
 
-    /// C-08: a bid at the auction's cap can be blocked with 1 wei. place() bids with the account's whole balance, and
-    /// the account's address is in the pending call, so a front-runner tops it up by 1 wei and the auction refuses the
-    /// bid. If the spend was also sent alone, every later place() fails the same way; the money comes back by finish().
-    function test_bids_oneWeiTopUpBlocksABidAtTheCap() public {
+    /// C-09, fixed: a 1-wei top-up no longer blocks a bid at the cap: place() bids what the note brought, and the
+    /// stranger's wei stays in the account for an exit.
+    function test_bids_oneWeiTopUp_fixed() public {
         CloakGloamBids.BidKey memory k = _key(1);
         address account = bids.accountFor(k);
         CloakGloamBids.Spend memory s = _spend(k);
         bytes memory call_ = _bidCall();
         bytes memory sig = _sig(ownerPk, bids.placeDigest(account, call_));
-        // front-run: the spend alone, then 1 wei to the account
         vm.startPrank(mallory);
         pool.unshield(s.proof, s.root, s.nullifier, address(0), account, NOTE);
         (bool ok, ) = account.call{value: 1}("");
         require(ok);
         vm.stopPrank();
-        vm.expectRevert(bytes("over cap"));
         bids.place(s, k, call_, sig);
-        // the bid can never be placed; the owner takes the money back into the vault (dust stays for an exit)
-        CloakGloamBids.Deposit[] memory ds = new CloakGloamBids.Deposit[](1);
-        ds[0] = CloakGloamBids.Deposit(hex"00", bytes32(uint256(0xD0)), address(0), ARRIVES);
-        bids.finish(k, ds, _sig(ownerPk, bids.finishDigest(account, ds)));
-        assertEq(account.balance, 1, "only the griefer's wei is left");
+        assertEq(account.balance, 1, "only the stranger's wei is left over");
     }
 
-    /// C-09 (info): an exit signature has no nonce and exit() doesn't check `closed`, so it can be sent again later by
-    /// anyone. An owner who exited early (before settlement, say) can't then finish privately: whatever arrives later
-    /// can be pushed to the same address in the clear by any copier.
-    function test_bids_exitSignatureReplaysLater() public {
+    /// C-10, fixed: an exit signature works once; a later replay is refused.
+    function test_bids_exitSignatureReplay_fixed() public {
         CloakGloamBids.BidKey memory k = _key(2);
         address account = bids.accountFor(k);
         CloakGloamBids.Spend memory s = _spend(k);
@@ -264,21 +289,19 @@ contract BidsStressTest is StressBase {
         address to = address(0x70);
         bytes memory exitSig = _sig(ownerPk, bids.exitDigest(account, to));
         address[] memory none = new address[](0);
-        bids.exit(k, to, none, exitSig); // nothing to move yet (the deposit is in the auction)
-        assertEq(to.balance, 0);
-        auction.settle();
-        // the owner now wants to finish privately, but a copier replays the old exit first
-        vm.prank(mallory);
         bids.exit(k, to, none, exitSig);
-        assertEq(to.balance, ARRIVES, "pushed out in the clear by a replay");
+        auction.settle();
+        vm.prank(mallory);
+        vm.expectRevert(CloakGloamBids.BadSignature.selector);
+        bids.exit(k, to, none, exitSig);
+        assertEq(to.balance, 0, "nothing pushed out by a replay");
     }
 
-    /// C-10 (info): CloakGloamBids takes HYPE from anyone (it needs to, for finish), and has no way to send stray HYPE on.
-    function test_bids_strayHypeIsStuckInTheFactory() public {
+    /// C-11, fixed: the bids contract refuses HYPE outside finish(), so none can get stuck there.
+    function test_bids_strayHype_refused() public {
         vm.prank(mallory);
         (bool ok, ) = address(bids).call{value: 0.5e18}("");
-        assertTrue(ok);
-        assertEq(address(bids).balance, 0.5e18, "nothing can move it");
+        assertFalse(ok, "refused");
     }
 
     /// held: a malleated owner-call signature can't run twice (the nonce moves).

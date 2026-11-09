@@ -67,6 +67,10 @@ contract BidAccount {
  * What stays public: the deposit (as for any bid), the bid's account, and the amounts paid back. Who bid stays
  * private: the account is funded from the vault and pays back into it.
  */
+interface IFeeBps {
+    function withdrawFeeBps() external view returns (uint16);
+}
+
 contract CloakGloamBids {
     struct Spend {
         bytes proof;
@@ -107,6 +111,7 @@ contract CloakGloamBids {
     mapping(address => uint256) public callNonce;
 
     uint256 private _entered;
+    bool private _finishing;
 
     event BidPlaced(address indexed account, address indexed auction, uint256 bidId, uint256 deposit);
     event BidFinished(address indexed account, uint256 notes);
@@ -167,11 +172,20 @@ contract CloakGloamBids {
 
     function _bid(BidKey calldata k, address account, bytes calldata bidCall) private returns (uint256 bidId) {
         BidAccount a = _open(k, account);
-        uint256 deposit = account.balance;
+        // bid what the note brought (its amount less the vault's fee), not the account's whole balance: a stranger's
+        // top-up can't push a bid at the auction's cap over it (review C-09); anything extra stays for an exit
+        uint256 deposit = _arrived(k.amount);
+        if (account.balance < deposit) deposit = account.balance;
         if (deposit == 0) revert NothingHere();
         bidId = abi.decode(a.run(k.auction, deposit, bidCall), (uint256));
         bidIdPlus1[account] = bidId + 1;
         emit BidPlaced(account, k.auction, bidId, deposit);
+    }
+
+    /// @dev What a note of `amount` brings out of the vault: the amount less the vault's cash-out fee (its rounding).
+    function _arrived(uint256 amount) private view returns (uint256) {
+        uint256 bps = IFeeBps(address(vault)).withdrawFeeBps();
+        return amount - ((amount / 10_000) * bps + ((amount % 10_000) * bps) / 10_000);
     }
 
     /// @notice What the owner key signs to bid: this account and this exact bid call.
@@ -209,8 +223,11 @@ contract CloakGloamBids {
         return keccak256(abi.encode(FINISH_DOMAIN, block.chainid, address(this), account, keccak256(abi.encodePacked(parts))));
     }
 
+    /// @notice Per account: exits signed and used so far. Each exit signature works once (review C-10).
+    mapping(address => uint256) public exitNonce;
+
     function exitDigest(address account, address to) public view returns (bytes32) {
-        return keccak256(abi.encode(EXIT_DOMAIN, block.chainid, address(this), account, to));
+        return keccak256(abi.encode(EXIT_DOMAIN, block.chainid, address(this), account, to, exitNonce[account]));
     }
 
     /**
@@ -226,6 +243,7 @@ contract CloakGloamBids {
         BidAccount a = _open(k, account);
         _tryClaim(k.auction, account);
         closed[account] = true;
+        _finishing = true;
         for (uint256 i = 0; i < ds.length; i++) {
             Deposit calldata d = ds[i];
             if (d.asset == address(0)) {
@@ -243,6 +261,7 @@ contract CloakGloamBids {
                 IERC20Bal(d.asset).approve(address(vault), 0);
             }
         }
+        _finishing = false;
         closed[account] = false; // dust may still leave by exit
         _closeIfEmpty(account, ds);
         emit BidFinished(account, ds.length);
@@ -252,6 +271,7 @@ contract CloakGloamBids {
     function exit(BidKey calldata k, address to, address[] calldata tokens, bytes calldata signature) external nonReentrant {
         address account = accountFor(k);
         if (_recover(exitDigest(account, to), signature) != k.ownerKey || k.ownerKey == address(0)) revert BadSignature();
+        exitNonce[account] += 1;
         _exit(k, account, to, tokens);
     }
 
@@ -261,7 +281,10 @@ contract CloakGloamBids {
         _exit(k, accountFor(k), k.fallbackTo, tokens);
     }
 
-    receive() external payable {}
+    /// @notice HYPE comes in only from a bid account during finish(), on its way into the vault (review C-11).
+    receive() external payable {
+        if (!_finishing) revert Closed();
+    }
 
     function _exit(BidKey calldata k, address account, address to, address[] calldata tokens) private {
         if (to == address(0) || to == account || to == address(this) || to == address(vault)) revert BadKey();

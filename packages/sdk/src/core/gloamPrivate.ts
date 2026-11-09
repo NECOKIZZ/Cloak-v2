@@ -129,14 +129,17 @@ function standardSizes(amount: bigint, max: number): { sizes: bigint[]; rest: bi
  * way GloamCore.exactNote uses them (an exact note if there is one, else split from the largest). So an amount spread
  * over many notes still goes in, as more, smaller orders.
  */
-export function standardSizesFor(amount: bigint, notes: bigint[], max: number): { sizes: bigint[]; rest: bigint } {
+/** The smallest batch order the batcher takes (its MIN_SIZE): smaller standard sizes stay in the balance. */
+export const BATCH_MIN_SIZE = 10n ** 12n;
+
+export function standardSizesFor(amount: bigint, notes: bigint[], max: number, min: bigint = BATCH_MIN_SIZE): { sizes: bigint[]; rest: bigint } {
   const caps = notes.filter((n) => n > 0n).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
   const sizes: bigint[] = [];
   let rest = amount;
   while (sizes.length < max && rest > 0n && caps.length) {
     const target = rest < caps[0] ? rest : caps[0];
     const sz = standardSizes(target, 1).sizes[0];
-    if (!sz) break;
+    if (!sz || sz < min) break;
     const exact = caps.indexOf(sz);
     if (exact >= 0) caps.splice(exact, 1);
     else {

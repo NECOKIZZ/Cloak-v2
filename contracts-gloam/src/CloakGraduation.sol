@@ -143,6 +143,9 @@ contract CloakGraduation is IEscrowPayee {
             launchVault.unshield(s.proof, s.root, s.nullifier, k.token, escrowFor(k), s.amount);
         }
         uint256 net = _openEscrow(id, k.token);
+        // what landed is a note of this size less at most the vault's 1% fee ceiling, not an amount paid in from outside,
+        // so the round's crowd count can't be padded (review C-07)
+        if (net > k.size || net * 10_000 < uint256(k.size) * 9_900 || k.size < 1e12) revert NotStandard();
         uint64 round = currentRound();
         entries[id] = Entry(k.token, round, false, uint128(net));
         roundEntries[k.token][round] += 1;

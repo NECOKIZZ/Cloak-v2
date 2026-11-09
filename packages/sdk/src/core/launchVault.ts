@@ -49,6 +49,8 @@ export const CLOAK_GRADUATION_ABI = parseAbi([
 const ORDER_KEY = "(bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo)";
 export const CLOAK_GLOAM_BATCHER_ABI = parseAbi([
   `function claim(${ORDER_KEY} k, ${DEPOSIT_SWAP} d, bytes signature)`,
+  `function claimMany(${ORDER_KEY} k, ${DEPOSIT_SWAP}[] ds, bytes signature)`,
+  "function claimManyDigest(bytes32 id, bytes32[] commitments) view returns (bytes32)",
   `function idOf(${ORDER_KEY} k) pure returns (bytes32)`,
   "function owed(bytes32) view returns (address asset, uint256 amount)",
   "function orders(bytes32) view returns (address token, uint64 round, bool buy, bool paid, uint128 net)",
@@ -279,6 +281,22 @@ async function finishBatchOrder(core: GloamCore, r: Extract<LaunchRecord, { kind
   const [asset, amount] = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "owed", args: [r.id] })) as [Address, bigint];
   if (amount === 0n) return null; // the round hasn't settled (or been cancelled) yet
   onStatus("Bringing a batch order's payout into your private balance");
+  // a payout over the vault's per-deposit cap comes back as several notes (claimMany)
+  const [perDeposit] = (await pub.readContract({ address: core.config.pool, abi: parseAbi(["function depositLimit(address) view returns (uint128 perDeposit, uint128 total)"]), functionName: "depositLimit", args: [asset] }).catch(() => [0n, 0n])) as [bigint, bigint];
+  if (perDeposit > 0n && amount > perDeposit) {
+    const parts: bigint[] = [];
+    for (let left = amount; left > 0n; left -= left < perDeposit ? left : perDeposit) parts.push(left < perDeposit ? left : perDeposit);
+    const made = [];
+    for (const part of parts) made.push(await core.depositFor(asset, part));
+    const digest = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "claimManyDigest", args: [r.id, made.map((x) => x.deposit.commitment)] })) as Hex;
+    const signature = await signer(core, r.key.nullifier).sign({ hash: digest });
+    const txHashes: Hex[] = [await core.config.submit({ kind: "escrow", to: r.batcher, data: encodeFunctionData({ abi: BATCHER, functionName: "claimMany", args: [r.key, made.map((x) => x.deposit), signature] }) })];
+    for (const x of made) {
+      const memo = await announce(core, x.deposit.commitment, x.ticket, onStatus);
+      if (memo) txHashes.push(memo);
+    }
+    return { outcome: `batch payout of ${amount} back as ${parts.length} notes`, txHashes };
+  }
   const m = await core.depositFor(asset, amount);
   const digest = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "claimDigest", args: [r.id, m.deposit.commitment] })) as Hex;
   const signature = await signer(core, r.key.nullifier).sign({ hash: digest });

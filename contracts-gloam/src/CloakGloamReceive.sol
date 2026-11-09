@@ -26,6 +26,15 @@ contract ReceiveBox {
 
     receive() external payable {}
 
+    /// @notice One call from the box (the factory checks the owner key's signature first): how what the vaults won't
+    ///         take (an unlisted token, an NFT, HYPE over a full cap) leaves (review C-06).
+    function exec(address target, uint256 value, bytes calldata data) external returns (bytes memory ret) {
+        require(msg.sender == factory, "factory");
+        bool ok;
+        (ok, ret) = target.call{value: value}(data);
+        require(ok, "call");
+    }
+
     /// @notice Hand `amount` of `asset` (address(0) for HYPE) to the factory, which deposits it at once.
     function pull(address asset, uint256 amount) external {
         require(msg.sender == factory, "factory");
@@ -59,6 +68,9 @@ contract CloakGloamReceive {
     address public immutable vaultA;
     address public immutable vaultB;
     bytes32 private constant SHIELD_DOMAIN = keccak256("cloak.gloam.receive.shield.v1");
+    bytes32 private constant SWEEP_DOMAIN = keccak256("cloak.gloam.receive.sweep.v1");
+    /// @notice Per box: how many sweeps its owner has signed (each signature works once).
+    mapping(address => uint256) public sweepNonce;
 
     uint256 private _entered;
 
@@ -85,6 +97,36 @@ contract CloakGloamReceive {
     /// @notice HYPE comes in from a box during shield().
     receive() external payable {
         if (_entered != 1) revert Reentrancy();
+    }
+
+    /// @notice What the owner key signs for one call from its box (sweep).
+    function sweepDigest(address box, address target, uint256 value, bytes calldata data, uint256 nonce) public view returns (bytes32) {
+        return keccak256(abi.encode(SWEEP_DOMAIN, block.chainid, address(this), box, target, value, keccak256(data), nonce));
+    }
+
+    /**
+     * @notice One call from the box of (ownerKey, n), as the owner key signed, for what can't go into a vault: a token
+     *         neither vault lists, an NFT, HYPE beyond a full cap. Public, so the app offers it only for those. Anyone
+     *         may send it. Makes the box on first use. Each signature works once (review C-06).
+     */
+    function sweep(address ownerKey, uint256 n, address target, uint256 value, bytes calldata data, bytes calldata signature)
+        external
+        nonReentrant
+        returns (bytes memory ret)
+    {
+        address box = boxOf(ownerKey, n);
+        if (ownerKey == address(0) || _recover(sweepDigest(box, target, value, data, sweepNonce[box]), signature) != ownerKey) revert BadSignature();
+        sweepNonce[box] += 1;
+        if (box.code.length == 0) {
+            bytes memory code = type(ReceiveBox).creationCode;
+            bytes32 salt = _salt(ownerKey, n);
+            address made;
+            assembly {
+                made := create2(0, add(code, 0x20), mload(code), salt)
+            }
+            require(made == box, "box");
+        }
+        ret = ReceiveBox(payable(box)).exec(target, value, data);
     }
 
     /// @notice The receive address of (ownerKey, n), whether or not its box exists yet.

@@ -63,6 +63,7 @@ contract CloakGloamBatcherV4 is CloakGloamBatcherBase {
         address market = ILaunchAuctionB(auction).pair();
         if (market == address(0)) revert NoPair();
         marketOf[token] = ICloakV4Market(market);
+        _checkpoint(token); // the token's price history starts here, not at its first order
         emit MarketRegistered(launchIndex, token, market);
     }
 

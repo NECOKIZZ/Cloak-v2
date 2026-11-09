@@ -61,58 +61,36 @@ contract BatcherV4StressTest is CloakGloamBatcherV4Test {
         batcher.claim(k, CloakGloamBatcherBase.Deposit(hex"00", bytes32(c), asset, amount), abi.encodePacked(r, s, v));
     }
 
-    function test_batcherV4_openingBandGrief_oneWeiFirstOrderForcesRefund() public {
+    /// C-01 on the real v4 pool, fixed: push ~3%, the attacker's own small first order, push back. The round still
+    /// settles, because it's also checked against a time-weighted reference (seeded when the market was registered).
+    function test_batcherV4_openingBandGrief_fixed_roundSettles() public {
         _stressSetUp();
+        vm.warp(block.timestamp + 2 * ROUND);
+        batcher.checkpoint(address(token));
         _startOfNextRound();
         uint64 round = batcher.currentRound();
-        uint256 start = attacker.balance;
-        // -- one attacker transaction: push ~3%, 1-wei first order, push back --
         uint256 tokens = _attackerBuy(15 ether);
-        _outsideBuy(1);
+        _place(bytes32(uint256(0xA1)), true, 0.001 ether); // the attacker's first order: a real note now
         _attackerSell(tokens);
-        uint256 cost = start - attacker.balance;
-        console2.log("attacker cost (wei HYPE) to void a round on a ~1,000 HYPE pool:", cost);
-        // -- honest orders at the normal price --
         vm.warp(block.timestamp + 5);
         (CloakGloamBatcherBase.OrderKey memory kb, ) = _place(bytes32(uint256(0xB1)), true, 1 ether);
         (CloakGloamBatcherBase.OrderKey memory ks, ) = _place(bytes32(uint256(0xB2)), false, 2_000e18);
         vm.warp(batcher.settleOpens(address(token), round));
-        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
         batcher.settle(address(token), round);
-        vm.warp(block.timestamp + 599);
-        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
-        batcher.settle(address(token), round);
-        vm.warp(block.timestamp + 1);
-        batcher.cancel(address(token), round);
-        assertEq(_claimAmount(kb, 0xC1), 0.995 ether, "refunded, less the vault's 0.5%");
-        assertEq(_claimAmount(ks, 0xC2), 1_990e18, "refunded, less the vault's 0.5%");
-        assertLt(cost, 0.1 ether, "under 0.1 HYPE (two 0.3% pool fees on 15 HYPE)");
+        assertGt(_claimAmount(kb, 0xC1), 0);
+        assertGt(_claimAmount(ks, 0xC2), 0);
     }
 
-    function test_batcherV4_settleSandwich_atomicExtractionFromBuyers() public {
+    /// C-02 on the real v4 pool, fixed: a ~1.8% push in the settling transaction is refused (0.5% settle band).
+    function test_batcherV4_settleSandwich_fixed_refused() public {
         _stressSetUp();
         _startOfNextRound();
-        (CloakGloamBatcherBase.OrderKey memory k1, ) = _place(bytes32(uint256(0xD1)), true, 10 ether);
-        (CloakGloamBatcherBase.OrderKey memory k2, ) = _place(bytes32(uint256(0xD2)), true, 10 ether);
+        _place(bytes32(uint256(0xD1)), true, 10 ether);
+        _place(bytes32(uint256(0xD2)), true, 10 ether);
         uint64 round = batcher.currentRound();
         vm.warp(batcher.settleOpens(address(token), round));
-
-        uint256 snap = vm.snapshotState();
+        _attackerBuy(9 ether);
+        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
         batcher.settle(address(token), round);
-        uint256 fair = _claimAmount(k1, 0xF1) + _claimAmount(k2, 0xF2);
-        vm.revertToState(snap);
-
-        uint256 start = attacker.balance;
-        // -- one attacker transaction --
-        uint256 tokens = _attackerBuy(9 ether); // ~1.8% push, inside the 2% band
-        batcher.settle(address(token), round);
-        _attackerSell(tokens);
-        // --
-        uint256 sandwiched = _claimAmount(k1, 0xF1) + _claimAmount(k2, 0xF2);
-        console2.log("buyers' tokens, fair      :", fair);
-        console2.log("buyers' tokens, sandwiched:", sandwiched);
-        console2.log("attacker profit (wei HYPE):", attacker.balance - start);
-        assertGt(attacker.balance, start, "the sandwich pays");
-        assertLt(sandwiched * 1000, fair * 985, "buyers lose more than 1.5%");
     }
 }

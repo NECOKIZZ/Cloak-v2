@@ -11,7 +11,7 @@ const std = (x) => {
 };
 
 test("one big note: the usual 1, 2, 5 split", () => {
-  const r = standardSizesFor(37n, [100n], 6);
+  const r = standardSizesFor(37n, [100n], 6, 0n);
   assert.deepEqual(r.sizes, [20n, 10n, 5n, 2n]);
   assert.equal(r.rest, 0n);
 });
@@ -19,7 +19,7 @@ test("one big note: the usual 1, 2, 5 split", () => {
 test("a balance spread over notes smaller than the amount still goes in", () => {
   // 52 over six notes, the largest 40: a plain split would ask for a 50 that no note holds
   const notes = [40n, 8n, 1n, 1n, 1n, 1n];
-  const r = standardSizesFor(52n, notes, 6);
+  const r = standardSizesFor(52n, notes, 6, 0n);
   assert.ok(r.sizes.every(std), "every order is a standard size");
   assert.ok(r.sizes.every((s) => s <= 40n), "no order is bigger than the largest note");
   assert.equal(sum(r.sizes) + r.rest, 52n);
@@ -27,12 +27,18 @@ test("a balance spread over notes smaller than the amount still goes in", () => 
 });
 
 test("never more than max orders, never more than held", () => {
-  const r = standardSizesFor(1000n, [3n, 3n, 3n], 6);
+  const r = standardSizesFor(1000n, [3n, 3n, 3n], 6, 0n);
   assert.ok(r.sizes.length <= 6);
   assert.ok(sum(r.sizes) <= 9n);
   assert.equal(sum(r.sizes) + r.rest, 1000n);
 });
 
 test("no notes, no orders", () => {
-  assert.deepEqual(standardSizesFor(10n, [], 6), { sizes: [], rest: 10n });
+  assert.deepEqual(standardSizesFor(10n, [], 6, 0n), { sizes: [], rest: 10n });
+});
+
+test("never an order under the batcher's minimum size", () => {
+  const r = standardSizesFor(10n ** 12n + 5n * 10n ** 11n, [10n ** 13n], 6);
+  assert.deepEqual(r.sizes, [10n ** 12n]);
+  assert.equal(r.rest, 5n * 10n ** 11n);
 });

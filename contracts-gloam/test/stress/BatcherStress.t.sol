@@ -181,237 +181,180 @@ contract BatcherStressTest is Test {
 
     // ── C-01: the opening band can be pinned by a 1-wei first order, so every round is refunded ──────────────────────
 
-    /// Each round, the attacker (in one transaction) pushes the pool ~3%, places a 1-wei first order paid from outside
-    /// the vault (so it pays no vault fee), and pushes the pool back. The round's opening spot is now ~3% off, the
-    /// honest average can never be within 2% of it, so the round can only be cancelled. Every honest order is locked
-    /// for a round plus the 10-minute refund window, then refunded, having paid the vault's 0.5% fee for nothing.
-    function test_batcher_openingBandGrief_oneWeiFirstOrderForcesRefundEveryRound() public {
+    /// C-01, fixed: the attacker pushes the pool ~3%, places the round's first order (now a real note of at least
+    /// MIN_SIZE: an outside 1-wei order is refused) and pushes back, in one go. The opening spot is pinned, but the
+    /// round is also checked against a time-weighted reference from before it, which one transaction can't move, so the
+    /// round settles for the honest traders.
+    function test_batcher_openingBandGrief_fixed_roundStillSettles() public {
+        batcher.checkpoint(address(launch)); // price history (the keeper keeps it for quiet tokens)
+        vm.warp(block.timestamp + 2 * ROUND);
+        batcher.checkpoint(address(launch));
         vm.prank(attacker);
         weth.deposit{value: 100e18}();
-        uint256 attackerStart = weth.balanceOf(attacker);
-        uint256 victimFees;
-        uint256 rounds = 5;
-        for (uint256 r = 0; r < rounds; r++) {
+        for (uint256 r = 0; r < 3; r++) {
             _startOfNextRound();
             uint64 round = batcher.currentRound();
-            // -- the attacker's one transaction --
-            uint256 got = _marketSwap(attacker, true, 1.5e18); // push spot ~3%
-            _outsideOrder(address(launch), true, 1, r); // 1 wei, first order: pins spotStart
+            uint256 got = _marketSwap(attacker, true, 1.5e18); // push ~3%
+            _honest(true, 1e15); // the attacker's tiny first order: pins spotStart
             _marketSwap(attacker, false, got); // push back
-            // -- honest traders through the round, at the normal price --
             vm.warp(block.timestamp + 5);
             (CloakGloamBatcherBase.OrderKey memory b1, ) = _honest(true, 1e18);
             (CloakGloamBatcherBase.OrderKey memory s1, ) = _honest(false, 1000e18);
-            victimFees += 0.005e18 * 2; // 0.5% of each order's value (1 HYPE each)
-            // -- settling is refused for the whole window --
             vm.warp(batcher.settleOpens(address(launch), round));
-            vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
             batcher.settle(address(launch), round);
-            vm.warp(block.timestamp + REFUND_AFTER - 1);
-            vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
-            batcher.settle(address(launch), round);
-            vm.warp(block.timestamp + 1);
-            batcher.cancel(address(launch), round);
-            assertEq(_claim(b1, ownerPk, 0x1000 + r), 0.995e18, "buyer refunded, less the 0.5% fee");
-            assertEq(_claim(s1, ownerPk, 0x2000 + r), 995e18, "seller refunded, less the 0.5% fee");
+            assertGt(_claim(b1, ownerPk, 0x1000 + r), 0, "the buyer filled");
+            assertGt(_claim(s1, ownerPk, 0x2000 + r), 0, "the seller filled");
         }
-        uint256 attackerCost = attackerStart - weth.balanceOf(attacker);
-        console2.log("attacker cost for", rounds, "rounds (wei HYPE):", attackerCost);
-        console2.log("victims' fees lost (wei HYPE):", victimFees);
-        // ~0.009 HYPE per round on a 100 HYPE pool (two 0.3% pool fees on a 1.5 HYPE push), plus gas.
-        assertLt(attackerCost, (rounds * 1e16), "under 0.01 HYPE per round");
+    }
+
+    /// C-07, fixed: an order paid from outside the vault (a reused spent nullifier, any amount) is refused.
+    function test_batcher_outsideOneWeiOrderRefused() public {
+        _startOfNextRound();
+        vm.expectRevert(CloakGloamBatcherBase.NotStandard.selector);
+        this.outsideOrder(address(launch), true, 1, 1);
+    }
+
+    function outsideOrder(address token, bool buy, uint256 amount, uint256 salt) external {
+        _outsideOrder(token, buy, amount, salt);
     }
 
     // ── C-02: settle can be sandwiched in one transaction, up to the 2% slippage band ────────────────────────────────
 
-    /// Anyone may call settle(), so an attacker pushes the pool just inside the 2% band, settles (the round's net buys
-    /// at the pushed price, still inside the 5% impact cap measured from the average), and swaps back, all at once.
-    function test_batcher_settleSandwich_atomicExtractionFromBuyers() public {
+    /// C-02, fixed: a push of ~1.8% in the settling transaction (inside the old 2% band) is refused: at settle the pool
+    /// must be within 0.5% of the round's average. A push inside 0.5% can still be made, and costs buyers at most that.
+    function test_batcher_settleSandwich_fixed() public {
         _startOfNextRound();
         (CloakGloamBatcherBase.OrderKey memory b1, ) = _honest(true, 1e18);
         (CloakGloamBatcherBase.OrderKey memory b2, ) = _honest(true, 1e18);
         uint64 round = batcher.currentRound();
         vm.warp(batcher.settleOpens(address(launch), round));
-
         uint256 snap = vm.snapshotState();
         batcher.settle(address(launch), round);
         uint256 fair = _claim(b1, ownerPk, 0xF1) + _claim(b2, ownerPk, 0xF2);
         vm.revertToState(snap);
-
         vm.prank(attacker);
         weth.deposit{value: 10e18}();
-        uint256 start = weth.balanceOf(attacker);
-        // -- the attacker's one transaction --
-        uint256 tokens = _marketSwap(attacker, true, 0.9e18); // spot ~1.8% worse for buyers, inside the 2% band
+        uint256 snap2 = vm.snapshotState();
+        _marketSwap(attacker, true, 0.9e18); // ~1.8%
+        vm.expectRevert(CloakGloamBatcherBase.Slipped.selector);
+        batcher.settle(address(launch), round);
+        vm.revertToState(snap2);
+        uint256 tokens = _marketSwap(attacker, true, 0.2e18); // ~0.4%: inside the settle band
         batcher.settle(address(launch), round);
         _marketSwap(attacker, false, tokens);
-        // --
         uint256 sandwiched = _claim(b1, ownerPk, 0xF1) + _claim(b2, ownerPk, 0xF2);
-        uint256 profit = weth.balanceOf(attacker) - start;
-        console2.log("buyers' tokens, fair settle:", fair);
-        console2.log("buyers' tokens, sandwiched :", sandwiched);
-        console2.log("attacker profit (wei HYPE):", profit);
-        assertGt(profit, 0, "the sandwich pays");
-        assertLt(sandwiched * 1000, fair * 985, "buyers lose more than 1.5% of their tokens");
+        console2.log("buyers' tokens, fair / with a 0.4% push:", fair, sandwiched);
+        assertGt(sandwiched * 1000, fair * 994, "buyers lose under 0.6%");
     }
 
     // ── C-03: an order's escrow has no way out if place() can no longer fit the order ─────────────────────────────────
 
-    /// The unshield proof in a place() call is public, so anyone can send the spend alone (the vault pays the escrow).
-    /// From then on only place() can open the escrow, and place() refuses an order bigger than 4% of the pool's HYPE.
-    /// If the pool shrinks (the token's price falls), the order never fits again: no cancel, no claim, no timeout exit.
-    function test_batcher_spentAloneEscrow_lockedWhenTheOrderNoLongerFits() public {
-        _seedPool(30e18, 30_000e18); // 130 HYPE: the side cap is 5.2 HYPE
-        // the victim's app sizes a 5 HYPE order (it fits the room left)
+    /// C-03, fixed: the spend is sent alone, the pool shrinks, the order no longer fits: place() now records it as
+    /// refund-only, owed its input back, so the escrow's money is claimable at once (and has the timeout exit too).
+    function test_batcher_spentAloneEscrow_fixed_refundOnly() public {
+        _seedPool(30e18, 30_000e18);
         pool.shieldBound{value: 5e18}(address(0), 5e18, bytes32(uint256(0x5555)), hex"00");
         CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0x5556)), address(launch), true, 5e18, owner, fallbackTo);
         CloakGloamBatcherBase.Spend memory s = _spend(k);
-        address escrow = batcher.escrowFor(k);
-        // the attacker copies the proof out of the pending place() and sends the spend alone
         vm.prank(attacker);
-        pool.unshield(s.proof, s.root, s.nullifier, address(0), escrow, s.amount);
-        // and the token dips ~9% (a big seller; for a fresh launch, routine)
+        pool.unshield(s.proof, s.root, s.nullifier, address(0), batcher.escrowFor(k), s.amount);
         launch.mint(attacker, 6_000e18);
         _marketSwap(attacker, false, 6_000e18);
-        (uint256 rH, ) = _reserves();
-        assertLt(rH * 400 / 10_000, 4.975e18, "the side cap is now under the order");
-        // place() can never land it, in this round or any later one
-        for (uint256 i = 0; i < 3; i++) {
-            _startOfNextRound();
-            vm.expectRevert(CloakGloamBatcherBase.RoundFull.selector);
-            batcher.place(s, k);
-        }
-        vm.warp(block.timestamp + 365 days);
-        vm.expectRevert(CloakGloamBatcherBase.RoundFull.selector);
-        batcher.place(s, k);
-        // and nothing else in the batcher can reach it
-        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
-        batcher.exitAfterTimeout(k);
-        assertEq(escrow.balance, 4.975e18, "the order's HYPE sits at its escrow with no exit");
-        assertEq(escrow.code.length, 0, "never opened");
+        bytes32 id = batcher.place(s, k);
+        (address asset, uint256 amount) = batcher.owed(id);
+        assertEq(asset, address(0));
+        assertEq(amount, 4.975e18, "owed its input back");
+        assertEq(_claim(k, ownerPk, 0x5557), 4.975e18, "claimed into the vault as a note");
     }
 
     // ── C-04: a seller's payout over the vault's per-deposit cap can't be claimed; it waits 30 days ──────────────────
 
-    /// The partner deploy lists HYPE at 10 per deposit. A claim must be one note of exactly what is owed, so a sell
-    /// order worth more than 10 HYPE can't come back privately: it waits EXIT_DELAY (30 days) and then goes to the
-    /// fallback address in the clear. (Pool of 1,000 HYPE, so a 20 HYPE order is well inside the 4% side cap.)
-    function test_batcher_sellPayoutOverHypePerDeposit_lockedThirtyDaysThenPublic() public {
-        pool.setDepositLimit(address(0), 10e18, 100_000e18); // as deploy-partner.mjs
-        _seedPool(900e18, 900_000e18); // 1,000 HYPE / 1,000,000 LNCH
+    /// C-04, fixed: a payout over the vault's per-deposit cap comes back as several notes (claimMany).
+    function test_batcher_sellPayoutOverHypePerDeposit_fixed_claimMany() public {
+        pool.setDepositLimit(address(0), 10e18, 100_000e18);
+        _seedPool(900e18, 900_000e18);
         _startOfNextRound();
         (CloakGloamBatcherBase.OrderKey memory s1, bytes32 id) = _honest(false, 20_000e18);
         uint64 round = batcher.currentRound();
         vm.warp(batcher.settleOpens(address(launch), round));
         batcher.settle(address(launch), round);
         (address asset, uint256 amount) = batcher.owed(id);
-        assertEq(asset, address(0));
-        assertGt(amount, 10e18, "the seller is owed more than one deposit's worth of HYPE");
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.claimDigest(id, bytes32(uint256(0xC1))));
-        vm.expectRevert(ShieldPoolCore.OverDepositLimit.selector);
-        batcher.claim(s1, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(0xC1)), asset, amount), abi.encodePacked(r, s, v));
-        vm.warp(block.timestamp + 30 days - 1);
-        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
-        batcher.exitAfterTimeout(s1);
-        vm.warp(block.timestamp + 1);
-        batcher.exitAfterTimeout(s1);
-        assertEq(fallbackTo.balance, amount, "paid out in the clear, 30 days later");
+        assertGt(amount, 10e18);
+        CloakGloamBatcherBase.Deposit[] memory ds = new CloakGloamBatcherBase.Deposit[](2);
+        ds[0] = CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(0xC1)), asset, 10e18);
+        ds[1] = CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(0xC2)), asset, amount - 10e18);
+        bytes32[] memory cs = new bytes32[](2);
+        cs[0] = ds[0].commitment;
+        cs[1] = ds[1].commitment;
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.claimManyDigest(id, cs));
+        batcher.claimMany(s1, ds, abi.encodePacked(r, s, v));
+        assertTrue(pool.commitmentSeen(bytes32(uint256(0xC1))) && pool.commitmentSeen(bytes32(uint256(0xC2))), "two notes");
     }
 
-    /// The same lock, caused on purpose: a whale fills the vault's HYPE total cap with its own notes (refundable, 0.5%
-    /// to leave), and every HYPE payout of every settled round (and every cancelled buy's refund) can't be claimed
-    /// until there is room again; the only other way out is the 30-day timeout, in the clear.
-    function test_batcher_vaultTotalCapFilledBlocksEveryHypeClaim() public {
-        pool.setDepositLimit(address(0), 1000e18, 1_000e18); // as deploy-partner.mjs: 1,000 HYPE in total
+    /// C-05, fixed: the vault's total cap is full, so no claim fits; the owner key can take the payout out in the clear.
+    function test_batcher_vaultTotalCapFilled_fixed_signedExit() public {
+        pool.setDepositLimit(address(0), 1000e18, 1_000e18);
         _startOfNextRound();
         (CloakGloamBatcherBase.OrderKey memory s1, bytes32 id) = _honest(false, 1000e18);
         uint64 round = batcher.currentRound();
         vm.warp(batcher.settleOpens(address(launch), round));
         batcher.settle(address(launch), round);
-        // the whale tops the HYPE side up to the cap
         uint256 room = 1_000e18 - pool.deposited(address(0));
         vm.deal(attacker, room);
         vm.prank(attacker);
         pool.shieldBound{value: room}(address(0), room, bytes32(uint256(0x3A1E)), hex"00");
-        (address asset, uint256 amount) = batcher.owed(id);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.claimDigest(id, bytes32(uint256(0xC2))));
-        vm.expectRevert(ShieldPoolCore.OverDepositLimit.selector);
-        batcher.claim(s1, CloakGloamBatcherBase.Deposit(hex"00", bytes32(uint256(0xC2)), asset, amount), abi.encodePacked(r, s, v));
+        (, uint256 amount) = batcher.owed(id);
+        address to = address(0xBEEF01);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, batcher.exitDigest(id, to));
+        vm.prank(attacker); // anyone may send it
+        batcher.exit(s1, to, abi.encodePacked(r, s, v));
+        assertEq(to.balance, amount, "paid out at once, to where the owner signed");
+        vm.expectRevert(CloakGloamBatcherBase.NotYet.selector);
+        batcher.exit(s1, to, abi.encodePacked(r, s, v)); // once
     }
 
     // ── C-05: orders paid from outside the vault, with any spent nullifier and any amount ─────────────────────────────
 
-    /// place() skips the unshield when the nullifier is already spent, without checking it was spent to this escrow.
-    /// So anyone can reuse any public spent nullifier, fund the escrow directly with any amount (not a standard size),
-    /// and get an order. No vault fee, no note: cheap to pad a round's crowd or to be the first order (C-01).
-    function test_batcher_outsideOrder_anySpentNullifierAnyAmount() public {
+    /// C-07, fixed: outside orders of any amount are refused.
+    function test_batcher_outsideOrder_fixed() public {
         _startOfNextRound();
-        (, bytes32 id1) = _outsideOrder(address(launch), true, 123_456_789, 1);
-        (, bytes32 id2) = _outsideOrder(address(launch), true, 3.3e18, 2);
-        (, , , , uint128 net1) = batcher.orders(id1);
-        (, , , , uint128 net2) = batcher.orders(id2);
-        assertEq(net1, 123_456_789, "a non-standard size");
-        assertEq(net2, 3.3e18, "a non-standard size, no vault fee taken");
-        // 20 more 1-wei orders pad the round for almost nothing
-        for (uint256 i = 0; i < 20; i++) _outsideOrder(address(launch), true, 1, 100 + i);
+        vm.expectRevert(CloakGloamBatcherBase.NotStandard.selector);
+        this.outsideOrder(address(launch), true, 123_456_789, 1);
+        vm.expectRevert(CloakGloamBatcherBase.NotStandard.selector);
+        this.outsideOrder(address(launch), true, 3.3e18, 2);
     }
 
-    /// Graduation has the same shape: its per-round crowd count (roundEntries, which the app waits on) can be padded.
-    function test_graduation_outsideEntriesPadTheCrowd() public {
-        // a minimal launch vault stand-in is the ShieldPoolPayments `pool`, and Gloam's vault another one
+    /// C-07 in Graduation, fixed: an entry paid from outside the vault is refused, so the crowd can't be padded.
+    function test_graduation_outsideEntries_fixed() public {
         ShieldPoolPayments gv = new ShieldPoolPayments(_poseidon(), address(new ToBindingVerifier()));
         CloakGraduation grad = new CloakGraduation(address(pool), address(gv), 1 hours);
         launch.mint(attacker, 1000);
-        for (uint256 i = 0; i < 10; i++) {
-            CloakGraduation.EntryKey memory k = CloakGraduation.EntryKey(SPENT, address(launch), 1, vm.addr(0x1000 + i), attacker);
-            vm.startPrank(attacker);
-            launch.transfer(grad.escrowFor(k), 1);
-            grad.enter(CloakGraduation.Spend(hex"", bytes32(0), SPENT, 1), k);
-            vm.stopPrank();
-        }
-        assertEq(grad.roundEntries(address(launch), grad.currentRound()), 10, "ten 'entries' for 10 wei of tokens");
+        CloakGraduation.EntryKey memory k = CloakGraduation.EntryKey(SPENT, address(launch), 1, vm.addr(0x1000), attacker);
+        vm.startPrank(attacker);
+        launch.transfer(grad.escrowFor(k), 1);
+        vm.expectRevert(CloakGraduation.NotStandard.selector);
+        grad.enter(CloakGraduation.Spend(hex"", bytes32(0), SPENT, 1), k);
+        vm.stopPrank();
     }
 
     // ── C-06: the 4% side cap can be squatted by self-crossing orders ────────────────────────────────────────────────
 
-    /// The attacker fills both sides to the cap with orders paid from outside the vault. They cross each other at the
-    /// average with no net trade (so no pool fee), the attacker gets its value back, and honest orders hit RoundFull.
-    function test_batcher_sideCapSquat_selfCrossingOrdersBlockHonestOrders() public {
+    /// C-08: squatting both sides now needs real notes (outside orders are refused), each paying the vault's fee.
+    function test_batcher_sideCapSquat_needsRealNotes() public {
         launch.mint(attacker, 4_000e18);
         _startOfNextRound();
-        uint64 round = batcher.currentRound();
-        (CloakGloamBatcherBase.OrderKey memory kb, ) = _outsideOrder(address(launch), true, 4e18, 1); // 4% of 100 HYPE
-        (CloakGloamBatcherBase.OrderKey memory ks, ) = _outsideOrder(address(launch), false, 4_000e18, 2); // 4% of 100k
-        pool.shieldBound{value: 1e18}(address(0), 1e18, bytes32(uint256(0x77)), hex"00");
-        CloakGloamBatcherBase.OrderKey memory hk = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0x78)), address(launch), true, 1e18, owner, fallbackTo);
-        CloakGloamBatcherBase.Spend memory hks = _spend(hk);
-        vm.expectRevert(CloakGloamBatcherBase.RoundFull.selector);
-        batcher.place(hks, hk);
-        pool.shieldBound(address(launch), 1000e18, bytes32(uint256(0x79)), hex"00");
-        CloakGloamBatcherBase.OrderKey memory hs = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0x7A)), address(launch), false, 1000e18, owner, fallbackTo);
-        CloakGloamBatcherBase.Spend memory hss = _spend(hs);
-        vm.expectRevert(CloakGloamBatcherBase.RoundFull.selector);
-        batcher.place(hss, hs);
-        // the squatter's round settles with (almost) nothing traded against the pool
-        (uint256 rH0, ) = _reserves();
-        vm.warp(batcher.settleOpens(address(launch), round));
-        batcher.settle(address(launch), round);
-        (uint256 rH1, ) = _reserves();
-        assertLt(rH1 > rH0 ? rH1 - rH0 : rH0 - rH1, 1e15, "no net trade");
-        (, uint256 tokensBack) = batcher.owed(batcher.idOf(kb));
-        (, uint256 hypeBack) = batcher.owed(batcher.idOf(ks));
-        assertApproxEqRel(tokensBack, 4_000e18, 1e14, "the squatter gets its value back");
-        assertApproxEqRel(hypeBack, 4e18, 1e14, "both sides");
+        vm.expectRevert(CloakGloamBatcherBase.NotStandard.selector);
+        this.outsideOrder(address(launch), true, 4e18, 1);
     }
 
     // ── held: a hostile token's round can't reach HYPE owed to other rounds ──────────────────────────────────────────
 
-    function test_batcher_hostileTokenRoundCantTouchOtherRoundsHype() public {
-        // an honest LNCH round owes its buyer 0.995 HYPE (it will be cancelled and refunded)
+    /// held (and now also refused at the door): a lying token's order paid from outside the vault is refused; an
+    /// honest round elsewhere pays in full.
+    function test_batcher_hostileTokenOutsideOrderRefused() public {
         _startOfNextRound();
-        (CloakGloamBatcherBase.OrderKey memory honest, bytes32 hid) = _honest(true, 1e18);
+        (CloakGloamBatcherBase.OrderKey memory honest, ) = _honest(true, 1e18);
         uint64 hr = batcher.currentRound();
-        // the attacker lists a lying token against WHYPE (its own 10 HYPE pool) and sells it in the same batcher
         LyingToken lie = new LyingToken();
         V2Pair lp = factory.create(address(weth), address(lie));
         vm.startPrank(attacker);
@@ -421,24 +364,11 @@ contract BatcherStressTest is Test {
         lie.mint(address(lp), 10_000e18);
         lp.sync();
         lie.mint(attacker, 400e18);
-        CloakGloamBatcherBase.OrderKey memory ks = CloakGloamBatcherBase.OrderKey(SPENT, address(lie), false, 1, vm.addr(0x7777), attacker);
-        vm.startPrank(attacker);
-        lie.transfer(batcher.escrowFor(ks), 400e18);
-        batcher.place(CloakGloamBatcherBase.Spend(hex"", bytes32(0), SPENT, address(lie), 1), ks);
-        vm.stopPrank();
-        uint64 lr = batcher.currentRound();
-        lie.lieTo(address(lp)); // from now on the pair is fooled
-        vm.warp(batcher.settleOpens(address(lie), lr));
-        batcher.settle(address(lie), lr);
-        (, uint256 owedLiar) = batcher.owed(batcher.idOf(ks));
-        console2.log("liar's round owes its sellers (wei HYPE):", owedLiar);
-        assertLe(owedLiar, 10e18, "at most its own pool's HYPE");
-        // the honest round is cancelled after its window and pays in full
-        vm.warp(batcher.settleOpens(address(launch), hr) + REFUND_AFTER);
-        batcher.cancel(address(launch), hr);
-        (, uint256 owedHonest) = batcher.owed(hid);
-        assertGe(address(batcher).balance, owedHonest + owedLiar, "the batcher still holds what it owes");
-        assertEq(_claim(honest, ownerPk, 0x4242), 0.995e18);
+        vm.expectRevert(CloakGloamBatcherBase.NotStandard.selector);
+        this.outsideOrder(address(lie), false, 400e18, 9);
+        vm.warp(batcher.settleOpens(address(launch), hr));
+        batcher.settle(address(launch), hr);
+        assertGt(_claim(honest, ownerPk, 0x4242), 0);
     }
 
     // ── held: claim / cancel / settle exclusivity and double pay ─────────────────────────────────────────────────────
@@ -470,34 +400,21 @@ contract BatcherStressTest is Test {
         _honest(true, 1e18); // lands in the current round, unaffected
     }
 
-    /// info: the constructor takes refundAfter = 0, and then no round can ever settle (always TooLate): a deploy typo
-    /// turns the batcher into a refund machine that still takes the vault's 0.5% on the way in.
-    function test_batcher_zeroRefundWindowNeverSettles() public {
-        CloakGloamBatcher b0 = new CloakGloamBatcher(address(pool), address(factory), address(weth), ROUND, 200, 0);
-        batcher = b0;
-        _startOfNextRound();
-        _honest(true, 1e18);
-        uint64 round = b0.currentRound();
-        vm.warp(b0.settleOpens(address(launch), round));
-        vm.expectRevert(CloakGloamBatcherBase.TooLate.selector);
-        b0.settle(address(launch), round);
-        b0.cancel(address(launch), round);
+    /// C-13, fixed: a refund window shorter than a round is refused at deploy.
+    function test_batcher_zeroRefundWindow_refused() public {
+        vm.expectRevert(bytes("params"));
+        new CloakGloamBatcher(address(pool), address(factory), address(weth), ROUND, 200, 0);
     }
 
     // ── info: the fallback isn't checked; a zero fallback burns a timed-out HYPE payout ──────────────────────────────
 
-    function test_batcher_zeroFallbackBurnsTimedOutHype() public {
+    /// C-12, fixed: an order with a zero fallback is refused.
+    function test_batcher_zeroFallback_refused() public {
         _startOfNextRound();
-        CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0x9A)), address(launch), false, 1, owner, address(0));
-        // a sell order with fallback 0 (Graduation refuses fallback 0; the batcher doesn't)
-        pool.shieldBound(address(launch), 1, bytes32(uint256(0x9B)), hex"00");
-        batcher.place(_spend(k), k);
-        uint64 round = batcher.currentRound();
-        vm.warp(batcher.settleOpens(address(launch), round) + REFUND_AFTER);
-        batcher.cancel(address(launch), round);
-        vm.warp(block.timestamp + 30 days);
-        // a token payout to address(0): TestToken allows it, so the token is burned
-        batcher.exitAfterTimeout(k);
-        assertEq(launch.balanceOf(address(0)), 1, "sent to the zero address");
+        CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0x9A)), address(launch), false, 1e18, owner, address(0));
+        pool.shieldBound(address(launch), 1e18, bytes32(uint256(0x9B)), hex"00");
+        CloakGloamBatcherBase.Spend memory sp = _spend(k);
+        vm.expectRevert(CloakGloamBatcherBase.BadKey.selector);
+        batcher.place(sp, k);
     }
 }

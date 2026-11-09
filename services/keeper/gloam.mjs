@@ -60,6 +60,10 @@ const EXIT_SELECTORS = new Set(
     "claim((bytes32,address,bool,uint128,address,address),(bytes,bytes32,address,uint256),bytes)",
     "exitAfterTimeout((bytes32,address,bool,uint128,address,address))",
     "cancel(address,uint64)",
+    "claimMany((bytes32,address,bool,uint128,address,address),(bytes,bytes32,address,uint256)[],bytes)",
+    "exit((bytes32,address,bool,uint128,address,address),address,bytes)",
+    // CloakGloamReceive: an owner-signed sweep of what no vault takes
+    "sweep(address,uint256,address,uint256,bytes,bytes)",
     // CloakGloamBids
     "finish((bytes32,uint256,address,address,address,uint256),(bytes,bytes32,address,uint256)[],bytes)",
     "exit((bytes32,uint256,address,address,address,uint256),address,address[],bytes)",

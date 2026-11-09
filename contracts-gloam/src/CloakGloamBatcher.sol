@@ -93,6 +93,12 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         bool cancelled;
         uint256 cumStart; // the market's price accumulator when the round's first order landed
         uint64 tStart; // and when
+        uint256 refStart; // a time-weighted price from before the round's first order, tokens per HYPE (C-01)
+    }
+
+    struct Checkpoint {
+        uint256 cum;
+        uint64 t;
     }
 
     IGloamVault public immutable vault;
@@ -104,11 +110,26 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     ///         MAX_IMPACT_BPS and the round settles: one huge order can't make every order in it wait for a refund
     ///         (review CL-06, as Cloak v1's batchers). An order that doesn't fit goes in a later round.
     uint256 public constant MAX_SIDE_BPS = 400;
+    /// @notice When a round settles the pool must be this close to the round's average (0.5%), so a push inside the
+    ///         band in the settling transaction can't pay for its own round trip (review C-02).
+    uint256 public constant SETTLE_BAND_BPS = 50;
+    /// @notice The smallest order, and the most a vault can keep from it (Gloam's 1% fee ceiling): what lands in an
+    ///         order must be a real note of its size, so orders can't be paid in from outside the vault (review C-07).
+    uint256 public constant MIN_SIZE = 1e12;
+    uint256 public constant MAX_VAULT_FEE_BPS = 100;
     uint256 public constant EXIT_DELAY = 30 days;
     address internal constant NATIVE = address(0);
     bytes32 private constant CLAIM_DOMAIN = keccak256("cloak.gloam.batch.claim.v1");
+    bytes32 private constant CLAIM_MANY_DOMAIN = keccak256("cloak.gloam.batch.claimMany.v1");
+    bytes32 private constant EXIT_DOMAIN = keccak256("cloak.gloam.batch.exit.v1");
 
     mapping(bytes32 => Order) public orders; // by keccak256(abi.encode(OrderKey))
+    /// @notice Orders whose spend was sent alone and no longer fit a round: owed their input back (review C-03).
+    mapping(bytes32 => uint64) public refundOnlySince;
+    /// @notice Per token, two price checkpoints at least a round apart: the reference a round's prices are checked
+    ///         against comes from them, never from one block (review C-01). Anyone may add one (checkpoint()).
+    mapping(address => Checkpoint) public cpOld;
+    mapping(address => Checkpoint) public cpNew;
     mapping(address => mapping(uint64 => Batch)) public batches;
 
     uint256 private _entered;
@@ -142,7 +163,8 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     }
 
     constructor(address vault_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_) {
-        require(maxSlippageBps_ <= 200 && roundSecs_ > 0, "params");
+        // a round needs time to settle once its average covers a round (review C-13)
+        require(maxSlippageBps_ <= 200 && roundSecs_ > 0 && refundAfter_ >= roundSecs_, "params");
         vault = IGloamVault(vault_);
         roundSecs = roundSecs_;
         maxSlippageBps = maxSlippageBps_;
@@ -213,27 +235,42 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     /// @notice Place an order: the note (a standard size of HYPE to buy, or of the token to sell) into this round.
     function place(Spend calldata s, OrderKey calldata k) external nonReentrant returns (bytes32 id) {
         address asset = k.buy ? NATIVE : k.token;
-        if (s.nullifier != k.nullifier || s.asset != asset || s.amount != k.size || k.ownerKey == address(0)) revert BadKey();
-        if (!isStandard(k.size)) revert NotStandard();
+        if (s.nullifier != k.nullifier || s.asset != asset || s.amount != k.size || k.ownerKey == address(0) || k.fallbackTo == address(0)) revert BadKey();
+        if (!isStandard(k.size) || k.size < MIN_SIZE) revert NotStandard();
         if (!_hasMarket(k.token)) revert NoPair();
         id = idOf(k);
-        if (orders[id].round != 0) revert Used();
+        if (orders[id].net != 0) revert Used();
         address escrow = escrowFor(k);
-        if (!vault.isSpent(s.nullifier)) vault.unshield(s.proof, s.root, s.nullifier, asset, escrow, s.amount);
+        bool sentAlone = vault.isSpent(s.nullifier);
+        if (!sentAlone) vault.unshield(s.proof, s.root, s.nullifier, asset, escrow, s.amount);
         uint256 net = _openEscrow(id, asset);
+        // what landed is a note of this size less at most the vault's fee ceiling: not an amount paid in from outside
+        if (net > k.size || net * 10_000 < uint256(k.size) * (10_000 - MAX_VAULT_FEE_BPS)) revert NotStandard();
+        _checkpoint(k.token);
         uint64 round = currentRound();
         Batch storage b = batches[k.token][round];
+        {
+            // each side holds at most MAX_SIDE_BPS of the pool, so the round always settles
+            (uint256 rH, uint256 rT) = _reserves(k.token);
+            bool fits = k.buy ? (uint256(b.buyHype) + net) * 10_000 <= rH * MAX_SIDE_BPS : (uint256(b.sellTokens) + net) * 10_000 <= rT * MAX_SIDE_BPS;
+            if (!fits) {
+                if (!sentAlone) revert RoundFull(); // reverts whole: the note stays in the vault
+                // the spend was sent alone (its proof is public) and the order no longer fits: it joins no round and is
+                // owed its input back, so the escrow's money is never stuck (review C-03)
+                orders[id] = Order(k.token, 0, k.buy, false, uint128(net));
+                refundOnlySince[id] = uint64(block.timestamp);
+                emit OrderPlaced(id, k.token, 0, k.buy, k.size, net);
+                return id;
+            }
+        }
         if (b.buyHype == 0 && b.sellTokens == 0) {
             b.spotStart = _spot(k.token);
+            b.refStart = referencePrice(k.token);
             b.cumStart = _cumulative(k.token);
             b.tStart = uint64(block.timestamp);
         }
         if (k.buy) b.buyHype += uint128(net);
         else b.sellTokens += uint128(net);
-        {
-            (uint256 rH, uint256 rT) = _reserves(k.token);
-            if (k.buy ? uint256(b.buyHype) * 10_000 > rH * MAX_SIDE_BPS : uint256(b.sellTokens) * 10_000 > rT * MAX_SIDE_BPS) revert RoundFull();
-        }
         orders[id] = Order(k.token, round, k.buy, false, uint128(net));
         emit OrderPlaced(id, k.token, round, k.buy, k.size, net);
     }
@@ -264,19 +301,14 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         }
         if (avgHypePerToken == 0) revert Slipped();
         uint256 spot = (1e36) / avgHypePerToken; // the crossing price, tokens per HYPE (1e18 fixed point)
-        uint256 now_ = _spot(token);
-        uint256 lo = now_ < spot ? now_ : spot;
-        uint256 hi = now_ < spot ? spot : now_;
-        if ((hi - lo) * 10_000 > spot * maxSlippageBps) revert Slipped();
-        // and the average must be within maxSlippageBps of the spot when the round opened, so a moved price held
-        // through the round can't shift what the other side gets past that (as Cloak v1's batchers, KupiaSec, Nov 6).
-        // Outside it the round is refunded, never crossed at the band's edge: the opening spot can be pinned in one
-        // transaction, and refusing (rather than clamping) leaves a pinned spot nothing to pull on.
-        {
-            uint256 o = b.spotStart;
-            uint256 d = spot > o ? spot - o : o - spot;
-            if (d * 10_000 > o * maxSlippageBps) revert Slipped();
-        }
+        // the pool must sit close to that average as the net trades: a push in the settling transaction can't move what
+        // the net gets by more than SETTLE_BAND_BPS (review C-02)
+        if (_off(_spot(token), spot) > SETTLE_BAND_BPS) revert Slipped();
+        // and the average must be within maxSlippageBps of where the round opened: the spot when its first order landed,
+        // or a time-weighted price from before it (KupiaSec, Nov 6). One transaction can pin the spot but not the
+        // time-weighted price (review C-01), and a move held through the round is away from both: then the round is
+        // refunded, never crossed at a band's edge.
+        if (_off(spot, b.spotStart) > maxSlippageBps && _off(spot, b.refStart) > maxSlippageBps) revert Slipped();
         uint256 sellsInHype = (uint256(b.sellTokens) * 1e18) / spot;
         int256 netHype;
         if (b.buyHype >= sellsInHype) {
@@ -319,8 +351,9 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     /// @notice What an order is owed now (0 before its round settles or is cancelled), and in which asset.
     function owed(bytes32 id) public view returns (address asset, uint256 amount) {
         Order storage o = orders[id];
+        if (o.paid || o.net == 0) return (address(0), 0);
+        if (o.round == 0) return refundOnlySince[id] != 0 ? (o.buy ? NATIVE : o.token, uint256(o.net)) : (address(0), 0);
         Batch storage b = batches[o.token][o.round];
-        if (o.paid || o.round == 0) return (address(0), 0);
         if (b.cancelled) return (o.buy ? NATIVE : o.token, o.net);
         if (!b.settled) return (address(0), 0);
         if (o.buy) return (o.token, (uint256(b.tokensForBuyers) * o.net) / b.buyHype);
@@ -349,12 +382,69 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         emit OrderPaid(id, asset, amount, true);
     }
 
+    function claimManyDigest(bytes32 id, bytes32[] memory commitments) public view returns (bytes32) {
+        return keccak256(abi.encode(CLAIM_MANY_DOMAIN, block.chainid, address(this), id, keccak256(abi.encode(commitments))));
+    }
+
+    /**
+     * @notice Pay an order into the vault as several notes that add up to exactly what it is owed, as its owner key
+     *         signed: for a payout bigger than the vault's per-deposit cap (review C-04).
+     */
+    function claimMany(OrderKey calldata k, Deposit[] calldata ds, bytes calldata signature) external nonReentrant {
+        bytes32 id = idOf(k);
+        bytes32[] memory cs = new bytes32[](ds.length);
+        for (uint256 i; i < ds.length; ++i) cs[i] = ds[i].commitment;
+        if (ds.length == 0 || _recover(claimManyDigest(id, cs), signature) != k.ownerKey) revert BadSignature();
+        (address asset, uint256 amount) = owed(id);
+        if (amount == 0) revert NotYet();
+        uint256 sum;
+        for (uint256 i; i < ds.length; ++i) {
+            if (ds[i].asset != asset) revert WrongAmount(amount);
+            sum += ds[i].amount;
+        }
+        if (sum != amount) revert WrongAmount(amount);
+        orders[id].paid = true;
+        for (uint256 i; i < ds.length; ++i) {
+            if (asset == NATIVE) {
+                vault.shieldBound{value: ds[i].amount}(NATIVE, ds[i].amount, ds[i].commitment, ds[i].proof);
+            } else {
+                IERC20B(asset).approve(address(vault), ds[i].amount);
+                vault.shieldBound(asset, ds[i].amount, ds[i].commitment, ds[i].proof);
+            }
+        }
+        if (asset != NATIVE) IERC20B(asset).approve(address(vault), 0);
+        emit OrderPaid(id, asset, amount, true);
+    }
+
+    function exitDigest(bytes32 id, address to) public view returns (bytes32) {
+        return keccak256(abi.encode(EXIT_DOMAIN, block.chainid, address(this), id, to));
+    }
+
+    /**
+     * @notice Pay what an order is owed in the clear to `to`, as its owner key signed: for when the vault won't take it
+     *         back (its cap is full, review C-05). Public, so the app uses it only when a claim can't go through.
+     */
+    function exit(OrderKey calldata k, address to, bytes calldata signature) external nonReentrant {
+        bytes32 id = idOf(k);
+        if (to == address(0) || to == address(vault) || _recover(exitDigest(id, to), signature) != k.ownerKey) revert BadSignature();
+        (address asset, uint256 amount) = owed(id);
+        if (amount == 0) revert NotYet();
+        orders[id].paid = true;
+        if (asset == NATIVE) {
+            (bool ok, ) = to.call{value: amount}("");
+            require(ok, "send");
+        } else {
+            require(IERC20B(asset).transfer(to, amount), "send");
+        }
+        emit OrderPaid(id, asset, amount, false);
+    }
+
     /// @notice EXIT_DELAY after its round settled or was cancelled, anyone can push an unclaimed payout to the fallback.
     function exitAfterTimeout(OrderKey calldata k) external nonReentrant {
         bytes32 id = idOf(k);
         Order storage o = orders[id];
-        Batch storage b = batches[o.token][o.round];
-        if (b.settledAt == 0 || block.timestamp < b.settledAt + EXIT_DELAY) revert NotYet();
+        uint256 since = o.round == 0 ? refundOnlySince[id] : batches[o.token][o.round].settledAt;
+        if (since == 0 || block.timestamp < since + EXIT_DELAY) revert NotYet();
         (address asset, uint256 amount) = owed(id);
         if (amount == 0) revert Done();
         o.paid = true;
@@ -383,10 +473,49 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         if (arrived == 0) revert Used();
     }
 
-    /// @dev Tokens per HYPE, 1e18 fixed point, from the V2 pair's reserves.
+    /// @dev Tokens per HYPE, 1e18 fixed point, from the market's reserves.
     function _spot(address token) private view returns (uint256) {
         (uint256 rH, uint256 rT) = _reserves(token);
         return (rT * 1e18) / rH;
+    }
+
+    /// @dev How far `a` is from `ref`, in basis points of `ref`.
+    function _off(uint256 a, uint256 ref) private pure returns (uint256) {
+        if (ref == 0) return type(uint256).max;
+        return ((a > ref ? a - ref : ref - a) * 10_000) / ref;
+    }
+
+    /**
+     * @notice A time-weighted price for `token` (tokens per HYPE, 1e18 fixed point) from its newest checkpoint that is at
+     *         least a round old (or the one before it), so no single transaction can set it. Before the token has any
+     *         history it is the spot.
+     */
+    function referencePrice(address token) public view returns (uint256) {
+        Checkpoint memory n = cpNew[token];
+        Checkpoint memory base = (n.t != 0 && block.timestamp >= uint256(n.t) + roundSecs) ? n : cpOld[token];
+        if (base.t == 0 || block.timestamp <= base.t) return _spot(token);
+        uint256 avg;
+        unchecked {
+            avg = _averagePrice(_cumulative(token) - base.cum, block.timestamp - base.t);
+        }
+        return avg == 0 ? _spot(token) : 1e36 / avg;
+    }
+
+    /// @notice Record a price checkpoint for `token` (anyone; the keeper does it for quiet tokens). At most one a round.
+    function checkpoint(address token) external {
+        if (!_hasMarket(token)) revert NoPair();
+        _checkpoint(token);
+    }
+
+    function _checkpoint(address token) internal {
+        Checkpoint storage n = cpNew[token];
+        if (n.t == 0) {
+            n.cum = _cumulative(token);
+            n.t = uint64(block.timestamp);
+        } else if (block.timestamp >= uint256(n.t) + roundSecs) {
+            cpOld[token] = n;
+            cpNew[token] = Checkpoint(_cumulative(token), uint64(block.timestamp));
+        }
     }
 
     function _recover(bytes32 digest, bytes calldata sig) private pure returns (address) {
