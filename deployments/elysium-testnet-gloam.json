@@ -1,6 +1,6 @@
 {
   "chainId": 99801,
-  "note": "Cloak v2 on Gloam, testnet, production-shaped: Cloak's instance of Gloam's guarded vault (USDC only, as Gloam's Elysium vault will be) and Cloak's launch vault on Cloak's live v4 launch factory under Gloam's VaultOwnerGuard. The deploy wallet stands in for Cloak's multisig.",
+  "note": "Cloak v2 on Gloam, testnet, production-shaped: Cloak's instance of Gloam's guarded vault (USDC only, as Gloam's Elysium vault will be), and Cloak's launch vault on Cloak v2's own v4 launch factory (apart from Cloak v1's), under Gloam's VaultOwnerGuard. The deploy wallet stands in for Cloak's multisig.",
   "block": 26230337,
   "gloamVault": "0x8D15BA46071D5AB2e59d746c22d51C906281cB44",
   "gloamGuard": "0xD9f827BF69b769e0bF39c9Bc96101DcdEA098171",
@@ -8,37 +8,73 @@
   "poseidon": "0xa404af78405ab37e37958ee4c96870182625440a",
   "verifier": "0xe65Ad45F408b74Dc2eEb6562C54721fE60DCA7F2",
   "shieldVerifier": "0xFacd1e048F7B6D1CdD9A7Bcca93b806Ed0C6F67d",
-  "launchVault": "0x8e38155ae9e753874415482e1ab1c169bbc7d1a2",
-  "launchVaultGuard": "0x8362860ea98c1b95dda1d28077909779b457dcc2",
-  "launchFactory": "0x1b0072684e98d9e23018e2d107ed8166ef84c077",
-  "launchSwapV4": "0xd540527d3eef9b4de63f741159036d5e35204541",
-  "receive": "0x8ef40f47cf991acd7ee7f4c77c505c909b9367a8",
-  "bids": "0xe07d0f72c07f2f18e8d4089a857361b282128c5d",
-  "graduation": "0x8bb5a381f31e2114838cc3dcd876a2ae0775f98d",
-  "fundsGate": "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c",
-  "receiptCheck": "0x2236b68e231cebd7dd04e23fe756efdae726e325",
-  "fundsVerifier": "0x80e79ff9f4a21f04259873192c8523329364334d",
-  "receiptVerifier": "0xa6161403c191955acbc3831d62ec0d262abf29c9",
+  "launchVault": "0x13050b9a0abece56f80d30da107c3f3fad33288f",
+  "launchVaultGuard": "0xa88f4ae7b0efb323ee3f1b0577988a474dcfece6",
+  "launchFactory": "0x59d2cd703747a47288518c7380efa95879295784",
+  "launchSwapV4": "0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce",
+  "receive": "0xa462e810b985029b28b5cee49866760a7f8767bb",
+  "bids": "0xb3f6f2142439f1b4f088ea24569cc73726dcea32",
+  "graduation": "0xfd0e96dec9c1edd885e86044790e50e48c1a6268",
+  "fundsGate": "0x79aafd041a283c334421a17c781b12e353093210",
+  "receiptCheck": "0xb0a8fcbd75f4d6d2ce5a0121e8607aa353990304",
+  "fundsVerifier": "0xc5606394e836e1edbdc99fbff7ee4af4982aa341",
+  "receiptVerifier": "0x027a95c9b70f104c1e8c372c4326fa750cc48605",
   "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
   "poolManager": "0x51027076df8416e42ea8438b27a0c433d9662e68",
-  "v4Hook": "0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80",
-  "admittedAtDeploy": 12,
+  "v4Hook": "0xC6296320cDFAB6074Fc650f1d788608b16fa2A80",
+  "admittedAtDeploy": 0,
   "costHype": "0.002736412810997472",
   "previousRun": "Nov 8 live run (stand-in launch): see measurements/live-elysium.json",
-  "batcherV4": "0x2681a81fdfbb447a297ac5fd5bba0a2ffc599f54",
-  "batcherV4Block": 26581546,
+  "batcherV4": "0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8",
+  "batcherV4Block": 26707908,
   "batcherV4Rounds": {
     "roundSecs": 60,
     "maxSlippageBps": 200,
     "refundAfter": 600
   },
-  "escrowsUpdatedAt": "Nov 9 (stress-test fixes)",
+  "escrowsUpdatedAt": "Nov 9: v2's own launch factory; launch vault and every escrow redeployed on it (deploy-v2-factory.mjs, deploy-partner.mjs)",
   "previous": {
     "nov8": {
       "batcherV4": "0x77a5e45c5044dc98a1f3ef50fc63beca3674ea1b",
       "bids": "0x0c3f42b10569a4550fe75785f86b2b019905f31b",
       "receive": "0x4a11f7948513fe7517ef7c6efee88c5681bb06c4",
       "graduation": "0x51756969b91f8b6a8c941250691b974c769c97fa"
+    },
+    "nov9-shared-factory": {
+      "launchVault": "0x8e38155ae9e753874415482e1ab1c169bbc7d1a2",
+      "launchVaultGuard": "0x8362860ea98c1b95dda1d28077909779b457dcc2",
+      "launchFactory": "0x1b0072684e98d9e23018e2d107ed8166ef84c077",
+      "launchSwapV4": "0xd540527d3eef9b4de63f741159036d5e35204541",
+      "batcherV4": "0x2681a81fdfbb447a297ac5fd5bba0a2ffc599f54",
+      "receive": "0x8ef40f47cf991acd7ee7f4c77c505c909b9367a8",
+      "bids": "0xe07d0f72c07f2f18e8d4089a857361b282128c5d",
+      "graduation": "0x8bb5a381f31e2114838cc3dcd876a2ae0775f98d",
+      "fundsGate": "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c",
+      "receiptCheck": "0x2236b68e231cebd7dd04e23fe756efdae726e325",
+      "fundsVerifier": "0x80e79ff9f4a21f04259873192c8523329364334d",
+      "receiptVerifier": "0xa6161403c191955acbc3831d62ec0d262abf29c9",
+      "v4Hook": "0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80",
+      "batcherV4Block": 26581546,
+      "note": "On Cloak v1's launch factory; replaced Nov 9 when v2 got its own factory"
     }
-  }
+  },
+  "launchFactoryBlock": 26707681,
+  "v2Config": "0xfedf1050af9e96dcfef9c098fcbc122d907f4f1e",
+  "launchVaultBlock": 26707908,
+  "guardController": {
+    "now": "0x49C71A0c1d6E394392009922658f294dC2a2bEf5",
+    "pending": null
+  },
+  "launches": [
+    {
+      "name": "Gloak Genesis",
+      "symbol": "GLOAK",
+      "auction": "0x3D91534032f295d14cb9B6E74dB6E7e0ac201c13",
+      "token": "0x39D7936fC00c5Ebd549C0007c5be9890a6741312",
+      "market": "0xDDa8274d236ecB1Da0c7f3Bc6A6c91AF81Fcb640",
+      "admitted": 1,
+      "registered": 1,
+      "costHype": "0.016441761191129995"
+    }
+  ]
 }

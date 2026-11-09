@@ -1,0 +1,31 @@
+{
+  "name": "elysium-testnet-gloam-v2factory",
+  "chainId": 99801,
+  "rpcUrl": "https://testnet-rpc.elysium.kinetiq.xyz",
+  "gloamVault": "0x8D15BA46071D5AB2e59d746c22d51C906281cB44",
+  "memoBoard": "0xf6816854b68CC4B67213289927d8e44050BA62D3",
+  "poseidon": "0xa404af78405ab37e37958ee4c96870182625440a",
+  "verifier": "0xe65Ad45F408b74Dc2eEb6562C54721fE60DCA7F2",
+  "shieldVerifier": "0xFacd1e048F7B6D1CdD9A7Bcca93b806Ed0C6F67d",
+  "factory": "0x59d2cd703747a47288518c7380efa95879295784",
+  "poolManager": "0x51027076df8416e42ea8438b27a0c433d9662e68",
+  "v4Hook": "0xC6296320cDFAB6074Fc650f1d788608b16fa2A80",
+  "whype": "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
+  "safe": "0x49C71A0c1d6E394392009922658f294dC2a2bEf5",
+  "pauser": "0x49C71A0c1d6E394392009922658f294dC2a2bEf5",
+  "feeRecipient": "0x49C71A0c1d6E394392009922658f294dC2a2bEf5",
+  "hype": {
+    "perDeposit": "10000000000000000000",
+    "total": "1000000000000000000000"
+  },
+  "launchCaps": {
+    "perDeposit": "1000000000000000000000000000",
+    "total": "100000000000000000000000000000"
+  },
+  "graduationRoundSecs": 3600,
+  "batch": {
+    "roundSecs": 60,
+    "maxSlippageBps": 200,
+    "refundAfter": 600
+  }
+}

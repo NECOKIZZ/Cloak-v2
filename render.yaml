@@ -30,9 +30,11 @@ services:
       # the keeper and relayer key: set in Render's dashboard, never in the repo
       - key: KEEPER_PK
         sync: false
-      # Cloak's launch registry (launches, reveals, settles, the site's snapshot)
-      - key: CONFIG
-        value: "0x9fdf166f0671166148ea98cdd3ef0118d256167f"
+      # Cloak v2's own launch factory (launches, reveals, settles) and the block it was made at
+      - key: FACTORY
+        value: "0x59d2cd703747a47288518c7380efa95879295784"
+      - key: START_BLOCK
+        value: "26707681"
       - key: CLAIM_DELAY
         value: "3600"
       - key: CORS_ORIGINS
@@ -46,17 +48,17 @@ services:
       - key: GLOAM_VAULT_BLOCK
         value: "26230337"
       - key: GLOAM_LAUNCH_VAULT
-        value: "0x8e38155ae9e753874415482e1ab1c169bbc7d1a2"
+        value: "0x13050b9a0abece56f80d30da107c3f3fad33288f"
       - key: GLOAM_LAUNCH_VAULT_BLOCK
-        value: "26230337"
+        value: "26707908"
       - key: GLOAM_MEMO
         value: "0xf6816854b68CC4B67213289927d8e44050BA62D3"
       # Cloak's escrows the relay sends for: launch swap v4, batcher v4, bids, receive, graduation, funds gate
       - key: GLOAM_ESCROWS
-        value: "0xd540527d3eef9b4de63f741159036d5e35204541,0x2681a81fdfbb447a297ac5fd5bba0a2ffc599f54,0xe07d0f72c07f2f18e8d4089a857361b282128c5d,0x8ef40f47cf991acd7ee7f4c77c505c909b9367a8,0x8bb5a381f31e2114838cc3dcd876a2ae0775f98d,0x1642422970782e5d1b0a94a64ee022e2c3b4a25c"
+        value: "0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce,0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8,0xb3f6f2142439f1b4f088ea24569cc73726dcea32,0xa462e810b985029b28b5cee49866760a7f8767bb,0xfd0e96dec9c1edd885e86044790e50e48c1a6268,0x79aafd041a283c334421a17c781b12e353093210"
       - key: GLOAM_BATCHER_V4
-        value: "0x2681a81fdfbb447a297ac5fd5bba0a2ffc599f54"
+        value: "0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8"
       - key: GLOAM_BATCHER_V4_BLOCK
-        value: "26581546"
+        value: "26707908"
       - key: GLOAM_FUNDS_GATE
-        value: "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c"
+        value: "0x79aafd041a283c334421a17c781b12e353093210"

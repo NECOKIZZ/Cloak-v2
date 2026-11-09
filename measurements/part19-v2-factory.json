@@ -1,0 +1,14 @@
+{
+  "factory": "0x4b6ab5f819a515382b0deb6935d793817bb4af28",
+  "launch": {
+    "auction": "0x39BCdBA88E60382F3d807AE5b3d426D8b47ca157",
+    "token": "0xd43F5E24C6b2edc1dFDE8548cDdaBeFFA6eCc822",
+    "phase": "settled",
+    "pair": "0x2214F5A528FE446752357d969F261C500dB9949A"
+  },
+  "buy": {
+    "hypeIn": "0.02",
+    "tokensOut": "17428.199673795440722462"
+  },
+  "seconds": 33
+}
