@@ -68,6 +68,10 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 
 ## Security and review follow-ups
 
+- [x] Overnight stress test (Nov 8 to 9): contracts, off-chain and website. The fixes are live on testnet. Report: `docs/STRESS-REPORT.md`.
+- [ ] **Bob:** the three decisions in `docs/STRESS-REPORT.md` (W-01 deposit cap, W-03 penalty floor, W-08 reveal window ceiling).
+- [ ] **Keeper hosting:** set `TRUSTED_PROXY_HOPS` (1 behind Render's proxy, 0 with nothing in front).
+
 - [ ] **Bob:** apply `docs/patches/v1-min-reveal-window.patch` to Cloak v1 (it applies cleanly to v1's `main`). It's needed in v1's mainnet contracts too.
 - [ ] **Bob:** apply `docs/patches/v1-batcher-band-and-deadline.patch` to Cloak v1 (the fix promised to Ghost: refuse instead of clamp, plus a settling deadline). It applies cleanly to v1's `main`.
 - [ ] **Bob:** the launch no-reveal penalty floor (10% today, 25% on drops), and a notional floor per price tick (CL-02) in the next factory.
