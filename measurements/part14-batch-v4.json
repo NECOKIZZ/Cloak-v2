@@ -1,26 +1,26 @@
 {
-  "admitted": 12,
-  "registered": 5,
-  "poolHype": "0.425770382549999994",
+  "admitted": 1,
+  "registered": 1,
+  "poolHype": "0.015759999999999998",
   "cappedBuy": {
     "asked": "0.3",
-    "in": "0.01703",
-    "orders": 5
+    "in": "0.00063",
+    "orders": 4
   },
   "settleBuy": [
     {
-      "round": "29903826",
+      "round": "29904133",
       "action": "settled"
     }
   ],
   "buy": {
-    "hypeIn": "0.006451",
-    "tokensOut": "182.355667288940262181"
+    "hypeIn": "0.000238",
+    "tokensOut": "40823.029309579270236935"
   },
   "sellRounds": 1,
   "sell": {
     "orders": 6,
-    "hypeOut": "0.016727220269990282"
+    "hypeOut": "0.000630541955707593"
   },
-  "seconds": 115
+  "seconds": 71
 }

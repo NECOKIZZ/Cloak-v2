@@ -2,8 +2,8 @@
   "venue": "Uniswap v4 (Cloak's PoolManager and CloakV4Hook, FRTN)",
   "router": "GloamVaultSwapV4c (Gloam, unchanged)",
   "timingsMs": {
-    "private swap HYPE -> FRTN (split, prove x4, swap, memo)": 4943,
-    "private swap FRTN -> HYPE": 2718
+    "private swap HYPE -> FRTN (split, prove x4, swap, memo)": 5262,
+    "private swap FRTN -> HYPE": 3400
   },
   "gas": {
     "deploy test USDC": {
@@ -19,28 +19,28 @@
       "median": 3533718
     },
     "relayed memo": {
-      "n": 9,
+      "n": 12,
       "median": 91600
     },
     "relayed transfer": {
       "n": 5,
-      "median": 1787636
+      "median": 1787624
     },
     "relayed escrow": {
       "n": 2,
-      "median": 1654004
+      "median": 1654132
     },
     "unshield alone (griefing)": {
       "n": 1,
-      "median": 341147
+      "median": 341123
     },
     "refund (anyone)": {
       "n": 1,
-      "median": 1180323
+      "median": 1180311
     },
     "unshield alone": {
       "n": 1,
-      "median": 341123
+      "median": 341147
     },
     "exit": {
       "n": 1,
@@ -48,5 +48,5 @@
     }
   },
   "proofs": 21,
-  "wallMs": 30460
+  "wallMs": 34505
 }

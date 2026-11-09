@@ -168,7 +168,11 @@ try {
   await page.getByRole("link", { name: "Trade" }).first().click();
   await page.getByLabel("Amount").waitFor({ timeout: 60_000 });
   await page.getByLabel("Amount").fill("0.0003"); // testnet launch pools are shallow (GLOAK holds about 0.016 HYPE)
-  await page.waitForFunction(() => Number((document.querySelector("input[aria-label='Estimated output']") || {}).value || 0) > 0, null, { timeout: 60_000 });
+  await page.waitForFunction(() => parseFloat((document.querySelector("input[aria-label='Estimated output']") || {}).value || "0") > 0, null, { timeout: 60_000 }).catch(async (e) => {
+    console.log("  page text:", (await page.innerText("body")).slice(0, 2500));
+    console.log("  browser logs:", logs.slice(-15));
+    throw e;
+  });
   const est = await page.getByLabel("Estimated output").inputValue();
   await page.getByRole("button", { name: "Swap privately" }).click();
   await page.getByText(/Swapped privately/).waitFor({ timeout: 180_000 });
