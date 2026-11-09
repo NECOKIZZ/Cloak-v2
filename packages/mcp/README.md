@@ -128,6 +128,6 @@ Amounts are in whole units (`"0.5"` HYPE). `private_send`, `withdraw` and a `pri
 | `CLOAK_STATE_DIR` | `~/.cloak-mcp` | Daily spend totals and bid receipts |
 | `CLOAK_RPC_URL` | Elysium testnet RPC | |
 | `CLOAK_RELAYER_URL` | Cloak's hosted relayer | |
-| `CLOAK_CIRCUITS_DIR` | download | Folder with `transaction2x2.wasm` and `transaction2x2_final.zkey` |
+| `GLOAM_CIRCUITS_DIR` | download | Folder with Gloam's circuit files (shield, transfer, unshield), instead of downloading them |
 
 Built on [`@cloakely/sdk`](https://www.npmjs.com/package/@cloakely/sdk). Source: [NECOKIZZ/Cloak](https://github.com/NECOKIZZ/Cloak/tree/main/packages/mcp). MIT.

@@ -5,10 +5,7 @@
   "scripts": {
     "build": "pnpm --filter @cloakely/sdk build",
     "abis": "cd contracts && forge build && cd ../contracts-v4 && forge build && FOUNDRY_PROFILE=uniswap forge build && cd .. && node scripts/gen-abis.mjs",
-    "test": "cd contracts && forge test && cd .. && pnpm --filter @cloakely/sdk test",
-    "e2e": "node e2e/run.mjs",
-    "deploy:factory": "node e2e/deploy.mjs",
-    "seed": "node e2e/seed.mjs",
+    "test": "cd contracts && forge test && cd ../contracts-gloam && forge test && cd ../contracts-v4 && forge test && cd .. && pnpm --filter @cloakely/sdk test",
     "keeper": "node services/keeper/index.mjs",
     "web": "pnpm --filter @cloakely/web dev"
   },

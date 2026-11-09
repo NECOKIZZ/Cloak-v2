@@ -1,4 +1,4 @@
-// Cloak's hosted MCP server: https://cloak.boblabs.tech/mcp (a rewrite in vercel.json points it here).
+// Cloak's hosted MCP server: https://gloak.boblabs.tech/mcp (a rewrite in vercel.json points it here).
 // Read and plan only: it never has a key and never signs. See packages/mcp/src/http.ts.
 import { handleMcpRequest } from "@cloakely/mcp/http";
 

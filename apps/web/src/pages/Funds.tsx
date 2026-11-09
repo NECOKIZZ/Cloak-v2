@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, parseUnits, type Address } from "viem";
-import { FUNDS_CIRCUITS_CDN, decodeFundsProof, encodeFundsProof, loadFundsProver, verifyFundsProof, type FundsCheck, type FundsProof, type FundsProver } from "@cloakely/sdk";
-import { ASSETS, VAULTS } from "../config";
+import { decodeFundsProof, encodeFundsProof, gloamHolderProver, verifyFundsProof, type FundsCheck, type FundsProof, type HolderProver } from "@cloakely/sdk";
+import { ASSETS } from "../config";
 import { publicClient } from "../wallet";
 import { useApp } from "../state";
 import { Link } from "../router";
@@ -11,9 +11,9 @@ import { QR } from "../qr";
 import { usePrivateBalances } from "../balances";
 import { useMarkets } from "./markets";
 
-// the circuit (18 MB, checked against the SDK's hashes) loads the first time someone proves
-let fundsProver: Promise<FundsProver> | null = null;
-const getFundsProver = () => (fundsProver ??= loadFundsProver([FUNDS_CIRCUITS_CDN, "/circuits"]).catch((e) => ((fundsProver = null), Promise.reject(e))));
+// Gloam's funds circuit (final keys, from jsDelivr at Gloam's pinned commit, hash-checked) loads on the first proof
+let fundsProver: HolderProver | null = null;
+const getFundsProver = async () => (fundsProver ??= gloamHolderProver("funds"));
 
 const DAYS = [1, 7, 30];
 
@@ -26,7 +26,7 @@ export function ProveFunds() {
     () => [
       { key: "HYPE", symbol: "HYPE", decimals: 18 },
       ...ASSETS.map((a) => ({ key: a.token as string, symbol: a.symbol, decimals: a.decimals })),
-      ...(markets ?? []).filter((m) => !m.shared).map((m) => ({ key: m.token as string, symbol: m.symbol, decimals: 18 })),
+      ...(markets ?? []).map((m) => ({ key: m.token as string, symbol: m.symbol, decimals: 18 })),
     ].filter((a) => (bals[a.key] ?? 0n) > 0n),
     [bals, markets],
   );
@@ -131,7 +131,7 @@ export function ProofPage() {
     try {
       const x = decodeFundsProof(location.hash.slice(1));
       setP(x);
-      verifyFundsProof(publicClient, x, undefined, { vaults: VAULTS })
+      verifyFundsProof(publicClient, x)
         .then(setRes)
         .catch((e) => setErr(friendly(e)));
     } catch {

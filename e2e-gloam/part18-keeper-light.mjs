@@ -6,7 +6,7 @@
 // tree from it and shows the same balance, and the keeper pings its own public address only while it has work.
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { fetchLeaves, GloamTree } from "@cloakely/sdk";
+import { GloamTree } from "@cloakely/sdk";
 import { setup, launchCore, unshieldCall, ANVIL_KEYS, zeroAddress, parseEther, rpc } from "./stress/common.mjs";
 import { REPO, assert } from "./lib.mjs";
 
@@ -36,7 +36,6 @@ try {
       FACTORY: c.factoryStandIn,
       RPC_URL: "http://127.1:8611",
       PORT: "8612",
-      SNAPSHOT: "0",
       GLOAM_MEMO: c.memoBoard,
       GLOAM_VAULT: c.gloamVault,
       GLOAM_LAUNCH_VAULT: c.launchVault,
@@ -69,7 +68,8 @@ try {
 
   // ── a new device seeds from it ─────────────────────────────────────────
   const B = (await launchCore(S, 1)).core;
-  const src = (await fetchLeaves(KEEPER)).get(c.launchVault.toLowerCase());
+  const one = await fetch(`${KEEPER}/leaves?pool=${c.launchVault}`).then((r) => r.json());
+  const src = { block: BigInt(one.block), leaves: one.leaves.map(([index, x]) => ({ index, commitment: BigInt(x) })) };
   assert(await B.seedLeaves(src), "a new device's tree starts from the keeper's list (the vault knows its root)");
   await B.sync();
   assert((await B.balances()).get(zeroAddress) === (await A.balances()).get(zeroAddress), "and shows the same balance");

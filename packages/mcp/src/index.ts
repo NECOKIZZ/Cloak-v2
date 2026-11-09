@@ -3,7 +3,6 @@
 // `npx @cloakely/mcp setup` makes the agent's wallet in ~/.cloak-agent-key, which the server then uses by default.
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createCloakServer, loadSettings, VERSION } from "./server.js";
-import { withLiveDeployment } from "./config.js";
 import { setup } from "./setup.js";
 
 if (process.argv[2] === "setup") {
@@ -18,7 +17,7 @@ if (process.argv[2] === "setup") {
 }
 
 try {
-  const settings = await withLiveDeployment(loadSettings());
+  const settings = loadSettings();
   const server = createCloakServer(settings);
   await server.connect(new StdioServerTransport());
   // stdout carries the protocol, so anything for humans goes to stderr

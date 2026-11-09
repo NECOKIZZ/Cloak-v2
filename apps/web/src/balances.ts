@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { type Address } from "viem";
-import { GloamPrivate, fetchLeaves, type SharedVaultClient } from "@cloakely/sdk";
 import type { Priv } from "./state";
 import { openBox, sealBox } from "./deviceBox";
 import { ASSETS, KEEPER_URL } from "./config";
@@ -57,33 +56,24 @@ const writeSaved = (p: Priv, b: Bals) => sealBox(p, "balance", JSON.stringify(Ob
  * keeper's public note list (one download instead of every vault's history, used only if it matches a root the vault
  * knows), else the chain from the start.
  */
-async function restoreSync(p: Priv, shared: SharedVaultClient | null, pools: Address[]) {
+async function restoreSync(p: Priv) {
   const saved = await openBox(p, "sync");
   if (saved) {
     try {
-      const o = JSON.parse(saved) as { p?: string; s?: string };
-      const ok = (o.p ? await p.importSync(o.p) : false) && (!shared || !o.s || (await shared.importSync(o.s)));
-      if (ok) return;
+      const o = JSON.parse(saved) as { p?: string };
+      if (o.p && (await p.importSync(o.p))) return;
     } catch {}
   }
   if (!KEEPER_URL) return;
-  // Gloam: only the account's own vaults (Gloam's and the launch vault), each by name: not every vault the keeper knows
-  if (p instanceof GloamPrivate) {
-    await Promise.all(
-      p.vaults().map(async (v) => {
-        const r = await fetch(`${KEEPER_URL!.replace(/\/$/, "")}/leaves?pool=${v}`).catch(() => null);
-        if (!r?.ok) return false;
-        const j = (await r.json()) as { block: string; leaves: [number, string, string][] };
-        return p.seedLeaves(v, { block: BigInt(j.block), leaves: j.leaves.map(([index, c]) => ({ index, commitment: BigInt(c) })) }).catch(() => false);
-      }),
-    );
-    return;
-  }
-  const leaves = await fetchLeaves(KEEPER_URL);
-  await Promise.all([
-    ...pools.map((pool) => (leaves.get(pool.toLowerCase()) ? p.seedLeaves(pool, leaves.get(pool.toLowerCase())!).catch(() => false) : false)),
-    ...(shared && leaves.get(shared.vault.toLowerCase()) ? [shared.seedLeaves(leaves.get(shared.vault.toLowerCase())!).catch(() => false)] : []),
-  ]);
+  // the account's own vaults (Gloam's and the launch vault), each by name
+  await Promise.all(
+    p.vaults().map(async (v) => {
+      const r = await fetch(`${KEEPER_URL!.replace(/\/$/, "")}/leaves?pool=${v}`).catch(() => null);
+      if (!r?.ok) return false;
+      const j = (await r.json()) as { block: string; leaves: [number, string, string][] };
+      return p.seedLeaves(v, { block: BigInt(j.block), leaves: j.leaves.map(([index, c]) => ({ index, commitment: BigInt(c) })) }).catch(() => false);
+    }),
+  );
 }
 
 // ───────────── the store ─────────────
@@ -107,7 +97,7 @@ const emit = (s: Store) => s.subs.forEach((f) => f());
 const same = (a: Bals, b: Bals) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => a[k] === b[k]);
 
 /** Sync every vault, then show every balance at once. A vault that fails keeps its last known balance. */
-async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[], queue = false) {
+async function sync(p: Priv, markets: Market[], queue = false) {
   const s = storeFor(p);
   if (s.syncing) return void (queue && (s.again = true));
   s.syncing = true;
@@ -119,13 +109,10 @@ async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[]
     const put = (k: string) => (b: bigint) => void (next[k] = b);
     let hypeOk = false;
     // hypeMarket throws while the account is still loading its markets right after unlocking
-    const jobs: [string, Address][] = [["HYPE", p.hypeMarket.pool], ...markets.filter((m) => !m.shared).map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
-    await (s.restored ??= restoreSync(p, shared, jobs.map(([, pool]) => pool)).catch(() => {}));
-    await Promise.all([
-      ...jobs.map(([k, pool]) => p.balance(pool).then((b) => (put(k)(b), k === "HYPE" && (hypeOk = true))).catch((e) => console.error(`[balance] ${k}: ${(e as Error)?.message ?? e}`))),
-      // the shared launch-token vault: one scan, every token's balance
-      ...(shared ? [shared.sync().then(() => Promise.all(markets.filter((m) => m.shared).map((m) => shared.balance(m.token).then(put(m.token))))).catch(() => {})] : []),
-    ]);
+    const jobs: [string, Address][] = [["HYPE", p.hypeMarket.pool], ...markets.map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
+    await (s.restored ??= restoreSync(p).catch(() => {}));
+    // asked for together, so one sync of each vault serves every balance
+    await Promise.all(jobs.map(([k, pool]) => p.balance(pool).then((b) => (put(k)(b), k === "HYPE" && (hypeOk = true))).catch((e) => console.error(`[balance] ${k}: ${(e as Error)?.message ?? e}`))));
     if (!hypeOk && !s.loaded) return; // nothing trustworthy to show yet: keep the skeleton and try again
     const changed = !same(next, s.bals);
     s.bals = next;
@@ -134,7 +121,7 @@ async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[]
     if (changed) writeSaved(p, next);
     // and how far the scan got, so the next visit only reads new blocks. Saved when the balance changed, else at most
     // every 2 minutes: the scan position moves on every sync, and rewriting storage every 8 s gains nothing.
-    const st = JSON.stringify({ p: p.exportSync(), s: shared?.exportSync() });
+    const st = JSON.stringify({ p: p.exportSync() });
     if (st !== s.savedSync && (changed || !s.savedAt || Date.now() - s.savedAt > SAVE_SYNC_MS)) {
       s.savedSync = st;
       s.savedAt = Date.now();
@@ -145,13 +132,13 @@ async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[]
   } finally {
     s.syncing = false;
     emit(s);
-    if (s.again) sync(p, shared, markets);
+    if (s.again) sync(p, markets);
   }
 }
 
 /** Every private balance of the unlocked account, refreshed every 8 seconds while a page shows it. */
 export function usePrivateBalances() {
-  const { priv, shared } = useApp();
+  const { priv } = useApp();
   const { markets } = useMarkets();
   const [, tick] = useState(0);
   useEffect(() => {
@@ -163,11 +150,11 @@ export function usePrivateBalances() {
   }, [priv]);
   useEffect(() => {
     if (!priv || !markets) return;
-    const go = () => sync(priv, shared, markets);
+    const go = () => sync(priv, markets);
     go();
     return every(go, 8000);
-  }, [priv, shared, markets]);
+  }, [priv, markets]);
   const s = priv ? storeFor(priv) : null;
-  const refresh = () => (priv && markets ? sync(priv, shared, markets, true) : Promise.resolve());
+  const refresh = () => (priv && markets ? sync(priv, markets, true) : Promise.resolve());
   return { bals: s?.bals ?? {}, loaded: !!s?.loaded, synced: !!s?.synced, syncing: !!s?.syncing, refresh };
 }

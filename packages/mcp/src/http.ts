@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { loadSettings, withLiveDeployment, type Settings } from "./config.js";
+import { loadSettings, type Settings } from "./config.js";
 import { createCloakServer } from "./server.js";
 
 /**
@@ -81,7 +81,7 @@ export async function handleMcpRequest(req: Request, opts: { settings?: Settings
   // never a key here, whatever the environment says
   if (!opts.settings && (!settings || Date.now() - settingsAt > SETTINGS_TTL)) {
     settingsAt = Date.now();
-    settings = withLiveDeployment(loadSettings({ CLOAK_NETWORK: "testnet", CLOAK_RPC_URL: process.env.CLOAK_RPC_URL, CLOAK_RELAYER_URL: process.env.CLOAK_RELAYER_URL }));
+    settings = Promise.resolve(loadSettings({ CLOAK_NETWORK: "testnet", CLOAK_RPC_URL: process.env.CLOAK_RPC_URL, CLOAK_RELAYER_URL: process.env.CLOAK_RELAYER_URL }));
   }
   const s = opts.settings ?? (await settings!);
   const server = createCloakServer(s, { hosted: true });

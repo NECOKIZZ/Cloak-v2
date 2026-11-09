@@ -50,7 +50,6 @@ try {
       FACTORY: c.factoryStandIn,
       RPC_URL: "http://127.1:8602",
       PORT: String(port),
-      SNAPSHOT: "0",
       GLOAM_MEMO: c.memoBoard,
       GLOAM_VAULT: c.gloamVault,
       GLOAM_LAUNCH_VAULT: c.launchVault,

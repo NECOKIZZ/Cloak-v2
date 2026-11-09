@@ -6,7 +6,7 @@ import { friendly, Hint, linkProblem } from "../errors";
 import { linkClaims, linkState, openLinkAccount, tokenOf, TOKEN_DECIMALS, type LinkClaim } from "../links";
 import { txLink } from "../config";
 import { Link } from "../router";
-import { getProver, useApp } from "../state";
+import { useApp } from "../state";
 import { Icon } from "../ui";
 import { publicClient } from "../wallet";
 import { recipientNow } from "../names";
@@ -59,8 +59,6 @@ export function Claim() {
 
   useEffect(() => {
     document.title = "Cloak · You've been sent money";
-    // the proof that claims is made on this device: start the 14 MB download now, while the page reads the link
-    getProver().catch(() => {});
     try {
       const l = parseClaimLink(location.hash);
       setLink(l);
@@ -114,7 +112,7 @@ export function Claim() {
       } else {
         setEmpty(null);
         const pool = (t: LinkToken) => a.market(tokenOf(a, t)).pool;
-        const fee = (k: "transact" | "unshieldHype", t: LinkToken) => a.relayFee(k, pool(t)).then((q) => q.fee).catch(() => undefined);
+        const fee = (k: "transact" | "unshieldHype", t: LinkToken) => a.relayFee().then((q) => q.fee).catch(() => undefined);
         Promise.all([fee("transact", "HYPE"), fee("unshieldHype", "HYPE"), fee("transact", "USDC")]).then(([tr, un, us]) => {
           const f: Record<string, bigint> = {};
           if (tr !== undefined) f.HYPEprivate = tr;

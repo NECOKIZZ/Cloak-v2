@@ -1,16 +1,15 @@
 import type { Address, Hex, PublicClient, WalletClient } from "viem";
-import type { Status } from "../private/client.js";
+import type { Status } from "../private/common.js";
 
 /**
  * The one seam between Cloak's features and the private layer underneath.
  *
  * Features (Portfolio, Send, Withdraw, Links, escrows, the MCP tools) talk to a PrivateCore and never to a vault
- * directly. Two cores implement it: CloakCore (Cloak's own vaults, `private/`) and GloamCore (Gloam's shared vault).
- * Switching is one setting (`coreFor`).
+ * directly. GloamCore implements it on Gloam's vaults (Cloak v1's own vaults live in Cloak v1's repo).
  */
 export interface PrivateCore {
-  readonly kind: "cloak" | "gloam";
-  /** The shareable private address this account receives at (`cloak:` for Cloak, `gloamr1.` for Gloam). */
+  readonly kind: "gloam";
+  /** The shareable private address this account receives at (`gloamr1.`, shown as `cloak:gloamr1.` in Cloak's apps). */
   address(): Promise<string>;
   /** Reads the chain and rebuilds what this account owns. Safe to call again; it picks up where it stopped. */
   sync(onStatus?: Status): Promise<void>;

@@ -31,10 +31,9 @@ v1 measured that Render's bandwidth is mostly **the keeper's own RPC reads**, no
   - The keeper reads the list only when someone asks, at most every 10 seconds, so it adds no background polling.
 - **Saves:** the site saves this state when the balance changes, else at most every 2 minutes. Before, it saved on every 8-second sync.
 
-### K2. The keeper's snapshot rebuilds only while someone uses it
+### K2. No keeper snapshot at all
 - **Before:** `/snapshot` (launches, markets, stats for the site) was rebuilt every 60 seconds, all day, visitors or not, and every rebuild is a batch of multicalls.
-- **Now:** if nobody asked for it in 10 minutes (`SNAPSHOT_IDLE_MS`), it isn't rebuilt. A quiet night costs no snapshot reads.
-- The first request after a quiet spell gets the last copy, or the site reads the chain if that copy is older than 5 minutes, as it already does. That request also restarts the rebuilds.
+- **Now:** it's gone, with the rest of v1's keeper code (Nov 9). The site reads launches and markets from the chain from v2's factory block, and keeps its own short local cache. The keeper does only v2's work: launches of v2's own factory, the Gloam relay and loop, split withdrawals and the leaf lists.
 
 ### H1. Render's 15-minute sleep: awake only while there is work
 - A free Render service stops after 15 minutes with no incoming request, and the keeper's loops stop with it.
@@ -75,14 +74,13 @@ v1 measured that Render's bandwidth is mostly **the keeper's own RPC reads**, no
 | First unlock on a known device | full history of both vaults | new blocks only |
 | First unlock on a new device | full history of both vaults | one cached `/leaves` download per vault, then new blocks |
 | Full app visit with unlock (Vercel, gzipped) | about 2.0 MB | about 1.0 MB |
-| Keeper snapshot at night, no visitors | rebuilt every 60 s | not rebuilt |
+| Keeper snapshot at night, no visitors | rebuilt every 60 s | no snapshot |
 | Keeper awake | always (with a ping) or asleep with work stuck (without one) | only while there's work |
 
 The RPC reads in the first three rows go to Elysium's public RPC, not our hosts. They still matter: a busy tab could hit its rate limit, and that showed up as slow syncs and timeouts.
 
 ## Not done, worth doing later
 
-- **G1, a CDN in front of the keeper** (from v1's plan): Cloudflare's free proxy with a few seconds of cache on `/snapshot` and `/leaves`. Worth it with real traffic.
+- **G1, a CDN in front of the keeper** (from v1's plan): Cloudflare's free proxy with a few seconds of cache on `/leaves`. Worth it with real traffic.
 - **G2, keeper state that survives restarts:** queued withdrawal pieces live in memory. The site re-sends them when its owner opens it, but a piece can wait until then. A free Upstash Redis would close that.
-- **The v1 launch loop on v2's keeper:** on testnet, v1's and v2's keepers both reveal and settle the same factory's launches. That works (the second one finds nothing to do) but doubles those reads. If v2 points at its own factory on mainnet, this goes away. Otherwise give one keeper the launches.
 - **`isSpent` per note on every sync:** one multicall today. It could skip notes when no vault event touched them.

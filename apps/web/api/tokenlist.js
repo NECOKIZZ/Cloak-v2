@@ -3,7 +3,8 @@
 //   /tokenlist.json        a standard Uniswap token list (https://tokenlists.org), for any app that imports token lists
 //   /api/tokenlist?feed=1  the same launches with their pool, launch page, clearing price and description, for partners
 //                          that list new tokens automatically
-import { formatEther } from "viem";
+import { createPublicClient, formatEther, http } from "viem";
+import { Cloak, cloakFactoryAbi, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
 import hidden from "../src/hidden.json" with { type: "json" };
 
 // Cloak's own test and demo launches stay off the list (src/hidden.json)
@@ -11,8 +12,7 @@ const HIDDEN = new Set(hidden.launches.flatMap(([, a, t]) => [a, t]).map((x) => 
 
 export const config = { maxDuration: 15 };
 
-const SITE = "https://cloak.boblabs.tech";
-const KEEPER = "https://keeper.boblabs.tech";
+const SITE = "https://gloak.boblabs.tech";
 const CHAIN_ID = 99801;
 const revive = (_k, v) => (v && typeof v === "object" && "$n" in v ? BigInt(v.$n) : v);
 
@@ -31,13 +31,24 @@ function parseMeta(uri) {
 const okName = (s) => typeof s === "string" && s.length > 0 && s.length <= 40 && /^[ \w.'+\-%/À-ÖØ-öø-ÿ:&[\]()]+$/.test(s);
 const okSymbol = (s) => typeof s === "string" && /^[a-zA-Z0-9+\-%/$.]{1,20}$/.test(s);
 
+/** The launches and their metadata, in the shape the list below reads. */
+async function fromChain() {
+  const d = deploymentFor(elysiumTestnet.id);
+  const pub = createPublicClient({ chain: elysiumTestnet, transport: http(undefined, { timeout: 8000 }) });
+  const c = new Cloak(pub, undefined, d.factory);
+  const [list, logs] = await Promise.all([
+    c.listLaunches(),
+    pub.getContractEvents({ address: d.factory, abi: cloakFactoryAbi, eventName: "LaunchCreated", fromBlock: d.factoryBlock, strict: true }),
+  ]);
+  const launches = await Promise.all(list.map((l) => c.getAuction(l.auction)));
+  return { launches, meta: logs.map((l) => ({ auction: l.args.auction, metadataURI: l.args.metadataURI })) };
+}
+
 export async function GET(req) {
   const feed = new URL(req.url).searchParams.has("feed");
-  const snap = await fetch(`${KEEPER}/snapshot`, { signal: AbortSignal.timeout(8000) })
-    .then((r) => (r.ok ? r.text() : null))
-    .then((t) => (t ? JSON.parse(t, revive) : null))
-    .catch(() => null);
-  if (!snap) return new Response(JSON.stringify({ error: "snapshot unavailable, try again shortly" }), { status: 503, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
+  // every launch of Cloak v2's factory, read from the chain (the CDN keeps the answer 10 minutes)
+  const snap = await fromChain().catch(() => null);
+  if (!snap) return new Response(JSON.stringify({ error: "the network didn't answer, try again shortly" }), { status: 503, headers: { "content-type": "application/json", "access-control-allow-origin": "*" } });
 
   const meta = new Map((snap.meta ?? []).map((m) => [m.auction.toLowerCase(), parseMeta(m.metadataURI)]));
   const zero = /^0x0{40}$/i;

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageSkel, Skel } from "../skel";
-import { formatEther, parseEther, type Address } from "viem";
-import { Cloak, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, cloakVaultsAbi, drandRoundTime, privateRouterAbi, sharedVaultAbi, type AuctionState } from "@cloakely/sdk";
+import { formatEther, parseAbi, parseEther, type Address } from "viem";
+import { Cloak, cloakAuctionAbi, cloakPairAbi, cloakTokenAbi, drandRoundTime, type AuctionState } from "@cloakely/sdk";
 import { BidCard, DemandChart, FairLaunchCard, MyBids, TradeCard } from "../components";
 import { CreatorFeesCard, DemandMeter, PrivateBids } from "../launchParts";
-import { addrLink, CORE, GLOAM, KEEPER_URL, ROUTER, SHARED, SHARED_BLOCK, VAULTS } from "../config";
+import { addrLink, GLOAM, KEEPER_URL } from "../config";
 import { duration, hype, pctChange, short } from "../format";
 import { PriceChart, usePrice } from "../chart";
 import { Link, useRoute } from "../router";
@@ -18,6 +18,7 @@ import { every } from "../every";
 
 type MyBidsT = Awaited<ReturnType<typeof readCloak.bidsOf>>;
 const ZERO = "0x0000000000000000000000000000000000000000";
+const LAUNCH_VAULT = parseAbi(["function isLaunchToken(address) view returns (bool)", "function admitLaunch(uint256 launchIndex) returns (address)"]);
 const DEAD = "0x000000000000000000000000000000000000dEaD";
 
 /** Copy the launch's link, or post it on X. Shared links show the token's name, image and status as a preview. */
@@ -82,20 +83,12 @@ export function Launch({ auction }: { auction: Address }) {
   }, []);
   useEffect(() => {
     if (!s?.settled) return;
-    if (CORE === "gloam" && GLOAM) {
-      // Cloak v2 on Gloam: the keeper admits every settled launch to the launch vault by itself (review W-09)
-      publicClient
-        .readContract({ address: GLOAM.launchVault, abi: [{ type: "function", name: "isLaunchToken", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] }] as const, functionName: "isLaunchToken", args: [s.token] })
-        .then((ok) => setPrivMarket(ok ? true : "soon"))
-        .catch(() => {});
-      return;
-    }
-    if (!ROUTER) return;
-    (async () => {
-      // a token in the shared launch-token vault already trades privately; otherwise it needs a vault of its own
-      if (SHARED && (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [s.token] }))) return setPrivMarket(true);
-      setPrivMarket((await publicClient.readContract({ address: ROUTER!, abi: privateRouterAbi, functionName: "poolOf", args: [s.token] })) !== ZERO);
-    })().catch(() => {});
+    if (!GLOAM) return;
+    // the keeper admits every settled launch to the launch vault by itself (review W-09); anyone can do it too
+    publicClient
+      .readContract({ address: GLOAM.launchVault, abi: LAUNCH_VAULT, functionName: "isLaunchToken", args: [s.token] })
+      .then((ok) => setPrivMarket(ok ? true : "soon"))
+      .catch(() => {});
   }, [s?.settled, s?.token]);
 
   async function run(label: string, fn: (c: Cloak) => Promise<unknown>) {
@@ -111,20 +104,13 @@ export function Launch({ auction }: { auction: Address }) {
     }
   }
 
+  /** Admits this settled launch to the launch vault now (permissionless; the keeper does it too, a minute or two later). */
   async function enablePrivate() {
-    if (!wallet || !ROUTER || !s) return;
+    if (!wallet || !GLOAM || !s) return;
     const l = (await readCloak.listLaunches()).find((x) => x.auction.toLowerCase() === s.address.toLowerCase());
-    if (!l) return setError("This launch wasn't made with a Cloak factory, so it can't get private trading.");
+    if (!l) return setError("This launch wasn't made with Cloak's factory, so it can't get private trading.");
     await run("enable", async () => {
-      // a Uniswap launch created after the shared vault opened goes in the shared vault, like the keeper does it
-      const created = (await launchCreatedLogs(s.address))[0]?.blockNumber ?? 0n;
-      if (SHARED && BigInt(s.uniPair ?? 0) !== 0n && created >= SHARED_BLOCK) {
-        const h = await wallet.writeContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admit", args: [l.factory, l.index] });
-        await publicClient.waitForTransactionReceipt({ hash: h });
-        return setPrivMarket(true);
-      }
-      const vaults = VAULTS ?? (await publicClient.readContract({ address: ROUTER!, abi: privateRouterAbi, functionName: "vaults" }));
-      const h = await wallet.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createPool", args: [l.factory, l.index] });
+      const h = await wallet.writeContract({ address: GLOAM!.launchVault, abi: LAUNCH_VAULT, functionName: "admitLaunch", args: [l.index] });
       await publicClient.waitForTransactionReceipt({ hash: h });
       setPrivMarket(true);
     });
@@ -230,9 +216,10 @@ export function Launch({ auction }: { auction: Address }) {
               <div className="card-head"><h3>Trade privately</h3><Icon.lock /></div>
               <p className="small soft" style={{ margin: 0 }}>Buy and sell ${s.tokenSymbol} from your private balance. Your wallet never shows up on the trade.</p>
               {privMarket === "soon" ? (
-                <p className="small mute" style={{ marginTop: 14 }}>Private trading opens in a minute or two, once the keeper adds this token to the private vault.</p>
-              ) : privMarket === false ? (
-                <button className="btn btn-ink btn-block" style={{ marginTop: 14 }} disabled={!wallet || !!busy} onClick={enablePrivate}>{busy === "enable" ? "Creating private market…" : wallet ? "Enable private trading" : "Connect a wallet"}</button>
+                <>
+                  <p className="small mute" style={{ marginTop: 14 }}>Private trading opens in a minute or two, once the keeper adds this token to the private vault. You can also open it now.</p>
+                  {wallet && <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={!!busy} onClick={enablePrivate}>{busy === "enable" ? "Opening private trading…" : "Open private trading now"}</button>}
+                </>
               ) : (
                 <Link to={`/app/trade?token=${s.token}`} className="btn btn-ink btn-block" style={{ marginTop: 14 }}>Trade ${s.tokenSymbol} privately</Link>
               )}

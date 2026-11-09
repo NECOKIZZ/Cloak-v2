@@ -1,12 +1,12 @@
 // Split withdrawals: an app proves 2–4 withdrawal pieces up front (each one's recipient fixed by its proof) and hands
-// them over with a send-after time each. The keeper checks every piece now (a dry run, fee included), holds it, and
-// relays it once it's due. It can only send a piece or refuse it, never change it. A piece whose note was spent
-// meanwhile (the owner cancelled it) is dropped. The queue lives in memory: the app keeps its pieces too and hands
-// back any the keeper no longer knows (after a restart). The same piece is never queued twice (id = its nullifiers).
+// them over with a send-after time each. The keeper checks every piece now (a dry run), holds it, and relays it once
+// it's due. It can only send a piece or refuse it, never change it. A piece whose note was spent meanwhile (the owner
+// cancelled it) is dropped. The queue lives in memory: the app keeps its pieces too and hands back any the keeper no
+// longer knows (after a restart). The same piece is never queued twice (id = its vault and nullifier).
 //
-// Cloak v2 on Gloam: a piece can also be a Gloam vault cash out ({ kind: "gloamUnshield", to: vault, data }). Gloam's
-// vault keeps every root valid for good, so a cash out proved now still goes through later, until its note is spent.
-// Those go through the Gloam relay (`gloam`), which allows only vault cash outs to a safe address here.
+// A piece is a Gloam vault cash out ({ kind: "gloamUnshield", to: vault, data }). Gloam's vault keeps every root valid
+// for good, so a cash out proved now still goes through later, until its note is spent. Pieces go through the Gloam
+// relay (`gloam`), which allows only vault cash outs to a safe address here.
 import { decodeFunctionData, keccak256, parseAbi, toHex } from "viem";
 
 const GLOAM_UNSHIELD = parseAbi(["function unshield(bytes proof, bytes32 root, bytes32 nullifier, address asset, address to, uint256 amount)"]);
@@ -28,18 +28,12 @@ function gloamNullifier(call) {
   return d.args[2];
 }
 
-/**
- * @param check, send the Cloak relay (dry run, real)
- * @param gloam { check, send } for Gloam vault cash outs, or omit it
- */
-export function startSchedule({ check, send, gloam, log = () => {}, now: clock = () => Math.floor(Date.now() / 1000), tickMs = TICK_MS }) {
+/** @param gloam { check, send }: the Gloam relay (dry run, real) for vault cash outs */
+export function startSchedule({ gloam, log = () => {}, now: clock = () => Math.floor(Date.now() / 1000), tickMs = TICK_MS }) {
   /** id → { call, notBefore, state: "waiting"|"sent"|"dropped", tries, txHash?, error? } */
   const q = new Map();
-  const idOf = (call) =>
-    call.kind === "gloamUnshield"
-      ? keccak256(toHex(JSON.stringify(["gloam", call.to.toLowerCase(), gloamNullifier(call)])))
-      : keccak256(toHex(JSON.stringify([call.pool, ...(call.proof?.inputNullifiers ?? [])].map(String))));
-  const viaFor = (call) => (call.kind === "gloamUnshield" ? gloam : { check, send });
+  const idOf = (call) => keccak256(toHex(JSON.stringify(["gloam", call.to.toLowerCase(), gloamNullifier(call)])));
+  const viaFor = () => gloam;
 
   async function tick() {
     const now = clock();
@@ -87,13 +81,9 @@ export function startSchedule({ check, send, gloam, log = () => {}, now: clock =
       for (const p of pieces) {
         if (!p?.call || typeof p.call !== "object" || !Number.isFinite(p.notBefore)) throw Object.assign(new Error("malformed piece"), { status: 400 });
         if (p.notBefore > now + MAX_AHEAD) throw Object.assign(new Error("a piece can wait at most 48 hours"), { status: 400 });
-        if (p.call.kind === "gloamUnshield") {
-          if (!gloam) throw Object.assign(new Error("this relayer doesn't serve Gloam vaults"), { status: 400 });
-          gloamNullifier(p.call); // a vault cash out, or refused
-        } else {
-          if (p.call.kind !== "transact" && p.call.kind !== "unshieldHype") throw Object.assign(new Error("only withdrawals can be scheduled"), { status: 400 });
-          if (!(BigInt(p.call.extData?.extAmount ?? 0) < 0n)) throw Object.assign(new Error("only withdrawals can be scheduled"), { status: 400 });
-        }
+        if (p.call.kind !== "gloamUnshield") throw Object.assign(new Error("only withdrawals can be scheduled"), { status: 400 });
+        if (!gloam) throw Object.assign(new Error("this relayer doesn't serve Gloam vaults"), { status: 400 });
+        gloamNullifier(p.call); // a vault cash out, or refused
         const id = idOf(p.call);
         if (!q.has(id)) {
           await viaFor(p.call).check(p.call, requester); // throws (fee, proof, spent) before anything is queued

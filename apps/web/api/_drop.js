@@ -3,7 +3,7 @@
 import { createPublicClient, formatEther, http } from "viem";
 import { CloakDrops, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
 
-export const SITE = "https://cloak.boblabs.tech";
+export const SITE = "https://gloak.boblabs.tech";
 
 export async function loadDrop(a) {
   const d = deploymentFor(elysiumTestnet.id);

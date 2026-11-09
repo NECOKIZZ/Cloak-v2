@@ -84,7 +84,7 @@ export function Links() {
     if (!priv) return;
     const t = tokenOf(priv, sf.token);
     const pool = priv.market(t).pool;
-    Promise.all([priv.relayFee("transact", pool), sf.token === "HYPE" ? priv.relayFee("unshieldHype", pool) : Promise.resolve({ fee: 0n })])
+    Promise.all([priv.relayFee(), sf.token === "HYPE" ? priv.relayFee() : Promise.resolve({ fee: 0n })])
       .then(([a, b]) => setFee(a.fee > b.fee ? a.fee : b.fee)).catch(() => setFee(null));
   }, [priv, sf.token]);
 
@@ -124,14 +124,14 @@ export function Links() {
       if (share === 0n) throw new Hint("That's too little to split that many ways.");
       let claimFee = 0n;
       if (sf.cover) {
-        const [a, b] = await Promise.all([p.relayFee("transact", pool), sf.token === "HYPE" ? p.relayFee("unshieldHype", pool) : Promise.resolve({ fee: 0n })]);
+        const [a, b] = await Promise.all([p.relayFee(), sf.token === "HYPE" ? p.relayFee() : Promise.resolve({ fee: 0n })]);
         claimFee = a.fee > b.fee ? a.fee : b.fee;
       }
       // every share is its own note, and each person claiming pays the relayer from theirs, so each share carries the fee
       const each = share + claimFee;
       const total = each * BigInt(n);
       const have = await p.balance(pool);
-      const sendFee = (await p.relayFee("transact", pool)).fee;
+      const sendFee = (await p.relayFee()).fee;
       if (have < total + sendFee * BigInt(n)) throw new Hint(`You have ${formatUnits(have, dec)} ${sf.token} private. This link needs ${formatUnits(total + sendFee * BigInt(n), dec)} with fees. Shield more first.`);
       setBusy("Making the link's account…");
       const secret = newLinkSecret();

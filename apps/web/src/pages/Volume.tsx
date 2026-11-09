@@ -1,16 +1,12 @@
 import { useEffect, useState } from "react";
-import type { Address, Hex } from "viem";
-import { cloakTokenAbi, privateBatcherAbi, privateRouterAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, whypeAbi } from "@cloakely/sdk";
-import { BATCHER, PREVIOUS, ROUTER, ROUTER_BLOCK, SHARED, SHARED_BLOCK, SHARED_ROUTER, txLink } from "../config";
+import { parseAbi, zeroAddress, type Address, type Hex } from "viem";
+import { GLOAM, txLink } from "../config";
 import { friendly } from "../errors";
 import { hype, usd } from "../format";
 import { readCloak, publicClient } from "../wallet";
 import { TokenIcon } from "../ui";
-import { loadMarkets } from "./markets";
-import { getSnapshot, save, saved } from "../snapshot";
+import { save, saved } from "../snapshot";
 import { every } from "../every";
-
-const WAD = 10n ** 18n;
 
 interface Activity { kind: string; amount: bigint; block: bigint; tx: Hex }
 interface Stats {
@@ -30,110 +26,84 @@ interface Stats {
   launches: number;
   privateTxs: number;
   recent: Activity[];
-  /** From the keeper's snapshot only (the chain fallback leaves these out and the page hides them). */
   tokensLive?: number;
   drops?: number;
   revenue?: Revenue;
 }
 interface Fee { collected: bigint; owed: bigint }
-/** Protocol fees in HYPE (launch tokens at their pool price), USDC apart: sent to the treasury, and still waiting in contracts. */
 interface Revenue { launches: Fee; drops: Fee; vaults: Fee; usdc: Fee; collected: bigint; owed: bigint }
 
 let cache: { at: number; data: Stats } | null = null;
 
 type Ev = { args: Record<string, unknown>; blockNumber: bigint; transactionHash: Hex };
+const VAULT_EVENTS = parseAbi([
+  "event Shielded(bytes32 indexed commitment, address indexed asset, uint256 amount, uint256 leafIndex, address indexed from)",
+  "event Unshielded(bytes32 indexed nullifier, address indexed asset, address indexed to, uint256 amount)",
+  "event Transferred(bytes32 indexed nullifier, bytes32[2] newCommitments)",
+  "function launchTokensCount() view returns (uint256)",
+]);
+const SWAP_EVENTS = parseAbi(["event LaunchSwap(bytes32 indexed id, address indexed assetIn, address indexed assetOut, uint256 amountIn, uint256 amountOut, uint256 leftover)"]);
+const BATCH_EVENTS = parseAbi([
+  "event OrderPlaced(bytes32 indexed id, address indexed token, uint64 indexed round, bool buy, uint256 size, uint256 net)",
+  "event BatchSettled(address indexed token, uint64 indexed round, uint256 tokensForBuyers, uint256 hypeForSellers, int256 netHype)",
+]);
 
-/** Public totals of one deployment (router + batcher): events, plus what its vaults hold, valued in HYPE. */
-async function loadSource(router: Address, batcher: Address | undefined, fromBlock: bigint, prices: Map<string, bigint>) {
-  const ev = <N extends string>(address: Address, abi: readonly unknown[], eventName: N) =>
-    publicClient.getContractEvents({ address, abi: abi as never, eventName: eventName as never, fromBlock, toBlock: "latest", strict: true }) as Promise<Ev[]>;
-  const c = { address: router, abi: privateRouterAbi } as const;
-  const [hypePool, whype, n] = await Promise.all([
-    publicClient.readContract({ ...c, functionName: "hypePool" }),
-    publicClient.readContract({ ...c, functionName: "whype" }),
-    publicClient.readContract({ ...c, functionName: "tokensCount" }),
-  ]);
-  const tokens = await Promise.all(Array.from({ length: Number(n) - 1 }, (_, i) => publicClient.readContract({ ...c, functionName: "tokens", args: [BigInt(i + 1)] })));
-  const pools = await Promise.all(tokens.map((t) => publicClient.readContract({ ...c, functionName: "poolOf", args: [t] })));
-  const [shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVaults] = await Promise.all([
-    ev(router, privateRouterAbi, "Shielded"),
-    ev(router, privateRouterAbi, "Unshielded"),
-    ev(router, privateRouterAbi, "PrivateSwap"),
-    batcher ? ev(batcher, privateBatcherAbi, "BatchSettled") : Promise.resolve([] as Ev[]),
-    batcher ? ev(batcher, privateBatcherAbi, "OrderPlaced") : Promise.resolve([] as Ev[]),
-    publicClient.getContractEvents({ address: [hypePool, ...pools], abi: shieldedPoolAbi, eventName: "NewNullifier", fromBlock, toBlock: "latest" }),
-    publicClient.readContract({ address: whype, abi: whypeAbi, functionName: "balanceOf", args: [hypePool] }),
-    Promise.all(tokens.map((t, i) => publicClient.readContract({ address: t, abi: cloakTokenAbi, functionName: "balanceOf", args: [pools[i]] }).then((b) => (b * (prices.get(t.toLowerCase()) ?? 0n)) / WAD))),
-  ]);
-  return { hypePool, shields, unshields, swaps, settles, orders, nullifiers, vaultHype, tokenVault: tokenVaults.reduce((a, b) => a + b, 0n) };
-}
-
-/** The shared launch-token vault: what it holds (at pool prices), its private buys and sells, and its spends. */
-async function loadShared(prices: Map<string, bigint>) {
-  if (!SHARED || !SHARED_ROUTER) return null;
-  const v = { address: SHARED, abi: sharedVaultAbi } as const;
-  const n = Number(await publicClient.readContract({ ...v, functionName: "tokensCount" }));
-  const tokens = await Promise.all(Array.from({ length: n }, (_, i) => publicClient.readContract({ ...v, functionName: "tokens", args: [BigInt(i)] })));
-  const values = await Promise.all(tokens.map((t) => publicClient.readContract({ address: t, abi: cloakTokenAbi, functionName: "balanceOf", args: [SHARED!] }).then((b) => (b * (prices.get(t.toLowerCase()) ?? 0n)) / WAD)));
-  const ev = (eventName: string) => publicClient.getContractEvents({ address: SHARED_ROUTER!, abi: sharedRouterAbi as never, eventName: eventName as never, fromBlock: SHARED_BLOCK, toBlock: "latest", strict: true }) as Promise<Ev[]>;
-  const [buys, sells, nul] = await Promise.all([ev("PrivateBuy"), ev("PrivateSell"), publicClient.getContractEvents({ ...v, eventName: "NewNullifier", fromBlock: SHARED_BLOCK, toBlock: "latest" })]);
-  return { value: values.reduce((a, b) => a + b, 0n), buys, sells, nullifiers: nul.length };
-}
-
-/** Everything here is read from public events and balances; no amounts of private notes are knowable. */
+/**
+ * Cloak v2's public totals, counted from on-chain events: deposits into and withdrawals out of both vaults (Gloam's
+ * and Cloak's launch vault), private swaps and batch rounds through the v4 escrows, and the v2 factory's sealed-bid
+ * launches. HYPE amounts only (address 0); USDC moves count as transactions.
+ */
 async function loadStats(): Promise<Stats> {
   if (cache && Date.now() - cache.at < 20_000) return cache.data;
-  if (!ROUTER) throw new Error("no router");
-  // the keeper's snapshot has the same totals, built the same way, in one request
-  const snap = await getSnapshot();
-  if (snap?.stats) {
-    cache = { at: Date.now(), data: snap.stats as Stats };
-    save("stats", cache.data);
-    return cache.data;
-  }
-  const [markets, launches] = await Promise.all([loadMarkets(true), readCloak.listLaunches()]);
-  const prices = new Map(markets.map((m) => [m.token.toLowerCase(), m.price]));
-  // the current deployment plus every earlier one, so history carries over
-  const sources = await Promise.all([
-    loadSource(ROUTER, BATCHER, ROUTER_BLOCK, prices),
-    ...PREVIOUS.map((p) => loadSource(p.router, p.batcher, p.routerBlock, prices)),
+  const g = GLOAM;
+  if (!g) throw new Error("Cloak v2 isn't deployed on this network.");
+  // Gloam's vault from its deploy block; the launch vault and its escrows came later, so they're read from theirs
+  const ev = (address: Address | undefined, abi: readonly unknown[], eventName: string): Promise<Ev[]> =>
+    address
+      ? (publicClient.getContractEvents({ address, abi: abi as never, eventName: eventName as never, fromBlock: address === g.gloamVault ? g.block : (g.launchVaultBlock ?? g.block), toBlock: "latest", strict: true }) as Promise<Ev[]>)
+      : Promise.resolve([]);
+  const vaults = [g.gloamVault, g.launchVault];
+  const [shields, unshields, transfers, swaps, orders, settles, launches, vaultHype, tokensLive] = await Promise.all([
+    Promise.all(vaults.map((v) => ev(v, VAULT_EVENTS, "Shielded"))).then((x) => x.flat()),
+    Promise.all(vaults.map((v) => ev(v, VAULT_EVENTS, "Unshielded"))).then((x) => x.flat()),
+    Promise.all(vaults.map((v) => ev(v, VAULT_EVENTS, "Transferred"))).then((x) => x.flat()),
+    ev(g.launchSwapV4, SWAP_EVENTS, "LaunchSwap"),
+    ev(g.batcherV4, BATCH_EVENTS, "OrderPlaced"),
+    ev(g.batcherV4, BATCH_EVENTS, "BatchSettled"),
+    readCloak.listLaunches(),
+    Promise.all(vaults.map((v) => publicClient.getBalance({ address: v }))).then((x) => x.reduce((a, b) => a + b, 0n)),
+    publicClient.readContract({ address: g.launchVault, abi: VAULT_EVENTS, functionName: "launchTokensCount" }).then(Number).catch(() => undefined),
   ]);
-  const all = <K extends "shields" | "unshields" | "swaps" | "settles" | "orders" | "nullifiers">(k: K) => sources.flatMap((x) => x[k] as Ev[]);
-  const [shields, unshields, swaps, settles, orders, nullifiers] = [all("shields"), all("unshields"), all("swaps"), all("settles"), all("orders"), all("nullifiers")];
-  const vaultHype = sources.reduce((a, x) => a + x.vaultHype, 0n);
-  const sh = await loadShared(prices).catch(() => null);
   const auctions = await Promise.all(launches.map((l) => readCloak.getAuction(l.auction)));
-  const hypePools = new Set(sources.map((x) => x.hypePool.toLowerCase()));
-  const tokenVaults = sources.map((x) => x.tokenVault);
-
+  const isHype = (a: unknown) => String(a).toLowerCase() === zeroAddress;
   const sum = (xs: bigint[]) => xs.reduce((a, b) => a + b, 0n);
-  const shielded = sum(shields.map((e) => e.args.amount as bigint));
-  const withdrawn = sum(unshields.map((e) => e.args.amount as bigint));
+  const hypeShields = shields.filter((e) => isHype(e.args.asset));
+  const hypeUnshields = unshields.filter((e) => isHype(e.args.asset));
+  const shielded = sum(hypeShields.map((e) => e.args.amount as bigint));
+  const withdrawn = sum(hypeUnshields.map((e) => e.args.amount as bigint));
   // the HYPE side of each private swap: amount in for buys, amount out for sells
-  const swapHype = swaps.map((e) => (hypePools.has((e.args.poolIn as string).toLowerCase()) ? (e.args.amountIn as bigint) : (e.args.amountOut as bigint)));
-  const batchHype = settles.map((e) => (e.args.buyHype as bigint) + (e.args.hypeForSellers as bigint));
-  const sharedHype = sh ? [...sh.buys.map((e) => e.args.hypeIn as bigint), ...sh.sells.map((e) => e.args.hypeOut as bigint)] : [];
-  const swapVolume = sum(swapHype) + sum(sharedHype);
+  const swapHype = swaps.map((e) => (isHype(e.args.assetIn) ? (e.args.amountIn as bigint) : (e.args.amountOut as bigint)));
+  const batchHype = settles.map((e) => {
+    const n = e.args.netHype as bigint;
+    return (e.args.hypeForSellers as bigint) + (n > 0n ? n : 0n);
+  });
+  const swapVolume = sum(swapHype);
   const batchVolume = sum(batchHype);
   const bidDeposits = sum(auctions.map((a) => a.totalDeposits));
-  const vault = vaultHype + sum(tokenVaults) + (sh?.value ?? 0n);
-
   const recent: Activity[] = [
-    ...shields.map((e) => ({ kind: "Shielded", amount: e.args.amount as bigint, block: e.blockNumber, tx: e.transactionHash })),
-    ...swaps.map((e, i) => ({ kind: hypePools.has((e.args.poolIn as string).toLowerCase()) ? "Private buy" : "Private sell", amount: swapHype[i], block: e.blockNumber, tx: e.transactionHash })),
+    ...hypeShields.map((e) => ({ kind: "Shielded", amount: e.args.amount as bigint, block: e.blockNumber, tx: e.transactionHash })),
+    ...swaps.map((e, i) => ({ kind: isHype(e.args.assetIn) ? "Private buy" : "Private sell", amount: swapHype[i], block: e.blockNumber, tx: e.transactionHash })),
     ...settles.map((e, i) => ({ kind: "Batch round", amount: batchHype[i], block: e.blockNumber, tx: e.transactionHash })),
-    ...unshields.map((e) => ({ kind: "Withdrawn", amount: e.args.amount as bigint, block: e.blockNumber, tx: e.transactionHash })),
-    ...(sh ? [...sh.buys.map((e) => ({ kind: "Private buy", amount: e.args.hypeIn as bigint, block: e.blockNumber, tx: e.transactionHash })), ...sh.sells.map((e) => ({ kind: "Private sell", amount: e.args.hypeOut as bigint, block: e.blockNumber, tx: e.transactionHash }))] : []),
+    ...hypeUnshields.map((e) => ({ kind: "Withdrawn", amount: e.args.amount as bigint, block: e.blockNumber, tx: e.transactionHash })),
   ].sort((a, b) => Number(b.block - a.block)).slice(0, 12);
-
   const data: Stats = {
     total: shielded + swapVolume + batchVolume + bidDeposits,
-    vault,
+    vault: vaultHype,
     vaultHype,
     shielded,
     withdrawn,
     swapVolume,
-    swaps: swaps.length + (sh ? sh.buys.length + sh.sells.length : 0),
+    swaps: swaps.length,
     batchVolume,
     batchRounds: settles.length,
     batchOrders: orders.length,
@@ -141,8 +111,9 @@ async function loadStats(): Promise<Stats> {
     bids: auctions.reduce((a, s) => a + s.commits, 0),
     raised: sum(auctions.filter((a) => a.settled && !a.failed).map((a) => a.raised)),
     launches: launches.length,
-    privateTxs: Math.floor((nullifiers.length + (sh?.nullifiers ?? 0)) / 2),
+    privateTxs: shields.length + unshields.length + transfers.length,
     recent,
+    tokensLive,
   };
   cache = { at: Date.now(), data };
   save("stats", data);
@@ -178,7 +149,7 @@ export function Volume() {
       <div className="page-head">
         <div>
           <h1>Volume</h1>
-          <p>Everything that has moved through Cloak on Elysium testnet, counted from public on-chain events. Who did what stays private.</p>
+          <p>Everything that has moved through Cloak v2 on Elysium testnet, counted from public on-chain events. Who did what stays private.</p>
         </div>
         <span className="pill"><span className="dot live" />Live · refreshes every minute</span>
       </div>
@@ -210,8 +181,8 @@ export function Volume() {
           </div>
           {(s.tokensLive !== undefined || s.drops !== undefined) && (
             <div className="stats" style={{ marginTop: 18, gridTemplateColumns: "repeat(2, 1fr)" }}>
-              <Card k="Tokens trading privately" v={(s.tokensLive ?? 0).toLocaleString()} unit="" sub={`${s.launches} launches so far`} />
-              <Card k="NFT drops" v={(s.drops ?? 0).toLocaleString()} unit="" sub="Sealed auctions for collections" />
+              <Card k="Tokens trading privately" v={(s.tokensLive ?? 0).toLocaleString()} unit="" sub="Admitted to the launch vault" />
+              <Card k="Launches" v={s.launches.toLocaleString()} unit="" sub={`${hype(s.raised, 4)} HYPE raised`} />
             </div>
           )}
           {s.revenue && (

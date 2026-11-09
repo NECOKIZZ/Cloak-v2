@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createPublicClient, defineChain, http, parseEther, parseUnits, type Address, type Chain, type Hex, type PublicClient } from "viem";
-import { deploymentFor, elysiumTestnet, liveDeployment, type CloakDeployment } from "@cloakely/sdk";
+import { deploymentFor, elysiumTestnet, type CloakDeployment, type GloamDeployment } from "@cloakely/sdk";
 
 /** The agent wallet's key file that `setup` creates and the server uses when no key is configured. */
 export const defaultKeyFile = () => join(homedir(), ".cloak-agent-key");
@@ -15,14 +15,7 @@ export interface Settings {
   deployment: CloakDeployment;
   /** First block to scan for a launch's bids (the factory's deploy block). */
   launchesFromBlock: bigint;
-  /** Local circuit files instead of downloading them (hash-checked) from `deployment.circuitsUrl`. */
-  circuitsDir?: string;
   privateKey?: Hex;
-  /**
-   * The private layer: "gloam" (Cloak v2 on Gloam's vault, the default wherever the deployment has one) or "cloak"
-   * (Cloak's own vaults). CLOAK_CORE picks one.
-   */
-  core: "cloak" | "gloam";
   /** Gloam's circuit files on disk (their wasm and final/ zkeys), instead of downloading them (hash-checked). */
   gloamCircuitsDir?: string;
   dryRun: boolean;
@@ -43,14 +36,12 @@ const NETWORKS: Record<string, { chain: Chain }> = {
 };
 
 /** A deployment file (`CLOAK_DEPLOYMENT_FILE`) for a local chain or a private test deployment. */
-interface DeploymentFile extends Omit<CloakDeployment, "routerBlock" | "factoryBlock" | "vaultsBlock" | "version" | "assets" | "previous" | "dropFactoryBlock"> {
+interface DeploymentFile extends Omit<CloakDeployment, "factoryBlock" | "dropFactoryBlock" | "gloam"> {
   rpcUrl: string;
+  factoryBlock?: string | number;
   dropFactoryBlock?: string | number;
-  routerBlock: string | number;
-  vaultsBlock?: string | number;
-  version?: number;
   launchesFromBlock?: string | number;
-  assets?: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: string | number }[];
+  gloam: Omit<GloamDeployment, "block" | "launchVaultBlock"> & { block: string | number; launchVaultBlock?: string | number };
 }
 
 export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
@@ -67,15 +58,12 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     const f = JSON.parse(readFileSync(env.CLOAK_DEPLOYMENT_FILE, "utf8")) as DeploymentFile;
     rpcUrl = f.rpcUrl;
     chain = defineChain({ id: f.chainId, name: `Cloak custom (${f.chainId})`, nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } }, testnet: true });
-    launchesFromBlock = BigInt(f.launchesFromBlock ?? 0);
+    launchesFromBlock = BigInt(f.launchesFromBlock ?? f.factoryBlock ?? 0);
     deployment = {
       ...f,
-      version: f.version ?? 0,
       factoryBlock: launchesFromBlock,
-      routerBlock: BigInt(f.routerBlock),
-      vaultsBlock: f.vaultsBlock === undefined ? undefined : BigInt(f.vaultsBlock),
       dropFactoryBlock: f.dropFactoryBlock === undefined ? undefined : BigInt(f.dropFactoryBlock),
-      assets: f.assets?.map((a) => ({ ...a, fromBlock: BigInt(a.fromBlock) })),
+      gloam: { ...f.gloam, block: BigInt(f.gloam.block), launchVaultBlock: f.gloam.launchVaultBlock === undefined ? undefined : BigInt(f.gloam.launchVaultBlock) },
     };
   } else {
     const n = NETWORKS[network];
@@ -100,18 +88,13 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     if (!/^\d+(\.\d+)?$/.test(v)) throw new Error(`${name} must be a number, got "${v}"`);
     return v;
   };
-  if (env.CLOAK_CORE && env.CLOAK_CORE !== "cloak" && env.CLOAK_CORE !== "gloam") throw new Error(`CLOAK_CORE must be cloak or gloam, got "${env.CLOAK_CORE}"`);
-  if (env.CLOAK_CORE === "gloam" && !deployment.gloam) throw new Error("CLOAK_CORE=gloam, but this deployment has no Gloam contracts.");
-  const core = env.CLOAK_CORE === "cloak" || !deployment.gloam ? "cloak" : "gloam";
   return {
     network,
     chain,
     rpcUrl,
     deployment,
-    core,
     gloamCircuitsDir: env.GLOAM_CIRCUITS_DIR,
     launchesFromBlock,
-    circuitsDir: env.CLOAK_CIRCUITS_DIR,
     privateKey: key as Hex | undefined,
     dryRun: env.CLOAK_DRY_RUN === "1",
     stateDir: env.CLOAK_STATE_DIR ?? join(homedir(), ".cloak-mcp"),
@@ -124,15 +107,3 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     },
   };
 }
-
-/**
- * `settings` with the current factory, router, batcher, migrator and vaults read from CloakConfig's registry, so a
- * router added on-chain is used without a new release. Keeps the configured deployment if the registry can't be read.
- */
-export async function withLiveDeployment(settings: Settings): Promise<Settings> {
-  const pub = createPublicClient({ chain: settings.chain, transport: http(settings.rpcUrl, { retryCount: 3, timeout: 15_000 }) }) as PublicClient;
-  const deployment = await liveDeployment(pub, settings.deployment).catch(() => settings.deployment);
-  const moved = deployment.factory.toLowerCase() !== settings.deployment.factory.toLowerCase();
-  return { ...settings, deployment, launchesFromBlock: moved ? deployment.factoryBlock : settings.launchesFromBlock };
-}
-

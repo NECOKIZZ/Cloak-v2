@@ -7,13 +7,12 @@
 //   /api/preview?kind=pay     after the #, so these cards are the same for every link: no amount, no names.
 //   /api/preview?drop=0x…     an NFT drop (/app/drop/0x…): its name, status and price, with a share card from /api/card
 import { createPublicClient, formatEther, http } from "viem";
-import { Cloak, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
+import { Cloak, cloakFactoryAbi, deploymentFor, elysiumTestnet } from "@cloakely/sdk";
 import { dropSummary, loadDrop } from "./_drop.js";
 
 export const config = { maxDuration: 15 };
 
-const SITE = "https://cloak.boblabs.tech";
-const KEEPER = "https://keeper.boblabs.tech";
+const SITE = "https://gloak.boblabs.tech";
 const FALLBACK_IMG = `${SITE}/og.jpg`;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -32,20 +31,15 @@ const left = (s) => {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${Math.max(m, 1)}m`;
 };
 
-/** The launch and its metadataURI: from the keeper's snapshot, else straight from the chain. */
+/** The launch and its metadataURI, from the chain (Cloak v2's factory and its LaunchCreated event). */
 async function load(a) {
-  const snap = await fetch(`${KEEPER}/snapshot`, { signal: AbortSignal.timeout(4000) })
-    .then((r) => (r.ok ? r.text() : null))
-    .then((t) => (t ? JSON.parse(t, revive) : null))
-    .catch(() => null);
-  let s = snap?.launches?.find((x) => x.address.toLowerCase() === a);
-  let uri = snap?.meta?.find((x) => x.auction.toLowerCase() === a)?.metadataURI;
-  if (!s) {
-    const d = deploymentFor(elysiumTestnet.id);
-    const pub = createPublicClient({ chain: elysiumTestnet, transport: http(undefined, { timeout: 8000 }) });
-    s = await new Cloak(pub, undefined, d.factory).getAuction(a).catch(() => null);
-  }
-  return { s, uri };
+  const d = deploymentFor(elysiumTestnet.id);
+  const pub = createPublicClient({ chain: elysiumTestnet, transport: http(undefined, { timeout: 8000 }) });
+  const [s, logs] = await Promise.all([
+    new Cloak(pub, undefined, d.factory).getAuction(a).catch(() => null),
+    pub.getContractEvents({ address: d.factory, abi: cloakFactoryAbi, eventName: "LaunchCreated", args: { auction: a }, fromBlock: d.factoryBlock, strict: true }).catch(() => []),
+  ]);
+  return { s, uri: logs[0]?.args.metadataURI };
 }
 
 /** { image (data: or https:), description } from a metadataURI, the same formats the app accepts. */

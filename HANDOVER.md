@@ -35,7 +35,7 @@ For whoever (person or LLM) picks this up next. Read this first, then `REPORT.md
 | `packages/sdk/src/deployments.ts` | Deployment record. Chain 99801 has a `gloam` block, which the site reads. |
 | `services/keeper/gloam.mjs` | The Gloam relay (`POST /gloam/relay`). |
 | `services/keeper/gloamLoop.mjs` | The keeper loop: admit launches, settle batch rounds, confirm gates, collect fees. |
-| `apps/web` | The site. `VITE_CORE=gloam` switches the backend. Gloam-specific glue is in `src/gloam.ts`, `src/links.ts` and `pages/markets.ts`. |
+| `apps/web` | The site (v2 only). Gloam-specific glue is in `src/gloam.ts`, `src/links.ts` and `pages/markets.ts`. |
 | `e2e-gloam/*.mjs` | End-to-end scripts (anvil, forks, live). `stack.mjs` deploys the full stack, and `lib.mjs` has the helpers. |
 | `REPORT.md`, `GLOAM_QUESTIONS.md`, `measurements/` | Findings, the founder questions, and raw numbers and screenshots. |
 
@@ -57,15 +57,15 @@ For whoever (person or LLM) picks this up next. Read this first, then `REPORT.md
   - cash-out destinations checked;
   - budget shares: 80% new sends, the rest for exits, 60% per sender, a separate exit share, an 8% memo budget, a 10% revert cap;
   - funded by the launch vault's 0.5% fee.
-- **SDK / site:** `GloamPrivate` has the same methods as `CloakPrivate`. On the Gloam backend these work: Portfolio, Shield, Send, Withdraw, Trade (v4 instant), Payment links and Claim, Receive, Prove funds (FundsProof v2), and bids from the private balance (`finishPending` on unlock).
+- **SDK / site:** `GloamPrivate` is the only backend (v1's `CloakPrivate`, its vaults, circuits and keeper loop were deleted on Nov 9). These work: Portfolio, Shield, Send, Withdraw, Trade (v4 instant), Payment links and Claim, Receive, Prove funds (FundsProof v2), and bids from the private balance (`finishPending` on unlock).
   - Addresses are shown as `cloak:gloamr1....`.
   - Deposits go to the launch vault when it takes the asset, else to Gloam's vault. Sends spend from Gloam's vault first.
-- **Live on Elysium testnet:** `deployments/elysium-testnet-gloam.json`, from block 26230337:
-  - Cloak's instance of Gloam's guarded vault (USDC only, 500 per deposit / 25,000 total);
-  - the launch vault on Cloak's real v4 factory `0x1b0072684e98d9e23018e2d107ed8166ef84c077`, with all 12 settled launches admitted;
-  - `CloakLaunchSwapV4`, receive, bids, graduation, gate and receipt check.
-  - There is no batcher there yet.
-- **Real site test** (`part8-site.mjs`, on a fork of that deployment): unlock, shield, withdraw, a buy of FRTN through its real v4 pool, a link claimed by a wallet-less guest, and the Receive page, all passing.
+- **Live on Elysium testnet:** `deployments/elysium-testnet-gloam.json`:
+  - Cloak's instance of Gloam's guarded vault (USDC only, 500 per deposit / 25,000 total), from block 26230337;
+  - **Cloak v2's own launch factory** `0x59d2cd703747a47288518c7380efa95879295784` with its own CloakConfig and CloakV4Hook (Nov 9, `deploy-v2-factory.mjs`, record in `deployments/elysium-testnet-v2-factory.json`);
+  - the launch vault, `CloakLaunchSwapV4`, the v4 batcher, receive, bids, graduation, gate and receipt check, all redeployed on that factory from block 26707908 (`deploy-partner.mjs`). The Nov 8 set on v1's factory is kept under `previous` in the record;
+  - the first launch, GLOAK, admitted and registered for batch rounds (`live-v2-launch.mjs`).
+- **Real site test** (`part8-site.mjs`, on a fork of that deployment): unlock, shield, withdraw, a buy of a launch token through its real v4 pool, a link claimed by a wallet-less guest, and the Receive page, all passing.
 
 ## 5. Done on Nov 8 (night), see REPORT 16.21 to 16.24
 
@@ -73,7 +73,7 @@ For whoever (person or LLM) picks this up next. Read this first, then `REPORT.md
 - **Founder answers** are in `GLOAM_QUESTIONS.md`. The packs for Bob to send are in `docs/gloam-pack/`.
 - **Spread-out withdrawals on Gloam:** proved up front (Gloam keeps every root), queued by the keeper's schedule through the Gloam relay (new dry run), and dropped if cancelled. `part15-split-withdraw.mjs`.
 - **MCP on Gloam:** the default where the deployment has `gloam`. `part16-mcp.mjs`. Payment links in the agent tools are still to do.
-- **CI** runs v2 only (Gloam stack, v4 contracts, SDK, MCP, site on Gloam, 13 anvil runs). **The site defaults to the Gloam backend** (`VITE_CORE=cloak` for the old one).
+- **CI** runs v2 only (Gloam stack, v4 contracts, SDK, MCP, site on Gloam, 13 anvil runs). The site runs on the Gloam backend only.
 - **Network:** this session's cloud environment is "Cloak-v2", which allows the Elysium testnet RPC, drand and soliditylang, and has a setup script that installs Foundry 1.5.1, solc and deps. The script hasn't been proven in a fresh session yet.
 
 ## 6. Gloam's founder (Duke) answered our questions. What it means for the build
@@ -135,7 +135,7 @@ The roadmap and to-do list, by stage and by who it waits on, is **`docs/MAINNET-
   Rebuild the SDK after every SDK change: the e2e scripts and the site use `dist`.
 - **Site:**
   ```
-  cd apps/web && npx tsc --noEmit -p . && VITE_CORE=gloam npx vite build
+  cd apps/web && npx tsc --noEmit -p . && npx vite build
   ```
 - **End-to-end** (from `e2e-gloam/`):
   - `node part7-adapter.mjs` covers the site backend. Then parts 3 to 6 and 9 to 11 (anvil).

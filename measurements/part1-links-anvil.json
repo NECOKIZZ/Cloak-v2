@@ -1,7 +1,7 @@
 {
   "timingsMs": {
-    "create a claim link": 1187,
-    "claim a link": 1238
+    "create a claim link": 1024,
+    "claim a link": 888
   },
-  "wallMs": 14181
+  "wallMs": 10792
 }

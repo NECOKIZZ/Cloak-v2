@@ -20,12 +20,10 @@
  * link stays between the people who share it.
  */
 import { isReceiveTag } from "@gloamtrade/sdk";
-import { scryptAsync } from "@noble/hashes/scrypt";
 import { randomBytes } from "@noble/hashes/utils";
-import { concat, isAddress, keccak256, toBytes, toHex, type Hex } from "viem";
-import { CloakKeys, formatCloakAddress, parseCloakAddress } from "./crypto.js";
+import { concat, isAddress, toBytes, toHex, type Hex } from "viem";
 
-export const LINK_ORIGIN = "https://cloak.boblabs.tech";
+export const LINK_ORIGIN = "https://gloak.boblabs.tech";
 export const LINK_MESSAGE_MAX = 140;
 export const LINK_NAME_MAX = 40;
 export const LINK_HINT_MAX = 120;
@@ -53,29 +51,6 @@ export const normalizePasscode = (code: string) => code.normalize("NFKC").trim()
 /** A fresh link secret (32 random bytes). */
 export const newLinkSecret = (): Uint8Array => randomBytes(32);
 
-/**
- * The private account a claim link opens. Without a passcode it comes from the secret alone. With one, the seed is
- * scrypt(passcode, secret), so a copy of the link is useless without the code, and guessing codes is slow.
- */
-export async function linkKeys(secret: Uint8Array, passcode?: string): Promise<CloakKeys> {
-  if (secret.length !== 32) throw new Error("bad link secret");
-  if (passcode === undefined) return CloakKeys.fromSeed(toBytes(keccak256(concat([toBytes("cloak-link-v1"), secret]))));
-  const code = normalizePasscode(passcode);
-  if (!code) throw new Error("enter the passcode");
-  const seed = await scryptAsync(toBytes(code), concat([toBytes("cloak-link-lock-v1"), secret]), { N: 2 ** 15, r: 8, p: 1, dkLen: 32 });
-  return CloakKeys.fromSeed(seed);
-}
-
-/** The cloak: address a link's money is sent to. */
-export async function linkAddress(keys: CloakKeys): Promise<string> {
-  return formatCloakAddress((await keys.main()).pubKey, keys.encPub);
-}
-
-/** The 8-hex-digit check a locked link carries: the first 4 bytes of a hash of the account the passcode opens. */
-export async function linkCheck(keys: CloakKeys): Promise<string> {
-  return keccak256(concat([toBytes("cloak-link-check-v1"), toBytes(await linkAddress(keys))])).slice(2, 10);
-}
-
 /** Thrown when a link's check says the passcode is wrong. */
 export class WrongPasscodeError extends Error {
   constructor(riddle: boolean) {
@@ -90,22 +65,6 @@ export function passcodeVariants(code: string): string[] {
   const base = normalizePasscode(code);
   const straight = base.replace(/[\u2018\u2019\u201b\u2032]/g, "'").replace(/[\u201c\u201d\u2033]/g, '"').replace(/[\u2013\u2014\u2212]/g, "-");
   return [...new Set([base, straight, straight.replace(/[.!?]+$/, "")])].filter(Boolean);
-}
-
-/**
- * Opens a link's account. A locked link with a check tries the code (and the ways a phone may have mangled it) and
- * throws WrongPasscodeError if none matches, without touching the network. A link without a check (made before
- * checks existed) opens with the code as typed; an empty account is then all a wrong code looks like.
- */
-export async function openLinkKeys(l: ClaimLink, passcode?: string): Promise<CloakKeys> {
-  if (!l.locked) return linkKeys(l.secret);
-  if (!passcode || !normalizePasscode(passcode)) throw new Error(l.hint ? "Type the answer." : "Enter the passcode.");
-  if (!l.check) return linkKeys(l.secret, passcode);
-  for (const v of passcodeVariants(passcode)) {
-    const k = await linkKeys(l.secret, v);
-    if ((await linkCheck(k)) === l.check) return k;
-  }
-  throw new WrongPasscodeError(!!l.hint);
 }
 
 export interface ClaimLink {
@@ -255,10 +214,8 @@ export function checkPayee(to: string): "cloak" | "wallet" {
     if (!isReceiveTag(t.slice("cloak:".length))) throw new Error("not a cloak: address");
     return "cloak";
   }
-  if (t.startsWith("cloak:")) {
-    parseCloakAddress(t);
-    return "cloak";
-  }
+  // a Cloak v1 address (cloak:<keys>) can't receive on v2
+  if (t.startsWith("cloak:")) throw new Error("That's a Cloak v1 address. Ask for their Cloak v2 address (it starts with cloak:gloamr1.).");
   if (isAddress(t)) return "wallet";
   throw new Error("Pay to a cloak: address or a 0x wallet address.");
 }

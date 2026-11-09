@@ -27,7 +27,7 @@ import * as gloam from "@gloamtrade/sdk";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
 import { GloamTree } from "./gloamTree.js";
 import type { CoreSubmitter, PrivateCore, SendResult } from "./types.js";
-import type { Status } from "../private/client.js";
+import type { Status } from "../private/common.js";
 
 export const FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 const HKDF_INFO = "cloak-gloam-account-v1";

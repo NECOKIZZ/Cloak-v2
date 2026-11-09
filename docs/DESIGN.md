@@ -159,4 +159,4 @@ The launch auction is the shipped core. These items extend the same privacy stor
 
 ## 10. Uniswap v4 and tokenized stocks
 
-Research from the Nov 3 testnet scan and the plan for a v4 private route, v4 launches with a Cloak hook, and private stock trading: [V4-AND-STOCKS.md](V4-AND-STOCKS.md).
+Research from the Nov 3 testnet scan led to v4 launches with a Cloak hook (now live in v2, `contracts-v4`). The scan notes are in Cloak v1's repository.

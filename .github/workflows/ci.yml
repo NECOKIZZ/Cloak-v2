@@ -4,7 +4,7 @@ jobs:
   gloam:
     # Cloak v2 on Gloam: Gloam's vault (pinned submodule), Cloak's escrows and launch vault, the SDK, the MCP server,
     # the site (Gloam backend) and the anvil end-to-end runs. Cloak's own vaults are tested in Cloak v1's repo.
-    # The fork runs (part0 --fork, part2-swap*.mjs, part12, part13, part14, part8-site) and part18 (reads Multicall3 from
+    # The fork runs (part0 --fork, part2-swap*.mjs, part12, part13, part14, part19, part8-site) and part18 (reads Multicall3 from
     # testnet) need Elysium testnet's RPC and
     # run by hand.
     runs-on: ubuntu-latest
@@ -23,7 +23,6 @@ jobs:
       - run: pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/sdk test
       - run: pnpm --filter @cloakely/mcp build && pnpm --filter @cloakely/mcp test
       - run: pnpm --filter @cloakely/web build
-        env: { VITE_CORE: gloam }
       - name: end to end on anvil (Gloam's final keys)
         run: |
           node e2e-gloam/part0.mjs

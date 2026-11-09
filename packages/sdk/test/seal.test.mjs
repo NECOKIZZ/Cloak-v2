@@ -40,12 +40,3 @@ test("commitment matches the contract encoding shape", () => {
   const h = commitmentOf(preimage.auction, preimage.bidder, preimage.tick, preimage.quantity, preimage.salt);
   assert.match(h, /^0x[0-9a-f]{64}$/);
 });
-
-test("splitStandard decomposes into 1/2/5 × 10^n sizes", async () => {
-  const { splitStandard } = await import("../dist/index.js");
-  assert.deepEqual(splitStandard(37n * 10n ** 16n), { sizes: [2n * 10n ** 17n, 10n ** 17n, 5n * 10n ** 16n, 2n * 10n ** 16n], rest: 0n });
-  assert.deepEqual(splitStandard(10n ** 18n), { sizes: [10n ** 18n], rest: 0n });
-  const r = splitStandard(123456789n, 3);
-  assert.equal(r.sizes.length, 3);
-  assert.equal(r.sizes.reduce((a, b) => a + b, 0n) + r.rest, 123456789n);
-});

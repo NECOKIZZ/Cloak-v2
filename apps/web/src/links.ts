@@ -1,8 +1,8 @@
-import { CloakPrivate, GloamPrivate, gloamLinkAddress, gloamLinkCheck, gloamLinkKeys, gloamRelaySubmitter, linkAddress, linkCheck, linkKeys, openGloamLinkKeys, openLinkKeys, privateRouterAbi, relayerSubmitter, shieldedPoolAbi, type ClaimLink, type CloakKeys, type LinkToken } from "@cloakely/sdk";
-import { keccak256, concat, toBytes, decodeAbiParameters, decodeFunctionData, formatUnits, type Address, type Hex } from "viem";
-import { ASSETS, BATCHER, CORE, GLOAM, MIGRATOR, RELAYER_URL, ROUTER, VAULTS_BLOCK, chain } from "./config";
+import { GloamPrivate, gloamLinkAddress, gloamLinkCheck, gloamLinkKeys, gloamRelaySubmitter, openGloamLinkKeys, type ClaimLink, type LinkToken } from "@cloakely/sdk";
+import { keccak256, concat, toBytes, formatUnits, type Address, type Hex } from "viem";
+import { ASSETS, GLOAM, RELAYER_URL, chain } from "./config";
 import { gloamProvers } from "./gloam";
-import { getProver, type Priv } from "./state";
+import type { Priv } from "./state";
 import { publicClient } from "./wallet";
 
 export const TOKEN_DECIMALS: Record<LinkToken, number> = { HYPE: 18, USDC: 6 };
@@ -12,12 +12,10 @@ export const TOKEN_DECIMALS: Record<LinkToken, number> = { HYPE: 18, USDC: 6 };
  * A locked link with a check throws WrongPasscodeError for a wrong code before anything touches the network.
  */
 export async function openLinkAccount(link: ClaimLink, passcode?: string): Promise<Priv> {
-  if (CORE === "gloam") return gloamLinkAccount(await openGloamLinkKeys(link, passcode));
-  if (!ROUTER || !RELAYER_URL) throw new Error("Payment links aren't available on this deployment yet.");
-  return clientFor(await openLinkKeys(link, passcode));
+  return gloamLinkAccount(await openGloamLinkKeys(link, passcode));
 }
 
-/** A claim link's account on Cloak v2 on Gloam: both vaults, spending what it received directly, through the relay. */
+/** A claim link's account: both vaults, spending what it received directly, through the relay. */
 async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>): Promise<GloamPrivate> {
   if (!GLOAM || !RELAYER_URL) throw new Error("Payment links aren't available on this deployment yet.");
   const p = new GloamPrivate(
@@ -25,7 +23,7 @@ async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>)
       publicClient,
       chainId: chain.id,
       gloamVault: { pool: GLOAM.gloamVault, poolBlock: GLOAM.block },
-      launchVault: { pool: GLOAM.launchVault, poolBlock: GLOAM.block },
+      launchVault: { pool: GLOAM.launchVault, poolBlock: GLOAM.launchVaultBlock ?? GLOAM.block },
       payMemo: GLOAM.memoBoard,
       provers: gloamProvers(),
       submit: gloamRelaySubmitter(RELAYER_URL),
@@ -42,21 +40,8 @@ async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>)
 
 /** A new link's account: where the sender pays and, if locked, the check a wrong passcode fails. */
 export async function newLinkTarget(secret: Uint8Array, passcode?: string): Promise<{ address: string; check?: string }> {
-  if (CORE === "gloam") {
-    const k = await gloamLinkKeys(secret, passcode);
-    return { address: gloamLinkAddress(k), check: passcode !== undefined ? gloamLinkCheck(k) : undefined };
-  }
-  const k = await linkKeys(secret, passcode);
-  return { address: await linkAddress(k), check: passcode !== undefined ? await linkCheck(k) : undefined };
-}
-
-/** A wallet-less private client for `keys`, submitting through the relayer. */
-export async function clientFor(keys: CloakKeys): Promise<CloakPrivate> {
-  if (!ROUTER || !RELAYER_URL) throw new Error("Payment links aren't available on this deployment yet.");
-  const p = new CloakPrivate(publicClient, ROUTER, keys, getProver, relayerSubmitter(RELAYER_URL), VAULTS_BLOCK, BATCHER, MIGRATOR);
-  await p.loadMarkets();
-  ASSETS.forEach((a) => p.addAsset(a));
-  return p;
+  const k = await gloamLinkKeys(secret, passcode);
+  return { address: gloamLinkAddress(k), check: passcode !== undefined ? gloamLinkCheck(k) : undefined };
 }
 
 /** The token address a private client uses for HYPE or USDC. */
@@ -138,46 +123,13 @@ export interface LinkClaim {
  */
 export async function linkClaims(p: Priv, state: LinkState): Promise<LinkClaim[]> {
   const out: LinkClaim[] = [];
-  if (p instanceof GloamPrivate) {
-    for (const t of ["HYPE", "USDC"] as LinkToken[]) {
-      if (!state[t].notes.some((n) => n.spent)) continue;
-      for (const c of await withRetry(() => p.claims(p.market(tokenOf(p, t)).pool))) {
-        out.push({ token: t, amount: formatUnits(c.amount, TOKEN_DECIMALS[t]), to: c.to, at: c.at, tx: c.tx });
-      }
-    }
-    return out.sort((a, b) => b.at - a.at);
-  }
   for (const t of ["HYPE", "USDC"] as LinkToken[]) {
-    const spent = state[t].notes.filter((n) => n.spent);
-    if (!spent.length) continue;
-    const pool = p.market(tokenOf(p, t)).pool;
-    const logs = await withRetry(() => publicClient.getContractEvents({ address: pool, abi: shieldedPoolAbi, eventName: "NewNullifier", fromBlock: VAULTS_BLOCK, strict: true }));
-    const want = new Map(spent.map((n) => [BigInt(n.nullifier as bigint), n]));
-    const seen = new Set<string>();
-    for (const l of logs) {
-      const note = want.get(BigInt(l.args.nullifier));
-      if (!note || seen.has(String(note.nullifier))) continue;
-      seen.add(String(note.nullifier));
-      const [tx, block] = await Promise.all([withRetry(() => publicClient.getTransaction({ hash: l.transactionHash })), withRetry(() => publicClient.getBlock({ blockNumber: l.blockNumber }))]);
-      out.push({ token: t, amount: formatUnits(note.amount, TOKEN_DECIMALS[t]), to: claimDestination(tx.input), at: Number(block.timestamp) * 1000, tx: l.transactionHash });
+    if (!state[t].notes.some((n) => n.spent)) continue;
+    for (const c of await withRetry(() => p.claims(p.market(tokenOf(p, t)).pool))) {
+      out.push({ token: t, amount: formatUnits(c.amount, TOKEN_DECIMALS[t]), to: c.to, at: c.at, tx: c.tx });
     }
   }
   return out.sort((a, b) => b.at - a.at);
-}
-
-/** Where a claim's money went, read from the claim transaction's own data. */
-function claimDestination(input: Hex): "private" | Address {
-  for (const abi of [privateRouterAbi, shieldedPoolAbi] as const) {
-    try {
-      const d = decodeFunctionData({ abi, data: input }) as { functionName: string; args: readonly unknown[] };
-      const ext = d.args.find((a) => a && typeof a === "object" && "extAmount" in (a as object)) as { recipient: Address; extAmount: bigint; data: Hex } | undefined;
-      if (!ext) continue;
-      if (ext.extAmount >= 0n) return "private";
-      if (d.functionName === "unshieldHype" && ext.data && ext.data !== "0x") return decodeAbiParameters([{ type: "address" }], ext.data)[0];
-      return ext.recipient;
-    } catch {}
-  }
-  return "private";
 }
 
 // ── your links: kept in this browser, encrypted with a key from your private account ──
@@ -214,8 +166,8 @@ export interface SentRequest {
 }
 export type LinkRecord = SentLink | SentRequest;
 
-/** What the link list's encrypted store needs from an account (CloakKeys, or GloamPrivate's device keys). */
-type StoreKeys = Pick<CloakKeys, "encPub" | "encPriv">;
+/** What the link list's encrypted store needs from an account (GloamPrivate's device keys). */
+type StoreKeys = Pick<GloamPrivate["keys"], "encPub" | "encPriv">;
 const storeKey = (fp: string) => `cloak.links.v1.${fp}`;
 async function aesKey(keys: StoreKeys) {
   const raw = toBytes(keccak256(concat([toBytes("cloak-links-store-v1"), keys.encPriv])));

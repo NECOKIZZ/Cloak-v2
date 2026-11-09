@@ -15,7 +15,7 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 
 ## Stage 1: testnet complete (now)
 
-- [x] The v4 batcher is live on testnet (`0x77a5…ea1b`, with the opening band), registered for all 5 v4 launches and in `deployments.ts`. The keeper's env (`GLOAM_BATCHER_V4`) is set at hosting.
+- [x] **v2's own launch factory** on testnet (Nov 9): CloakConfig `0xfedf…4f1e`, factory `0x59d2…5784`, CloakV4Hook `0xC629…2A80`. The launch vault, batcher v4 (`0xbd4a…28f8`) and every escrow redeployed on it, the first launch GLOAK admitted and registered. `render.yaml` and `deployments.ts` point at them.
 - [ ] **Gloam:** their testnet vault at `0x39E2…0194` (no code yet), with the guard, memo board, block and verifiers. Then **Claude** runs `deploy-partner.mjs` against it on testnet (that moves graduation, receive, the gate and the receipt check onto it, and the launch vault onto their verifiers), points `deployments.ts` at it, and reruns `part8-site.mjs` on a fork and the live script.
 - [ ] **Gloam:** a Cloak partner account with `relayApproved`, and the reviews (packs in `docs/gloam-pack/`, brief `docs/FOR-GLOAM.md`).
 - [ ] **Gloam:** the SDK release that knows 99801 and 99901, plus the change-note seed. Then **Claude** bumps it, uses the seed, and reruns all parts.
@@ -27,7 +27,7 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
   - decide whether `GLOAM_QUESTIONS.md`, `docs/FOR-GLOAM.md` and the partnership parts of `REPORT.md` move somewhere private.
 - [ ] **Bob:** a Vercel project on the same account, domain gloak.boblabs.tech. The build needs nothing special, since the site defaults to Gloam. Set `VITE_KEEPER_URL` and `VITE_RELAYER_URL` to the v2 keeper.
 - [ ] **Bob:** a v2 keeper on a new Render account (free plan, no custom domain yet): New > Blueprint on this repo. `render.yaml` holds the testnet addresses and settings. Set only `KEEPER_PK` in Render's dashboard, never in the repo. The env it sets:
-  - `CONFIG` (launches) and `CORS_ORIGINS` (gloak.boblabs.tech);
+  - `FACTORY` and `START_BLOCK` (v2's own launch factory) and `CORS_ORIGINS` (gloak.boblabs.tech);
   - `GLOAM_VAULT`, `GLOAM_VAULT_BLOCK`, `GLOAM_LAUNCH_VAULT`, `GLOAM_LAUNCH_VAULT_BLOCK`, `GLOAM_MEMO`;
   - `GLOAM_ESCROWS` (launch swap v4, batcher v4, bids, receive, graduation, funds gate);
   - `GLOAM_BATCHER_V4`, `GLOAM_BATCHER_V4_BLOCK`, `GLOAM_FUNDS_GATE`;
@@ -50,7 +50,7 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - [ ] Whether Elysium has EIP-2537 (BLS12-381), for provable sealed bids, and whether Timeboost is on.
 
 **From Bob:**
-- [ ] Cloak's launch factory, hook and fixed WHYPE on mainnet. Decide whether Cloak v1's mainnet deploy makes them and v2 points at them.
+- [ ] Cloak v2's own launch factory and hook on mainnet: `e2e-gloam/deploy-v2-factory.mjs` (done this way on testnet, Nov 9), then `deploy-partner.mjs` on it.
 - [ ] A Safe on Elysium mainnet (the guard controller and launch pauser), separate keeper and relayer keys, and a treasury.
 - [ ] Mainnet caps for the launch vault: HYPE per deposit and total, and launch tokens.
 - [ ] Whether Cloak takes an interface fee inside its escrows (Gloam's partner fee can't be paid privately yet).
@@ -73,7 +73,7 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - [x] Free-hosting pass (`docs/OPTIMIZATION.md`):
   - private balances read only new blocks, with one sync per refresh;
   - reloads and new devices skip the vault history;
-  - the snapshot rebuilds only while someone uses it;
+  - no keeper snapshot (removed with v1's keeper code);
   - the keeper sleeps when idle;
   - the hashing download is about 1 MB smaller;
   - hidden tabs don't poll.
@@ -102,4 +102,4 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - [ ] **More swap pairs without an aggregator:** `CloakLaunchSwapV4` on Gloam's vault (USDC/HYPE and ecosystem tokens through hookless v4 pools), after Gloam says yes. Then a venue per non-v4 DEX a partner uses. Check mainnet's pools in its first week (KNTQ/HYPE, stock tokens).
 - [ ] **Claude:** a smaller bundle (swap heavy Poseidon libraries for `poseidon-lite` where possible).
 - [ ] **Claude:** escrows that post their payout's memo in the same transaction (waiting on Gloam's memo board taking posts before the note is in the vault).
-- [ ] **Later, once Bob says Gloam's side is proven:** remove Cloak's own private layer from v2 (REPORT section 17). Cloak v1 keeps it.
+- [x] Cloak's own private layer removed from v2 (Nov 9): v1's vaults, circuits, SDK classes, keeper loop and site code. Cloak v1 keeps it in its own repository.

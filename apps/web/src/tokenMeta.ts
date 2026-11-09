@@ -1,8 +1,7 @@
-import { getSnapshot } from "./snapshot";
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { cloakFactoryAbi } from "@cloakely/sdk";
-import { FACTORY, LEGACY_FACTORIES } from "./config";
+import { FACTORY, FACTORY_BLOCK } from "./config";
 import { Hint } from "./errors";
 import { publicClient } from "./wallet";
 
@@ -80,19 +79,11 @@ const LAUNCH_CREATED_V1 = [
 
 export type LaunchCreatedLog = { args: { auction: Address; token: Address; creator: Address; metadataURI: string }; blockNumber: bigint; transactionHash: `0x${string}`; logIndex: number };
 
-/** LaunchCreated from the current factory and every earlier one, optionally for one auction. */
+/** LaunchCreated from Cloak v2's factory, optionally for one auction. */
 export async function launchCreatedLogs(auction?: Address): Promise<LaunchCreatedLog[]> {
-  // every launch's metadata comes with the keeper's snapshot; one launch (or no snapshot) reads the chain
-  const snap = auction ? null : await getSnapshot();
-  if (snap) return snap.meta.map((m) => ({ args: { auction: m.auction, token: m.token, creator: "0x0000000000000000000000000000000000000000", metadataURI: m.metadataURI }, blockNumber: 0n, transactionHash: "0x", logIndex: 0 }));
-  const factories = [FACTORY, ...LEGACY_FACTORIES].filter(Boolean) as Address[];
-  if (!factories.length) return [];
-  const q = { address: factories, eventName: "LaunchCreated", args: auction ? { auction } : undefined, fromBlock: 0n, toBlock: "latest", strict: true } as const;
-  const [now, v1] = await Promise.all([
-    publicClient.getContractEvents({ ...q, abi: cloakFactoryAbi }),
-    publicClient.getContractEvents({ ...q, abi: LAUNCH_CREATED_V1 }),
-  ]);
-  return [...now, ...v1] as unknown as LaunchCreatedLog[];
+  if (!FACTORY) return [];
+  const logs = await publicClient.getContractEvents({ address: FACTORY, abi: cloakFactoryAbi, eventName: "LaunchCreated", args: auction ? { auction } : undefined, fromBlock: FACTORY_BLOCK, toBlock: "latest", strict: true });
+  return logs as unknown as LaunchCreatedLog[];
 }
 
 let all: Promise<Map<string, TokenMeta>> | null = null;

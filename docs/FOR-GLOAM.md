@@ -24,22 +24,22 @@ Cloak v2 runs on Gloam's vault, circuits and final ceremony keys, all unchanged.
 
 ## 2. Our contracts on Elysium testnet (for vetting)
 
-From `deployments/elysium-testnet-gloam.json`, deploy block 26230337. Today the deploy wallet stands in for our multisig (guard controller, pauser, fee recipient).
+From `deployments/elysium-testnet-gloam.json`. Gloam's vault from block 26230337; the launch vault and escrows were redeployed on Cloak v2's own launch factory on Nov 9 (block 26707908). Today the deploy wallet stands in for our multisig (guard controller, pauser, fee recipient).
 
 | Contract | Address |
 |---|---|
 | Cloak's instance of your guarded vault (USDC only, 500 / 25,000) | `0x8D15BA46071D5AB2e59d746c22d51C906281cB44` |
 | Its guard / memo board | `0xD9f827BF69b769e0bF39c9Bc96101DcdEA098171` / `0xf6816854b68CC4B67213289927d8e44050BA62D3` |
 | Final-key verifiers (unshield / shield), our copies | `0xe65Ad45F408b74Dc2eEb6562C54721fE60DCA7F2` / `0xFacd1e048F7B6D1CdD9A7Bcca93b806Ed0C6F67d` |
-| **CloakLaunchVault** (HYPE 10 per deposit, 12 launches admitted) | `0x8e38155ae9e753874415482e1ab1c169bbc7d1a2` |
-| Its VaultOwnerGuard | `0x8362860ea98c1b95dda1d28077909779b457dcc2` |
-| CloakLaunchSwapV4 (private swaps) | `0xd540527d3eef9b4de63f741159036d5e35204541` |
-| CloakGloamBids (sealed bids) | `0x0c3f42b10569a4550fe75785f86b2b019905f31b` |
-| CloakGraduation (into the Gloam vault, 1-hour rounds) | `0x51756969b91f8b6a8c941250691b974c769c97fa` |
-| CloakGloamReceive (receive addresses) | `0x4a11f7948513fe7517ef7c6efee88c5681bb06c4` |
-| CloakFundsGate / CloakReceiptCheck | `0x1642422970782e5d1b0a94a64ee022e2c3b4a25c` / `0x2236b68e231cebd7dd04e23fe756efdae726e325` |
-| CloakGloamBatcherV4 (batch rounds) | built, reviewed and tested, deploys next (no owner, so it's added with no redeploy) |
-| Cloak's v4 launch factory / CloakV4Hook / PoolManager | `0x1b0072684e98d9e23018e2d107ed8166ef84c077` / `0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80` / `0x51027076df8416e42ea8438b27a0c433d9662e68` |
+| **CloakLaunchVault** (HYPE 10 per deposit; GLOAK admitted) | `0x13050b9a0abece56f80d30da107c3f3fad33288f` |
+| Its VaultOwnerGuard | `0xa88f4ae7b0efb323ee3f1b0577988a474dcfece6` |
+| CloakLaunchSwapV4 (private swaps) | `0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce` |
+| CloakGloamBatcherV4 (batch rounds, 60 s) | `0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8` |
+| CloakGloamBids (sealed bids) | `0xb3f6f2142439f1b4f088ea24569cc73726dcea32` |
+| CloakGraduation (into the Gloam vault, 1-hour rounds) | `0xfd0e96dec9c1edd885e86044790e50e48c1a6268` |
+| CloakGloamReceive (receive addresses) | `0xa462e810b985029b28b5cee49866760a7f8767bb` |
+| CloakFundsGate / CloakReceiptCheck | `0x79aafd041a283c334421a17c781b12e353093210` / `0xb0a8fcbd75f4d6d2ce5a0121e8607aa353990304` |
+| Cloak v2's own launch factory / CloakV4Hook / PoolManager | `0x59d2cd703747a47288518c7380efa95879295784` / `0xC6296320cDFAB6074Fc650f1d788608b16fa2A80` / `0x51027076df8416e42ea8438b27a0c433d9662e68` |
 
 What each escrow call does and where money can go: `docs/gloam-pack/ESCROWS.md`. The launch-vault diff against `ShieldPoolPayments`: `LAUNCH-VAULT-DIFF.md`. The factory token and v4 pool keys: `FACTORY-AND-POOLS.md`.
 

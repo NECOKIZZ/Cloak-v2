@@ -1,6 +1,6 @@
 # CloakLaunchVault against Gloam's ShieldPoolPayments
 
-For Gloam's review of our one addition. `CloakLaunchVault` (`contracts-gloam/src/CloakLaunchVault.sol`) inherits Gloam's `ShieldPoolCore` unchanged (imported from the pinned submodule `vendor/gloam` at `16dac34`, never edited) and repeats `ShieldPoolPayments`' three rules word for word. Testnet: `0x8e38155ae9e753874415482e1ab1c169bbc7d1a2`, owned by its own `VaultOwnerGuard` at `0x8362860ea98c1b95dda1d28077909779b457dcc2`.
+For Gloam's review of our one addition. `CloakLaunchVault` (`contracts-gloam/src/CloakLaunchVault.sol`) inherits Gloam's `ShieldPoolCore` unchanged (imported from the pinned submodule `vendor/gloam` at `16dac34`, never edited) and repeats `ShieldPoolPayments`' three rules word for word. Testnet: `0x13050b9a0abece56f80d30da107c3f3fad33288f`, owned by its own `VaultOwnerGuard` at `0x8362860ea98c1b95dda1d28077909779b457dcc2`.
 
 ## What is the same as ShieldPoolPayments
 

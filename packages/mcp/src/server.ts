@@ -21,27 +21,10 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import {
   Cloak,
-  CloakPrivate,
   cloakAuctionAbi,
   cloakPairAbi,
-  cloakVaultsAbi,
-  legacyFactories,
-  createProver,
-  loadProver,
-  createSharedProver,
-  loadSharedProver,
-  privateRouterAbi,
-  relayerSubmitter,
-  sharedRelayerSubmitter,
-  sharedVaultAbi,
-  SharedVaultClient,
-  shieldedPoolAbi,
   buildClaimLink,
   buildRequestLink,
-  linkAddress,
-  linkCheck,
-  linkKeys,
-  openLinkKeys,
   newLinkSecret,
   parseClaimLink,
   parseRequestLink,
@@ -51,10 +34,8 @@ import {
   type DropBid,
   type DropState,
   type AuctionState,
-  type Prover,
   type Wallet,
   resolveRecipient,
-  CIRCUITS_CDN,
   GloamPrivate,
   checkPayee,
   gloamProvers,
@@ -94,7 +75,7 @@ It never signs and never holds keys. Use it to find launches (list_launches, get
 type Asset =
   | { kind: "hype"; symbol: "HYPE"; token: Address; pool: Address; decimals: 18 }
   | { kind: "asset"; symbol: string; token: Address; pool: Address; decimals: number }
-  | { kind: "token"; symbol: string; token: Address; pool: Address; pair: Address; decimals: 18; shared?: true };
+  | { kind: "token"; symbol: string; token: Address; pool: Address; pair: Address; decimals: 18 };
 
 const LAUNCH_VAULT = parseAbi(["function isLaunchToken(address) view returns (bool)", "function factory() view returns (address)", "function admitLaunch(uint256 launchIndex) returns (address)"]);
 
@@ -140,7 +121,7 @@ export function looksSecret(args: unknown): boolean {
  * key, never signs, and refuses any call that looks like it carries a secret. Without `hosted`, it's the local server
  * that signs for one agent wallet under spending limits.
  */
-export function createCloakServer(settings: Settings, opts: { prover?: () => Promise<Prover>; hosted?: boolean } = {}) {
+export function createCloakServer(settings: Settings, opts: { hosted?: boolean } = {}) {
   if (opts.hosted) settings = { ...settings, privateKey: undefined };
   const d = settings.deployment;
   // reads in the same tick go out as one multicall where the chain has Multicall3 (a launch list is ~20 reads per
@@ -152,48 +133,15 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   }) as PublicClient;
   const account = settings.privateKey ? privateKeyToAccount(settings.privateKey) : undefined;
   const wallet = account ? (createWalletClient({ chain: settings.chain, transport: http(settings.rpcUrl), account }) as Wallet) : undefined;
-  // earlier deployments' launches still list, settle and pay out
-  const cloak = new Cloak(pub, wallet, d.factory, legacyFactories(d));
-  /** Where to start scanning a launch's bids: this deployment's first factory block, or the start for an older launch. */
-  const ours = new Set([d.factory, ...(d.earlierFactories ?? [])].map((f) => f.toLowerCase()));
-  const bidsFrom = async (auction: Address) =>
-    ours.has((await pub.readContract({ address: auction, abi: [{ type: "function", name: "factory", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] }], functionName: "factory" }).catch(() => zeroAddress)).toLowerCase())
-      ? (d.firstFactoryBlock !== undefined && d.firstFactoryBlock < settings.launchesFromBlock ? d.firstFactoryBlock : settings.launchesFromBlock)
-      : 0n;
+  const cloak = new Cloak(pub, wallet, d.factory);
+  /** Where to start scanning a launch's bids: the factory's first block. */
+  const bidsFrom = async (_auction: Address) => d.factoryBlock;
   const spending = account ? new Spending(settings.limits, settings.stateDir, account.address) : undefined;
-  const submit = relayerSubmitter(d.relayerUrl);
   const explorer = settings.chain.blockExplorers?.default.url;
   const link = (h: Hex) => (explorer ? `${explorer}/tx/${h}` : h);
 
-  let proverP: Promise<Prover> | undefined;
-  const prover =
-    opts.prover ??
-    (() =>
-      (proverP ??= settings.circuitsDir
-        ? Promise.resolve(createProver(readFileSync(join(settings.circuitsDir, "transaction2x2.wasm")), readFileSync(join(settings.circuitsDir, "transaction2x2_final.zkey"))))
-        : loadProver([CIRCUITS_CDN, d.circuitsUrl])));
-
-  let sharedProverP: Promise<Prover> | undefined;
-  const sharedProver = () =>
-    (sharedProverP ??= settings.circuitsDir
-      ? Promise.resolve(createSharedProver(readFileSync(join(settings.circuitsDir, "transactionMA2x2.wasm")), readFileSync(join(settings.circuitsDir, "transactionMA2x2_final.zkey"))))
-      : loadSharedProver([CIRCUITS_CDN, d.circuitsUrl]));
-  let sharedC: SharedVaultClient | undefined;
-  /** The shared launch-token vault (new Uniswap launches keep their private balances there). */
-  async function shared(): Promise<SharedVaultClient> {
-    if (!d.shared || !d.sharedRouter) throw new Error("This deployment has no shared launch-token vault.");
-    const p = await priv();
-    if (!sharedC || sharedC.priv !== p) sharedC = new SharedVaultClient(p, d.shared, d.sharedRouter, sharedProver, sharedRelayerSubmitter(d.relayerUrl), d.sharedBlock ?? 0n, d.sharedBatcher);
-    return sharedC;
-  }
-  /** Private balance of one asset, wherever its vault is. */
-  async function balanceOf(a: Asset): Promise<bigint> {
-    if (a.kind === "token" && a.shared) return (await shared()).balance(a.token);
-    return (await priv()).balance(a.pool);
-  }
-
-  // Cloak v2 on Gloam: the private balance lives in Gloam's vault (USDC) and Cloak's launch vault (HYPE, launch tokens)
-  const G = settings.core === "gloam" ? d.gloam : undefined;
+  // the private balance lives in Gloam's vault (USDC) and Cloak's launch vault (HYPE, launch tokens)
+  const G = d.gloam;
   let gloamP: Promise<GloamPrivate> | undefined;
   async function gloamPriv(): Promise<GloamPrivate> {
     if (!wallet) throw new Error("No wallet configured: set CLOAK_KEY_FILE (or CLOAK_PRIVATE_KEY) to use private balances.");
@@ -219,7 +167,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         publicClient: pub,
         chainId: settings.chain.id,
         gloamVault: { pool: g.gloamVault, poolBlock: g.block },
-        launchVault: { pool: g.launchVault, poolBlock: g.block },
+        launchVault: { pool: g.launchVault, poolBlock: g.launchVaultBlock ?? g.block },
         payMemo: g.memoBoard,
         provers: gloamProvers(sources),
         submit: gloamRelaySubmitter(d.relayerUrl),
@@ -266,31 +214,17 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     return p;
   }
 
-  let privP: Promise<CloakPrivate> | undefined;
-  async function priv(): Promise<CloakPrivate> {
-    // the Gloam account has CloakPrivate's methods for everything the tools below call
-    if (G) return (await gloamPriv()) as unknown as CloakPrivate;
-    if (!wallet) throw new Error("No wallet configured: set CLOAK_KEY_FILE (or CLOAK_PRIVATE_KEY) to use private balances.");
-    privP ??= (async () => {
-      const keys = await CloakPrivate.keysFromWallet(wallet, { chainId: settings.chain.id, verify: true });
-      // notes are scanned from the permanent vaults' first block, whichever router is current
-      const p = new CloakPrivate(pub, d.router, keys, prover, submit, d.vaultsBlock ?? d.routerBlock, d.batcher, d.migrator);
-      for (const a of d.assets ?? []) p.addAsset(a);
-      return p;
-    })().catch((e) => {
-      privP = undefined;
-      throw e;
-    });
-    const p = await privP;
-    await p.loadMarkets(); // new private markets appear as launches settle
-    return p;
+  const priv = gloamPriv;
+  /** Private balance of one asset. */
+  async function balanceOf(a: Asset): Promise<bigint> {
+    return (await priv()).balance(a.pool);
   }
 
   // one write at a time: two private calls must not pick the same notes, and nonces stay in order
   let queue: Promise<unknown> = Promise.resolve();
   const exclusive = <T>(fn0: () => Promise<T>): Promise<T> => {
     // on Gloam, payments waiting to be secured are swept here, inside the queue, never by a read or a dry run
-    const fn = G ? async () => (await (await gloamPriv()).syncAll(() => {}, { sweep: true }).catch(() => {}), fn0()) : fn0;
+    const fn = async () => (await (await gloamPriv()).syncAll(() => {}, { sweep: true }).catch(() => {}), fn0());
     const run = queue.then(fn, fn);
     queue = run.catch(() => {});
     return run;
@@ -313,7 +247,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
 
   /** Every asset with a private vault: HYPE, USDC-like assets, and every launch token with a private market. */
   async function vaults(): Promise<Asset[]> {
-    if (G) {
+    {
       // HYPE and every admitted launch with a market (the launch vault), and the deployment's assets (Gloam's vault)
       const p = await gloamPriv();
       const out: Asset[] = [{ kind: "hype", symbol: "HYPE", token: p.hypeMarket.token, pool: p.hypeMarket.pool, decimals: 18 }];
@@ -324,34 +258,6 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       }
       return out;
     }
-    const c = { address: d.router, abi: privateRouterAbi } as const;
-    const n = await pub.readContract({ ...c, functionName: "tokensCount" });
-    const out: Asset[] = [{ kind: "hype", symbol: "HYPE", token: d.whype, pool: d.hypePool, decimals: 18 }];
-    for (const a of d.assets ?? []) out.push({ kind: "asset", symbol: a.symbol, token: a.token, pool: a.pool, decimals: a.decimals });
-    const toks = await Promise.all(Array.from({ length: Number(n) }, (_, i) => pub.readContract({ ...c, functionName: "tokens", args: [BigInt(i)] })));
-    for (const token of toks) {
-      if (out.some((a) => a.token.toLowerCase() === token.toLowerCase())) continue; // HYPE, or an asset already listed
-      const [pool, pair, symbol] = await Promise.all([
-        pub.readContract({ ...c, functionName: "poolOf", args: [token] }),
-        pub.readContract({ ...c, functionName: "pairOf", args: [token] }),
-        symbolOf(token),
-      ]);
-      // a vault without a launch pair holds an existing token (USDC): an asset, not a market
-      if (pair === zeroAddress) out.push({ kind: "asset", symbol, token, pool, decimals: await decimalsOf(token) });
-      else out.push({ kind: "token", symbol, token, pool, pair, decimals: 18 });
-    }
-    // tokens in the shared launch-token vault (every Uniswap launch from Nov 2 on)
-    if (d.shared) {
-      const v = { address: d.shared, abi: sharedVaultAbi } as const;
-      const m = Number(await pub.readContract({ ...v, functionName: "tokensCount" }));
-      for (let i = 0; i < m; i++) {
-        const token = await pub.readContract({ ...v, functionName: "tokens", args: [BigInt(i)] });
-        if (out.some((a) => a.token.toLowerCase() === token.toLowerCase())) continue;
-        const [pair, symbol] = await Promise.all([pub.readContract({ ...v, functionName: "marketOf", args: [token] }), symbolOf(token)]);
-        out.push({ kind: "token", symbol, token, pool: d.shared, pair, decimals: 18, shared: true });
-      }
-    }
-    return out;
   }
 
   /** "HYPE", "USDC", a launch token's symbol, or any of their addresses. */
@@ -371,23 +277,10 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
 
   /** Expected output of a private swap of `amountIn` (after the vault's withdrawal fee), and the relayer's fee. */
   async function quoteSwap(t: Extract<Asset, { kind: "token" }>, side: "buy" | "sell", amountIn: bigint) {
-    if (G) {
-      // no relayer fee on Gloam: the relay is paid from the launch vault's fee
-      const p = await gloamPriv();
-      const net = await p.afterFee(side === "buy" ? p.hypeMarket.pool : t.pool, amountIn);
-      return { out: await p.quote(t.token, side, net), net, fee: 0n };
-    }
-    const poolIn = side === "buy" ? d.hypePool : t.pool;
-    const net = await pub.readContract({ address: poolIn, abi: shieldedPoolAbi, functionName: "afterFee", args: [amountIn] });
-    const [rH, rT] = await Promise.all([
-      pub.readContract({ address: t.pair, abi: cloakPairAbi, functionName: "reserveHype" }),
-      pub.readContract({ address: t.pair, abi: cloakPairAbi, functionName: "reserveToken" }),
-    ]);
-    const out = await pub.readContract({ address: t.pair, abi: cloakPairAbi, functionName: "getAmountOut", args: side === "buy" ? [net, rH, rT] : [net, rT, rH] });
-    const fee = t.shared
-      ? await (side === "buy" ? sharedRelayerSubmitter(d.relayerUrl).quote!("sharedBuy", t.token) : sharedRelayerSubmitter(d.relayerUrl).quote!("sharedSell", t.token)).then((q) => q.fee, () => 0n)
-      : await submit.quote!("privateSwap", poolIn).then((q) => q.fee, () => 0n);
-    return { out, net, fee };
+    // no relayer fee: the relay is paid from the launch vault's fee
+    const p = await gloamPriv();
+    const net = await p.afterFee(side === "buy" ? p.hypeMarket.pool : t.pool, amountIn);
+    return { out: await p.quote(t.token, side, net), net, fee: 0n };
   }
 
   /** What an amount of an asset counts against: HYPE value (launch tokens at the pool's price), or USDC. */
@@ -437,8 +330,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   }
 
   async function privateTradingOn(token: Address) {
-    if (G) return pub.readContract({ address: G.launchVault, abi: LAUNCH_VAULT, functionName: "isLaunchToken", args: [token] });
-    return (await pub.readContract({ address: d.router, abi: privateRouterAbi, functionName: "poolOf", args: [token] })) !== zeroAddress;
+    return pub.readContract({ address: G.launchVault, abi: LAUNCH_VAULT, functionName: "isLaunchToken", args: [token] });
   }
 
   const bidsFile = (a: Address) => join(settings.stateDir, `bids-${a.toLowerCase()}.json`);
@@ -498,7 +390,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         ...(opts.hosted
           ? {}
           : { dryRun: settings.dryRun ? "on for every write (CLOAK_DRY_RUN=1)" : "off (pass dry_run: true on any write to preview it)", wallet, limits: spending?.summary() ?? null }),
-        contracts: { factory: d.factory, router: d.router, batcher: d.batcher, hypeVault: d.hypePool, ...(usdc ? { [`${usdc.symbol.toLowerCase()}Vault`]: usdc.pool } : {}) },
+        contracts: { factory: d.factory, gloamVault: G.gloamVault, launchVault: G.launchVault, launchSwap: G.launchSwapV4 ?? null, batchRounds: G.batcherV4 ?? null },
         relayer: d.relayerUrl,
         ...(settings.network === "testnet" ? { faucet: "https://elysium.kinetiq.xyz/testnet-faucet", note: "Testnet: play money only." } : {}),
       };
@@ -583,12 +475,14 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     { title: "Private vault totals", description: "How much sits in each private vault (HYPE, USDC and every launch token). Totals are public; who owns what isn't.", inputSchema: {}, annotations: READ },
     safe(async () => {
       const out = [];
+      // HYPE and launch tokens sit in Cloak's launch vault, assets (USDC) in Gloam's vault
       for (const a of await vaults()) {
-        const held = await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "deposited" });
+        const vault = a.kind === "asset" ? G.gloamVault : G.launchVault;
+        const held = a.kind === "hype" ? await pub.getBalance({ address: vault }) : await pub.readContract({ address: a.token, abi: erc20Abi, functionName: "balanceOf", args: [vault] });
         if (held === 0n && a.kind === "token") continue;
-        out.push({ asset: a.symbol, token: a.token, vault: a.pool, held: fmtAmt(a, held) });
+        out.push({ asset: a.symbol, token: a.token, vault, held: fmtAmt(a, held) });
       }
-      return { vaults: out, note: "Each vault is one shared pool of encrypted notes. The chain shows the total, not the owners or their balances." };
+      return { vaults: out, note: "Each vault is one pool of encrypted notes for many accounts. The chain shows the total, not the owners or their balances." };
     }),
   );
 
@@ -904,7 +798,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
 
   server.registerTool(
     "enable_private_trading",
-    { title: "Enable private trading", description: "Open a private vault for a settled launch's token so it can be traded from private balances. Anyone can do this once per token; it costs only gas.", inputSchema: { auction: addr, dry_run: dry }, annotations: WRITE },
+    { title: "Enable private trading", description: "Admit a settled launch's token to Cloak's launch vault so it can be traded from private balances. Anyone can do this once per token (the keeper does it too); it costs only gas.", inputSchema: { auction: addr, dry_run: dry }, annotations: WRITE },
     safe(async ({ auction, dry_run }: { auction: string; dry_run?: boolean }) => {
       const { wallet } = needWallet();
       const s = await cloak.getAuction(auction as Address);
@@ -912,23 +806,14 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       if (await privateTradingOn(s.token)) return { alreadyOn: true, token: s.token };
       const l = (await cloak.listLaunches()).find((x) => x.auction.toLowerCase() === s.address.toLowerCase());
       if (!l) throw new Error("This launch isn't from a Cloak factory, so it can't get a private vault.");
-      if (G) {
-        // the launch vault admits a settled launch of its own factory, anyone may ask (the keeper does it too)
-        const factory = await pub.readContract({ address: G.launchVault, abi: LAUNCH_VAULT, functionName: "factory" });
-        if (factory.toLowerCase() !== l.factory.toLowerCase()) throw new Error("This launch is from an earlier Cloak factory, which the private launch vault doesn't take.");
-        if (isDry(dry_run)) return { dryRun: true, wouldEnable: s.tokenSymbol, launchIndex: l.index };
-        return exclusive(async () => {
-          const h = await wallet.writeContract({ address: G.launchVault, abi: LAUNCH_VAULT, functionName: "admitLaunch", args: [BigInt(l.index)] });
-          await receipt(h);
-          return { enabled: true, token: s.token, vault: G.launchVault, tx: link(h) };
-        });
-      }
-      const vaults = d.vaults ?? (await pub.readContract({ address: d.router, abi: privateRouterAbi, functionName: "vaults" }));
-      if (isDry(dry_run)) return { dryRun: true, wouldEnable: s.tokenSymbol, factory: l.factory, launchIndex: l.index };
+      // the launch vault admits a settled launch of its own factory, anyone may ask (the keeper does it too)
+      const factory = await pub.readContract({ address: G.launchVault, abi: LAUNCH_VAULT, functionName: "factory" });
+      if (factory.toLowerCase() !== l.factory.toLowerCase()) throw new Error("This launch is from another factory, which Cloak's launch vault doesn't take.");
+      if (isDry(dry_run)) return { dryRun: true, wouldEnable: s.tokenSymbol, launchIndex: l.index };
       return exclusive(async () => {
-        const h = await wallet.writeContract({ address: vaults, abi: cloakVaultsAbi, functionName: "createPool", args: [l.factory, l.index] });
+        const h = await wallet.writeContract({ address: G.launchVault, abi: LAUNCH_VAULT, functionName: "admitLaunch", args: [BigInt(l.index)] });
         await receipt(h);
-        return { enabled: true, token: s.token, vault: await pub.readContract({ address: d.router, abi: privateRouterAbi, functionName: "poolOf", args: [s.token] }), tx: link(h) };
+        return { enabled: true, token: s.token, vault: G.launchVault, tx: link(h) };
       });
     }),
   );
@@ -951,13 +836,13 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const p = await priv();
       const out: Record<string, string> = {};
       const tokens: Record<string, { token: Address; balance: string }> = {};
-      // on Gloam, payments received but not yet secured count too (the next write secures them first), shown apart
-      const g = G ? (p as unknown as GloamPrivate) : null;
-      if (g) await g.syncAll(); // reads the vaults (no sweep: reads send nothing)
-      const waiting = g ? await g.pending() : new Map<Address, bigint>();
+      // payments received but not yet secured count too (the next write secures them first), shown apart
+      const g = p;
+      await g.syncAll(); // reads the vaults (no sweep: reads send nothing)
+      const waiting = await g.pending();
       const waitingOut: Record<string, string> = {};
       for (const a of await vaults()) {
-        const w = g ? (waiting.get(g.assetOf(a.token)) ?? 0n) : 0n;
+        const w = waiting.get(g.assetOf(a.token)) ?? 0n;
         if (w > 0n) waitingOut[a.symbol] = formatUnits(w, a.decimals);
         const b = (await balanceOf(a)) + w;
         if (b === 0n && !include_zero && a.kind === "token") continue;
@@ -972,14 +857,13 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     "shield",
     {
       title: "Shield into a private balance",
-      description: "Deposit HYPE, USDC or a new launch token (one in the shared launch-token vault) from the wallet into the private balance. This is the one public step: it lands on a one-time key, so it can't be linked to what comes next.",
-      inputSchema: { asset: z.string().describe('"HYPE", "USDC" or a launch token in the shared vault'), amount: amt("Amount"), dry_run: dry },
+      description: "Deposit HYPE, USDC or a launch token from the wallet into the private balance. This is the one public step: it lands on a one-time key, so it can't be linked to what comes next.",
+      inputSchema: { asset: z.string().describe('"HYPE", "USDC" or a launch token'), amount: amt("Amount"), dry_run: dry },
       annotations: WRITE,
     },
     safe(async ({ asset, amount, dry_run }: { asset: string; amount: string; dry_run?: boolean }) => {
       const { wallet, spending } = needWallet();
       const a = await resolve(asset);
-      if (a.kind === "token" && !a.shared && !G) throw new Error("Launch tokens enter a private balance by buying privately (private_swap), not by shielding.");
       const x = amountOf(amount, a.decimals);
       if (x === null) throw new Error("Give an exact amount to shield.");
       const c = await cost(a, x);
@@ -989,7 +873,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
         spending.check(c.budget, c.value);
         const p = await priv();
-        const h = a.kind === "hype" ? await p.shieldHype(wallet, x) : a.kind === "token" && a.shared ? await (await shared()).shield(wallet, a.token, x) : await p.shieldToken(wallet, a.token, x);
+        const h = a.kind === "hype" ? await p.shieldHype(wallet, x) : await p.shieldToken(wallet, a.token, x);
         spending.record(c.budget, c.value);
         return { shielded: fmtAmt(a, x), privateBalance: fmtAmt(a, await balanceOf(a)), tx: link(h) };
       });
@@ -1010,7 +894,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       if (t.kind !== "token") throw new Error(`${t.symbol} isn't a launch token: private swaps trade launch tokens against HYPE.`);
       const p = await priv();
       const poolIn = side === "buy" ? (await vaults())[0].pool : t.pool;
-      const x = amountOf(amount, 18) ?? (t.shared && side === "sell" ? await (await shared()).maxWithdraw(t.token, "sharedSell") : await p.maxSpendable(poolIn, "privateSwap"));
+      const x = amountOf(amount, 18) ?? (await p.maxSpendable(poolIn));
       if (x <= 0n) throw new Error("Not enough private balance for this, counting the relayer's fee.");
       const c = await cost(side === "buy" ? (await vaults())[0] : t, x);
       spending.check(c.budget, c.value);
@@ -1021,14 +905,6 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       return exclusive(async () => {
         // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
         spending.check(c.budget, c.value);
-        if (t.shared) {
-          const sh = await shared();
-          const h = side === "buy" ? await sh.buy(t.token, x, { slippageBps: slippage_bps ?? 100 }) : await sh.sell(t.token, x, { slippageBps: slippage_bps ?? 100 });
-          await receipt(h);
-          spending.record(c.budget, c.value);
-          const hypeA = (await vaults())[0];
-          return { swapped: `${formatEther(x)} ${inSym}`, expected: `${formatEther(q.out)} ${outSym}`, relayerFee: `${formatEther(q.fee)} HYPE or ${t.symbol}`, privateBalance: { HYPE: formatEther(await balanceOf(hypeA)), [t.symbol]: formatEther(await balanceOf(t)) }, tx: link(h), sentBy: "the relayer, not this wallet" };
-        }
         const r = await (side === "buy" ? p.buy(t.token, x, { slippageBps: slippage_bps }) : p.sell(t.token, x, { slippageBps: slippage_bps }));
         await receipt(r.txHash);
         spending.record(c.budget, c.value);
@@ -1055,22 +931,19 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const c = await cost(side === "buy" ? (await vaults())[0] : t, x);
       spending.check(c.budget, c.value);
       const p = await priv();
-      if (t.shared && !d.sharedBatcher) throw new Error(`${t.symbol} is in the shared launch-token vault, which has no batch rounds on this deployment. Use private_swap.`);
-      const round = t.shared ? await (await shared()).roundInfo() : G ? await (p as unknown as GloamPrivate).roundInfo(t.token) : await p.roundInfo();
+      const round = await p.roundInfo(t.token);
       if (isDry(dry_run)) return { dryRun: true, wouldPlace: `${formatEther(x)} ${side === "buy" ? "HYPE" : t.symbol} as standard-size ${side} orders`, roundEndsAt: iso(round.endsAt) };
       return exclusive(async () => {
         // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
         spending.check(c.budget, c.value);
-        const r = t.shared ? await (await shared()).batch(t.token, side, x) : await p.batch(t.token, side, x);
+        const r = await p.batch(t.token, side, x);
         const placed = r.orders.reduce((a, o) => a + o.size, 0n);
         const pc = await cost(side === "buy" ? (await vaults())[0] : t, placed);
         spending.record(pc.budget, pc.value);
         return {
           placed: r.orders.map((o) => ({ size: formatEther(o.size), round: o.round, tx: link(o.txHash) })),
           leftInBalance: formatEther(r.rest),
-          next: G
-            ? "The keeper settles the round when it ends. The output then moves into the private balance the next time a private tool runs (private_balance does it)."
-            : "The output arrives in the private balance when the round settles. Check private_balance in a minute.",
+          next: "The keeper settles the round when it ends. The output then moves into the private balance the next time a private tool runs (private_balance does it).",
         };
       });
     }),
@@ -1094,21 +967,14 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       }
       const a = await resolve(asset);
       const p = await priv();
-      const sharedTok = a.kind === "token" && a.shared;
-      const x = amountOf(amount, a.decimals) ?? (sharedTok ? await balanceOf(a) : await p.maxSpendable(a.pool, "transact"));
+      const x = amountOf(amount, a.decimals) ?? (await p.maxSpendable(a.pool));
       if (x <= 0n) throw new Error("Not enough private balance for this, counting the relayer's fee.");
       const c = await cost(a, x);
       spending.check(c.budget, c.value);
-      if (isDry(dry_run)) return { dryRun: true, wouldSend: fmtAmt(a, x), to, ...(sharedTok ? { relayerFee: "paid from your private HYPE, so the send doesn't show which token moved" } : {}) };
+      if (isDry(dry_run)) return { dryRun: true, wouldSend: fmtAmt(a, x), to };
       return exclusive(async () => {
         // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
         spending.check(c.budget, c.value);
-        if (sharedTok) {
-          const h = await (await shared()).send(a.token, x, to);
-          await receipt(h);
-          spending.record(c.budget, c.value);
-          return { sent: fmtAmt(a, x), to, privateBalance: fmtAmt(a, await balanceOf(a)), tx: link(h), visibleOnChain: "a private transaction happened; no sender, recipient, amount, or even which token" };
-        }
         const h = await p.send(a.kind === "hype" ? p.hypeMarket.token : a.token, to, x);
         await receipt(h);
         spending.record(c.budget, c.value);
@@ -1121,7 +987,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
     "withdraw",
     {
       title: "Withdraw to an address",
-      description: `Move funds from the private balance to a normal 0x address or .ely name (public on purpose). A brand-new address keeps the most privacy. ${G ? "The vault keeps 0.5%, and the relay pays the gas." : "Cloak keeps 0.25%, and the relayer takes a small fee for gas."}`,
+      description: `Move funds from the private balance to a normal 0x address or .ely name (public on purpose). A brand-new address keeps the most privacy. The vault keeps 0.5%, and the relay pays the gas.`,
       inputSchema: { asset: z.string().describe('"HYPE", "USDC" or a launch token'), to: z.string().describe("0x address or a .ely name (looked up when sending)"), amount: amt('Amount, or "max"'), dry_run: dry },
       annotations: WRITE,
     },
@@ -1129,24 +995,22 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const { spending } = needWallet();
       const dest = await resolveRecipient(pub, to); // a .ely name resolves now: names expire and change hands
       // where money would stop or be lost, refused before anything is proved, dry runs included (review O-12)
-      const stops = [zeroAddress, d.whype, ...(G ? [G.gloamVault, G.launchVault, G.memoBoard, G.launchSwapV4, G.batcherV4, G.batcher, G.receive, G.bids, G.graduation].filter(Boolean) : [d.router, d.hypePool])].map((x) => String(x).toLowerCase());
+      const stops = [zeroAddress, d.whype, ...[G.gloamVault, G.launchVault, G.memoBoard, G.launchSwapV4, G.batcherV4, G.batcher, G.receive, G.bids, G.graduation].filter(Boolean)].map((x) => String(x).toLowerCase());
       if (stops.includes(dest.address.toLowerCase())) throw new Error("That address can't take a withdrawal: the money would stop there. Use a normal wallet address.");
       const named = dest.name ? `${dest.name} (${dest.address})` : dest.address;
       to = dest.address;
       const a = await resolve(asset);
       const p = await priv();
-      const kind = a.kind === "hype" ? "unshieldHype" : "transact";
-      const sharedTok = a.kind === "token" && a.shared;
-      const x = amountOf(amount, a.decimals) ?? (sharedTok ? await (await shared()).maxWithdraw(a.token) : await p.maxSpendable(a.pool, kind));
+      const x = amountOf(amount, a.decimals) ?? (await p.maxSpendable(a.pool));
       if (x <= 0n) throw new Error("Not enough private balance for this, counting the relayer's fee.");
       const c = await cost(a, x);
       spending.check(c.budget, c.value);
-      const arrives = G ? await (p as unknown as GloamPrivate).afterFee(a.pool, x) : await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [x] });
+      const arrives = await p.afterFee(a.pool, x);
       if (isDry(dry_run)) return { dryRun: true, wouldWithdraw: fmtAmt(a, x), arrives: fmtAmt(a, arrives), to: named };
       return exclusive(async () => {
         // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
         spending.check(c.budget, c.value);
-        const h = a.kind === "hype" ? await p.unshieldHype(to as Address, x) : sharedTok ? await (await shared()).unshield(a.token, x, to as Address) : await p.unshieldToken(a.token, to as Address, x);
+        const h = a.kind === "hype" ? await p.unshieldHype(to as Address, x) : await p.unshieldToken(a.token, to as Address, x);
         await receipt(h);
         spending.record(c.budget, c.value);
         return { withdrew: fmtAmt(a, x), arrived: fmtAmt(a, arrives), to: named, privateBalance: fmtAmt(a, await balanceOf(a)), tx: link(h) };
@@ -1166,24 +1030,19 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
   async function linkClient(url: string, passcode?: string) {
     const l = parseClaimLink(url);
     if (l.locked && passcode === undefined) throw new Error(`This link is locked. Pass its passcode${l.hint ? ` (the answer to: "${l.hint}")` : ""}.`);
-    if (G) {
-      // the link's own Gloam account: spends what it received directly, through the relay, with no wallet
+    {
+      // the link's own account: spends what it received directly, through the relay, with no wallet
       const sources = settings.gloamCircuitsDir ? [`file://${settings.gloamCircuitsDir}`] : [GLOAM_CIRCUITS_CDN];
       const g = new GloamPrivate(
-        { publicClient: pub, chainId: settings.chain.id, gloamVault: { pool: G.gloamVault, poolBlock: G.block }, launchVault: { pool: G.launchVault, poolBlock: G.block }, payMemo: G.memoBoard, provers: gloamProvers(sources), submit: gloamRelaySubmitter(d.relayerUrl), whype: G.whype, spendReceived: true, logChunk: 1_000_000n },
+        { publicClient: pub, chainId: settings.chain.id, gloamVault: { pool: G.gloamVault, poolBlock: G.block }, launchVault: { pool: G.launchVault, poolBlock: G.launchVaultBlock ?? G.block }, payMemo: G.memoBoard, provers: gloamProvers(sources), submit: gloamRelaySubmitter(d.relayerUrl), whype: G.whype, spendReceived: true, logChunk: 1_000_000n },
         await openGloamLinkKeys(l, passcode),
       );
       await g.loadMarkets();
       for (const a of d.assets ?? []) g.addAsset(a);
-      return { l, c: g as unknown as CloakPrivate };
+      return { l, c: g };
     }
-    // a locked link with a check refuses a wrong passcode here, before anything touches the network
-    const c = new CloakPrivate(pub, d.router, await openLinkKeys(l, passcode), prover, submit, d.vaultsBlock ?? d.routerBlock, d.batcher, d.migrator);
-    for (const a of d.assets ?? []) c.addAsset(a);
-    await c.loadMarkets();
-    return { l, c };
   }
-  const linkTokenOf = (c: CloakPrivate, a: Asset) => (a.kind === "hype" ? c.hypeMarket.token : a.token);
+  const linkTokenOf = (c: GloamPrivate, a: Asset) => (a.kind === "hype" ? c.hypeMarket.token : a.token);
 
   server.registerTool(
     "create_payment_link",
@@ -1213,9 +1072,8 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       const share = whole / BigInt(n);
       if (share === 0n) throw new Error("That's too little to split that many ways.");
       const p = await priv();
-      const kinds = a.kind === "hype" ? (["transact", "unshieldHype"] as const) : (["transact"] as const);
-      const fees = await Promise.all(kinds.map((k) => p.relayFee(k, a.pool)));
-      const claimFee = x.cover_claim_fee === false ? 0n : fees.reduce((m, q) => (q.fee > m ? q.fee : m), 0n);
+      // the relay is paid from the vault's fee, so a claim costs the claimer nothing extra (kept for the option's shape)
+      const claimFee = x.cover_claim_fee === false ? 0n : (await p.relayFee()).fee;
       const each = share + claimFee;
       const total = each * BigInt(n);
       const c = await cost(a, total);
@@ -1227,14 +1085,10 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
         const secret = newLinkSecret();
         let to: string;
         let check: string | undefined;
-        if (G) {
+        {
           const gk = await gloamLinkKeys(secret, x.passcode);
           to = gloamLinkAddress(gk);
           check = x.passcode ? gloamLinkCheck(gk) : undefined;
-        } else {
-          const keys = await linkKeys(secret, x.passcode);
-          to = await linkAddress(keys);
-          check = x.passcode ? await linkCheck(keys) : undefined;
         }
         let block = 0n;
         const txs: string[] = [];
@@ -1325,7 +1179,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
               if (!l.shares || attempt >= 3 || !/already|spent|nullifier|being used/i.test(String(e))) throw e;
             }
           }
-          const got = !out ? r.amount : G ? await (c as unknown as GloamPrivate).afterFee(a.pool, r.amount) : await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [r.amount] });
+          const got = !out ? r.amount : await c.afterFee(a.pool, r.amount);
           claimed.push({ claimed: fmtAmt(a, got), tx: link(r.txHash) });
           if (l.shares) break;
         }
@@ -1370,7 +1224,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       let gross = units;
       if (!toCloak) {
         const one = 10n ** BigInt(a.decimals);
-        const after = G ? await (p as unknown as GloamPrivate).afterFee(a.pool, one) : await pub.readContract({ address: a.pool, abi: shieldedPoolAbi, functionName: "afterFee", args: [one] });
+        const after = await p.afterFee(a.pool, one);
         gross = after > 0n ? (units * one + after - 1n) / after : units;
       }
       const c = await cost(a, gross);

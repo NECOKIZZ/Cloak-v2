@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { parseAbi } from "viem";
-import { fromJson, scheduleRelay, scheduleStatus, shieldedPoolAbi, toJson, type ScheduledPiece, type ScheduledStatus } from "@cloakely/sdk";
+import { fromJson, scheduleRelay, scheduleStatus, toJson, type ScheduledPiece, type ScheduledStatus } from "@cloakely/sdk";
 import type { Priv } from "./state";
 import { publicClient } from "./wallet";
 import { RELAYER_URL } from "./config";
@@ -21,10 +21,9 @@ export interface SavedPiece {
 const LABEL = "scheduled";
 const GLOAM_VAULT = parseAbi(["function isSpent(bytes32) view returns (bool)"]);
 
-/** Whether a piece's note is spent (it went out, or the owner cancelled it): Cloak's vaults or a Gloam vault. */
+/** Whether a piece's note is spent (it went out, or the owner cancelled it). */
 async function isSpent(call: ScheduledPiece["call"]): Promise<boolean> {
-  if (call.kind === "gloamUnshield") return publicClient.readContract({ address: call.to, abi: GLOAM_VAULT, functionName: "isSpent", args: [call.nullifier] });
-  return publicClient.readContract({ address: call.pool, abi: shieldedPoolAbi, functionName: "isSpent", args: [BigInt(call.proof.inputNullifiers[0] as never)] });
+  return publicClient.readContract({ address: call.to, abi: GLOAM_VAULT, functionName: "isSpent", args: [call.nullifier] });
 }
 export async function loadScheduled(p: Priv): Promise<SavedPiece[]> {
   const s = await openBox(p, LABEL);

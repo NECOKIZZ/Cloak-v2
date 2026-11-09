@@ -22,7 +22,7 @@ import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, toBytes, 
 import * as gloam from "@gloamtrade/sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
-import { splitAmount, type ScheduledPiece, type Status } from "../private/client.js";
+import { splitAmount, type ScheduledPiece, type Status } from "../private/common.js";
 import { GloamCore, gloamKeysFromSignature, type GloamAccountKeys, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
 import { announce, finishPending, launchRoute, launchRouteV4, launchSwap, type LaunchRecord } from "./launchVault.js";
 import { notesFor, type HolderProver } from "./gloamProofs.js";
@@ -720,7 +720,7 @@ export class GloamPrivate {
   }
 
   /** After settlement: every private bid in `auction` back into the vault (tokens and refund as notes). */
-  async finishPrivateBids(auction: Address, onStatus: Status = () => {}, _shared?: unknown): Promise<{ claimed: number; movedHype: bigint; movedTokens: bigint }> {
+  async finishPrivateBids(auction: Address, onStatus: Status = () => {}): Promise<{ claimed: number; movedHype: bigint; movedTokens: bigint }> {
     const core = this.launchCore;
     if (!core || !this.cfg.records) return { claimed: 0, movedHype: 0n, movedTokens: 0n };
     const all = this.cfg.records.load();
@@ -838,8 +838,6 @@ export class GloamPrivate {
     return done;
   }
 
-  // ── what Cloak's own vaults had and Gloam's don't ──────────────────────
-
   // ── sync state kept on the device ──────────────────────────────────────
 
   /** Both vaults' sync state, for `importSync` after a reload (store it encrypted: it lists notes and their secrets). */
@@ -871,9 +869,5 @@ export class GloamPrivate {
   /** The vaults this account reads (for the keeper's leaf list). */
   vaults(): Address[] {
     return this.cores.map((c) => c.config.pool);
-  }
-
-  async migrateFrom(): Promise<never[]> {
-    return [];
   }
 }

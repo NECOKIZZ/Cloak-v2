@@ -1,7 +1,7 @@
 {
   "circuit": "funds (Gloam, final keys)",
   "timingsMs": {
-    "fundsProofMs": 2185
+    "fundsProofMs": 2634
   },
-  "wallMs": 14927
+  "wallMs": 13115
 }

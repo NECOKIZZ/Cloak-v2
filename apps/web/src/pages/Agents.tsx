@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon } from "../ui";
 
-const ASK = "Read https://cloak.boblabs.tech/agent.md and set me up to trade privately.";
+const ASK = "Read https://gloak.boblabs.tech/agent.md and set me up to trade privately.";
 
 function Copy({ text, label = "Copy" }: { text: string; label?: string }) {
   const [done, setDone] = useState(false);
@@ -65,11 +65,11 @@ export function Agents() {
           <div className="card">
             <div className="card-head"><h3>Look around without a wallet</h3><span className="pill">read only</span></div>
             <p className="small mute">Paste this link into your AI app to browse launches, read them and price bids and swaps. It never signs and refuses anything that looks like a key.</p>
-            <Cmd>https://cloak.boblabs.tech/mcp</Cmd>
+            <Cmd>https://gloak.boblabs.tech/mcp</Cmd>
             <ul className="small soft" style={{ paddingLeft: 18, margin: "4px 0 0", display: "grid", gap: 6 }}>
               <li><b>Claude</b> (claude.ai or Desktop): Settings, Connectors, Add custom connector, then paste the link.</li>
               <li><b>ChatGPT</b>: turn on developer mode under Apps and connectors, then add a connector with the link and no authentication.</li>
-              <li><b>Claude Code</b>: <code>claude mcp add --transport http cloak https://cloak.boblabs.tech/mcp</code></li>
+              <li><b>Claude Code</b>: <code>claude mcp add --transport http cloak https://gloak.boblabs.tech/mcp</code></li>
             </ul>
           </div>
         </div>

@@ -9,7 +9,7 @@
  */
 import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, toHex, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import type { Status } from "../private/client.js";
+import type { Status } from "../private/common.js";
 import type { GloamCore } from "./gloam.js";
 import { gloamFinishBid, type GloamBidRecord } from "./gloamBids.js";
 

@@ -9,16 +9,14 @@ import { TokenIcon } from "../ui";
 import { Skel } from "../skel";
 import { friendly } from "../errors";
 import { publicClient, readCloak } from "../wallet";
-import { getSnapshot, save, saved } from "../snapshot";
+import { save, saved } from "../snapshot";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const FAILED_SHOWN = 6;
 
-/** The price each trading launch has now, from the keeper's snapshot, else from its pool. */
+/** The price each trading launch has now, from its pool. */
 async function pricesNow(list: AuctionState[]): Promise<Record<string, bigint>> {
-  const snap = await getSnapshot();
   const out: Record<string, bigint> = {};
-  for (const m of (snap?.markets ?? []) as { token: string; price: bigint }[]) out[m.token.toLowerCase()] = m.price;
   const missing = list.filter((s) => s.settled && !s.failed && s.pair !== ZERO && out[s.token.toLowerCase()] === undefined);
   await Promise.all(
     missing.map((s) =>
@@ -95,8 +93,7 @@ export function Launches() {
   useEffect(() => {
     if (!FACTORY) return;
     (async () => {
-      const snap = await getSnapshot();
-      const states = ((snap?.launches as AuctionState[] | undefined) ?? (await Promise.all((await readCloak.listLaunches()).filter((l) => !isHidden(l.auction)).map((l) => readCloak.getAuction(l.auction as Address)))).reverse()).filter((x) => !isHidden(x.address) && !isHidden(x.token));
+      const states = (await Promise.all((await readCloak.listLaunches()).filter((l) => !isHidden(l.auction)).map((l) => readCloak.getAuction(l.auction as Address)))).reverse().filter((x) => !isHidden(x.address) && !isHidden(x.token));
       setList(states);
       save("launches", states);
       setPrices(await pricesNow(states));

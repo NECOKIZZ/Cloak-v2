@@ -7,7 +7,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { randomBytes } from "@noble/hashes/utils";
 import { commitmentOf } from "../cloak.js";
 import { sealBid } from "../seal.js";
-import type { Status } from "../private/client.js";
+import type { Status } from "../private/common.js";
 import type { GloamCore } from "./gloam.js";
 
 const SPEND = "(bytes proof, bytes32 root, bytes32 nullifier, address asset, uint256 amount)";

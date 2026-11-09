@@ -1,63 +1,26 @@
-import type { Address, PublicClient } from "viem";
-import { privateRouterAbi } from "./abis.js";
-import { readRegistry } from "./registry.js";
+import type { Address } from "viem";
 
-/** An earlier deployment on the same chain: its launches still list, and the migrator moves its private balances here. */
-export interface PreviousDeployment {
-  version: number;
-  factory: Address;
-  router: Address;
-  routerBlock: bigint;
-  batcher?: Address;
-  /** Moved its balances into v3 (v1 and v2 only; from v4 on, the current deployment's `migrator` moves every version). */
-  migrator?: Address;
-  /** Standalone vaults outside its router (v2's USDC vault), moved too. */
-  pools?: { pool: Address; fromBlock: bigint }[];
-}
-
-/** Where Cloak lives on each chain, so integrators never copy addresses by hand. */
+/**
+ * Where Cloak v2 lives on each chain, so integrators never copy addresses by hand. Cloak v2 runs on Gloam's vaults and
+ * keys; Cloak v1 (Cloak's own vaults) is a separate deployment in Cloak v1's repo.
+ */
 export interface CloakDeployment {
   chainId: number;
-  /** Which Cloak deployment this is (4 on Elysium testnet). */
-  version: number;
-  /** CloakConfig: the rules and the registry of every Cloak contract. `liveDeployment` reads the current ones from it. */
+  /** Cloak v2's CloakConfig: the launch fee, the treasury and the bid caps its launches use. */
   config: Address;
-  /** CloakVaults: the permanent vaults (v4 on). */
-  vaults?: Address;
-  /** First block of the permanent vaults: scan private notes from here, whichever router is current. */
-  vaultsBlock?: bigint;
+  /** Cloak v2's launch factory (sealed-bid launches that open a Uniswap v4 pool through CloakV4Hook). */
   factory: Address;
   /** Block the factory was deployed in: scan launch events from here. */
   factoryBlock: bigint;
-  /** Earlier factories of this same deployment (newest first): their launches still list, settle and trade. */
-  earlierFactories?: Address[];
-  /** Block of this deployment's first factory: scan its launches' bids from here (defaults to `factoryBlock`). */
-  firstFactoryBlock?: bigint;
-  /** CloakSeeder: opens each settled launch's market (a Uniswap V2 pool where the chain has one). */
-  seeder?: Address;
   /** Uniswap v4's PoolManager (on testnet, Cloak's deployment of Uniswap's exact build; on mainnet, Uniswap's own). */
-  poolManager?: Address;
-  /** CloakV4Hook: seeds and looks after every v4 launch's pool. */
-  v4Hook?: Address;
-  /** CloakFeeLocker: holds "locked forever" LP and pays its trading fees to the creator. */
-  feeLocker?: Address;
-  router: Address;
-  /** Block the router was deployed in: scan private-pool events from here. */
-  routerBlock: bigint;
-  batcher: Address;
-  /** Moves balances from every earlier deployment into the permanent vaults. */
-  migrator?: Address;
-  /** SharedVault: one private vault for every new Uniswap launch token (testnet experiment). */
-  shared?: Address;
-  /** Block the shared vault was deployed in: scan its notes from here. */
-  sharedBlock?: bigint;
-  /** SharedRouter: private buys, sells and hidden sends for the shared vault. */
-  sharedRouter?: Address;
-  /** SharedBatcher: batch rounds for the shared vault's tokens. */
-  sharedBatcher?: Address;
-  /** CloakReceive: private receive addresses. */
-  receive?: Address;
-  /** CloakDropFactory: sealed NFT drops. */
+  poolManager: Address;
+  /** CloakV4Hook: seeds and looks after every v2 launch's pool. */
+  v4Hook: Address;
+  /** WHYPE, the token pages use for HYPE. */
+  whype: Address;
+  /** Cloak's keeper and relay (POST /gloam/relay, /schedule, /leaves). */
+  relayerUrl: string;
+  /** CloakDropFactory: sealed NFT drops (wallet bids, shared with Cloak v1). */
   dropFactory?: Address;
   /** Block the drop factory was deployed in: scan drop events from here. */
   dropFactoryBlock?: bigint;
@@ -65,18 +28,10 @@ export interface CloakDeployment {
   spotBook?: Address;
   /** CloakEscrowDropFactory: sealed auctions of NFTs that already exist (listed with the drops). */
   escrowDropFactory?: Address;
-  hypePool: Address;
-  whype: Address;
-  /** Hosted relayer (POST /relay, GET /quote). */
-  relayerUrl: string;
-  /** Hosted circuit artifacts (transaction2x2.wasm and transaction2x2_final.zkey). */
-  circuitsUrl: string;
-  /** Shielded pools for existing tokens (USDC): register them with `CloakPrivate.addAsset`. */
-  assets?: { symbol: string; token: Address; pool: Address; decimals: number; fromBlock: bigint }[];
-  /** Earlier deployments, newest first. */
-  previous?: PreviousDeployment[];
-  /** Cloak v2 on Gloam (`core: "gloam"`): the vaults and Cloak's contracts on them. */
-  gloam?: GloamDeployment;
+  /** Tokens that aren't launches (USDC): private balances in Gloam's vault. */
+  assets?: { symbol: string; token: Address; decimals: number }[];
+  /** Gloam's vault and Cloak's launch vault and escrows on it. */
+  gloam: GloamDeployment;
 }
 
 /** Where Cloak v2 on Gloam lives on a chain (deployments/<chain>-gloam.json). */
@@ -86,8 +41,10 @@ export interface GloamDeployment {
   memoBoard: Address;
   /** CloakLaunchVault: Gloam's code and keys, launch tokens admitted when their launch settles. */
   launchVault: Address;
-  /** First block to scan both vaults from. */
+  /** First block to scan Gloam's vault from (and the launch vault, unless launchVaultBlock is set). */
   block: bigint;
+  /** First block to scan the launch vault from, when it was deployed later than Gloam's vault. */
+  launchVaultBlock?: bigint;
   launchSwap?: Address;
   /** CloakLaunchSwapV4: private swaps through Cloak launches' own Uniswap v4 pools. */
   launchSwapV4?: Address;
@@ -109,106 +66,45 @@ export interface GloamDeployment {
 }
 
 export const deployments: Record<number, CloakDeployment> = {
-  // Cloak v4 (Oct 31), the permanent vaults, plus the Uniswap launch factory (Nov 2): deployments/elysium-testnet-v4.json. CloakConfig's registry lists all of it;
-  // liveDeployment() reads the current contracts from there.
+  // Cloak v2 on Elysium testnet: deployments/elysium-testnet-gloam.json and deployments/elysium-testnet-v2-factory.json
   99801: {
     chainId: 99801,
-    version: 4,
-    config: "0x9fdf166f0671166148ea98cdd3ef0118d256167f",
-    vaults: "0x24bc1d369aab3a2d741a48f8cac1af5dfd9f3d43",
-    vaultsBlock: 19485039n,
-    // the Uniswap v4 launch factory (Nov 3): every launch opens a v4 pool (native HYPE / token) at its clearing price
-    // through CloakV4Hook, which keeps the liquidity forever, pays trading fees to the creator and charges an anti-snipe
-    // fee for 5 minutes after listing. The PoolManager is Uniswap's, built byte for byte like mainnet's.
-    factory: "0x1b0072684e98d9e23018e2d107ed8166ef84c077",
-    factoryBlock: 22661576n,
-    // the creator-fee V2 factory (Nov 2), then v4's first two
-    earlierFactories: ["0xd179bad69715f4bd4796dd7a4103be143fba02ad", "0xeac84944f5a8343edf49cde8ef74d71f4908a656", "0xa88df63d7d44acc66052e5cbe5ba9503bf940993"],
-    firstFactoryBlock: 19484794n,
-    seeder: "0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80",
+    // v2's own launch factory and hook (Nov 9, deploy-v2-factory.mjs), apart from Cloak v1's: on Uniswap's PoolManager
+    // build, every launch opens a v4 pool (native HYPE / token) at its clearing price; the hook keeps the liquidity for
+    // good, pays trading fees to the creator and charges an anti-snipe fee for 5 minutes after listing
+    config: "0xfedf1050af9e96dcfef9c098fcbc122d907f4f1e",
+    factory: "0x59d2cd703747a47288518c7380efa95879295784",
+    factoryBlock: 26707681n,
     poolManager: "0x51027076df8416e42ea8438b27a0c433d9662e68",
-    v4Hook: "0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80",
-    feeLocker: "0x3b74062a72b16f9a221d63515518a635414501d8",
-    // the shared launch-token vault (Nov 2, testnet experiment): new Uniswap launches keep their private balances here
-    shared: "0x0ce2ecb0195e07899377e3d7b01e927ab3f87610",
-    sharedBlock: 21426599n,
-    sharedRouter: "0xe2a0769a5acbd987c1b6725247c56187a112dc7e",
-    sharedBatcher: "0x11598b35fabc90fdd45d8a77ac41e2057c32ea14",
-    receive: "0x852675b2e127fcce3b5efd3ef817623db7aa44f3",
+    v4Hook: "0xC6296320cDFAB6074Fc650f1d788608b16fa2A80",
+    whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
+    relayerUrl: "",
     // sealed NFT drops (Nov 3): GTD, then a sealed auction with the creator's price as the floor and a WL bid boost
     dropFactory: "0x2afb7d9a5baa02a2d72a7c761521fc66dce9d783",
     dropFactoryBlock: 22329730n,
     spotBook: "0x91806d96814cc205d4b642e280023a1c7b361fc8",
     escrowDropFactory: "0x5f3efbfd5d15440947abfbfce7f2fcfffff71079",
-    router: "0x343ab9a7aac93cee28321410510ea24417cc6386",
-    routerBlock: 19485063n,
-    // batchers replaced Nov 6: the crossing price stays within 2% of the price when a round opened
-    batcher: "0x54a503b0683af40aa3427b99292018f4d045d43f",
-    migrator: "0x86c5d8035224493f10938aaa07b179be316dadf4",
-    hypePool: "0x3ACB22829bb422446caaDd8546e65ab530A53031",
-    whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
-    relayerUrl: "https://keeper.boblabs.tech",
-    circuitsUrl: "https://cloak.boblabs.tech/circuits",
-    // Cloak v2 on Gloam (deployments/elysium-testnet-gloam.json), production-shaped: Cloak's instance of Gloam's
-    // guarded vault (USDC only, as Gloam's Elysium vault will be; Gloam's own isn't on this chain yet) and Cloak's
-    // launch vault on Cloak's live v4 launch factory, under Gloam's VaultOwnerGuard; real launches, no stand-ins
+    // Elysium testnet USDC (bridged from Circle's USDC on HyperEVM)
+    assets: [{ symbol: "USDC", token: "0x7D29d8047B905000459c0E80c34a26CeedcB47b2", decimals: 6 }],
     gloam: {
       gloamVault: "0x8D15BA46071D5AB2e59d746c22d51C906281cB44",
       memoBoard: "0xf6816854b68CC4B67213289927d8e44050BA62D3",
-      launchVault: "0x8e38155ae9e753874415482e1ab1c169bbc7d1a2",
       block: 26230337n,
-      launchSwapV4: "0xd540527d3eef9b4de63f741159036d5e35204541",
-      receive: "0x8ef40f47cf991acd7ee7f4c77c505c909b9367a8",
-      bids: "0xe07d0f72c07f2f18e8d4089a857361b282128c5d",
-      graduation: "0x8bb5a381f31e2114838cc3dcd876a2ae0775f98d",
-      // escrows redeployed Nov 9 with the stress-test fixes (deploy-escrows-update.mjs); batch rounds through launches'
-      // own v4 pools: time-weighted price, 0.5% settle band, checked against the opening spot or a time-weighted
-      // reference, 4% per side, real notes only
-      batcherV4: "0x2681a81fdfbb447a297ac5fd5bba0a2ffc599f54",
-      fundsGate: "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c",
-      receiptCheck: "0x2236b68e231cebd7dd04e23fe756efdae726e325",
+      // the launch vault and every escrow on v2's own factory (Nov 9, deploy-partner.mjs), with the stress-test fixes
+      launchVault: "0x13050b9a0abece56f80d30da107c3f3fad33288f",
+      launchVaultBlock: 26707908n,
+      launchSwapV4: "0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce",
+      receive: "0xa462e810b985029b28b5cee49866760a7f8767bb",
+      bids: "0xb3f6f2142439f1b4f088ea24569cc73726dcea32",
+      graduation: "0xfd0e96dec9c1edd885e86044790e50e48c1a6268",
+      // batch rounds through launches' own v4 pools: time-weighted price, 0.5% settle band, 4% per side, real notes only
+      batcherV4: "0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8",
+      fundsGate: "0x79aafd041a283c334421a17c781b12e353093210",
+      receiptCheck: "0xb0a8fcbd75f4d6d2ce5a0121e8607aa353990304",
       whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",
     },
-    assets: [
-      // Elysium testnet USDC (bridged from Circle's USDC on HyperEVM): private sends and withdrawals
-      { symbol: "USDC", token: "0x7D29d8047B905000459c0E80c34a26CeedcB47b2", pool: "0x3d5cB722490D9908a118f8B3151f83fcE943E4F0", decimals: 6, fromBlock: 19485039n },
-    ],
-    previous: [
-      {
-        version: 3,
-        factory: "0xd0f4aacf339f07211a9155194925b2f94e250e29",
-        router: "0x78319bee7c21ca411166acc67c750aca10280e86",
-        routerBlock: 19096485n,
-        batcher: "0x9902d86c5be81f6c6ce059acf4c89193d06069c4",
-        pools: [
-          { pool: "0x61de30970e3c53665ce5a89323284e7ab379fa08", fromBlock: 18329466n },
-        ],
-      },
-      {
-        version: 2,
-        factory: "0xc1fc14e84cbbd10f75dad9d91bf50f47c48757fc",
-        router: "0xd51e731467c49991496329c2b7979cb1aa220ee2",
-        routerBlock: 15856031n,
-        batcher: "0xa13ffd763a8cccfea1b868c616291723579ddb77",
-        pools: [
-          { pool: "0x61de30970e3c53665ce5a89323284e7ab379fa08", fromBlock: 18329466n },
-        ],
-      },
-      {
-        version: 1,
-        factory: "0x1dc1ea9837ecbd31ec74f0d558e1db1c303a7e1c",
-        router: "0xfa2574cfc3afb8f7d3a0651fa2111ff4e3d2fc41",
-        routerBlock: 10973723n,
-        batcher: "0xf6582cc5a84fccf74e571e652fb7b603a2c25812",
-      },
-    ],
   },
 };
-
-/** Every factory before `d.factory` whose launches should still list, newest first: this deployment's, then earlier ones'. */
-export function legacyFactories(d: CloakDeployment): Address[] {
-  return [...(d.earlierFactories ?? []), ...(d.previous ?? []).map((p) => p.factory)].filter((f) => f && !/^0x0{40}$/i.test(f));
-}
 
 /** The Cloak deployment on `chainId`, or an error naming the chains Cloak is on. */
 export function deploymentFor(chainId: number): CloakDeployment {
@@ -216,52 +112,3 @@ export function deploymentFor(chainId: number): CloakDeployment {
   if (!d) throw new Error(`Cloak isn't deployed on chain ${chainId} (available: ${Object.keys(deployments).join(", ")})`);
   return d;
 }
-
-/**
- * `base` with the current factory, router, batcher, migrator and vaults read from CloakConfig's registry, so a router or
- * batcher added on-chain is picked up without a new SDK. Earlier deployments keep what `base` knows about them.
- */
-export async function liveDeployment(publicClient: PublicClient, base: CloakDeployment): Promise<CloakDeployment> {
-  const reg = await readRegistry(publicClient, base.config).catch(() => undefined);
-  if (!reg) return base;
-  const [hypePool, whype] = await Promise.all([
-    publicClient.readContract({ address: reg.router, abi: privateRouterAbi, functionName: "hypePool" }),
-    publicClient.readContract({ address: reg.router, abi: privateRouterAbi, functionName: "whype" }),
-  ]);
-  const known = new Map((base.previous ?? []).map((p) => [p.version, p]));
-  return {
-    ...base,
-    version: reg.version,
-    vaults: reg.vaults ?? base.vaults,
-    vaultsBlock: reg.vaultsBlock ?? base.vaultsBlock,
-    factory: reg.factory,
-    factoryBlock: reg.factoryBlock,
-    earlierFactories: reg.earlierFactories.length ? reg.earlierFactories : base.earlierFactories,
-    router: reg.router,
-    routerBlock: reg.routerBlock,
-    batcher: reg.batcher ?? base.batcher,
-    migrator: reg.migrator ?? base.migrator,
-    shared: reg.shared ?? base.shared,
-    sharedBlock: reg.sharedBlock ?? base.sharedBlock,
-    sharedRouter: reg.sharedRouter ?? base.sharedRouter,
-    sharedBatcher: reg.sharedBatcher ?? base.sharedBatcher,
-    receive: reg.receive ?? base.receive,
-    hypePool,
-    whype,
-    previous: reg.previous.length
-      ? reg.previous.map((p) => {
-          const k = known.get(p.version);
-          return {
-            version: p.version,
-            factory: p.factory ?? k?.factory ?? ("0x" + "0".repeat(40)) as Address,
-            router: p.router ?? k?.router ?? ("0x" + "0".repeat(40)) as Address,
-            routerBlock: p.routerBlock ?? k?.routerBlock ?? 0n,
-            batcher: p.batcher ?? k?.batcher,
-            migrator: k?.migrator,
-            pools: p.pools.length ? p.pools.map((x) => ({ pool: x.addr, fromBlock: x.startBlock })) : k?.pools,
-          };
-        })
-      : base.previous,
-  };
-}
-

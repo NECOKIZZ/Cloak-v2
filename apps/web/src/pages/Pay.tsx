@@ -69,7 +69,7 @@ export function Pay() {
       gross = after > 0n ? (units * one + after - 1n) / after : units;
     }
     const kind = !toCloak && t === "HYPE" ? "unshieldHype" : "transact";
-    const fee = (await p.relayFee(kind, pool)).fee;
+    const fee = (await p.relayFee()).fee;
     return { p, token, pool, units, gross, need: gross + fee, a };
   }
 

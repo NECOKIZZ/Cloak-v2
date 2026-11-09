@@ -7,7 +7,7 @@ import { publicClient } from "./wallet";
 import { every } from "./every";
 
 const ZERO = "0x0000000000000000000000000000000000000000";
-const FROM_BLOCK = DEPLOYMENT?.firstFactoryBlock ?? DEPLOYMENT?.factoryBlock ?? 0n;
+const FROM_BLOCK = DEPLOYMENT?.factoryBlock ?? 0n;
 const WAD = 10n ** 18n;
 const MAX_POINTS = 160; // newest price changes read with their block times; older ones are rarely needed on a launch page
 

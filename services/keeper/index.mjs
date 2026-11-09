@@ -1,56 +1,33 @@
-// Cloak keeper: watches every launch from a factory and, with no key material beyond a gas wallet,
-//   1. decrypts sealed bids once their drand round is out and reveals them (bidders never come back),
-//   2. settles when the reveal window closes, and opens the launch's permanent private vault,
-//   3. after CLAIM_DELAY (so winners can claim privately first), pushes tokens + refunds to every bidder still unclaimed.
-// Anyone can run one; several keepers racing is harmless (reveal/settle/claim are idempotent on-chain).
+// Cloak v2 keeper. With a gas wallet and no user secret, it:
+//   1. watches every launch of Cloak v2's factory: decrypts sealed bids once their drand round is out and reveals them
+//      (bidders never come back), settles when the reveal window closes, and after CLAIM_DELAY (so winners can claim
+//      privately first) pushes tokens and refunds to every bidder still unclaimed, then pays the creator and the fee;
+//   2. relays private actions on Gloam's vaults (POST /gloam/relay): the relay pays gas and is the on-chain sender, so
+//      the user's wallet never appears. It can't alter a call: the proof binds every field;
+//   3. runs the Gloam loop (gloamLoop.mjs): admits settled launches to the launch vault, registers them for batch
+//      rounds, settles rounds, confirms allocation gates and collects the launch vault's fee for the relay;
+//   4. holds split withdrawals until their time (POST/GET /schedule), serves the vaults' public leaf lists (GET /leaves)
+//      and the sealed bids the beacon couldn't open (GET /unopenable);
+//   5. sealed NFT drops too, when DROP_FACTORY is set (or the SDK's record has one).
+// Anyone can run one; several keepers racing is harmless (reveal, settle and claim are idempotent on chain).
 //
-//   4. relays private trades: POST /relay {kind, pool, proof, extData}. The relayer pays gas and is the on-chain
-//      sender, so the trader's wallet never appears. It cannot alter a trade: the proof binds every field.
-//   5. settles every finished private batch round and pays orders out as private notes (refunds a round whose price
-//      moved too far, once the refund delay passes).
-//   6. relays moves of private balances from earlier deployments through the migrator.
-//   7. relays private sends and withdrawals for asset vaults such as USDC (a vault with no launch pair), with the fee
-//      priced from the live HYPE/USD price (HYPE_USD is the fallback when the price feed is down).
-//
-//   Relayed calls pay the relayer a fee inside the proof (GET /quote?kind=…&pool=… says how much), so relaying can't
-//   be used to drain the relayer's gas.
-//
-//   KEEPER_PK=0x… CONFIG=0x… [RPC_URL=…] [CLAIM_DELAY=3600] [PORT=3001] node services/keeper/index.mjs
-//   Every address comes from CloakConfig's registry. Without CONFIG (tests), FACTORY/START_BLOCK/ROUTER/BATCHER/
-//   BATCHER_BLOCK/MIGRATOR give them directly; with CONFIG those are ignored.
+//   KEEPER_PK=0x… FACTORY=0x… [START_BLOCK=…] GLOAM_VAULT=… GLOAM_LAUNCH_VAULT=… GLOAM_MEMO=… [RPC_URL=…] [PORT=3001]
+//   node services/keeper/index.mjs        (every setting: render.yaml)
 import { createServer } from "node:http";
-import { startSnapshots } from "./snapshot.mjs";
 import { startLeaves } from "./leaves.mjs";
 import { startSchedule } from "./schedule.mjs";
-import { startReceive } from "./receive.mjs";
-import { startFeeCollector } from "./fees.mjs";
 import { createGloamRelay } from "./gloam.mjs";
 import { createGloamLoop } from "./gloamLoop.mjs";
-import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, zeroAddress } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, readRegistry, cloakAuctionAbi, cloakDropFactoryAbi, cloakFactoryAbi, cloakMigratorAbi, cloakPairAbi, cloakVaultsAbi, privateBatcherAbi, privateRouterAbi, sharedBatcherAbi, sharedRouterAbi, sharedVaultAbi, shieldedPoolAbi, walletSubmitter } from "@cloakely/sdk";
+import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, cloakAuctionAbi, cloakDropFactoryAbi, cloakFactoryAbi } from "@cloakely/sdk";
 
 const RPC = process.env.RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];
 const chain = RPC.includes("127.0.0.1") || RPC.includes("localhost") ? anvilLocal : elysiumTestnet;
 const PK = process.env.KEEPER_PK;
 const POLL_MS = Number(process.env.POLL_MS ?? 3000);
 const CLAIM_DELAY = Number(process.env.CLAIM_DELAY ?? 3600); // seconds after the reveal window before public claims
-if (!PK || (!process.env.CONFIG && !process.env.FACTORY)) {
-  console.error("set KEEPER_PK and CONFIG");
-  process.exit(1);
-}
-const transport = http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
-// Elysium's public RPC rate-limits busy callers, so reads made together go out as one multicall and receipts are polled
-// once a second: a relay must never fail because the keeper's own polling used up the limit.
-const publicClient = createPublicClient({ chain, transport, pollingInterval: 1000, batch: { multicall: { wait: 16 } } });
-const reg = process.env.CONFIG ? await readRegistry(publicClient, process.env.CONFIG) : undefined;
-// With CONFIG, the registry is the only source of addresses: stale address variables can't point the keeper elsewhere.
-const OVERRIDES = ["FACTORY", "START_BLOCK", "ROUTER", "BATCHER", "BATCHER_BLOCK", "MIGRATOR", "MIGRATIONS", "LEGACY_ROUTER", "ASSET_POOLS"];
-const ignored = reg ? OVERRIDES.filter((k) => process.env[k]) : [];
-if (ignored.length) console.error(`CONFIG is set, so these are ignored (addresses come from the registry): ${ignored.join(", ")}`);
-const env = (k) => (reg ? undefined : process.env[k]);
-// the SDK's record for this chain (asset list, drop factories), or undefined on a chain it doesn't know, such as a local
-// fork run as 31337: everything that uses it then falls back to the registry and env, instead of the keeper exiting
+// the SDK's record for this chain (factory, drop factories), or undefined on a chain it doesn't know (a local test chain)
 const KNOWN = (() => {
   try {
     return deploymentFor(chain.id);
@@ -58,60 +35,31 @@ const KNOWN = (() => {
     return undefined;
   }
 })();
-const FACTORY = env("FACTORY") ?? reg?.factory;
-// every factory of this deployment still has launches to reveal, settle and claim: scan from the earliest one
-const EARLIER = reg?.earlierFactories ?? [];
-const firstFactoryBlock = reg ? reg.entries.filter((e) => e.kind === "factory" && e.version === reg.version).reduce((m, e) => (e.startBlock < m ? e.startBlock : m), reg.factoryBlock) : undefined;
-const START_BLOCK = BigInt(env("START_BLOCK") ?? firstFactoryBlock ?? 0);
-// a new factory or vault registered while running (e.g. the Uniswap v4 factory) is picked up by restarting: the host
-// starts the keeper again, and it reads the registry afresh
-if (reg) {
-  const seen = JSON.stringify(reg.entries.map((e) => [e.kind, e.addr.toLowerCase()]));
-  setInterval(async () => {
-    try {
-      const now = await readRegistry(publicClient, process.env.CONFIG);
-      if (JSON.stringify(now.entries.map((e) => [e.kind, e.addr.toLowerCase()])) !== seen) {
-        console.error("the registry changed: restarting to load it");
-        process.exit(0);
-      }
-    } catch {}
-  }, Number(process.env.REGISTRY_CHECK_MS ?? 300_000)).unref();
+const FACTORY = process.env.FACTORY ?? KNOWN?.factory;
+const START_BLOCK = BigInt(process.env.START_BLOCK ?? KNOWN?.factoryBlock ?? 0);
+if (!PK || !FACTORY) {
+  console.error("set KEEPER_PK (and FACTORY on a chain the SDK doesn't know)");
+  process.exit(1);
 }
-const ROUTER = env("ROUTER") ?? reg?.router; // enables POST /relay for private trades
-const BATCHER = env("BATCHER") ?? reg?.batcher; // enables batch-auction orders + settles/claims rounds
-const BATCHER_BLOCK = BigInt(env("BATCHER_BLOCK") ?? reg?.batcherBlock ?? START_BLOCK);
-const MIGRATOR = env("MIGRATOR") ?? reg?.migrator; // enables relayed moves from earlier deployments
-// the shared launch-token vault (testnet experiment): launches created after it opens go in it instead of a vault each
-const SHARED = reg?.shared;
-const SHARED_ROUTER = reg?.sharedRouter;
-const SHARED_BLOCK = reg?.sharedBlock;
-const SHARED_BATCHER = reg?.sharedBatcher;
-const SHARED_BATCHER_BLOCK = reg?.entries.findLast((e) => e.kind === "sharedBatcher")?.startBlock ?? SHARED_BLOCK ?? 0n;
-// v4 routers read their vaults from CloakVaults; an older router has none (the keeper then just doesn't open vaults)
-const VAULTS = ROUTER ? await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "vaults" }).catch(() => undefined) : undefined;
+const transport = http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
+// Elysium's public RPC rate-limits busy callers, so reads made together go out as one multicall and receipts are polled
+// once a second: a relay must never fail because the keeper's own polling used up the limit.
+const publicClient = createPublicClient({ chain, transport, pollingInterval: 1000, batch: { multicall: { wait: 16 } } });
 
 /** Per auction: sealed bids whose drand ciphertext didn't open to their commitment (from the last reveal pass). */
 const unopenable = new Map();
 
-// split withdrawals: proved pieces held until their time, then relayed like any other (POST/GET /schedule)
-
-
-// every vault's public note list, for an app's fast first sync (GET /leaves)
-// (Cloak v2: Gloam's vault and Cloak's launch vault too, from GLOAM_VAULT_BLOCK / GLOAM_LAUNCH_VAULT_BLOCK)
-const gloamLeafVaults = [
+// each vault's public leaf list, for an app's fast first sync (GET /leaves), from GLOAM_VAULT_BLOCK / GLOAM_LAUNCH_VAULT_BLOCK
+const leafVaults = [
   [process.env.GLOAM_VAULT, process.env.GLOAM_VAULT_BLOCK],
   [process.env.GLOAM_LAUNCH_VAULT, process.env.GLOAM_LAUNCH_VAULT_BLOCK ?? process.env.GLOAM_VAULT_BLOCK],
 ].filter(([a, b]) => a && b).map(([address, block]) => ({ address, block }));
-const leaves = reg || gloamLeafVaults.length ? startLeaves(publicClient, { vaults: reg ? VAULTS : undefined, vaultsBlock: reg?.vaultsBlock, shared: reg ? SHARED : undefined, sharedBlock: SHARED_BLOCK, gloam: gloamLeafVaults }) : null;
-
-// public data for the site in one request (launches, markets, images, Volume); off with SNAPSHOT=0
-const snapshot = reg && process.env.SNAPSHOT !== "0"
-  ? startSnapshots(publicClient, { router: ROUTER, routerBlock: reg.routerBlock, batcher: BATCHER, factory: FACTORY, earlierFactories: EARLIER, shared: reg.shared, sharedBlock: reg.sharedBlock, sharedRouter: reg.sharedRouter, sharedBatcher: reg.sharedBatcher, previous: reg.previous, assets: KNOWN?.assets ?? [], listDrops: async () => (drops ? drops.list() : []) })
-  : null;
+const leaves = leafVaults.length ? startLeaves(publicClient, { vaults: leafVaults }) : null;
 
 const account = privateKeyToAccount(PK);
 const walletClient = createWalletClient({ chain, transport, account });
-// Cloak v2 on Gloam: POST /gloam/relay, on when GLOAM_MEMO and a vault (GLOAM_VAULT, Gloam's, and or GLOAM_LAUNCH_VAULT,
+
+// POST /gloam/relay, on when GLOAM_MEMO and a vault (GLOAM_VAULT, Gloam's, and or GLOAM_LAUNCH_VAULT,
 // Cloak's) are set. GLOAM_ESCROWS: Cloak's escrows, GLOAM_ROUTERS: Gloam's own routers (comma separated).
 const list = (v) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const gloamRelay = process.env.GLOAM_MEMO && (process.env.GLOAM_VAULT || process.env.GLOAM_LAUNCH_VAULT)
@@ -134,13 +82,10 @@ refreshChainClock();
 setInterval(refreshChainClock, 20_000).unref();
 const chainClock = () => chainAt.chain + Math.floor((Date.now() - chainAt.local) / 1000);
 
-// split withdrawals: proved pieces held until their time, then relayed like any other (POST/GET /schedule). Gloam vault
-// cash outs (Cloak v2 on Gloam) go through the Gloam relay; only a vault's unshield is accepted for those.
+// split withdrawals: proved Gloam vault cash outs held until their time, then sent through the Gloam relay, counted
+// against whoever handed them in (review O-10)
 const gloamPiece = (call) => ({ to: call.to, data: call.data });
 const schedule = startSchedule({
-  check: (call) => relay(call, { dryRun: true }),
-  send: (call) => relay(call),
-  // scheduled cash outs count against whoever handed them in (review O-10), not one shared "schedule" sender
   gloam: gloamRelay ? { check: (call, who) => gloamRelay(gloamPiece(call), { dryRun: true, sender: who }), send: (call, who) => gloamRelay(gloamPiece(call), { sender: who }) } : undefined,
   now: () => chainClock(),
   log: (m) => console.log(`[schedule] ${m}`),
@@ -190,9 +135,9 @@ for (const m of ["writeContract", "sendTransaction"]) {
       return hash;
     });
 }
-const cloak = new Cloak(publicClient, walletClient, FACTORY, EARLIER);
+const cloak = new Cloak(publicClient, walletClient, FACTORY);
 
-// Cloak v2 on Gloam: the loop for follow-ups that need no user secret (gloamLoop.mjs). On when GLOAM_LAUNCH_VAULT or
+// The Gloam loop: follow-ups that need no user secret (gloamLoop.mjs). On when GLOAM_LAUNCH_VAULT or
 // GLOAM_BATCHER or GLOAM_FUNDS_GATE is set. Every GLOAM_LOOP_SECS (default 60): admit settled launches, settle batch
 // rounds, confirm wallets in closed allocation gates, collect fees.
 const gloamLoop = process.env.GLOAM_LAUNCH_VAULT || process.env.GLOAM_BATCHER || process.env.GLOAM_BATCHER_V4 || process.env.GLOAM_FUNDS_GATE
@@ -201,7 +146,7 @@ const gloamLoop = process.env.GLOAM_LAUNCH_VAULT || process.env.GLOAM_BATCHER ||
       account,
       send: (call) => walletClient.writeContract(call),
       launchVault: process.env.GLOAM_LAUNCH_VAULT,
-      launchFactory: process.env.GLOAM_LAUNCH_FACTORY,
+      launchFactory: process.env.GLOAM_LAUNCH_FACTORY ?? FACTORY,
       batcher: process.env.GLOAM_BATCHER,
       batcherBlock: BigInt(process.env.GLOAM_BATCHER_BLOCK ?? "0"),
       batcherV4: process.env.GLOAM_BATCHER_V4,
@@ -224,9 +169,9 @@ if (gloamLoop) {
   }, 1000 * Number(process.env.GLOAM_LOOP_SECS ?? 60)).unref();
 }
 
-const status = { keeper: account.address, commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null, chain: chain.id, config: process.env.CONFIG ?? null, version: reg?.version ?? null, factory: FACTORY, ignoredEnv: ignored, launches: {}, lastTick: 0 };
+const status = { keeper: account.address, commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null, chain: chain.id, factory: FACTORY, launches: {}, lastTick: 0 };
 const done = new Set(); // auctions fully claimed
-const waitUntil = new Map(); // settled auctions with their vault open: nothing to do until public claims start
+const waitUntil = new Map(); // auctions with nothing to do until a later time (bidding closes, public claims start)
 const log = (a, m) => console.log(`[${new Date().toISOString()}] ${a.slice(0, 10)} ${m}`);
 
 // the launch list only grows, so it is read again only when a factory's count changes (or every 5 minutes, to be safe),
@@ -234,7 +179,7 @@ const log = (a, m) => console.log(`[${new Date().toISOString()}] ${a.slice(0, 10
 const listCache = { key: "", at: 0, list: [] };
 async function launchList() {
   // a count that can't be read forces a full read, as before this cache existed
-  const counts = await Promise.all([FACTORY, ...EARLIER].map((f) => publicClient.readContract({ address: f, abi: cloakFactoryAbi, functionName: "launchesCount" }).catch(() => `?${Date.now()}`)));
+  const counts = await Promise.all([FACTORY].map((f) => publicClient.readContract({ address: f, abi: cloakFactoryAbi, functionName: "launchesCount" }).catch(() => `?${Date.now()}`)));
   const key = counts.join(",");
   if (key !== listCache.key || Date.now() - listCache.at > 300_000) {
     listCache.list = await cloak.listLaunches();
@@ -244,8 +189,7 @@ async function launchList() {
   return listCache.list;
 }
 
-// when nothing is in progress (no launch past bidding, no drop to open or pay, no open batch round, no relay in the last
-// two minutes) the loop waits IDLE_MS instead of POLL_MS between rounds (OPTIMIZATION.md K1)
+// when nothing is in progress (no launch past bidding, no drop to open or pay, no relay in the last two minutes) the loop waits IDLE_MS instead of POLL_MS between rounds (OPTIMIZATION.md K1)
 const IDLE_MS = Number(process.env.IDLE_MS ?? POLL_MS * 5); // 15 s at the default 3 s poll
 const work = { busy: false, relayAt: 0 };
 
@@ -253,7 +197,7 @@ async function tick() {
   const launches = await launchList();
   status.launchCount = launches.length;
   const now = Number((await publicClient.getBlock()).timestamp);
-  for (const { auction, token, factory, index } of launches) {
+  for (const { auction } of launches) {
     if (done.has(auction) || now < (waitUntil.get(auction) ?? 0)) continue;
     try {
       const s = await cloak.getAuction(auction);
@@ -271,11 +215,10 @@ async function tick() {
         // Published (GET /unopenable?auction=) so the launch page can show them while the reveal window is open.
         unopenable.set(auction.toLowerCase(), r.unopenable.map((b) => ({ id: String(b.id), bidder: b.bidder, deposit: String(b.deposit), why: b.why })));
       } else if (s.phase === "settle" && now >= s.revealEnd) {
+        // the Gloam loop then admits it to the launch vault (private trading) and registers it for batch rounds
         const h = await cloak.settle(auction);
         log(auction, `settled ${h}`);
-        if (!(await cloak.getAuction(auction)).failed) await openVault(auction, token, factory, index);
       } else if (s.phase === "settled") {
-        if (!s.failed) await openVault(auction, token, factory, index);
         if (now < s.revealEnd + CLAIM_DELAY) {
           waitUntil.set(auction, s.revealEnd + CLAIM_DELAY); // winners' window to claim privately
           continue;
@@ -299,137 +242,8 @@ async function tick() {
   status.lastTick = Date.now();
 }
 
-/** Launches created before the shared vault opened: they keep a vault of their own. Read once. */
-let preShared = null;
-async function createdBeforeShared(auction) {
-  if (!preShared) {
-    const logs = await publicClient.getContractEvents({ address: [FACTORY, ...EARLIER], abi: cloakFactoryAbi, eventName: "LaunchCreated", fromBlock: START_BLOCK, toBlock: SHARED_BLOCK - 1n, strict: true });
-    preShared = new Set(logs.map((l) => l.args.auction.toLowerCase()));
-  }
-  return preShared.has(auction.toLowerCase());
-}
-
-/** The launch's permanent private vault, so winners can claim privately and the token trades privately at once. */
-async function openVault(auction, token, factory, index) {
-  // a Uniswap launch created after the shared vault opened goes in the shared vault
-  if (SHARED && !(await createdBeforeShared(auction))) {
-    const s = await cloak.getAuction(auction);
-    if (BigInt(s.uniPair ?? 0) !== 0n) {
-      const own = VAULTS ? await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [token] }) : zeroAddress;
-      if (own !== zeroAddress) return;
-      if (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [token] })) return;
-      const c = { address: SHARED, abi: sharedVaultAbi, functionName: "admit", args: [factory, index] };
-      await publicClient.simulateContract({ ...c, account });
-      log(auction, `admitted to the shared vault ${await walletClient.writeContract(c)}`);
-      return;
-    }
-  }
-  if (!VAULTS) return;
-  // never a second vault for a token someone already let into the shared vault
-  if (SHARED && (await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "admitted", args: [token] }))) return;
-  const pool = await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [token] });
-  if (pool !== zeroAddress) return;
-  const c = { address: VAULTS, abi: cloakVaultsAbi, functionName: "createPool", args: [factory, index] };
-  await publicClient.simulateContract({ ...c, account });
-  log(auction, `opened private vault ${await walletClient.writeContract(c)}`);
-}
-
-// ───────────── private batch rounds ─────────────
-const batchCursors = new Map(); // batcher → { block, open: "token:round" → [order ids] }
-// the main batcher, then the shared vault's (same rounds, same storage layout and events)
-async function tickBatches() {
-  if (BATCHER) await tickBatcher(BATCHER, BATCHER_BLOCK);
-  if (SHARED_BATCHER) await tickBatcher(SHARED_BATCHER, SHARED_BATCHER_BLOCK);
-}
-async function tickBatcher(addr, fromBlock) {
-  if (!batchCursors.has(addr)) batchCursors.set(addr, { block: fromBlock, open: new Map() });
-  const batchCursor = batchCursors.get(addr);
-  const c = { address: addr, abi: privateBatcherAbi };
-  const latest = await publicClient.getBlockNumber({ cacheTime: 0 });
-  if (latest >= batchCursor.block) {
-    const logs = await publicClient.getContractEvents({ ...c, eventName: "OrderPlaced", fromBlock: batchCursor.block, toBlock: latest, strict: true });
-    for (const l of logs) {
-      const k = `${l.args.token}:${l.args.round}`;
-      if (!batchCursor.open.has(k)) batchCursor.open.set(k, []);
-      batchCursor.open.get(k).push(l.args.id);
-    }
-    batchCursor.block = latest + 1n;
-  }
-  if (batchCursor.open.size === 0) return;
-  const [current, refundAfter] = await Promise.all([
-    publicClient.readContract({ ...c, functionName: "currentRound" }),
-    publicClient.readContract({ ...c, functionName: "refundAfter" }),
-  ]);
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  for (const [k, ids] of batchCursor.open) {
-    const [token, r] = k.split(":");
-    const round = BigInt(r);
-    if (round >= current) continue;
-    const b = await publicClient.readContract({ ...c, functionName: "batches", args: [token, round] });
-    const settled = b[7], cancelled = b[8];
-    try {
-      if (!settled && !cancelled) {
-        try {
-          await publicClient.simulateContract({ ...c, functionName: "settle", args: [token, round], account });
-          const h = await walletClient.writeContract({ ...c, functionName: "settle", args: [token, round] });
-          await publicClient.waitForTransactionReceipt({ hash: h });
-          log(token, `settled private round ${round} (${ids.length} orders) ${h}`);
-        } catch (e) {
-          const end = (round + 1n) * (await publicClient.readContract({ ...c, functionName: "roundSecs" }));
-          if (now < end + refundAfter) {
-            log(token, `round ${round} not settleable yet: ${e.shortMessage ?? e.message}`);
-            continue;
-          }
-          const h = await walletClient.writeContract({ ...c, functionName: "refund", args: [ids] });
-          await publicClient.waitForTransactionReceipt({ hash: h });
-          log(token, `refunded private round ${round} ${h}`);
-          batchCursor.open.delete(k);
-          continue;
-        }
-      }
-      if (cancelled) {
-        batchCursor.open.delete(k);
-        continue;
-      }
-      // only orders not yet paid (after a restart the keeper re-scans old rounds)
-      const done = await Promise.all(ids.map((id) => publicClient.readContract({ ...c, functionName: "orders", args: [id] }).then((o) => o[3])));
-      const unpaid = ids.filter((_, i) => !done[i]);
-      if (unpaid.length > 0) {
-        const h = await walletClient.writeContract({ ...c, functionName: "claim", args: [unpaid] });
-        await publicClient.waitForTransactionReceipt({ hash: h });
-        log(token, `paid out ${unpaid.length} private orders of round ${round} ${h}`);
-      }
-      batchCursor.open.delete(k);
-    } catch (e) {
-      log(token, `batch error: ${e.shortMessage ?? e.message}`);
-    }
-  }
-}
-
-// relay fees arrive as WHYPE (from the HYPE pool); unwrap them so they pay for gas
-async function unwrapFees() {
-  if (!ROUTER) return;
-  const whype = await publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName: "whype" });
-  const abi = [
-    { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
-    { type: "function", name: "withdraw", stateMutability: "nonpayable", inputs: [{ type: "uint256" }], outputs: [] },
-  ];
-  const bal = await publicClient.readContract({ address: whype, abi, functionName: "balanceOf", args: [account.address] });
-  if (bal < 10n ** 16n) return;
-  const h = await walletClient.writeContract({ address: whype, abi, functionName: "withdraw", args: [bal] });
-  await publicClient.waitForTransactionReceipt({ hash: h });
-  console.log(`[fees] unwrapped ${bal} WHYPE ${h}`);
-}
-
-let ticks = 0;
 // ───────────── sealed NFT drops: open the bids, settle, number ties, deliver and pay out, as for launches ─────────────
-const knownDeployment = (() => {
-  try {
-    return deploymentFor(chain.id);
-  } catch {
-    return undefined;
-  }
-})();
+const knownDeployment = KNOWN;
 const DROP_FACTORY = process.env.DROP_FACTORY || knownDeployment?.dropFactory;
 const ESCROW_DROP_FACTORY = process.env.ESCROW_DROP_FACTORY || knownDeployment?.escrowDropFactory;
 const drops = DROP_FACTORY ? new CloakDrops(publicClient, walletClient, DROP_FACTORY, BigInt(process.env.DROP_FACTORY_BLOCK ?? knownDeployment?.dropFactoryBlock ?? 0), ESCROW_DROP_FACTORY) : null;
@@ -483,12 +297,9 @@ async function tickDrops() {
 
 (async function loop() {
   for (;;) {
-    if (ticks++ % 100 === 0) await unwrapFees().catch((e) => console.error("unwrap failed:", e.shortMessage ?? e.message));
     await tick().catch((e) => console.error("tick failed:", e.shortMessage ?? e.message));
     await tickDrops().catch((e) => console.error("drops tick failed:", e.shortMessage ?? e.message));
-    await tickBatches().catch((e) => console.error("batch tick failed:", e.shortMessage ?? e.message));
-    const openRounds = [...batchCursors.values()].some((c) => c.open.size > 0);
-    const idle = !work.busy && !openRounds && Date.now() - work.relayAt > 120_000;
+    const idle = !work.busy && Date.now() - work.relayAt > 120_000;
     work.busy = false;
     await new Promise((r) => setTimeout(r, idle ? Math.max(IDLE_MS, POLL_MS) : POLL_MS));
   }
@@ -497,7 +308,7 @@ async function tickDrops() {
 // ───────────── staying awake on a free host ─────────────
 // Render's free plan stops a service after 15 minutes with no incoming request, and its loops stop with it. While the
 // keeper has work that can't wait for a visitor (a launch or drop not finished, an open batch round, a withdrawal piece
-// queued, a receive address an app is watching, a relay in the last 15 minutes) it requests its own public address every
+// queued, a relay in the last 15 minutes) it requests its own public address every
 // 10 minutes, which counts as incoming. With nothing pending it lets the host stop it: the next visitor's request starts
 // it again (about a minute on Render), and the site then re-sends anything the keeper forgot. KEEP_AWAKE=0 turns it off;
 // KEEP_AWAKE_URL overrides the address (Render sets RENDER_EXTERNAL_URL itself). OPTIMIZATION.md H1.
@@ -507,10 +318,8 @@ function pendingWork() {
   // launches it could read and hasn't finished (one it can't read, like a broken contract, doesn't hold it awake)
   if (Object.keys(status.launches).some((a) => !done.has(a))) why.push("launches");
   if (Object.keys(status.drops?.live ?? {}).length) why.push("drops");
-  if ([...batchCursors.values()].some((c) => c.open.size > 0)) why.push("batch rounds");
   if (gloamLoop?.pendingRounds().length) why.push("gloam rounds");
   if (schedule?.waiting?.()) why.push("scheduled pieces");
-  if (receiver?.hot?.()) why.push("receive addresses");
   if (Date.now() - work.relayAt < 15 * 60_000) why.push("recent relay");
   return why;
 }
@@ -523,139 +332,14 @@ if (SELF_URL && process.env.KEEP_AWAKE !== "0") {
   }, Number(process.env.KEEP_AWAKE_MS ?? 10 * 60_000)).unref();
 }
 
-// ───────────── private-trade relay ─────────────
-const submit = ROUTER ? walletSubmitter(publicClient, walletClient, ROUTER, BATCHER, MIGRATOR) : null;
-const readRouter = (functionName, args = []) => publicClient.readContract({ address: ROUTER, abi: privateRouterAbi, functionName, args });
-const big = (x) => (Array.isArray(x) ? x.map(big) : BigInt(x));
-const err = (msg, status) => Object.assign(new Error(msg), { status });
-const KINDS = ["privateSwap", "unshieldHype", "transact", "placeOrder", "migrate"];
-const isPool = (pool) => readRouter("isPool", [pool]);
-/** Whether the migrator moves `pool` (a vault of an earlier deployment) into the permanent vaults. */
-const isOldPool = (pool) => (MIGRATOR ? publicClient.readContract({ address: MIGRATOR, abi: cloakMigratorAbi, functionName: "isOldPool", args: [pool] }).catch(() => false) : false);
-const tokenOf = (pool) => publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "token" });
-/** How a vault's token is priced: "hype", "launch" (its pair) or "asset" (a dollar stablecoin such as USDC). */
-async function priceKind(token) {
-  if (token.toLowerCase() === (await readRouter("whype")).toLowerCase()) return "hype";
-  return (await readRouter("pairOf", [token])) === zeroAddress ? "asset" : "launch";
-}
-const decimalsAbi = [{ type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] }];
-let hypeUsdCache = { at: 0, price: 0 };
-async function hypeUsd() {
-  if (Date.now() - hypeUsdCache.at < 60_000 && hypeUsdCache.price > 0) return hypeUsdCache.price;
-  try {
-    const r = await fetch(process.env.HYPE_PRICE_URL ?? "https://api.hyperliquid.xyz/info", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "allMids" }), signal: AbortSignal.timeout(5000),
-    });
-    const price = Number((await r.json()).HYPE);
-    if (!(price > 0)) throw new Error("no HYPE price");
-    hypeUsdCache = { at: Date.now(), price };
-    return price;
-  } catch (e) {
-    const fallback = Number(process.env.HYPE_USD ?? 0);
-    if (fallback > 0) return fallback;
-    if (hypeUsdCache.price > 0) return hypeUsdCache.price; // stale beats none
-    throw err("No HYPE price right now, so the relayer can't quote a fee in this token. Try again in a minute.", 503);
-  }
-}
-
-// ── fee quotes: gas for the call × gas price × margin, in the pool's own token ──
-const GAS = { transact: 1_900_000n, unshieldHype: 2_000_000n, privateSwap: 2_500_000n, placeOrder: 2_200_000n, migrate: 2_700_000n };
-const MARGIN_BPS = BigInt(process.env.RELAY_FEE_MARGIN_BPS ?? 12_500); // 1.25× the gas cost
-const MIN_GAS_PRICE = BigInt(process.env.RELAY_MIN_GAS_PRICE ?? 100_000_000); // 0.1 gwei floor
-
-// private receive addresses: deliver what arrives into the vault as the owner's note (POST/GET /receive)
-const RECEIVE = reg?.receive;
-const receiver = RECEIVE ? startReceive({ pub: publicClient, wallet: walletClient, account, factory: RECEIVE, tokens: (KNOWN?.assets ?? []).map((a) => a.token), minGasPrice: MIN_GAS_PRICE, marginBps: MARGIN_BPS, log: (m) => console.log(`[receive] ${m}`) }) : null;
-
-// protocol fees waiting in the vaults go to the treasury every 48 h (FEE_COLLECT_HOURS, 0 = off). The treasury is fixed
-// in CloakConfig, so this can only trigger the payout, never redirect it.
-/** Every vault with a feesOwed(): the permanent vaults and each earlier deployment's, each once (token null = HYPE). */
-async function feeVaults() {
-  const seen = new Map();
-  if (VAULTS) {
-    const n = Number(await publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "tokensCount" }));
-    const tokens = await Promise.all(Array.from({ length: n }, (_, i) => publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "tokens", args: [BigInt(i)] })));
-    const pools = await Promise.all(tokens.map((t) => publicClient.readContract({ address: VAULTS, abi: cloakVaultsAbi, functionName: "poolOf", args: [t] })));
-    tokens.forEach((t, i) => seen.set(pools[i].toLowerCase(), { pool: pools[i], token: t }));
-  }
-  for (const p of reg?.previous ?? []) {
-    if (!p.router) continue;
-    const c = { address: p.router, abi: privateRouterAbi };
-    const [hypePool, n] = await Promise.all([publicClient.readContract({ ...c, functionName: "hypePool" }), publicClient.readContract({ ...c, functionName: "tokensCount" })]);
-    seen.set(hypePool.toLowerCase(), { pool: hypePool, token: null });
-    const tokens = await Promise.all(Array.from({ length: Number(n) - 1 }, (_, i) => publicClient.readContract({ ...c, functionName: "tokens", args: [BigInt(i + 1)] })));
-    const pools = await Promise.all(tokens.map((t) => publicClient.readContract({ ...c, functionName: "poolOf", args: [t] })));
-    tokens.forEach((t, i) => seen.has(pools[i].toLowerCase()) || seen.set(pools[i].toLowerCase(), { pool: pools[i], token: t }));
-  }
-  return [...seen.values()];
-}
-/** A fee's worth in HYPE wei: HYPE as it is, USDC at the HYPE price, a launch token at its market's price. */
-async function feeValueInHype(token, amount) {
-  if (!token) return amount;
-  const whype = ROUTER ? await readRouter("whype") : null;
-  if (whype && token.toLowerCase() === whype.toLowerCase()) return amount;
-  let market = ROUTER ? await readRouter("pairOf", [token]).catch(() => zeroAddress) : zeroAddress;
-  if (market === zeroAddress && SHARED) market = await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "marketOf", args: [token] }).catch(() => zeroAddress);
-  if (market === zeroAddress) {
-    // a vault token with no launch market is a dollar asset such as USDC, priced the same way as the relayer's fees
-    const decimals = await publicClient.readContract({ address: token, abi: decimalsAbi, functionName: "decimals" });
-    return BigInt(Math.floor((Number(amount) / 10 ** decimals / (await hypeUsd())) * 1e18));
-  }
-  const price = await publicClient.readContract({ address: market, abi: cloakPairAbi, functionName: "price" });
-  return (amount * price) / 10n ** 18n;
-}
-const feeCollector = reg
-  ? startFeeCollector({
-      pub: publicClient,
-      wallet: walletClient,
-      account,
-      vaults: feeVaults,
-      shared: SHARED,
-      sharedTokens: async () => {
-        const n = Number(await publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "tokensCount" }));
-        return Promise.all(Array.from({ length: n }, (_, i) => publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName: "tokens", args: [BigInt(i)] })));
-      },
-      valueInHype: feeValueInHype,
-      everyMs: Number(process.env.FEE_COLLECT_HOURS ?? 48) * 3600_000,
-      startDelayMs: Number(process.env.FEE_START_DELAY_MS ?? 300_000),
-      log: (m) => console.log(`[fees] ${m}`),
-    })
-  : null;
-
-async function quote(kind, pool) {
-  if (!KINDS.includes(kind)) throw err("bad kind", 400);
-  if (!ROUTER) throw err("relay disabled", 503);
-  if (kind === "migrate" ? !(await isOldPool(pool)) : !(await isPool(pool))) throw err("unknown pool", 400);
-  const token = await tokenOf(pool);
-  const pk = await priceKind(token);
-  const asset = pk === "asset";
-  if (asset && kind !== "transact" && kind !== "migrate") throw err("this vault supports private sends and withdrawals only", 400);
-  const gasPrice = await publicClient.getGasPrice();
-  const hype = (GAS[kind] * (gasPrice > MIN_GAS_PRICE ? gasPrice : MIN_GAS_PRICE) * MARGIN_BPS) / 10_000n;
-  if (asset) {
-    // a dollar stablecoin pays the HYPE cost at the HYPE/USD price, rounded up to the token's smallest unit
-    const dec = await publicClient.readContract({ address: token, abi: decimalsAbi, functionName: "decimals" });
-    const micro = BigInt(Math.round((await hypeUsd()) * 1e6)); // USD per HYPE, ×1e6
-    return (hype * micro * 10n ** BigInt(dec)) / (10n ** 18n * 1_000_000n) + 1n;
-  }
-  if (pk === "hype") return hype;
-  // a launch token pays the HYPE cost at the pair's spot price
-  const pair = await readRouter("pairOf", [token]);
-  const [rH, rT] = await Promise.all([
-    publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveHype" }),
-    publicClient.readContract({ address: pair, abi: cloakPairAbi, functionName: "reserveToken" }),
-  ]);
-  if (rH === 0n) throw err("no market for this token", 400);
-  return (hype * rT) / rH + 1n;
-}
-
 // a contract that reverted answered fine: its reason must reach the user, never "the network didn't answer"
 const isNetworkError = (e) =>
   !/reverted|execution reverted|revert reason/i.test(`${e?.shortMessage ?? ""}`) &&
   /HTTP request failed|fetch failed|timed? ?out|ECONNRESET|socket hang up|429|502|503|504/i.test(`${e?.shortMessage ?? ""} ${e?.message ?? ""} ${e?.name ?? ""}`);
 
+
 /**
- * Public JSON that many browsers poll (snapshot, leaves): gzipped when asked, and a bodiless 304 when the browser
+ * Public JSON that many browsers ask for (leaves): gzipped when asked, and a bodiless 304 when the browser
  * already holds this version (If-None-Match), so an unchanged poll costs a few hundred bytes instead of the body.
  * `no-cache` lets the browser keep it but makes it ask each time.
  */
@@ -675,161 +359,7 @@ function sendCached(req, res, { json, gz, etag }, extra = {}) {
   return res.end(zip ? gz : json);
 }
 
-// one relayed spend per nullifier at a time: a second copy is refused before it costs gas
-const inflight = new Map();
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, t] of inflight) if (now > t) inflight.delete(k);
-}, 30_000).unref();
-
-async function relay(body, { dryRun = false } = {}) {
-  if (!dryRun) work.relayAt = Date.now();
-  if (!submit) throw err("relay disabled (set ROUTER)", 503);
-  const { kind, pool, proof: p, extData: e } = body;
-  if (!KINDS.includes(kind)) throw err("bad kind", 400);
-  if (kind === "placeOrder" && !BATCHER) throw err("batching disabled (set BATCHER)", 503);
-  if (kind === "migrate" && !MIGRATOR) throw err("migration disabled", 503);
-  if (kind === "migrate" ? !(await isOldPool(pool)) : !(await isPool(pool))) throw err("unknown pool", 400);
-  if (kind !== "transact" && kind !== "migrate" && (await priceKind(await tokenOf(pool))) === "asset") throw err("this vault supports private sends and withdrawals only", 400);
-  const proof = {
-    a: big(p.a), b: big(p.b), c: big(p.c), root: big(p.root), publicAmount: big(p.publicAmount),
-    extDataHash: big(p.extDataHash), inputNullifiers: big(p.inputNullifiers), outputCommitments: big(p.outputCommitments),
-  };
-  const extData = { ...e, extAmount: BigInt(e.extAmount), fee: BigInt(e.fee) };
-
-  // the call must pay this relayer at least 80% of the current quote (gas can move between quote and submit)
-  if (String(extData.relayer).toLowerCase() !== account.address.toLowerCase()) throw err("fee must be paid to this relayer: GET /quote first", 402);
-  const want = await quote(kind, pool);
-  if (extData.fee * 10n < want * 8n) throw err(`relayer fee too low: GET /quote first (need ${want})`, 402);
-
-  const keys = proof.inputNullifiers.map((n) => `${chain.id}:${pool.toLowerCase()}:${n}`);
-  if (keys.some((k) => inflight.has(k))) throw err("this spend is already being relayed", 409);
-  for (const n of proof.inputNullifiers) {
-    if (await publicClient.readContract({ address: pool, abi: shieldedPoolAbi, functionName: "isSpent", args: [n] })) throw err("already spent", 409);
-  }
-  keys.forEach((k) => inflight.set(k, Date.now() + 180_000));
-  try {
-    const sim = kind === "transact"
-      ? { address: pool, abi: shieldedPoolAbi, functionName: "transact", args: [proof, extData] }
-      : kind === "placeOrder"
-        ? { address: BATCHER, abi: privateBatcherAbi, functionName: "placeOrder", args: [pool, proof, extData] }
-        : kind === "migrate"
-          ? { address: MIGRATOR, abi: cloakMigratorAbi, functionName: "migrate", args: [pool, proof, extData] }
-          : { address: ROUTER, abi: privateRouterAbi, functionName: kind, args: kind === "privateSwap" ? [pool, proof, extData] : [proof, extData] };
-    // dry-run first so a bad proof costs the relayer nothing; a node that drops the call gets one more try
-    await publicClient.simulateContract({ ...sim, account }).catch(async (e) => {
-      if (!isNetworkError(e)) throw e;
-      await new Promise((r) => setTimeout(r, 1500));
-      return publicClient.simulateContract({ ...sim, account });
-    });
-  } catch (e) {
-    keys.forEach((k) => inflight.delete(k)); // nothing went out: the spend may be retried
-    throw isNetworkError(e) ? err("The network didn't answer. Nothing was sent, so try again in a moment.", 503) : e;
-  }
-  if (dryRun) {
-    keys.forEach((k) => inflight.delete(k));
-    return null;
-  }
-  // From here the transaction may be out, so the spend stays locked until it lands (or the lock expires).
-  try {
-    return await submit({ kind, pool, proof, extData, migrator: MIGRATOR });
-  } catch (e) {
-    if (isNetworkError(e)) throw err("The network didn't answer while sending. Check your balance in a minute before trying again.", 503);
-    keys.forEach((k) => inflight.delete(k)); // the node refused it outright: nothing went out
-    throw e;
-  }
-}
-
-// ───────────── shared launch-token vault relay ─────────────
-// sharedTransact (a withdrawal or note merge, fee in the token), sharedSell (fee in the token), sharedBuy (fee in HYPE)
-// and sharedSend (a send that hides its token; a second proof pays the fee from the sender's HYPE vault).
-const SHARED_KINDS = ["sharedTransact", "sharedBuy", "sharedSell", "sharedSend", "sharedOrderBuy", "sharedOrderSell"];
-const SHARED_GAS = { sharedTransact: 2_000_000n, sharedSell: 2_700_000n, sharedBuy: 2_700_000n, sharedSend: 3_800_000n, sharedOrderBuy: 2_300_000n, sharedOrderSell: 2_300_000n };
-const readShared = (functionName, args = []) => publicClient.readContract({ address: SHARED, abi: sharedVaultAbi, functionName, args });
-async function quoteShared(kind, token) {
-  if (!SHARED_KINDS.includes(kind)) throw err("bad kind", 400);
-  if (!SHARED || !SHARED_ROUTER || !ROUTER) throw err("the shared vault isn't enabled on this relayer", 503);
-  const gasPrice = await publicClient.getGasPrice();
-  const hype = (SHARED_GAS[kind] * (gasPrice > MIN_GAS_PRICE ? gasPrice : MIN_GAS_PRICE) * MARGIN_BPS) / 10_000n;
-  if ((kind === "sharedOrderBuy" || kind === "sharedOrderSell") && !SHARED_BATCHER) throw err("batch rounds for the shared vault aren't enabled on this relayer", 503);
-  if (kind === "sharedBuy" || kind === "sharedOrderBuy") return hype;
-  // a hidden send never tells the relayer its token: its fee comes out of the HYPE vault, which keeps its withdrawal fee
-  if (kind === "sharedSend") return (hype * 10_000n) / (10_000n - BigInt(await publicClient.readContract({ address: await readRouter("config"), abi: [{ type: "function", name: "withdrawFeeBps", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] }], functionName: "withdrawFeeBps" }))) + 1n;
-  if (!/^0x[0-9a-fA-F]{40}$/.test(token ?? "") || !(await readShared("admitted", [token]))) throw err("this token isn't in the shared vault", 400);
-  const market = await readShared("marketOf", [token]);
-  const [rH, rT] = await Promise.all([
-    publicClient.readContract({ address: market, abi: cloakPairAbi, functionName: "reserveHype" }),
-    publicClient.readContract({ address: market, abi: cloakPairAbi, functionName: "reserveToken" }),
-  ]);
-  if (rH === 0n) throw err("no market for this token", 400);
-  return (hype * rT) / rH + 1n;
-}
-
-const parseProof = (p) => ({
-  a: big(p.a), b: big(p.b), c: big(p.c), root: big(p.root), publicAmount: big(p.publicAmount), extDataHash: big(p.extDataHash),
-  ...(p.publicAsset !== undefined ? { publicAsset: big(p.publicAsset) } : {}),
-  inputNullifiers: big(p.inputNullifiers), outputCommitments: big(p.outputCommitments),
-});
-const parseExt = (e) => ({ ...e, extAmount: BigInt(e.extAmount), fee: BigInt(e.fee) });
-const me = (a) => String(a).toLowerCase() === account.address.toLowerCase();
-
-async function relayShared(body) {
-  if (!SHARED || !SHARED_ROUTER || !ROUTER) throw err("the shared vault isn't enabled on this relayer", 503);
-  const { kind } = body;
-  if (!SHARED_KINDS.includes(kind)) throw err("bad kind", 400);
-  const proof = parseProof(body.proof);
-  const extData = parseExt(body.extData);
-  const hypePool = await readRouter("hypePool");
-  let call, spends;
-  if (kind === "sharedBuy" || kind === "sharedOrderBuy") {
-    if (!me(extData.relayer) || extData.fee * 10n < (await quoteShared(kind)) * 8n) throw err("relayer fee too low: GET /quote-shared first", 402);
-    call = kind === "sharedBuy"
-      ? { address: SHARED_ROUTER, abi: sharedRouterAbi, functionName: "buy", args: [proof, extData] }
-      : { address: SHARED_BATCHER, abi: sharedBatcherAbi, functionName: "placeBuy", args: [proof, extData] };
-    spends = [[hypePool, shieldedPoolAbi, proof.inputNullifiers]];
-  } else if (kind === "sharedSend") {
-    if (!body.feeProof || !body.feeExtData) throw err("malformed request", 400);
-    const feeProof = parseProof(body.feeProof);
-    const feeExt = parseExt(body.feeExtData);
-    if (proof.publicAsset !== 0n || extData.extAmount !== 0n || extData.fee !== 0n) throw err("a hidden send moves no tokens and pays no fee in the vault", 400);
-    if (feeExt.recipient.toLowerCase() !== SHARED_ROUTER.toLowerCase() || -feeExt.extAmount * 10n < (await quoteShared(kind)) * 8n) throw err("relayer fee too low: GET /quote-shared first", 402);
-    call = { address: SHARED_ROUTER, abi: sharedRouterAbi, functionName: "send", args: [proof, extData, feeProof, feeExt] };
-    spends = [[SHARED, sharedVaultAbi, proof.inputNullifiers], [hypePool, shieldedPoolAbi, feeProof.inputNullifiers]];
-  } else {
-    const token = `0x${(proof.publicAsset ?? 0n).toString(16).padStart(40, "0")}`;
-    if (!me(extData.relayer) || extData.fee * 10n < (await quoteShared(kind, token)) * 8n) throw err("relayer fee too low: GET /quote-shared first", 402);
-    if (kind === "sharedOrderSell" && !SHARED_BATCHER) throw err("batch rounds for the shared vault aren't enabled on this relayer", 503);
-    call = kind === "sharedSell"
-      ? { address: SHARED_ROUTER, abi: sharedRouterAbi, functionName: "sell", args: [proof, extData] }
-      : kind === "sharedOrderSell"
-        ? { address: SHARED_BATCHER, abi: sharedBatcherAbi, functionName: "placeSell", args: [proof, extData] }
-        : { address: SHARED, abi: sharedVaultAbi, functionName: "transact", args: [proof, extData] };
-    spends = [[SHARED, sharedVaultAbi, proof.inputNullifiers]];
-  }
-  const keys = spends.flatMap(([pool, , ns]) => ns.map((n) => `${chain.id}:${pool.toLowerCase()}:${n}`));
-  if (keys.some((k) => inflight.has(k))) throw err("this spend is already being relayed", 409);
-  for (const [pool, abi, ns] of spends) for (const n of ns) if (await publicClient.readContract({ address: pool, abi, functionName: "isSpent", args: [n] })) throw err("already spent", 409);
-  keys.forEach((k) => inflight.set(k, Date.now() + 180_000));
-  let gas;
-  try {
-    await publicClient.simulateContract({ ...call, account });
-    gas = await publicClient.estimateContractGas({ ...call, account: account.address });
-  } catch (e) {
-    keys.forEach((k) => inflight.delete(k));
-    if (isNetworkError(e)) console.error(`relay ${kind}: simulation failed on the network: ${(e.shortMessage ?? e.message ?? "").slice(0, 300)}`);
-    throw isNetworkError(e) ? err("The network didn't answer. Nothing was sent, so try again in a moment.", 503) : e;
-  }
-  try {
-    return await walletClient.writeContract({ ...call, gas: (gas * 13n) / 10n + 100_000n });
-  } catch (e) {
-    if (isNetworkError(e)) throw err("The network didn't answer while sending. Check your balance in a minute before trying again.", 503);
-    keys.forEach((k) => inflight.delete(k));
-    throw e;
-  }
-}
-
-// Browsers may only call the relayer from these sites. Other apps run their own keeper or set CORS_ORIGINS.
-const ORIGINS = (process.env.CORS_ORIGINS ?? "https://cloak.boblabs.tech,http://localhost:5173,http://localhost:4173").split(",").map((s) => s.trim());
+const ORIGINS = (process.env.CORS_ORIGINS ?? "https://gloak.boblabs.tech,http://localhost:5173,http://localhost:4173").split(",").map((s) => s.trim());
 const MAX_BODY = 64 * 1024;
 const LIMIT = Number(process.env.RELAY_PER_MIN ?? 20); // relay requests per IP per minute
 const hits = new Map();
@@ -883,101 +413,12 @@ createServer((req, res) => {
         } catch {
           return send(req, res, 400, { error: "malformed request" });
         }
+        work.relayAt = Date.now();
         send(req, res, 200, { txHash: await gloamRelay(parsed, { sender: clientIp(req) }) });
       } catch (e) {
         // an error with no status is ours (the node, a receipt wait): the call may still land, so say try again
         if (!e.status) console.error(`[gloam relay] ${e.shortMessage ?? e.message}`);
         send(req, res, e.status ?? 503, { error: e.status ? e.message : "the relay hit a problem sending this; check your balance before trying again" });
-      }
-    });
-    return;
-  }
-  if (req.method === "POST" && (path === "/relay" || path === "/relay-shared")) {
-    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
-    let body = "";
-    let size = 0;
-    req.on("data", (c) => {
-      size += c.length;
-      if (size > MAX_BODY) {
-        send(req, res, 413, { error: "request too large" });
-        req.destroy();
-        return;
-      }
-      body += c;
-    });
-    req.on("end", async () => {
-      if (size > MAX_BODY) return;
-      let parsed;
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        return send(req, res, 400, { error: "malformed request" });
-      }
-      if (!parsed || typeof parsed !== "object" || typeof parsed.proof !== "object" || typeof parsed.extData !== "object" || !parsed.proof || !parsed.extData) {
-        return send(req, res, 400, { error: "malformed request" });
-      }
-      try {
-        const txHash = await (path === "/relay-shared" ? relayShared(parsed) : relay(parsed));
-        console.log(`[relay] ${txHash}`);
-        send(req, res, 200, { txHash });
-      } catch (e) {
-        // contract reverts carry a short message the app translates; anything else is a bad payload
-        if (!e.status && isNetworkError(e)) return send(req, res, 503, { error: "The network didn't answer. Nothing was sent, so try again in a moment." });
-        send(req, res, e.status ?? 400, { error: e.status || e.shortMessage ? e.shortMessage ?? e.message : "malformed request" });
-      }
-    });
-    return;
-  }
-  if (req.method === "GET" && path === "/quote") {
-    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
-    const q = new URL(req.url, "http://x").searchParams;
-    const pool = q.get("pool") ?? "";
-    if (!/^0x[0-9a-fA-F]{40}$/.test(pool)) return send(req, res, 400, { error: "bad pool" });
-    quote(q.get("kind"), pool)
-      .then((fee) => send(req, res, 200, { relayer: account.address, fee: fee.toString() }))
-      .catch((e) => send(req, res, e.status ?? 400, { error: e.status ? e.message : "quote failed" }));
-    return;
-  }
-  if (req.method === "GET" && path === "/quote-shared") {
-    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
-    const q = new URL(req.url, "http://x").searchParams;
-    quoteShared(q.get("kind"), q.get("token") ?? undefined)
-      .then((fee) => send(req, res, 200, { relayer: account.address, fee: fee.toString() }))
-      .catch((e) => send(req, res, e.status ?? 400, { error: e.status ? e.message : "quote failed" }));
-    return;
-  }
-  if (req.method === "GET" && path === "/snapshot") {
-    snapshot?.touch();
-    const body = snapshot?.get();
-    if (!body) return send(req, res, 503, { error: "no snapshot yet" });
-    // x-snapshot-at: when the keeper last confirmed it (it can be unchanged for a while: a 304 carries this too)
-    return sendCached(req, res, { json: body, gz: snapshot.gz(), etag: snapshot.etag() }, { "x-snapshot-at": String(snapshot.builtAt()) });
-  }
-  if (path === "/receive" && (req.method === "POST" || req.method === "GET")) {
-    if (!receiver) return send(req, res, 404, { error: "receive addresses aren't enabled on this relayer" });
-    if (limited(req)) return send(req, res, 429, { error: "too many requests, try again in a minute" });
-    if (req.method === "GET") {
-      const addrs = (new URL(req.url, "http://x").searchParams.get("addresses") ?? "").split(",").filter((x) => /^0x[0-9a-fA-F]{40}$/.test(x)).slice(0, 50);
-      return send(req, res, 200, { deliveries: receiver.deliveries(addrs) });
-    }
-    let body = "";
-    let size = 0;
-    req.on("data", (c) => {
-      size += c.length;
-      if (size > MAX_BODY) {
-        send(req, res, 413, { error: "request too large" });
-        req.destroy();
-        return;
-      }
-      body += c;
-    });
-    req.on("end", async () => {
-      if (size > MAX_BODY) return;
-      try {
-        await receiver.watch(JSON.parse(body));
-        send(req, res, 200, { ok: true });
-      } catch (e) {
-        send(req, res, e.status ?? 400, { error: e.status ? e.message : "malformed request" });
       }
     });
     return;
@@ -1030,7 +471,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
-    return send(req, res, 200, { ...status, relay: !!ROUTER, router: ROUTER ?? null, batcher: BATCHER ?? null, migrator: MIGRATOR ?? null, vaults: VAULTS ?? null, shared: SHARED ?? null, sharedRouter: SHARED_ROUTER ?? null, sharedBatcher: SHARED_BATCHER ?? null, receive: RECEIVE ?? null, claimDelay: CLAIM_DELAY, feeCollection: feeCollector ? (feeCollector.off ? "off" : { lastAt: feeCollector.lastAt, lastRun: feeCollector.lastRun }) : null });
+    return send(req, res, 200, { ...status, relay: !!gloamRelay, schedule: !!gloamRelay, leaves: leafVaults.map((v) => v.address), claimDelay: CLAIM_DELAY });
   }
   send(req, res, 404, { error: "not found" });
-}).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${ROUTER ? `, relaying for ${ROUTER}` : ""}`));
+}).listen(Number(process.env.PORT ?? 3001), () => console.log(`keeper ${account.address} on ${chain.name}, factory ${FACTORY}${gloamRelay ? ", relaying for Gloam's vaults" : ""}`));

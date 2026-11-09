@@ -214,7 +214,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="sheet-row"><span className="small mute">Appearance</span><ThemeSeg /></div>
             <Status keeper={keeper} />
-            <Link to="/" className="small mute" style={{ display: "block", marginTop: 18 }}>Back to cloak.boblabs.tech</Link>
+            <Link to="/" className="small mute" style={{ display: "block", marginTop: 18 }}>Back to gloak.boblabs.tech</Link>
           </Sheet>
         )}
       </header>

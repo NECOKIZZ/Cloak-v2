@@ -289,7 +289,7 @@ export function Landing() {
               <div className="code">
                 <div className="code-head"><span>@cloakely/sdk</span><span>TypeScript</span></div>
                 <pre>
-                  <span className="k">import</span> {"{ Cloak, CloakPrivate }"} <span className="k">from</span> <span className="s">"@cloakely/sdk"</span>;{"\n\n"}
+                  <span className="k">import</span> {"{ Cloak, GloamPrivate }"} <span className="k">from</span> <span className="s">"@cloakely/sdk"</span>;{"\n\n"}
                   <span className="c">// launchpad: a sealed-bid launch with locked LP</span>{"\n"}
                   <span className="k">const</span> {"{ auction }"} = <span className="k">await</span> cloak.createLaunch({"{ name, symbol, saleSupply, … }"});{"\n\n"}
                   <span className="c">// bidder: sealed, auto-revealing</span>{"\n"}

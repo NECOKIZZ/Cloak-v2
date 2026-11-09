@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { every } from "../every";
 import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
-import { CloakPrivate, GloamPrivate, checkPayee, shieldedPoolAbi } from "@cloakely/sdk";
-import { ASSETS, CHAIN_ID, CLOAK_TOKEN, CORE, GLOAM, MIGRATOR, PREVIOUS, RECEIVE, txLink } from "../config";
+import { checkPayee } from "@cloakely/sdk";
+import { ASSETS, GLOAM, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
-import { getProver, getSharedProver, useApp } from "../state";
+import { useApp } from "../state";
 import { friendly, Hint } from "../errors";
 import { markDone } from "../guide";
 import { Link, navigate, useRoute } from "../router";
@@ -116,37 +116,10 @@ export function Portfolio() {
   const assets = useAssets();
   const { bals, refresh, loaded, synced } = usePrivateBalances();
   const px = useHypeUsd();
-  const [moveMsg, setMoveMsg] = useState<{ busy?: string; ok?: string; err?: string }>({});
   const anyHeld = Object.values(bals).some((b) => b > 0n);
   useEffect(() => {
     if (anyHeld) markDone("shield");
   }, [anyHeld]);
-
-  /** Move private balances from every earlier Cloak deployment (one extra signature each, for that version's keys). */
-  async function moveOld() {
-    if (!priv || !wallet) return;
-    try {
-      await getProver();
-      let n = 0;
-      for (const p of PREVIOUS) {
-        if (!(priv instanceof CloakPrivate)) break; // earlier deployments are Cloak's own vaults
-        setMoveMsg({ busy: `Sign once more to open your v${p.version} private account…` });
-        const keys = await CloakPrivate.keysForVersion(wallet, { chainId: CHAIN_ID, version: p.version, router: p.router });
-        const legacy = new CloakPrivate(publicClient, p.router, keys, getProver, priv.submit, p.routerBlock);
-        // vaults that version kept outside its router (v2's USDC vault)
-        for (const x of p.pools ?? []) {
-          const token = await publicClient.readContract({ address: x.pool, abi: shieldedPoolAbi, functionName: "token" });
-          const a = ASSETS.find((y) => y.token.toLowerCase() === token.toLowerCase());
-          legacy.addAsset({ symbol: a?.symbol ?? "token", token, pool: x.pool, decimals: a?.decimals ?? 18, fromBlock: x.fromBlock });
-        }
-        n += (await priv.migrateFrom(legacy, (m) => setMoveMsg({ busy: `v${p.version}: ${m}` }))).length;
-      }
-      setMoveMsg({ ok: n ? `Moved ${n} private balance${n > 1 ? "s" : ""} into the permanent vaults.` : "Nothing to move: your old private accounts are empty." });
-      refresh();
-    } catch (e) {
-      setMoveMsg({ err: friendly(e) });
-    }
-  }
 
   if (!wallet || !priv) return <Locked title="Portfolio" />;
 
@@ -164,7 +137,7 @@ export function Portfolio() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Portfolio</h1><p>Only you can see these balances. On-chain they're encrypted notes in shared vaults.</p></div></div>
+      <div className="page-head"><div><h1>Portfolio</h1><p>Only you can see these balances. On-chain they're encrypted notes in Gloam's vaults.</p></div></div>
       <div className="card wallet-hero">
         <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
         <div className="wallet-total">{!loaded || (px === null && held.some((h) => h.a.kind !== "stable")) ? <Skel w="5.5ch" /> : <span className="fade-in" key={dollars(total)}>{dollars(total)}</span>}</div>
@@ -175,7 +148,7 @@ export function Portfolio() {
           <Link to="/app/portfolio/shield" className="btn btn-ink"><Icon.plus size={16} />Shield</Link>
           <Link to="/app/portfolio/send" className="btn btn-ghost"><Icon.send size={16} />Send privately</Link>
           <Link to="/app/portfolio/withdraw" className="btn btn-ghost"><Icon.arrowDown size={16} />Withdraw</Link>
-          {(CORE === "gloam" ? GLOAM?.receive : RECEIVE) && <Link to="/app/portfolio/receive" className="btn btn-ghost"><Icon.wallet size={16} />Receive</Link>}
+          {GLOAM?.receive && <Link to="/app/portfolio/receive" className="btn btn-ghost"><Icon.wallet size={16} />Receive</Link>}
           <button className="btn btn-ghost" onClick={copy} title={privAddress}><Icon.copy size={16} />Copy cloak address</button>
         </div>
       </div>
@@ -213,18 +186,9 @@ export function Portfolio() {
               ))}
             </div>
           )}
-          <p className="note">Shield HYPE, USDC or CLOAK, then <Link to="/app/trade" className="link">swap privately</Link> into other tokens.</p>
+          <p className="note">Shield HYPE or USDC, then <Link to="/app/trade" className="link">swap privately</Link> into other tokens.</p>
         </div>
         <div className="col">
-          {MIGRATOR && CORE === "cloak" && PREVIOUS.length > 0 && (
-            <div className="card">
-              <div className="card-head"><h3>Balance in the old vaults?</h3><Icon.lock size={16} /></div>
-              <p className="small mute">Cloak's vaults are now permanent, and your private account stays the same from here on. If you held a private balance in an earlier version, move it here once. It stays private, and nobody can redirect it.</p>
-              <button className="btn btn-ghost btn-sm" disabled={!!moveMsg.busy} onClick={moveOld}>{moveMsg.busy ?? "Move my old balance"}</button>
-              {moveMsg.ok && <div className="okmsg">{moveMsg.ok}</div>}
-              {moveMsg.err && <div className="err">{moveMsg.err}</div>}
-            </div>
-          )}
           <ScheduledCard />
           <Tips />
         </div>
@@ -288,7 +252,7 @@ const TITLES: Record<Kind, [string, string]> = {
 };
 
 export function PortfolioAction({ kind }: { kind: Kind }) {
-  const { wallet, priv, shared } = useApp();
+  const { wallet, priv } = useApp();
   const { query } = useRoute();
   const assets = useAssets();
   const { bals, refresh } = usePrivateBalances();
@@ -297,7 +261,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   const [asset, setAsset] = useState<Key | undefined>((query.get("token") as Key | null) ?? (kind === "shield" ? "HYPE" : undefined));
   const [amt, setAmt] = useState("");
   const [to, setTo] = useState("");
-  // withdraw in pieces over time (HYPE and per-token vaults; not the shared vault yet)
+  // withdraw in pieces over time
   const [spread, setSpread] = useState(false);
   const [windowSecs, setWindowSecs] = useState(3600);
   const [busy, setBusy] = useState("");
@@ -309,7 +273,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   }, [firstHeld]);
 
   // shield: HYPE, USDC and CLOAK, with what the wallet holds of each
-  const shieldable = assets.filter((a) => a.kind !== "launch" || a.market?.shared || (CLOAK_TOKEN && a.key.toLowerCase() === CLOAK_TOKEN.toLowerCase()));
+  const shieldable = assets.filter((a) => a.kind !== "launch");
   useEffect(() => {
     if (kind !== "shield" || !wallet) return;
     const me = wallet.account.address;
@@ -332,16 +296,12 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
       // leave a little HYPE for gas
       let x = cur.key === "HYPE" ? (have > 2_000_000_000_000_000n ? have - 2_000_000_000_000_000n : 0n) : have;
       // on Gloam, one deposit is capped by the vault: max is what one deposit can be right now
-      if (CORE === "gloam") {
-        const room = await (priv as GloamPrivate).depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => x);
-        if (room < x) x = room;
-      }
+      const room = await priv.depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => x);
+      if (room < x) x = room;
       return setAmt(formatUnits(x, cur.decimals));
     }
-    if (cur.market?.shared && shared) return setAmt(formatUnits(kind === "send" ? have : await shared.maxWithdraw(cur.key as Address).catch(() => have), cur.decimals));
     const pool = cur.key === "HYPE" ? priv.hypeMarket.pool : priv.market(cur.key).pool;
-    const k = kind === "withdraw" && cur.key === "HYPE" ? "unshieldHype" : "transact";
-    setAmt(formatUnits(await priv.maxSpendable(pool, k).catch(() => have), cur.decimals));
+    setAmt(formatUnits(await priv.maxSpendable(pool).catch(() => have), cur.decimals));
   }
 
   async function act() {
@@ -358,13 +318,11 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     if (have !== undefined && a > have) return setRes({ err: `You have ${amountOf(cur, have)} ${cur.symbol}${kind === "shield" ? " in your wallet" : " private"}. Enter that or less.` });
     try {
       if (kind === "shield") {
-        if (CORE === "gloam") {
-          const room = await (priv as GloamPrivate).depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => a);
-          if (room === 0n) throw new Hint(`Cloak isn't taking ${cur.symbol} deposits right now. Its private vault is full or doesn't list it yet.`);
-          if (a > room) throw new Hint(`Cloak takes up to ${amountOf(cur, room)} ${cur.symbol} in one deposit right now. Shield it in parts.`);
-        }
+        const room = await priv.depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => a);
+        if (room === 0n) throw new Hint(`Cloak isn't taking ${cur.symbol} deposits right now. Its private vault is full or doesn't list it yet.`);
+        if (a > room) throw new Hint(`Cloak takes up to ${amountOf(cur, room)} ${cur.symbol} in one deposit right now. Shield it in parts.`);
         setBusy("Depositing into your private balance…");
-        const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a) : cur.market?.shared && shared ? await shared.shield(wallet, cur.key as Address, a, setBusy) : await priv.shieldToken(wallet, cur.key, a, setBusy);
+        const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a) : await priv.shieldToken(wallet, cur.key, a, setBusy);
         markDone("shield");
         setRes({ ok: `${amt} ${cur.symbol} is now private.`, tx });
       } else {
@@ -372,24 +330,16 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
           // the address first, before anything is proved (review W-05)
           if (!to.startsWith("cloak:") && !to.startsWith("gloamr1.")) throw new Hint("Paste the recipient's cloak: address. They can copy it from their Portfolio page.");
           const t = to.startsWith("gloamr1.") ? `cloak:${to}` : to;
-          if (CORE === "gloam" && t.startsWith("cloak:") && !t.startsWith("cloak:gloamr1.")) throw new Hint("This is an address from Cloak's first version. Ask them for their new one, which starts with cloak:gloamr1.");
+          if (t.startsWith("cloak:") && !t.startsWith("cloak:gloamr1.")) throw new Hint("This is an address from Cloak's first version. Ask them for their new one, which starts with cloak:gloamr1.");
           try {
             checkPayee(t);
           } catch {
             throw new Hint("This cloak: address isn't complete. Copy it again from their Portfolio page.");
           }
         }
-        setBusy("Loading the prover…");
-        await (cur.market?.shared ? getSharedProver() : getProver());
         if (kind === "send") {
-          if (cur.market?.shared && shared) {
-            await getProver(); // the relayer's fee is proven from your private HYPE
-            const tx = await shared.send(cur.key as Address, a, to, setBusy);
-            setRes({ ok: "Sent privately. The chain can't see who paid whom, how much, or even which token.", tx });
-          } else {
-            const tx = await priv.send(cur.key === "HYPE" ? priv.hypeMarket.token : cur.key, to, a, setBusy);
-            setRes({ ok: "Sent privately. The chain can't see who paid whom, or how much.", tx });
-          }
+          const tx = await priv.send(cur.key === "HYPE" ? priv.hypeMarket.token : cur.key, to, a, setBusy);
+          setRes({ ok: "Sent privately. The chain can't see who paid whom, or how much.", tx });
         } else {
           // a .ely name is looked up again now: names expire and change hands
           const dest = await recipientNow(to).catch((e) => {
@@ -400,7 +350,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
           const stops = [GLOAM?.gloamVault, GLOAM?.launchVault, GLOAM?.memoBoard, "0x0000000000000000000000000000000000000000"].filter(Boolean).map((x) => String(x).toLowerCase());
           if (stops.includes(dest.address.toLowerCase())) throw new Hint("That address can't take a withdrawal. The money would stop there, so use a normal wallet address.");
           const name = dest.name ?? `${dest.address.slice(0, 6)}…${dest.address.slice(-4)}`;
-          if (spread && !cur.market?.shared) {
+          if (spread) {
             const token = cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address);
             const pieces = await priv.planSplitWithdraw(token, dest.address, a, { pieces: 3, windowSecs, onStatus: setBusy });
             setBusy("Handing the pieces to the relayer…");
@@ -408,7 +358,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
             const at = (t: number) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
             setRes({ ok: `${amt} ${cur.symbol} goes to ${name} in ${pieces.length} pieces: ${pieces.map((p) => `${amountOf(cur, p.amount)} around ${at(p.notBefore)}`).join(", ")}. You can close Cloak: the relayer sends them.` });
           } else {
-            const tx = cur.key === "HYPE" ? await priv.unshieldHype(dest.address, a, setBusy) : cur.market?.shared && shared ? await shared.unshield(cur.key as Address, a, dest.address, setBusy) : await priv.unshieldToken(cur.key, dest.address, a, setBusy);
+            const tx = cur.key === "HYPE" ? await priv.unshieldHype(dest.address, a, setBusy) : await priv.unshieldToken(cur.key, dest.address, a, setBusy);
             setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${name}.`, tx });
           }
         }
@@ -454,11 +404,11 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                   {kind === "withdraw" && <RecipientNote input={to} />}
                 </div>
               )}
-              {kind === "withdraw" && cur && !cur.market?.shared && (
+              {kind === "withdraw" && cur && (
                 <div className="field spread">
                   <label className="check">
                     <input type="checkbox" checked={spread} onChange={(e) => setSpread(e.target.checked)} />
-                    <span><b>Send it in pieces over time</b><span className="xs mute"> 3 pieces of different sizes at random times, so the amount coming out doesn't match anything that went in. {CORE === "gloam" ? "Each piece pays the usual withdrawal fee, so it costs the same as one withdrawal" : "It costs a few small relayer fees more than one withdrawal"}</span></span>
+                    <span><b>Send it in pieces over time</b><span className="xs mute"> 3 pieces of different sizes at random times, so the amount coming out doesn't match anything that went in. Each piece pays the usual withdrawal fee, so it costs the same as one withdrawal</span></span>
                   </label>
                   {spread && (
                     <select className="input" value={windowSecs} onChange={(e) => setWindowSecs(Number(e.target.value))} aria-label="Over how long">
@@ -479,7 +429,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                   ? `Shielding is the one public step: your wallet deposits ${cur?.symbol ?? "it"}. It lands on a one-time key, so it can't be linked to anything you do next.${cur && cur.key !== "HYPE" ? ` ${cur.symbol} needs two confirmations the first time: an approval, then the deposit.` : ""} Then swap privately into other tokens on Trade.`
                   : kind === "send"
                     ? <>A transfer inside the vault. The chain only sees that a private transaction happened. No cloak: address to send to? <Link to="/app/links" className="link">Send it as a link</Link> they can claim to any wallet.</>
-                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and ${CORE === "gloam" ? "the relayer pays the gas." : "the relayer takes a small fee for gas."}`}
+                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and the relayer pays the gas.`}
               </p>
             </>
           )}

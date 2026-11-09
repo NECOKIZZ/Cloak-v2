@@ -4,7 +4,7 @@
 
 Every Cloak launch token is `CloakToken` (`contracts/src/CloakToken.sol`, 59 lines, below), deployed by `CloakFactory.createLaunch` through `CloakVestingDeployer.deployToken`. Only launches registered in the factory count, and both `CloakLaunchVault.admitLaunch` and the keeper read the token from `factory.launches(i)`, never from a caller.
 
-- **Factory (Uniswap v4 launches), Elysium testnet:** `0x1b0072684e98d9e23018e2d107ed8166ef84c077`. Mainnet's goes in here when it's deployed.
+- **Factory (Uniswap v4 launches), Elysium testnet:** Cloak v2's own, `0x59d2cd703747a47288518c7380efa95879295784` (Nov 9; Cloak v1 keeps its own factory). Mainnet's goes in here when it's deployed.
 - **What the token can't do:** the whole supply is minted once in the constructor. No owner, no mint, no burn function (burns go to `0x...dEaD`), no tax, no fee on transfer, no blacklist, no pause, no hooks, no upgrade. Plain 18-decimal ERC-20 with `type(uint256).max` allowances.
 
 ```solidity
@@ -71,7 +71,7 @@ contract CloakToken {
 
 ## Cloak's v4 launch pools, for Gloam's router allowlist
 
-Every launch opens a Uniswap v4 pool (native HYPE and the token) at its clearing price behind `CloakV4Hook` (`0xcdc11340c5ce0b3dcbd9a5e8f7838e8a8bbaaa80`, immutable, reviewed by Cloak): it keeps the liquidity forever, pays trading fees to the creator, and charges an anti-snipe fee for 5 minutes after listing. PoolManager `0x51027076df8416e42ea8438b27a0c433d9662e68`. The hook's `keyFor(token)` gives each pool's key. The fee `8388608` is v4's dynamic-fee flag (`0x800000`), tick spacing 60, `hooks` is CloakV4Hook for all of them.
+Every launch opens a Uniswap v4 pool (native HYPE and the token) at its clearing price behind `CloakV4Hook` (`0xc6296320cdfab6074fc650f1d788608b16fa2a80`, immutable, reviewed by Cloak): it keeps the liquidity forever, pays trading fees to the creator, and charges an anti-snipe fee for 5 minutes after listing. PoolManager `0x51027076df8416e42ea8438b27a0c433d9662e68`. The hook's `keyFor(token)` gives each pool's key. The fee `8388608` is v4's dynamic-fee flag (`0x800000`), tick spacing 60, `hooks` is CloakV4Hook for all of them.
 
 Settled launches with a pool on Elysium testnet, read from the chain on Nov 8 (launch index from the factory):
 

@@ -1,11 +1,11 @@
 import { markDone } from "../guide";
 import { useEffect, useMemo, useState } from "react";
-import { formatEther, parseEther, parseEventLogs, type Address, type Hex } from "viem";
-import { privateBatcherAbi, splitStandard } from "@cloakely/sdk";
-import { BATCHER as CLOAK_BATCHER, CORE, GLOAM, SHARED_BATCHER, txLink } from "../config";
+import { formatEther, parseAbi, parseEther, parseEventLogs, toHex, type Address, type Hex } from "viem";
+import { standardSizesFor } from "@cloakely/sdk";
+import { GLOAM, txLink } from "../config";
 import { hype, tokens } from "../format";
 import { Link, useRoute } from "../router";
-import { getProver, getSharedProver, useApp } from "../state";
+import { useApp } from "../state";
 import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
 import { quote, useFeePct, useMarkets, type Market } from "./markets";
@@ -18,14 +18,21 @@ import { publicClient } from "../wallet";
  * The batcher behind batch mode: Cloak's own, or on the launch vault (Cloak v2 on Gloam) CloakGloamBatcherV4 for
  * launches' v4 pools, else the V2 CloakGloamBatcher.
  */
-const BATCHER = (CORE === "gloam" ? GLOAM?.batcherV4 ?? GLOAM?.batcher : CLOAK_BATCHER) as Address | undefined;
+const BATCHER = (GLOAM?.batcherV4 ?? GLOAM?.batcher) as Address | undefined;
+/** CloakGloamBatcher's reads (its Order and Batch structs, field by field) and its order event. */
+const GLOAM_BATCHER = parseAbi([
+  "function orders(bytes32) view returns (address token, uint64 round, bool buy, bool paid, uint128 net)",
+  "function batches(address, uint64) view returns (uint128 buyHype, uint128 sellTokens, uint128 tokensForBuyers, uint128 hypeForSellers, uint256 spotStart, uint64 settledAt, bool settled, bool cancelled, uint256 cumStart, uint64 tStart, uint256 refStart)",
+  "function currentRound() view returns (uint64)",
+  "event OrderPlaced(bytes32 indexed id, address indexed token, uint64 indexed round, bool buy, uint256 size, uint256 net)",
+]);
 import { every } from "../every";
 
 /** Placed batch orders, followed until each is paid or refunded (B4). */
-type Track = { batcher: Address; token: Address; ids: bigint[]; rounds: bigint[]; outSym: string; inSym: string; at: number };
+type Track = { batcher: Address; token: Address; ids: Hex[]; rounds: bigint[]; outSym: string; inSym: string; at: number };
 type OrderState = { round: bigint; done: boolean; settled: boolean; cancelled: boolean };
 
-/** Where a swap's orders are, read from the batcher (the same layout for the shared vault's batcher). */
+/** Where a swap's orders are, read from the batcher. */
 function useOrderStatus(t: Track | null) {
   const [st, setSt] = useState<OrderState[] | null>(null);
   useEffect(() => {
@@ -33,12 +40,13 @@ function useOrderStatus(t: Track | null) {
     let alive = true;
     let stop = () => {};
     const read = async () => {
-      const c = { address: t.batcher, abi: privateBatcherAbi } as const;
+      const c = { address: t.batcher, abi: GLOAM_BATCHER } as const;
       const orders = await Promise.all(t.ids.map((id) => publicClient.readContract({ ...c, functionName: "orders", args: [id] })));
       const out: OrderState[] = await Promise.all(
         orders.map(async (o, i) => {
-          const b = await publicClient.readContract({ ...c, functionName: "batches", args: [t.token, t.rounds[i]] });
-          return { round: t.rounds[i], done: o[3], settled: b[7], cancelled: b[8] };
+          const round = o[1] || t.rounds[i];
+          const b = await publicClient.readContract({ ...c, functionName: "batches", args: [t.token, round] });
+          return { round, done: o[3], settled: b[6], cancelled: b[7] };
         }),
       );
       if (!alive) return;
@@ -82,12 +90,14 @@ function useRoundCrowd(batcher: Address | undefined, token: Address | undefined)
   useEffect(() => {
     if (!batcher || !token) return setN(null);
     let alive = true;
-    const c = { address: batcher, abi: privateBatcherAbi } as const;
-    const read = () =>
-      publicClient
-        .readContract({ ...c, functionName: "currentRound" })
-        .then((round) => publicClient.readContract({ ...c, functionName: "batches", args: [token, round] }))
-        .then((b) => alive && setN(Number(b[6])), () => {});
+    // the round's orders, counted from its OrderPlaced events (recent blocks: a round lasts about a minute)
+    const read = async () => {
+      try {
+        const [round, head] = await Promise.all([publicClient.readContract({ address: batcher, abi: GLOAM_BATCHER, functionName: "currentRound" }), publicClient.getBlockNumber()]);
+        const logs = await publicClient.getContractEvents({ address: batcher, abi: GLOAM_BATCHER, eventName: "OrderPlaced", args: { token, round }, fromBlock: head > 5000n ? head - 5000n : 0n });
+        if (alive) setN(logs.length);
+      } catch {}
+    };
     read();
     const stop = every(read, 10_000);
     return () => {
@@ -124,7 +134,7 @@ function TokenSel({ label, token, onPick, markets, held }: { label: string; toke
 
 export function Trade() {
   const { query } = useRoute();
-  const { wallet, connect, priv, shared, unlock, unlocking } = useApp();
+  const { wallet, connect, priv, unlock, unlocking } = useApp();
   const { markets, err } = useMarkets();
   const [market, setMarket] = useState<Market | null>(null);
   const feePct = useFeePct();
@@ -139,7 +149,6 @@ export function Trade() {
   const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
   const [track, setTrack] = useState<Track | null>(null);
   const orderStatus = useOrderStatus(track);
-  const batcherFor = (shared?: boolean) => (shared ? (SHARED_BATCHER as Address | undefined) : BATCHER);
 
   useEffect(() => {
     if (!markets?.length || market) return;
@@ -174,11 +183,11 @@ export function Trade() {
   }, []);
   useEffect(() => {
     if (!priv || !BATCHER) return;
-    // the shared vault's batcher runs its own rounds (same length)
-    if (!round || now > round.endsAt) (market?.shared && shared ? shared.roundInfo() : "batcherFor" in priv ? priv.roundInfo(market?.token as Address | undefined) : priv.roundInfo()).then(setRound).catch(() => {});
-  }, [priv, shared, market?.shared, market?.token, now > (round?.endsAt ?? 0)]);
+    if (!round || now > round.endsAt) priv.roundInfo(market?.token as Address | undefined).then(setRound).catch(() => {});
+  }, [priv, market?.token, now > (round?.endsAt ?? 0)]);
 
-  const split = splitStandard(amountIn, 6);
+  // a preview: the account picks the exact sizes from the notes it holds when the orders are placed
+  const split = standardSizesFor(amountIn, [amountIn], 6);
   const fromSym = side === "buy" ? "HYPE" : market?.symbol ?? "…";
   const toSym = side === "buy" ? market?.symbol ?? "…" : "HYPE";
   const fromBal = bal ? (side === "buy" ? bal.hype : bal.tok) : undefined;
@@ -194,25 +203,15 @@ export function Trade() {
     if (!p) return;
     try {
       setBusy("Loading the prover…");
-      if (CORE !== "gloam") await getProver(); // Cloak v2 on Gloam loads Gloam's circuits itself
       if (mode === "batch") {
-        if (market.shared && !shared) throw new Error("Unlock your private account again to trade this token.");
-        if (market.shared && side === "sell") await getSharedProver();
-        const r = market.shared ? await shared!.batch(market.token, side, amountIn, { onStatus: setBusy }) : await p.batch(market.token as Address, side, amountIn, { onStatus: setBusy });
+        const r = await p.batch(market.token as Address, side, amountIn, { onStatus: setBusy });
         const rounds = [...new Set(r.orders.map((o) => o.round.toString()))];
         markDone("swap");
         // follow the orders: the batcher is whatever contract emitted them
         const rc = await publicClient.getTransactionReceipt({ hash: r.orders[0].txHash }).catch(() => null);
-        const placed = rc ? parseEventLogs({ abi: privateBatcherAbi, logs: rc.logs, eventName: "OrderPlaced" })[0] : undefined;
-        if (placed) setTrack({ batcher: placed.address, token: market.token as Address, ids: r.orders.map((o) => o.id), rounds: r.orders.map((o) => o.round), outSym: toSym, inSym: fromSym, at: Date.now() });
-        setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles.${CORE === "gloam" ? " What you get back moves into your private balance the next time Cloak is open." : ""}${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
-      } else if (market.shared) {
-        // a token in the shared launch-token vault: same swap, through the shared router
-        if (!shared) throw new Error("Unlock your private account again to trade this token.");
-        if (side === "sell") await getSharedProver();
-        const tx = side === "buy" ? await shared.buy(market.token, amountIn, { onStatus: setBusy }) : await shared.sell(market.token, amountIn, { onStatus: setBusy });
-        markDone("swap");
-        setRes({ ok: `Swapped privately for ~${fmtOut(q)} ${toSym}.`, tx });
+        const placed = rc ? parseEventLogs({ abi: GLOAM_BATCHER, logs: rc.logs, eventName: "OrderPlaced" })[0] : undefined;
+        if (placed) setTrack({ batcher: placed.address, token: market.token as Address, ids: r.orders.map((o) => toHex(o.id, { size: 32 })), rounds: r.orders.map((o) => o.round), outSym: toSym, inSym: fromSym, at: Date.now() });
+        setRes({ ok: `${r.orders.length} sealed ${side} order${r.orders.length > 1 ? "s" : ""} placed in round ${rounds.join(", ")}. They fill privately when the round settles. What you get back moves into your private balance the next time Cloak is open.${r.rest > 0n ? ` ${fmtIn(r.rest)} ${fromSym} was held back: it pays the relayer fees, and anything left stays in your balance.` : ""}`, tx: r.orders.at(-1)?.txHash });
       } else {
         const r = side === "buy" ? await p.buy(market.token as Address, amountIn, { onStatus: setBusy }) : await p.sell(market.token as Address, amountIn, { onStatus: setBusy });
         markDone("swap");
@@ -226,7 +225,7 @@ export function Trade() {
     }
   }
 
-  const crowd = useRoundCrowd(mode === "batch" ? batcherFor(market?.shared) : undefined, market?.token as Address | undefined);
+  const crowd = useRoundCrowd(mode === "batch" ? BATCHER : undefined, market?.token as Address | undefined);
   const tracked = track ? trackText(track, orderStatus, now, round?.roundSecs ?? 30) : null;
 
   let cta: { label: string; act?: () => void; disabled?: boolean; href?: string };
@@ -256,7 +255,7 @@ export function Trade() {
                 <div className="k"><span>You pay (private)</span>{priv && !bal && <Skel w="9ch" />}{fromBal !== undefined && <span className="link" onClick={async () => {
                   // instant trades pay the relayer from the same balance; batch mode makes room for its own fees
                   const pool = side === "buy" ? priv?.hypeMarket.pool : market.pool;
-                  const most = market.shared ? (side === "sell" && shared ? await shared.maxWithdraw(market.token, "sharedSell").catch(() => fromBal) : priv ? await priv.maxSpendable(priv.hypeMarket.pool, "privateSwap").catch(() => fromBal) : fromBal) : mode === "instant" && priv && pool ? await priv.maxSpendable(pool, "privateSwap").catch(() => fromBal) : fromBal;
+                  const most = mode === "instant" && priv && pool ? await priv.maxSpendable(pool).catch(() => fromBal) : fromBal;
                   setAmt(formatEther(most));
                 }}>Balance {fmtIn(fromBal)}</span>}</div>
                 <div className="amt">
@@ -293,7 +292,7 @@ export function Trade() {
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               {tracked && <div className={tracked.tone === "warn" ? "err" : tracked.tone === "ok" ? "okmsg" : "summary small"} style={{ marginTop: 8 }} aria-live="polite">{tracked.tone === "wait" && <span className="dot live" style={{ marginRight: 8 }} />}{tracked.text}</div>}
             </div>
-            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees: {feePct} Cloak fee on the amount traded{CORE === "gloam" ? ". The relayer pays the gas, and whatever the trade didn't need comes back to your private balance." : ", plus a small relayer fee that covers gas, both taken from your private balance."}</p>
+            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees: {feePct} Cloak fee on the amount traded. The relayer pays the gas, and whatever the trade didn't need comes back to your private balance.</p>
           </div>
           <div className="col">
             <div className="card">
@@ -320,24 +319,15 @@ export function Trade() {
                 <div className="row"><span className="mute">Liquidity</span><span className="mono">{hype(market.reserveHype)} HYPE</span></div>
               </div>
             </div>
-            {market.shared ? (
-              <div className="card flat">
-                <h3>In the shared vault</h3>
-                <p className="small soft" style={{ margin: "10px 0 0" }}>
-                  ${market.symbol} is a new launch, so its private balance lives in one vault with every other new launch token. When you send it privately, nobody can tell which token moved, only that something did. Batch mode works the same way as for every other token: standard sizes, one price per round, only the net hits the pool.
-                </p>
-              </div>
-            ) : (
             <div className="card flat">
               <h3>How batch mode works</h3>
               <ol className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>
                 <li>Your amount is split into the standard sizes everyone uses.</li>
-                <li>Orders wait in a ~30 s round alongside everyone else's.</li>
+                <li>Orders wait in a round of about a minute alongside everyone else's.</li>
                 <li>Buys and sells cross at the pool's average price over the round, which no single trade can move. Only the net trades on the pool.</li>
                 <li>Everyone in the round gets the same price, paid back into private balances.</li>
               </ol>
             </div>
-            )}
           </div>
         </div>
       )}

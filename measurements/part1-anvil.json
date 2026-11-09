@@ -1,31 +1,31 @@
 {
   "sdk": "@gloamtrade/sdk@0.6.0 via @cloakely/sdk GloamCore",
   "timingsMs": {
-    "unlock (one signature)": 58,
-    "shield HYPE (prove + deposit + memo)": 1119,
-    "restore on a new device (cold sync)": 19,
-    "private send (prove + transfer + memo)": 1185,
-    "receive + sweep (sync)": 1068,
-    "send 35 USDC from five 10 USDC notes": 4561,
-    "receive + sweep 4 payments": 4663,
-    "withdraw 1 HYPE (split + cash out)": 1834,
-    "withdraw max USDC (4 notes)": 3477
+    "unlock (one signature)": 47,
+    "shield HYPE (prove + deposit + memo)": 1001,
+    "restore on a new device (cold sync)": 23,
+    "private send (prove + transfer + memo)": 1031,
+    "receive + sweep (sync)": 955,
+    "send 35 USDC from five 10 USDC notes": 3734,
+    "receive + sweep 4 payments": 3727,
+    "withdraw 1 HYPE (split + cash out)": 1698,
+    "withdraw max USDC (4 notes)": 2656
   },
   "proofsMs": {
     "shield": {
       "n": 7,
-      "median": 148,
-      "max": 509
+      "median": 166,
+      "max": 457
     },
     "transfer": {
       "n": 11,
-      "median": 768,
-      "max": 847
+      "median": 631,
+      "max": 721
     },
     "unshield": {
       "n": 5,
-      "median": 698,
-      "max": 763
+      "median": 585,
+      "max": 632
     }
   },
   "gas": {
@@ -47,7 +47,7 @@
     },
     "relayed transfer": {
       "n": 11,
-      "median": 1787110
+      "median": 1787134
     },
     "forged memo": {
       "n": 1,
@@ -59,8 +59,8 @@
     },
     "relayed unshield": {
       "n": 5,
-      "median": 323420
+      "median": 323408
     }
   },
-  "wallMs": 28327
+  "wallMs": 25262
 }

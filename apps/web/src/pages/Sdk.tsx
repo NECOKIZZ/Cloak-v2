@@ -26,28 +26,33 @@ const bid = await cloak.bid(auction, {
 await cloak.revealAll(auction);
 await cloak.settle(auction);
 await cloak.claimAll(auction);`,
-  "Private trading": `import { CloakPrivate, loadProver, relayerSubmitter } from "@cloakely/sdk";
+  "Private trading": `import { GloamPrivate, deployments, gloamProvers, gloamRelaySubmitter } from "@cloakely/sdk";
 
-const keys = await CloakPrivate.keysFromWallet(walletClient, { chainId: 99801 }); // one signature, the same account forever
-const priv = new CloakPrivate(publicClient, ROUTER, keys,
-  () => loadProver("/circuits"), relayerSubmitter(KEEPER_URL), VAULTS_BLOCK, BATCHER);
+const g = deployments[99801].gloam;
+// one signature opens both vaults (Gloam's and Cloak's launch vault): the same account on every device
+const priv = await GloamPrivate.unlock(walletClient, {
+  publicClient, chainId: 99801, payMemo: g.memoBoard, whype: g.whype,
+  gloamVault: { pool: g.gloamVault, poolBlock: g.block }, launchVault: { pool: g.launchVault, poolBlock: g.launchVaultBlock ?? g.block },
+  launchSwapV4: g.launchSwapV4, batcherV4: g.batcherV4, receive: g.receive, bids: g.bids,
+  provers: gloamProvers(), submit: gloamRelaySubmitter(KEEPER_URL),
+});
 await priv.loadMarkets();
 
 await priv.shieldHype(walletClient, parseEther("1"));      // the one public step
 await priv.buy(token, parseEther("0.25"));                 // instant, wallet never shows up
 await priv.batch(token, "buy", parseEther("0.37"));        // batch: size hidden too
-await priv.send(token, "cloak:…", parseEther("100"));      // private transfer
+await priv.send(token, "cloak:gloamr1.…", parseEther("100")); // private transfer
 await priv.unshieldHype(freshAddress, parseEther("0.5"));  // back to a wallet`,
-  "Payment links": `import { CloakPrivate, buildClaimLink, linkAddress, linkKeys, newLinkSecret, parseClaimLink } from "@cloakely/sdk";
+  "Payment links": `import { GloamPrivate, buildClaimLink, gloamLinkAddress, gloamLinkKeys, newLinkSecret, openGloamLinkKeys, parseClaimLink } from "@cloakely/sdk";
 
 // send: fund a throwaway private account and put its secret in the link
 const secret = newLinkSecret();
-const tx = await priv.send(WHYPE, await linkAddress(await linkKeys(secret, "elysium")), parseEther("0.1"));
+const tx = await priv.send(WHYPE, gloamLinkAddress(await gloamLinkKeys(secret, "elysium")), parseEther("0.1"));
 const url = buildClaimLink({ secret, block, token: "HYPE", amount: "0.1", locked: true, hint: "Our chain?" });
 
 // claim: open the link's account and move everything out, no gas needed
 const l = parseClaimLink(url);
-const link = new CloakPrivate(publicClient, ROUTER, await linkKeys(l.secret, "Elysium"), prover, relayerSubmitter(KEEPER_URL), VAULTS_BLOCK);
+const link = new GloamPrivate({ ...config, spendReceived: true }, await openGloamLinkKeys(l, "Elysium"));
 await link.loadMarkets();
 await link.sweep(WHYPE, "0xFreshWallet…");                 // or a cloak: address to stay private`,
   Contracts: `// From Solidity: launch through the factory, with the project as creator
@@ -70,28 +75,28 @@ const API: [string, [string, string][]][] = [
     ["payOut(auction)", "Pull a settled launch's money out: the creator's proceeds, and the launch fee to the treasury."],
     ["getAuction · demandCurve · bidsOf · listLaunches", "Read state: phase, clearing price, the revealed demand per price level, a bidder's bids."],
   ]],
-  ["CloakPrivate · private balances", [
-    ["keysFromWallet(wallet, { chainId, verify? })", "Derive the private account from one EIP-712 signature bound to this chain only, so it stays the same through every upgrade. The same wallet always restores it; verify signs twice to refuse wallets that sign differently each time."],
-    ["claimPrivately(wallet, auction, bidId)", "Claim a won sealed bid straight into the private balance (v4 launches), so later trades can't be linked to the bid."],
-    ["migrateFrom(legacy)", "Move every private balance from the first Cloak deployment into this one, privately, one relayed transaction per note pair."],
-    ["shieldHype(wallet, amount)", "Public HYPE → a private note on a one-time key."],
-    ["buy · sell(token, amount, { slippageBps })", "Instant private swap through the launch's pool, submitted by the relayer."],
+  ["GloamPrivate · private balances", [
+    ["GloamPrivate.unlock(wallet, config)", "Open the private account from one EIP-712 signature bound to this chain only, on both vaults: Gloam's and Cloak's launch vault. The same wallet always restores it."],
+    ["claimPrivately(wallet, auction, bidId)", "Claim a won sealed bid to the wallet and shield it, so what you do with the tokens next can't be linked to the bid."],
+    ["bidPrivately(auction, …) · finishPrivateBids(auction)", "A sealed bid paid from the private balance, and its tokens and refund back into it once the launch settles."],
+    ["shieldHype · shieldToken(wallet, …, amount)", "Public HYPE or a token → a private note."],
+    ["buy · sell(token, amount)", "Instant private swap through the launch's Uniswap v4 pool, submitted by the relayer."],
     ["batch(token, side, amount)", "Split into standard sizes and place sealed orders in the current round."],
     ["send(token, cloakAddress, amount)", "Private transfer inside the vault. No sender, recipient or amount on-chain."],
-    ["unshieldHype · unshieldToken(…, to, amount)", "Withdraw to any address."],
+    ["unshieldHype · unshieldToken(…, to, amount) · planSplitWithdraw", "Withdraw to any address, at once or in pieces over time."],
     ["balance(pool) · address() · roundInfo()", "Your private balance, your cloak: address, and the batch round clock."],
   ]],
   ["Payment links", [
-    ["newLinkSecret() · linkKeys(secret, passcode?) · linkAddress(keys)", "A link's throwaway private account: send to linkAddress, and whoever has the secret (and passcode) controls it."],
+    ["newLinkSecret() · gloamLinkKeys(secret, passcode?) · gloamLinkAddress(keys)", "A link's throwaway private account: send to its address, and whoever has the secret (and passcode) controls it."],
     ["buildClaimLink({ secret, block, token, amount, message, locked, hint, shares }) · parseClaimLink(url)", "The claim link and back. Everything sits after the #, so servers never see it."],
     ["priv.sweep(token, to, onStatus?, { one? })", "Empty a balance in one relayed call to a cloak: or 0x address (no gas needed). `one` takes a single share of a split link."],
     ["buildRequestLink({ to, token, amount?, note?, name? }) · parseRequestLink(url)", "A link that asks to be paid HYPE or USDC, to a cloak: or 0x address."],
   ]],
   ["Helpers", [
-    ["createProver(wasm, zkey) · loadProver(url)", "Groth16 prover for the 2-in/2-out circuit, running on the user's device."],
-    ["relayerSubmitter(url) · walletSubmitter(…)", "How shielded calls are submitted: via a Cloak relayer (private) or a wallet (for tests)."],
+    ["gloamProvers() · gloamHolderProver(\"funds\")", "Provers for Gloam's circuits (final keys, from jsDelivr at Gloam's pinned commit, hash-checked), running on the user's device."],
+    ["gloamRelaySubmitter(url) · walletCoreSubmitter(…)", "How private calls are submitted: via Cloak's relay (private) or a wallet (for tests)."],
     ["sealBid · unsealBid · drandRoundAt", "drand timelock primitives used by sealed bids."],
-    ["splitStandard(amount) · budgetBuckets(cost)", "Standard sizes for batches, and deposit buckets for bids."],
+    ["standardSizesFor(amount, notes, max) · budgetBuckets(cost)", "Standard sizes for batches, and deposit buckets for bids."],
   ]],
 ];
 

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import type { Address, Hex } from "viem";
-import { cloakAuctionAbi, cloakPairAbi, cloakVaultsAbi, type AuctionState } from "@cloakely/sdk";
-import { addrLink, PREVIOUS, txLink, VAULTS } from "../config";
+import { parseAbi, type Address, type Hex } from "viem";
+import { cloakAuctionAbi, cloakPairAbi, type AuctionState } from "@cloakely/sdk";
+import { addrLink, GLOAM, txLink } from "../config";
+
+const LAUNCH_VAULT = parseAbi(["event LaunchAdmitted(uint256 indexed launchIndex, address indexed token)"]);
 import { launchCreatedLogs } from "../tokenMeta";
 import { friendly } from "../errors";
 import { hype, short, tokens } from "../format";
@@ -32,8 +34,8 @@ async function loadRecord(s: AuctionState): Promise<Step[]> {
     ev(a, cloakAuctionAbi, "Failed"),
     ev(a, cloakAuctionAbi, "Claimed"),
     ev(a, cloakAuctionAbi, "LPReleased"),
-    // vaults are opened by CloakVaults from v4 on, by each router before (same event)
-    s.settled ? Promise.all([VAULTS, ...PREVIOUS.map((p) => p.router)].filter(Boolean).map((a) => ev(a as Address, cloakVaultsAbi, "PoolCreated", { token: s.token }))).then((x) => x.flat()) : Promise.resolve([]),
+    // admitted to the launch vault (by the keeper, or anyone), which opens private trading
+    s.settled && GLOAM ? ev(GLOAM.launchVault, LAUNCH_VAULT, "LaunchAdmitted", { token: s.token }) : Promise.resolve([]),
     s.pair && s.pair !== ZERO ? ev(s.pair, cloakPairAbi, "Swap") : Promise.resolve([]),
   ]);
 
@@ -61,7 +63,7 @@ async function loadRecord(s: AuctionState): Promise<Step[]> {
   for (const l of lp)
     steps.push({ key: `${l.transactionHash}l`, group: "claim", label: "Liquidity released", seen: `The LP lock ended and ${tokens(l.args.shares as bigint)} LP shares went to the creator.`, tx: l.transactionHash, block: l.blockNumber });
   for (const l of pool)
-    steps.push({ key: `${l.transactionHash}v`, group: "trade", label: "Private trading enabled", seen: `A shielded vault for $${s.tokenSymbol} was created, so holders can trade it privately.`, tx: l.transactionHash, block: l.blockNumber });
+    steps.push({ key: `${l.transactionHash}v`, group: "trade", label: "Private trading enabled", seen: `$${s.tokenSymbol} was admitted to Cloak's launch vault, so holders can trade it privately.`, tx: l.transactionHash, block: l.blockNumber });
   if (trades.length) {
     const first = trades[0];
     steps.push({ key: `${first.transactionHash}t`, group: "trade", label: "First trade on the pool", seen: `A ${first.args.hypeIn ? "buy" : "sell"} on the public pool. ${trades.length} pool trade${trades.length > 1 ? "s" : ""} so far, private ones included (they come from the relayer, not the trader).`, tx: first.transactionHash, block: first.blockNumber });

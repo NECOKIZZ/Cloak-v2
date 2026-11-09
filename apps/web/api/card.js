@@ -81,7 +81,7 @@ export async function GET(req) {
           ),
           h("div", { display: "flex", fontSize: 34, color: C.seal, fontWeight: 600 }, sum.price),
           h("div", { display: "flex", fontSize: 24, color: C.mute, marginTop: 12 }, "Sealed bids. One price for every winner."),
-          h("div", { display: "flex", fontSize: 22, color: C.mute }, "cloak.boblabs.tech"),
+          h("div", { display: "flex", fontSize: 22, color: C.mute }, "gloak.boblabs.tech"),
         ),
       ),
     );

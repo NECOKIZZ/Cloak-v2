@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { chain, IS_LOCAL } from "./config";
+import { chain } from "./config";
 import { friendly } from "./errors";
 import { addElysium, installedWallets, onWalletsChanged, WC_PROJECT_ID, type WalletOption } from "./wallet";
 
@@ -19,7 +19,7 @@ function WcIcon() {
   );
 }
 
-export function WalletModal({ onPick, onClose, onDevWallet }: { onPick: (o: WalletOption | "walletconnect") => Promise<void>; onClose: () => void; onDevWallet?: () => void }) {
+export function WalletModal({ onPick, onClose }: { onPick: (o: WalletOption | "walletconnect") => Promise<void>; onClose: () => void }) {
   const [wallets, setWallets] = useState<WalletOption[]>(installedWallets);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -82,13 +82,6 @@ export function WalletModal({ onPick, onClose, onDevWallet }: { onPick: (o: Wall
               <WcIcon />
               <span className="wm-name">WalletConnect</span>
               <span className="wm-tag">{busy === "WalletConnect" ? "Scan the QR code…" : "Mobile wallets"}</span>
-            </button>
-          )}
-          {IS_LOCAL && onDevWallet && (
-            <button className="wm-item" disabled={!!busy} onClick={onDevWallet}>
-              <span className="wm-blank" />
-              <span className="wm-name">Dev wallet</span>
-              <span className="wm-tag">Local chain only</span>
             </button>
           )}
           {!wallets.length && (

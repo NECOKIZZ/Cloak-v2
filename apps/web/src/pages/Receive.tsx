@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatEther, formatUnits, type Address, type Hex } from "viem";
-import { CloakPrivate, GloamPrivate, cloakReceiveAbi, receiveAddress, receiveDeliveries, watchReceive, type ReceiveAddress } from "@cloakely/sdk";
-import { ASSETS, CORE, GLOAM, KEEPER_URL, RECEIVE as CLOAK_RECEIVE, txLink } from "../config";
+import type { GloamPrivate } from "@cloakely/sdk";
+import { ASSETS, GLOAM, txLink } from "../config";
 import { collectIssued, gloamDelivered } from "../gloam";
 import { openBox, sealBox } from "../deviceBox";
 import { publicClient } from "../wallet";
@@ -12,21 +12,17 @@ import { Icon } from "../ui";
 import { QR } from "../qr";
 import { every } from "../every";
 
-/** The receive-address contract: Cloak's own (CloakReceive), or CloakGloamReceive on Cloak v2 on Gloam. */
-const RECEIVE = CORE === "gloam" ? GLOAM?.receive : CLOAK_RECEIVE;
+/** The receive-address contract (CloakGloamReceive). */
+const RECEIVE = GLOAM?.receive;
 
 /** The receive addresses this account has handed out (only their numbers matter: each is derived again from the keys). */
 interface Issued {
   n: number;
   address: Address;
   at: number;
-  /** wait a random moment (up to 3 minutes) before it lands */
-  delay?: boolean;
 }
 
-let codeHash: Promise<Hex> | null = null;
-const boxCodeHash = () => (codeHash ??= publicClient.readContract({ address: RECEIVE!, abi: cloakReceiveAbi, functionName: "boxCodeHash" }));
-const load = async (p: CloakPrivate | GloamPrivate): Promise<Issued[]> => {
+const load = async (p: GloamPrivate): Promise<Issued[]> => {
   try {
     return JSON.parse((await openBox(p, "receive")) ?? "[]") as Issued[];
   } catch {
@@ -34,22 +30,8 @@ const load = async (p: CloakPrivate | GloamPrivate): Promise<Issued[]> => {
   }
 };
 
-/** Hand the keeper every address this account gave out, so it delivers what arrives (it forgets on a restart). */
-async function rewatch(p: CloakPrivate, issued: Issued[]) {
-  if (!KEEPER_URL || !RECEIVE || !issued.length) return;
-  const h = await boxCodeHash();
-  const all: ReceiveAddress[] = await Promise.all(issued.map((x) => receiveAddress(p.keys, RECEIVE!, h, x.n)));
-  for (const delay of [false, true]) {
-    const part = all.filter((_, i) => !!issued[i].delay === delay);
-    for (let i = 0; i < part.length; i += 20) await watchReceive(KEEPER_URL, part.slice(i, i + 20), { delay }).catch(() => {});
-  }
-}
-
 export function Receive() {
-  const { priv: anyPriv } = useApp();
-  // Cloak's own receive addresses come from its account keys; Cloak v2 on Gloam's come from GloamPrivate
-  const priv = anyPriv instanceof CloakPrivate || anyPriv instanceof GloamPrivate ? anyPriv : null;
-  const g = anyPriv instanceof GloamPrivate ? anyPriv : null;
+  const { priv } = useApp();
   const [issued, setIssued] = useState<Issued[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -58,20 +40,12 @@ export function Receive() {
   const { refresh } = usePrivateBalances();
   const delivered = useRef(-1);
 
-  async function fresh(p: CloakPrivate | GloamPrivate, list: Issued[], delay = list.at(-1)?.delay ?? false) {
+  async function fresh(p: GloamPrivate, list: Issued[]) {
     setBusy(true);
     setErr("");
     try {
       const n = list.reduce((m, x) => Math.max(m, x.n + 1), 0);
-      if (p instanceof GloamPrivate) {
-        const next = [...list, { n, address: await p.receiveAddress(n), at: Math.floor(Date.now() / 1000) }];
-        await sealBox(p, "receive", JSON.stringify(next));
-        setIssued(next);
-        return;
-      }
-      const rx = await receiveAddress(p.keys, RECEIVE!, await boxCodeHash(), n);
-      if (KEEPER_URL) await watchReceive(KEEPER_URL, [rx], { delay });
-      const next = [...list, { n, address: rx.address, at: Math.floor(Date.now() / 1000), ...(delay ? { delay } : {}) }];
+      const next = [...list, { n, address: await p.receiveAddress(n), at: Math.floor(Date.now() / 1000) }];
       await sealBox(p, "receive", JSON.stringify(next));
       setIssued(next);
     } catch (e) {
@@ -87,33 +61,16 @@ export function Receive() {
       const list = await load(priv);
       if (!list.length) return fresh(priv, list);
       setIssued(list);
-      if (priv instanceof CloakPrivate) rewatch(priv, list);
     })();
   }, [priv]);
 
-  // while this page is open: Cloak's own addresses stay on the relayer's fast watch; on Gloam the app moves what
-  // arrives itself (it holds the key the deposit needs), every 20 seconds
+  // while this page is open, the app moves what arrives itself (it holds the key the deposit needs), every 20 seconds
   useEffect(() => {
     if (!priv || !issued?.length) return;
-    if (priv instanceof GloamPrivate) {
-      const go = () => collectIssued(priv, issued).then((n) => void (n && refresh())).catch(() => {});
-      go();
-      return every(go, 20_000);
-    }
-    const t = setInterval(() => rewatch(priv, issued), 20 * 60_000);
-    return () => clearInterval(t);
+    const go = () => collectIssued(priv, issued).then((n) => void (n && refresh())).catch(() => {});
+    go();
+    return every(go, 20_000);
   }, [priv, issued]);
-
-  async function setDelay(on: boolean) {
-    if (!(priv instanceof CloakPrivate) || !issued?.length) return;
-    const next = issued.map((x, i) => (i === issued.length - 1 ? { ...x, delay: on } : x));
-    setIssued(next);
-    await sealBox(priv, "receive", JSON.stringify(next)).catch(() => {});
-    if (KEEPER_URL) {
-      const rx = await receiveAddress(priv.keys, RECEIVE!, await boxCodeHash(), next.at(-1)!.n);
-      await watchReceive(KEEPER_URL, [rx], { delay: on }).catch(() => {});
-    }
-  }
 
   // what each address holds now (on its way in) and what the relayer has delivered
   useEffect(() => {
@@ -122,7 +79,7 @@ export function Receive() {
     const go = async () => {
       const addrs = issued.slice(-12).map((x) => x.address);
       const [del, bals] = await Promise.all([
-        g ? gloamDelivered(g, addrs) : KEEPER_URL ? receiveDeliveries(KEEPER_URL, addrs).catch(() => ({}) as Record<string, never[]>) : ({} as Record<string, never[]>),
+        priv ? gloamDelivered(priv, addrs) : ({} as Record<string, never[]>),
         Promise.all(addrs.map((a) => publicClient.getBalance({ address: a }).catch(() => 0n))),
       ]);
       const out: typeof state = {};
@@ -147,7 +104,7 @@ export function Receive() {
       live = false;
       stop();
     };
-  }, [issued]);
+  }, [issued, priv]);
 
   const back = <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>;
   if (!RECEIVE) return <>{back}<div className="empty">Receive addresses aren't available on this network yet.</div></>;
@@ -164,7 +121,7 @@ export function Receive() {
   return (
     <>
       {back}
-      <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay: an exchange, a bridge or any wallet. {g ? "What arrives moves into your private balance whenever Cloak is open." : "What arrives goes straight into your private balance."}</p></div></div>
+      <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay: an exchange, a bridge or any wallet. What arrives moves into your private balance whenever Cloak is open.</p></div></div>
       <div className="grid">
         <div className="card">
           {!cur ? (
@@ -182,16 +139,8 @@ export function Receive() {
             </div>
           )}
           <p className="note">
-            {g
-              ? "Send HYPE or USDC on Elysium. It moves into your private balance the next time you open Cloak, through the relayer at no cost to you. The address has no key and only your account can move what's sent to it. Use a new address for every payment."
-              : "Send HYPE or USDC on Elysium. It lands in your private balance seconds after it arrives (the relayer keeps at most 1% of HYPE for gas). The address has no key and only the vault can take what's sent to it. Use a new address for every payment."}
+            Send HYPE or USDC on Elysium. It moves into your private balance the next time you open Cloak, through the relayer at no cost to you. The address has no key and only your account can move what's sent to it. Use a new address for every payment.
           </p>
-          {cur && !g && (
-            <label className="row-flex small soft" style={{ gap: 8, marginTop: 10, cursor: "pointer" }}>
-              <input type="checkbox" checked={!!cur.delay} onChange={(e) => setDelay(e.target.checked)} />
-              Wait a random moment (up to 3 minutes) before it lands, so its arrival is a little harder to time
-            </label>
-          )}
         </div>
         <div className="col">
           {issued && issued.length > 0 && (

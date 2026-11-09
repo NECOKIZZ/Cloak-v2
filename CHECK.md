@@ -6,6 +6,8 @@ For Bob, on gloak.boblabs.tech with the v2 keeper on Render. Tick each one off. 
 
 - [ ] Render: the service comes from `render.yaml` (a Blueprint), on the free plan. `KEEPER_PK` is set in the dashboard, not in the repo.
 - [ ] Render env: `TRUSTED_PROXY_HOPS=1` and `CORS_ORIGINS` including `https://gloak.boblabs.tech`.
+- [ ] Render env: `FACTORY` is v2's own factory `0x59d2cd703747a47288518c7380efa95879295784` with `START_BLOCK` 26707681 (not `CONFIG`, which was v1's). `/health` shows that factory.
+- [ ] The Launches page lists GLOAK (v2's first launch) and nothing from v1.
 - [ ] Vercel: `VITE_KEEPER_URL` and `VITE_RELAYER_URL` both point at the v2 keeper's address.
 - [ ] Open `<keeper>/health`. It shows the keeper's address, `awake.selfUrl: true`, and `awake.why` (empty when nothing is pending).
 

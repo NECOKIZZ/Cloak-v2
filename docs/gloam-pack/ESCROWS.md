@@ -6,7 +6,7 @@ Source: `contracts-gloam/src` in this repo, solc 0.8.24 like Gloam's. Tests: `co
 
 "Launch vault" is `CloakLaunchVault` (see LAUNCH-VAULT-DIFF.md). "Gloam's vault" is Cloak's instance of Gloam's guarded deploy for now.
 
-## CloakLaunchSwapV4 · `0xd540527d3eef9b4de63f741159036d5e35204541`
+## CloakLaunchSwapV4 · `0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce`
 
 Private swaps between notes in the launch vault, through Cloak launches' own Uniswap v4 pools. Swap logic is Gloam's `GloamVaultSwapV4c` (route walk, up to 3 hops, exact output from the last hop, settle by sync and transfer, callbacks only from the PoolManager). The one difference: a pool is usable at once if its hook is none or `CloakV4Hook` (immutable), instead of a 3-day allowlist. The route is bound into the escrow key.
 
@@ -35,7 +35,7 @@ Batch rounds. Standard-size orders (1, 2, 5 x 10^n) collect into rounds per toke
 | `exitAfterTimeout(k)` | anyone, 30 days after the round | an unclaimed payout to the order's fallback address |
 | `register(launchIndex)` | anyone (V4 venue only) | nothing; records a settled launch's market |
 
-## CloakGloamBids · `0x0c3f42b10569a4550fe75785f86b2b019905f31b`
+## CloakGloamBids · `0xb3f6f2142439f1b4f088ea24569cc73726dcea32`
 
 Sealed bids on Cloak launches and drops from a private balance. One note leaves the launch vault to a one-time bid account (CREATE2 from the bid's key) that the auction sees as the bidder.
 
@@ -47,7 +47,7 @@ Sealed bids on Cloak launches and drops from a private balance. One note leaves 
 | `ownerCall(k, target, value, data, signature)` | anyone, owner key signs | one signed call from the account, for what can't go into a vault (a drop's NFTs); never to a vault, once per nonce |
 | `exitAfterTimeout(k, tokens)` | anyone, after the key's timeout | everything in the account to the fallback address |
 
-## CloakGraduation · `0x51756969b91f8b6a8c941250691b974c769c97fa`
+## CloakGraduation · `0xfd0e96dec9c1edd885e86044790e50e48c1a6268`
 
 Moves a launch token from the launch vault into Gloam's vault in rounds of standard sizes, once Gloam lists it.
 
@@ -57,7 +57,7 @@ Moves a launch token from the launch vault into Gloam's vault in rounds of stand
 | `leave(k, toVault, d, signature)` | anyone, owner key signs | after the round: exactly what arrived, into Gloam's vault (or back into the launch vault if Gloam's refuses) |
 | `exitAfterTimeout(k)` | anyone, after 30 days | an unclaimed entry to its fallback address |
 
-## CloakGloamReceive · `0x4a11f7948513fe7517ef7c6efee88c5681bb06c4`
+## CloakGloamReceive · `0xa462e810b985029b28b5cee49866760a7f8767bb`
 
 Receive addresses. Each owner key and number has a fixed `ReceiveBox` address anyone can pay. Only this factory can move a box's funds, and only into a vault as a note the box's owner key signed for.
 
@@ -65,7 +65,7 @@ Receive addresses. Each owner key and number has a fixed `ReceiveBox` address an
 |---|---|---|
 | `shield(ownerKey, n, vault, asset, amount, commitment, proof, signature)` | anyone (relay), owner key signs | what the box holds into the named vault as that note; a refused deposit reverts whole and the money stays |
 
-## CloakFundsGate · `0x1642422970782e5d1b0a94a64ee022e2c3b4a25c` and CloakReceiptCheck · `0x2236b68e231cebd7dd04e23fe756efdae726e325`
+## CloakFundsGate · `0x79aafd041a283c334421a17c781b12e353093210` and CloakReceiptCheck · `0xb0a8fcbd75f4d6d2ce5a0121e8607aa353990304`
 
 Read-only checks on Gloam's funds and receipt proofs (verifiers exported from Gloam's final zkeys, GPL-3.0 headers kept). They move no money.
 

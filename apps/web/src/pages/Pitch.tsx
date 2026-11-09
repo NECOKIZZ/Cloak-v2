@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { addrLink, BATCHER, FACTORY, ROUTER } from "../config";
+import { addrLink, FACTORY, GLOAM } from "../config";
 import { Link } from "../router";
 import { GITHUB, Icon, Logo, Nav } from "../ui";
 
@@ -138,15 +138,15 @@ export function Pitch() {
           </div>
           <div className="p-contracts">
             <Contract name="Launch factory" addr={FACTORY} />
-            <Contract name="Private router" addr={ROUTER} />
-            <Contract name="Batch auction" addr={BATCHER} />
+            <Contract name="Launch vault" addr={GLOAM?.launchVault} />
+            <Contract name="Batch rounds" addr={GLOAM?.batcherV4} />
           </div>
         </Slide>
 
         <Slide i={7}>
           <h2 className="p-h" style={{ maxWidth: 860 }}>Distribution: plug into launchpads, don't compete with them</h2>
           <div className="p-three">
-            <div className="p-card"><Icon.code /><h3>One SDK</h3><p><code>createLaunch()</code> gives any Elysium launchpad a sealed, fair-launch mode. <code>CloakPrivate</code> gives its users private balances.</p></div>
+            <div className="p-card"><Icon.code /><h3>One SDK</h3><p><code>createLaunch()</code> gives any Elysium launchpad a sealed, fair-launch mode. <code>GloamPrivate</code> gives its users private balances on Gloam.</p></div>
             <div className="p-card"><Icon.users /><h3>Launchpads first</h3><p>A fair-launch mode any Elysium launchpad can add: projects keep their launchpad, buyers get one price and no snipers.</p></div>
             <div className="p-card"><Icon.shield /><h3>Wallets, DEXes and agents</h3><p>Every launch is a standard Uniswap pool and appears in a public token list. An MCP server lets AI agents launch and trade privately too.</p></div>
           </div>

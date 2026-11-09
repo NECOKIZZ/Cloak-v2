@@ -8,7 +8,7 @@
  */
 import { encodeFunctionData, parseAbi, toHex, type Address, type Hex } from "viem";
 import * as gloam from "@gloamtrade/sdk";
-import type { Status } from "../private/client.js";
+import type { Status } from "../private/common.js";
 import type { GloamCore, OwnedGloamNote, SentPayment } from "./gloam.js";
 
 /** snarkjs groth16.fullProve on a circuit: the proof and its public signals. */
