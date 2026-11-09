@@ -31,7 +31,7 @@ async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>)
       submit: gloamRelaySubmitter(RELAYER_URL),
       whype: GLOAM.whype,
       spendReceived: true,
-      logChunk: 5_000n,
+      logChunk: 1_000_000n, // the public RPCs cap logs per call, not ranges: 1M blocks answer in under a second
     },
     keys,
   );

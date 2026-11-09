@@ -250,7 +250,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
             },
           };
         },
-        logChunk: 5_000n,
+        logChunk: 1_000_000n,
       });
       for (const a of d.assets ?? []) p.addAsset(a);
       return p;
@@ -1170,7 +1170,7 @@ export function createCloakServer(settings: Settings, opts: { prover?: () => Pro
       // the link's own Gloam account: spends what it received directly, through the relay, with no wallet
       const sources = settings.gloamCircuitsDir ? [`file://${settings.gloamCircuitsDir}`] : [GLOAM_CIRCUITS_CDN];
       const g = new GloamPrivate(
-        { publicClient: pub, chainId: settings.chain.id, gloamVault: { pool: G.gloamVault, poolBlock: G.block }, launchVault: { pool: G.launchVault, poolBlock: G.block }, payMemo: G.memoBoard, provers: gloamProvers(sources), submit: gloamRelaySubmitter(d.relayerUrl), whype: G.whype, spendReceived: true, logChunk: 5_000n },
+        { publicClient: pub, chainId: settings.chain.id, gloamVault: { pool: G.gloamVault, poolBlock: G.block }, launchVault: { pool: G.launchVault, poolBlock: G.block }, payMemo: G.memoBoard, provers: gloamProvers(sources), submit: gloamRelaySubmitter(d.relayerUrl), whype: G.whype, spendReceived: true, logChunk: 1_000_000n },
         await openGloamLinkKeys(l, passcode),
       );
       await g.loadMarkets();

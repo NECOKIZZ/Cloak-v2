@@ -251,7 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           bids: GLOAM.bids,
           records: launchRecords(w.account.address),
           pendingStore: gloamPending(w.account.address),
-          logChunk: 5_000n,
+          logChunk: 1_000_000n, // the public RPCs cap logs per call, not ranges: 1M blocks answer in under a second
         });
         await g.loadMarkets();
         ASSETS.forEach((a) => g.addAsset(a));

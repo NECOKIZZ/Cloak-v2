@@ -158,11 +158,13 @@ export const deployments: Record<number, CloakDeployment> = {
       launchVault: "0x8e38155ae9e753874415482e1ab1c169bbc7d1a2",
       block: 26230337n,
       launchSwapV4: "0xd540527d3eef9b4de63f741159036d5e35204541",
-      receive: "0x4a11f7948513fe7517ef7c6efee88c5681bb06c4",
-      bids: "0x0c3f42b10569a4550fe75785f86b2b019905f31b",
-      graduation: "0x51756969b91f8b6a8c941250691b974c769c97fa",
-      // batch rounds through launches' own v4 pools (Nov 8): time-weighted price over at least a round within 2% of the opening price, 4% per side
-      batcherV4: "0x77a5e45c5044dc98a1f3ef50fc63beca3674ea1b",
+      receive: "0x8ef40f47cf991acd7ee7f4c77c505c909b9367a8",
+      bids: "0xe07d0f72c07f2f18e8d4089a857361b282128c5d",
+      graduation: "0x8bb5a381f31e2114838cc3dcd876a2ae0775f98d",
+      // escrows redeployed Nov 9 with the stress-test fixes (deploy-escrows-update.mjs); batch rounds through launches'
+      // own v4 pools: time-weighted price, 0.5% settle band, checked against the opening spot or a time-weighted
+      // reference, 4% per side, real notes only
+      batcherV4: "0x2681a81fdfbb447a297ac5fd5bba0a2ffc599f54",
       fundsGate: "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c",
       receiptCheck: "0x2236b68e231cebd7dd04e23fe756efdae726e325",
       whype: "0xe44b27113D4b947c0B1bDf4a93878D0e115f4bdD",

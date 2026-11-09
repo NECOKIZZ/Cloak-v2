@@ -12,9 +12,9 @@
   "launchVaultGuard": "0x8362860ea98c1b95dda1d28077909779b457dcc2",
   "launchFactory": "0x1b0072684e98d9e23018e2d107ed8166ef84c077",
   "launchSwapV4": "0xd540527d3eef9b4de63f741159036d5e35204541",
-  "receive": "0x4a11f7948513fe7517ef7c6efee88c5681bb06c4",
-  "bids": "0x0c3f42b10569a4550fe75785f86b2b019905f31b",
-  "graduation": "0x51756969b91f8b6a8c941250691b974c769c97fa",
+  "receive": "0x8ef40f47cf991acd7ee7f4c77c505c909b9367a8",
+  "bids": "0xe07d0f72c07f2f18e8d4089a857361b282128c5d",
+  "graduation": "0x8bb5a381f31e2114838cc3dcd876a2ae0775f98d",
   "fundsGate": "0x1642422970782e5d1b0a94a64ee022e2c3b4a25c",
   "receiptCheck": "0x2236b68e231cebd7dd04e23fe756efdae726e325",
   "fundsVerifier": "0x80e79ff9f4a21f04259873192c8523329364334d",
@@ -25,11 +25,20 @@
   "admittedAtDeploy": 12,
   "costHype": "0.002736412810997472",
   "previousRun": "Nov 8 live run (stand-in launch): see measurements/live-elysium.json",
-  "batcherV4": "0x77a5e45c5044dc98a1f3ef50fc63beca3674ea1b",
-  "batcherV4Block": 26402635,
+  "batcherV4": "0x2681a81fdfbb447a297ac5fd5bba0a2ffc599f54",
+  "batcherV4Block": 26581546,
   "batcherV4Rounds": {
     "roundSecs": 60,
     "maxSlippageBps": 200,
     "refundAfter": 600
+  },
+  "escrowsUpdatedAt": "Nov 9 (stress-test fixes)",
+  "previous": {
+    "nov8": {
+      "batcherV4": "0x77a5e45c5044dc98a1f3ef50fc63beca3674ea1b",
+      "bids": "0x0c3f42b10569a4550fe75785f86b2b019905f31b",
+      "receive": "0x4a11f7948513fe7517ef7c6efee88c5681bb06c4",
+      "graduation": "0x51756969b91f8b6a8c941250691b974c769c97fa"
+    }
   }
 }

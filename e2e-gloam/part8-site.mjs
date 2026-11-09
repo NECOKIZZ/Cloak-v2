@@ -141,7 +141,11 @@ try {
   // 3. the balance on the Portfolio page
   await page.getByRole("link", { name: "Portfolio" }).first().click();
   // the Assets card lists HYPE with its private amount
-  await page.waitForFunction(() => /HYPE\s+Hyperliquid\s+1\s+HYPE/.test(document.body.innerText), null, { timeout: 120_000 });
+  await page.waitForFunction(() => /HYPE\s+Hyperliquid\s+1\s+HYPE/.test(document.body.innerText), null, { timeout: 120_000 }).catch(async (e) => {
+    console.log("  page text:", (await page.innerText("body")).slice(0, 1500));
+    console.log("  browser logs:", logs.slice(-15));
+    throw e;
+  });
   await shot("3-balance");
   console.log("  ok  the Portfolio page shows the 1 HYPE private balance");
 

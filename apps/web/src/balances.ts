@@ -108,7 +108,7 @@ async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[]
     const jobs: [string, Address][] = [["HYPE", p.hypeMarket.pool], ...markets.filter((m) => !m.shared).map((m): [string, Address] => [m.token, m.pool]), ...ASSETS.map((x): [string, Address] => [x.token, x.pool])];
     await (s.restored ??= restoreSync(p, shared, jobs.map(([, pool]) => pool)).catch(() => {}));
     await Promise.all([
-      ...jobs.map(([k, pool]) => p.balance(pool).then((b) => (put(k)(b), k === "HYPE" && (hypeOk = true))).catch(() => {})),
+      ...jobs.map(([k, pool]) => p.balance(pool).then((b) => (put(k)(b), k === "HYPE" && (hypeOk = true))).catch((e) => console.error(`[balance] ${k}: ${(e as Error)?.message ?? e}`))),
       // the shared launch-token vault: one scan, every token's balance
       ...(shared ? [shared.sync().then(() => Promise.all(markets.filter((m) => m.shared).map((m) => shared.balance(m.token).then(put(m.token))))).catch(() => {})] : []),
     ]);
@@ -124,7 +124,8 @@ async function sync(p: Priv, shared: SharedVaultClient | null, markets: Market[]
       s.savedSync = st;
       sealBox(p, "sync", st);
     }
-  } catch {
+  } catch (e) {
+    console.error(`[balance] sync: ${(e as Error)?.message ?? e}`);
   } finally {
     s.syncing = false;
     emit(s);
