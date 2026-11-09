@@ -12,28 +12,28 @@
     },
     "deploy CloakGloamBids": {
       "n": 1,
-      "median": 2414118
+      "median": 2530468
     },
     "queue listing (guard)": {
       "n": 1,
-      "median": 59862
+      "median": 59850
     },
     "relayed memo": {
-      "n": 3,
-      "median": 91570
+      "n": 5,
+      "median": 57370
     },
     "relayed transfer": {
       "n": 1,
-      "median": 1792611
+      "median": 1792575
     },
     "relayed escrow": {
       "n": 2,
-      "median": 2192609
+      "median": 2195202
     },
     "execute listing (guard)": {
       "n": 1,
-      "median": 57925
+      "median": 57913
     }
   },
-  "wallMs": 99307
+  "wallMs": 62258
 }
