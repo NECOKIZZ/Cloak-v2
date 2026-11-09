@@ -13,6 +13,16 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - **Outside reviews:** two, with every finding fixed or decided (`docs/REVIEW-RESPONSES.md`).
 - **Mainnet deploy script ready:** `e2e-gloam/deploy-partner.mjs` deploys next to Gloam's own vault and hands control to a Safe. Rehearsed on a testnet fork (0.022 HYPE). The config template is `deployments/elysium-mainnet-gloam.input.example.json`.
 
+## The vault model (decided Nov 9)
+
+- **Gloam's vault** holds the ecosystem's major assets: USDC now, HYPE once Gloam lists it, maybe KNTQ. Cloak doesn't hold them.
+- **Cloak's launch vault** (Gloam's audited vault engine and final keys, plus `admitLaunch`, run by our Safe) holds every Cloak launch token, and HYPE until Gloam lists it.
+- **One home per asset.** No graduation: `CloakGraduation` isn't deployed on mainnet (`deploy-partner.mjs` deploys it only with `"graduation": true`).
+- **CloakRouterV4** joins them, as v1's router did: a private swap spends a note in one vault and lands the output in the other, in one relayed call, and the balance reads as one. Tested with real proofs in `part19-v2-factory.mjs` (HYPE in Gloam's vault buys a launch token into the launch vault).
+- **Fees:** a swap pays the withdrawal fee of the vault it spends from. Gloam's is 0.5% on Elysium (it was 0.25% until Nov 3, and their Base, Ethereum and Tempo deploys use 0.25%). With HYPE in Gloam's vault, every launch-token buy pays Gloam's fee, with no room for ours.
+- [ ] **Bob with Gloam's founder:** the fee. A lower rate for cash outs into reviewed partner escrows (he's open to it, but their vault has no per-recipient rate, so it needs code before their Elysium vault is deployed), or a share of the 0.5% on the flows Cloak brings.
+- [ ] **Bob:** our launch vault's rate (0.5% today, v1 charged 0.25%). Lowering it is instant.
+
 ## Stage 1: testnet complete (now)
 
 - [x] **v2's own launch factory** on testnet (Nov 9): CloakConfig `0xfedf…4f1e`, factory `0x59d2…5784`, CloakV4Hook `0xC629…2A80`. The launch vault, batcher v4 (`0xbd4a…28f8`) and every escrow redeployed on it, the first launch GLOAK admitted and registered. `render.yaml` and `deployments.ts` point at them.

@@ -85,7 +85,7 @@ try {
 
   // 4. Gloam's vault (stand-in), a launch vault on the NEW factory, the v4 swap on the NEW hook, batch rounds
   const poseidon = await deployPoseidon(dep);
-  const stack = await deployGloamStack({ rpcUrl, pk: ANVIL_KEYS[0], poseidon, assets: [{ address: ELYSIUM_TESTNET_USDC, perDeposit: 500n * 10n ** 6n, total: 25_000n * 10n ** 6n }], feeBps: 50, feeRecipient: addr, controller: addr });
+  const stack = await deployGloamStack({ rpcUrl, pk: ANVIL_KEYS[0], poseidon, assets: [{ address: ELYSIUM_TESTNET_USDC, perDeposit: 500n * 10n ** 6n, total: 25_000n * 10n ** 6n }, { address: zeroAddress, perDeposit: parseEther("10"), total: parseEther("100") }], feeBps: 50, feeRecipient: addr, controller: addr });
   const caps = [parseEther("1000000000"), parseEther("100000000000")];
   const lv = await deploy("CloakLaunchVault", ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), [poseidon, stack.dual, f.factory, ...caps, addr]);
   await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
@@ -98,6 +98,8 @@ try {
   await write(lv, LV_ABI, "transferOwnership", [guard]);
   await write(guard, guardArt.abi, "acceptVaultOwnership");
   const router = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, D.poolManager, D.whype, f.hook]);
+  // the cross-vault router: the launch vault (home) and Gloam's vault
+  const crossRouter = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, [stack.pool], D.poolManager, D.whype, f.hook]);
   const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, f.factory, 60n, 200n, 600n]);
   const block = await pub.getBlockNumber();
   const loop = createGloamLoop({ publicClient: pub, account: keeper.account, send: async (x) => (await sendAndLog(pub, x.functionName, keeper.wallet.writeContract(x))).transactionHash, launchVault: lv, batcherV4, batcherV4Block: block });
@@ -107,10 +109,10 @@ try {
   if (v1Token) assert(!(await pub.readContract({ address: lv, abi: parseAbi(["function isLaunchToken(address) view returns (bool)"]), functionName: "isLaunchToken", args: [v1Token] })), "a Cloak v1 launch token isn't admitted to the v2 launch vault");
 
   // 5. a private buy and sell of the new token through its v4 pool
-  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, batcherV4], hourlySpendWei: parseEther("5") });
+  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, batcherV4, crossRouter], hourlySpendWei: parseEther("5") });
   let saved = [];
   const provers = { shield: await finalProver("shield"), transfer: await finalProver("transfer"), unshield: await finalProver("unshield") };
-  const A = await GloamPrivate.unlock(alice.wallet, { publicClient: pub, chainId: ELYSIUM_TESTNET_ID, gloamVault: { pool: stack.pool, poolBlock: block }, launchVault: { pool: lv, poolBlock: block }, payMemo: stack.payMemo, provers, submit: (call) => relay({ kind: call.kind, to: call.to, data: call.data }), whype: D.whype, launchSwapV4: router, batcherV4, records: { load: () => saved, save: (x) => (saved = x) } });
+  const A = await GloamPrivate.unlock(alice.wallet, { publicClient: pub, chainId: ELYSIUM_TESTNET_ID, gloamVault: { pool: stack.pool, poolBlock: block }, launchVault: { pool: lv, poolBlock: block }, payMemo: stack.payMemo, provers, submit: (call) => relay({ kind: call.kind, to: call.to, data: call.data }), whype: D.whype, launchSwapV4: router, router: crossRouter, batcherV4, records: { load: () => saved, save: (x) => (saved = x) } });
   const markets = await A.loadMarkets();
   const m = markets.find((x) => x.token.toLowerCase() === l.token.toLowerCase());
   assert(m && m.v4, `the new token is a private market through its v4 pool (${markets.length} market${markets.length === 1 ? "" : "s"})`);
@@ -122,6 +124,32 @@ try {
   assert(got === r.amountOut && got > 0n, `bought ${formatEther(got)} GLOAK privately for ${formatEther(buyIn)} HYPE through v2's hook`);
   const s = await A.sell(l.token, got / 2n);
   assert(s.amountOut > 0n, `sold half back for ${formatEther(s.amountOut)} HYPE as a note`);
+
+  // 6. across vaults (CloakRouterV4): with HYPE in Gloam's vault, the same Buy pays from there into the launch vault
+  const gCore = A.cores.find((c) => c.config.pool.toLowerCase() === stack.pool.toLowerCase());
+  const lCore = A.cores.find((c) => c.config.pool.toLowerCase() === lv.toLowerCase());
+  const hypeIn = async (c) => (await c.sync(), c.ownNotes(zeroAddress).reduce((a, n) => a + n.amount, 0n));
+  // a spend takes one note: move the biggest HYPE note, then buy a little more than what stays in the launch vault
+  await lCore.sync();
+  const moved = lCore.ownNotes(zeroAddress).reduce((a, n) => (n.amount > a ? n.amount : a), 0n);
+  const keep = (await hypeIn(lCore)) - moved;
+  const t1 = performance.now();
+  await A.moveAcross(zeroAddress, moved, lv, stack.pool);
+  const movedIn = moved - (moved * 50n) / 10_000n;
+  assert((await hypeIn(gCore)) === movedIn && (await hypeIn(lCore)) === keep, `moved ${formatEther(moved)} HYPE from the launch vault into Gloam's vault privately in one call (${formatEther(movedIn)} after the launch vault's fee), in ${Math.round(performance.now() - t1)} ms`);
+  const gFees0 = await pub.readContract({ address: stack.pool, abi: parseAbi(["function feesOwed(address) view returns (uint256)"]), functionName: "feesOwed", args: [zeroAddress] });
+  const tokBefore = await A.balance(m.pool);
+  const buy2 = keep + parseEther("0.005");
+  const t2 = performance.now();
+  const r2 = await A.buy(l.token, buy2);
+  const tokGot = (await A.balance(m.pool)) - tokBefore;
+  assert(tokGot === r2.amountOut && tokGot > 0n, `the launch vault held only ${formatEther(keep)} HYPE, so Buy paid ${formatEther(buy2)} HYPE from Gloam's vault and ${formatEther(tokGot)} GLOAK landed in the launch vault, one call, ${Math.round(performance.now() - t2)} ms`);
+  const gFees1 = await pub.readContract({ address: stack.pool, abi: parseAbi(["function feesOwed(address) view returns (uint256)"]), functionName: "feesOwed", args: [zeroAddress] });
+  assert(gFees1 - gFees0 === (buy2 * 50n) / 10_000n, "the fee on the HYPE spent went to Gloam's vault, the vault it was spent from");
+  const gAfter = await hypeIn(gCore);
+  assert(gAfter < movedIn - buy2 + buy2 / 10n && gAfter > movedIn - buy2, `the buy's leftover came back into Gloam's vault as a note (Gloam's vault now ${formatEther(gAfter)} HYPE)`);
+  assert(saved.filter((x) => x.kind === "launchSwap").length === 0, "nothing left to finish");
+  out.across = { moved: formatEther(moved), buyFromGloamsVault: formatEther(buy2), tokensOut: formatEther(tokGot), gloamVaultHype: formatEther(gAfter) };
 
   writeMeasurements("part19-v2-factory", { ...out, seconds: Math.round((performance.now() - t0) / 1000) });
   console.log(`\nPart 19 passed in ${Math.round((performance.now() - t0) / 1000)} s`);

@@ -62,7 +62,7 @@ contract CloakLaunchSwapV4 is CloakLaunchSwapBase {
     }
 
     /// @dev The PoolManager and WHYPE hold nothing for an exit's recipient.
-    function _stopsHere(address to) internal view override returns (bool) {
+    function _stopsHere(address to) internal view virtual override returns (bool) {
         return to == address(poolManager) || to == weth;
     }
 
@@ -186,5 +186,44 @@ contract CloakLaunchSwapV4 is CloakLaunchSwapBase {
 
     function _holds(PoolKey memory k, address c) private pure returns (bool) {
         return k.currency0 == c || k.currency1 == c;
+    }
+}
+
+/**
+ * @title CloakRouterV4
+ * @notice CloakLaunchSwapV4 across vaults: a private swap can spend a note from one vault and deposit its output into
+ *         another (swapAcross), for example USDC from Gloam's vault into a launch token in Cloak's launch vault, or move
+ *         one asset between two vaults. Same-vault swaps (swap) work exactly as in CloakLaunchSwapV4.
+ *
+ *         The vaults are fixed at deploy: its home vault (`vault`) and up to three more. There is no owner and no way to
+ *         add one later. A vault only pays out a note with its owner's proof, to the escrow that proof names, and the
+ *         escrow address is made from the whole swap including both vaults, so a bug here can cost at most a swap in
+ *         flight, never what the vaults hold.
+ */
+contract CloakRouterV4 is CloakLaunchSwapV4 {
+    address public immutable vault1;
+    address public immutable vault2;
+    address public immutable vault3;
+
+    constructor(address vault_, address[] memory others, address poolManager_, address weth_, address allowedHook_)
+        CloakLaunchSwapV4(vault_, poolManager_, weth_, allowedHook_)
+    {
+        if (others.length > 3) revert BadRoute();
+        address[3] memory v;
+        for (uint256 i = 0; i < others.length; i++) {
+            if (others[i] == address(0) || others[i] == vault_) revert ZeroAddress();
+            for (uint256 j = 0; j < i; j++) if (others[j] == others[i]) revert ZeroAddress();
+            v[i] = others[i];
+        }
+        (vault1, vault2, vault3) = (v[0], v[1], v[2]);
+    }
+
+    function isVault(address a) public view override returns (bool) {
+        return a != address(0) && (a == address(vault) || a == vault1 || a == vault2 || a == vault3);
+    }
+
+    /// @notice The PoolManager, WHYPE and every listed vault hold nothing for an exit's recipient.
+    function _stopsHere(address to) internal view override returns (bool) {
+        return super._stopsHere(to) || isVault(to);
     }
 }

@@ -5,8 +5,9 @@
 //   - CloakLaunchVault on Cloak's v4 launch factory, on Gloam's verifiers and Poseidon. HYPE listed in setup, then setup
 //     ends and ownership goes to its own VaultOwnerGuard (the deploy wallet is the controller only until it hands
 //     control to the Safe), read back with 12 checks.
-//   - Around it: CloakLaunchSwapV4, CloakGloamBatcherV4, CloakGloamReceive, CloakGloamBids, CloakGraduation (into
-//     Gloam's vault), CloakFundsGate and CloakReceiptCheck with their final-key verifiers.
+//   - Around it: CloakLaunchSwapV4, CloakRouterV4 (swaps and moves between the launch vault and Gloam's vault),
+//     CloakGloamBatcherV4, CloakGloamReceive, CloakGloamBids, CloakFundsGate and CloakReceiptCheck with their final-key
+//     verifiers. CloakGraduation (into Gloam's vault) only with "graduation": true in the config.
 //   - Every settled launch admitted and registered for batch rounds.
 //   - The guard's control handed to the Safe: transferController(safe) now; the Safe then calls acceptController()
 //     (the script prints the call). The pauser and the fee recipient are fixed to the config's addresses at deploy.
@@ -114,10 +115,13 @@ try {
 
   const b = cfg.batch;
   const launchSwapV4 = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, cfg.poolManager, cfg.whype, cfg.v4Hook]);
+  // swaps and moves between the launch vault and Gloam's vault (one private call either way)
+  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, [cfg.gloamVault], cfg.poolManager, cfg.whype, cfg.v4Hook]);
   const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter)]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [cfg.gloamVault, lv]);
   const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv]);
-  const graduation = await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [lv, cfg.gloamVault, BigInt(cfg.graduationRoundSecs)]);
+  // graduation into Gloam's vault is off unless asked for: launch tokens live in the launch vault (one home per asset)
+  const graduation = cfg.graduation ? await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [lv, cfg.gloamVault, BigInt(cfg.graduationRoundSecs)]) : undefined;
   const fv = await deploy("GloamFundsVerifierFinal", ourArtifact("GloamFundsVerifierFinal.sol", "GloamFundsVerifierFinal"));
   const rv = await deploy("GloamReceiptVerifierFinal", ourArtifact("GloamReceiptVerifierFinal.sol", "GloamReceiptVerifierFinal"));
   const fundsGate = await deploy("CloakFundsGate", ourArtifact("CloakFundsGate.sol", "CloakFundsGate"), [fv, cfg.gloamVault, lv]);
@@ -153,6 +157,7 @@ try {
     feeRecipient: cfg.feeRecipient,
     launchFactory: cfg.factory,
     launchSwapV4,
+    router,
     batcherV4,
     batcherV4Rounds: b,
     receive,

@@ -24,7 +24,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
 import { splitAmount, type ScheduledPiece, type Status } from "../private/common.js";
 import { GloamCore, gloamKeysFromSignature, type GloamAccountKeys, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
-import { announce, finishPending, launchRoute, launchRouteV4, launchSwap, type LaunchRecord } from "./launchVault.js";
+import { announce, finishPending, launchRoute, launchRouteV4, launchSwap, swapAcross, type LaunchRecord } from "./launchVault.js";
 import { notesFor, type HolderProver } from "./gloamProofs.js";
 import { gloamFundsContext, type FundsProof } from "../private/funds.js";
 
@@ -47,6 +47,11 @@ export interface GloamPrivateConfig {
    * launch token's market is its auction's market, quoted and routed through it; launchSwap (V2) is the fallback.
    */
   launchSwapV4?: Address;
+  /**
+   * CloakRouterV4: swaps and moves from one vault into another (Gloam's vault and the launch vault), so an asset can
+   * live in either and still trade into the other in one private call. See moveAcross / swapAcross.
+   */
+  router?: Address;
   /** CloakGloamBatcher on the launch vault (rounds through Uniswap V2 pairs). */
   batcher?: Address;
   /** CloakGloamBatcherV4 on the launch vault: rounds through launches' own v4 pools (their CloakV4Market). */
@@ -521,9 +526,17 @@ export class GloamPrivate {
     const onStatus = opts.onStatus ?? (() => {});
     const assetIn = side === "buy" ? zeroAddress : token;
     await core.sync(onStatus);
-    if (core.ownNotes(assetIn).reduce((a, n) => a + n.amount, 0n) < amountIn) throw new Error("insufficient private balance in the trading vault (deposits made for trading land there)");
+    // spend from the launch vault, or, through the cross-vault router, from whichever vault holds enough (HYPE in
+    // Gloam's vault buys a launch token into the launch vault in one call), so the balance reads as one
+    const held = (c: GloamCore) => c.ownNotes(assetIn).reduce((a, n) => a + n.amount, 0n);
+    let from = core;
+    if (held(core) < amountIn && this.cfg.router && m.v4) {
+      for (const c of this.cores) if (c !== core && (await c.sync(onStatus), held(c) >= amountIn)) from = c;
+    }
+    if (held(from) < amountIn) throw new Error("insufficient private balance in one vault for this trade");
     const assetOut = side === "buy" ? token : zeroAddress;
-    const released = await this.afterFee(assetIn, amountIn);
+    const bps = await this.feeBpsOf(from);
+    const released = amountIn - ((amountIn / 10_000n) * bps + ((amountIn % 10_000n) * bps) / 10_000n);
     const expected = await this.v2Quote(token, side, released);
     const amountOut = (expected * BigInt(10_000 - (opts.slippageBps ?? 100))) / 10_000n;
     if (amountOut === 0n) throw new Error("amount too small to trade");
@@ -534,7 +547,10 @@ export class GloamPrivate {
     // the chain's clock, not this device's: the contract checks the deadline against block time
     const deadline = (await this.cfg.publicClient.getBlock()).timestamp + 600n;
     // the record is saved before the swap is sent, so its buffer is taken back even if the answer is lost
-    const rec = await launchSwap(core, { router, route, assetIn, amountIn, assetOut, amountOut, deadline }, onStatus, (r) => this.remember(r));
+    const rec =
+      from === core
+        ? await launchSwap(core, { router, route, assetIn, amountIn, assetOut, amountOut, deadline }, onStatus, (r) => this.remember(r))
+        : await swapAcross(from, core, { router: this.cfg.router!, route, assetIn, amountIn, assetOut, amountOut, deadline }, onStatus, (r) => this.remember(r));
     if ("id" in rec) this.updateRecord(rec.id, { txHash: rec.txHash });
     // take the buffer back at once when it can be; otherwise the next open does
     await this.finishPending(onStatus).catch(() => {});
@@ -552,9 +568,49 @@ export class GloamPrivate {
   async finishPending(onStatus: Status = () => {}) {
     const core = this.launchCore;
     if (!core || !this.cfg.records) return { waiting: [], done: [], errors: [] };
-    const res = await finishPending(core, this.cfg.records.load(), {}, onStatus);
+    const res = await finishPending(core, this.cfg.records.load(), { cores: this.cores }, onStatus);
     this.cfg.records.save(res.waiting);
     return res;
+  }
+
+  /** The core for a vault this account has open. */
+  private coreAt(vault: Address): GloamCore {
+    const c = this.cores.find((x) => lc(x.config.pool) === lc(vault));
+    if (!c) throw new Error(`This account has no vault at ${vault}.`);
+    return c;
+  }
+
+  /**
+   * Swap or move across vaults through the router (CloakRouterV4): spend exactly `amountIn` of `assetIn` from
+   * `fromVault`, deposit exactly `amountOut` of `assetOut` into `toVault`. The same asset is a move (no route); different
+   * assets trade through `route` (launchRouteV4). The buffer comes back into `fromVault` on the next finishPending.
+   */
+  async swapAcross(
+    p: { fromVault: Address; toVault: Address; assetIn: Address; amountIn: bigint; assetOut: Address; amountOut: bigint; route?: Hex; deadlineSecs?: number },
+    onStatus: Status = () => {},
+  ) {
+    if (!this.cfg.router) throw new Error("No cross-vault router configured.");
+    const from = this.coreAt(p.fromVault);
+    const to = this.coreAt(p.toVault);
+    const now = (await this.cfg.publicClient.getBlock()).timestamp;
+    const r = await swapAcross(
+      from,
+      to,
+      { router: this.cfg.router, route: p.route ?? "0x", assetIn: p.assetIn, amountIn: p.amountIn, assetOut: p.assetOut, amountOut: p.amountOut, deadline: now + BigInt(p.deadlineSecs ?? 600) },
+      onStatus,
+      (x) => this.remember(x),
+    );
+    return r;
+  }
+
+  /**
+   * Move `amount` of one asset from one vault into the other, as one private call. What arrives is the amount less the
+   * source vault's fee; the new note is that, and nothing is left over.
+   */
+  async moveAcross(asset: Address, amount: bigint, fromVault: Address, toVault: Address, onStatus: Status = () => {}) {
+    const from = this.coreAt(fromVault);
+    const fee = (amount * (await this.feeBpsOf(from))) / 10_000n;
+    return this.swapAcross({ fromVault, toVault, assetIn: asset, amountIn: amount, assetOut: asset, amountOut: amount - fee }, onStatus);
   }
 
   // ── batch rounds (CloakGloamBatcher on the launch vault) ───────────────

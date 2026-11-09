@@ -56,6 +56,8 @@ const EXIT_SELECTORS = new Set(
     "rescue((bytes32,address,uint256,bytes32,address,uint256,bytes32,address,uint256))",
     "claim(bytes32,(bytes,bytes32,address,uint256),bytes)",
     "exit(bytes32,address,bytes)",
+    // CloakRouterV4: a swap across vaults whose spend landed alone
+    "rescueAcross((bytes32,address,uint256,bytes32,address,uint256,bytes32,address,uint256),address,address)",
     // CloakGloamBatcher
     "claim((bytes32,address,bool,uint128,address,address),(bytes,bytes32,address,uint256),bytes)",
     "exitAfterTimeout((bytes32,address,bool,uint128,address,address))",
