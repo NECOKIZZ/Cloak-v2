@@ -6,7 +6,7 @@
 // Happy path (HYPE note -> FRTN note, and back), the forced refund (the spend sent alone, then anyone calls the swap
 // and the money goes back in as the refund note), the exit (the exit key signs it out to a fresh address), an
 // expired swap (refused, the note stays), a copied call with a changed output (refused by the vault), replay.
-import { encodeAbiParameters, keccak256, parseEther, zeroAddress, encodeFunctionData } from "viem";
+import { encodeAbiParameters, formatEther, keccak256, parseEther, zeroAddress, encodeFunctionData } from "viem";
 import { GloamCore, gloamSwap, prepareGloamSwap, swapCalldata, swapExitCalldata, v4Route, GLOAM_SWAP_ROUTER_ABI, walletCoreSubmitter } from "@cloakely/sdk";
 import { ANVIL_KEYS, ELYSIUM_TESTNET_ID, ELYSIUM_TESTNET_RPC, POOL_ABI, assert, clients, finalProver, gasLog, gloamArtifact, localGloam, proofLog, rejects, rpc, sendAndLog, writeMeasurements } from "./lib.mjs";
 
@@ -62,7 +62,11 @@ try {
   await A.sync();
 
   // ── happy path: 0.1 HYPE note -> FRTN note ─────────────────────────────
-  const amountIn = parseEther("0.1");
+  // 0.1 HYPE, or 2% of the pool's HYPE when the pool is thinner than that (testnet pools get traded down)
+  const liqWord = await pub.readContract({ address: POOL_MANAGER, abi: [{ type: "function", name: "extsload", stateMutability: "view", inputs: [{ type: "bytes32" }], outputs: [{ type: "bytes32" }] }], functionName: "extsload", args: [`0x${(BigInt(slot) + 3n).toString(16).padStart(64, "0")}`] });
+  const poolHype = ((BigInt(liqWord) & ((1n << 128n) - 1n)) << 96n) / sqrtP;
+  const amountIn = poolHype / 50n < parseEther("0.1") ? (poolHype / 50n / 10n ** 12n) * 10n ** 12n : parseEther("0.1");
+  console.log(`  the pool holds about ${formatEther(poolHype)} HYPE, so the happy path swaps ${formatEther(amountIn)}`);
   // what arrives is amountIn less 0.5%; pool fee up to 30% while anti-snipe decays; ask for 60% of spot to be safe
   const amountOut = (tokensFor(amountIn) * 60n) / 100n;
   const deadline = BigInt((await pub.getBlock()).timestamp) + 600n;
@@ -70,7 +74,7 @@ try {
   const { txHashes } = await time("private swap HYPE -> FRTN (split, prove x4, swap, memo)", () => gloamSwap(A, { router: ROUTER, route, assetIn: zeroAddress, amountIn, assetOut: FRTN, amountOut, deadline }));
   await A.sync();
   assert(sum(await A.balances(), FRTN) === amountOut, `Alice holds exactly ${amountOut} FRTN privately after the swap`);
-  assert(sum(await A.balances(), zeroAddress) === parseEther("0.9"), "and 0.9 HYPE (the split's change)");
+  assert(sum(await A.balances(), zeroAddress) === (parseEther("1") - amountIn), `and ${formatEther(parseEther("1") - amountIn)} HYPE (the split's change)`);
   const swapTx = await pub.getTransaction({ hash: txHashes.at(-1) });
   assert(swapTx.from.toLowerCase() === relayer.account.address.toLowerCase(), "the swap comes from the relayer, Alice's address is nowhere in it");
   const swapLog = (await pub.getContractEvents({ address: ROUTER, abi: GLOAM_SWAP_ROUTER_ABI, eventName: "VaultSwap", fromBlock: poolBlock }))[0];
@@ -84,7 +88,7 @@ try {
   const hypeBack = ((back << 192n) / (sqrtP * sqrtP)) * 50n / 100n;
   await time("private swap FRTN -> HYPE", () => gloamSwap(A, { router: ROUTER, route, assetIn: FRTN, amountIn: back, assetOut: zeroAddress, amountOut: hypeBack, deadline }));
   await A.sync();
-  assert(sum(await A.balances(), zeroAddress) === parseEther("0.9") + hypeBack && sum(await A.balances(), FRTN) === amountOut - back, "selling half the FRTN back gives a new HYPE note of exactly the amount asked");
+  assert(sum(await A.balances(), zeroAddress) === (parseEther("1") - amountIn) + hypeBack && sum(await A.balances(), FRTN) === amountOut - back, "selling half the FRTN back gives a new HYPE note of exactly the amount asked");
 
   // ── forced refund: the spend lands alone, then anyone finishes it as a refund ─
   {
@@ -100,7 +104,7 @@ try {
     // anyone (here Mallory) sends the original call: it sees the note spent and deposits the refund note
     await sendAndLog(pub, "refund (anyone)", mallory.wallet.sendTransaction({ to: ROUTER, data: swapCalldata(x) }));
     await A.sync();
-    assert(sum(await A.balances(), zeroAddress) === parseEther("0.9") + hypeBack - parseEther("0.2") + x.r.amount, `the refund note (${x.r.amount} wei, the amount less the 1% worst-case fee) is Alice's again`);
+    assert(sum(await A.balances(), zeroAddress) === (parseEther("1") - amountIn) + hypeBack - parseEther("0.2") + x.r.amount, `the refund note (${x.r.amount} wei, the amount less the 1% worst-case fee) is Alice's again`);
     await rejects(relayer.wallet.sendTransaction({ to: ROUTER, data: swapCalldata(x), gas: 3_000_000n }).then((h) => pub.waitForTransactionReceipt({ hash: h })).then((rc) => { if (rc.status !== "success") throw new Error("reverted"); }), "replay: the same call can't run twice");
   }
 
