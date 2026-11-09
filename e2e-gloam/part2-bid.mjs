@@ -48,7 +48,7 @@ try {
   const creator = new Cloak(pub, creatorC.wallet, deployments[99801].factory);
   const now = Number((await pub.getBlock()).timestamp);
   const unit = 10n ** 9n;
-  const l = await creator.createLaunch({ name: "Gloam Test", symbol: "GTEST", saleSupply: 1_000_000n * 10n ** 18n, minPrice: unit, tickSize: unit, numTicks: 50, commitEnd: now + 40, revealEnd: now + 80, lpBps: 8000 });
+  const l = await creator.createLaunch({ name: "Gloam Test", symbol: "GTEST", saleSupply: 1_000_000n * 10n ** 18n, minPrice: unit, tickSize: unit, numTicks: 50, commitEnd: now + 40, revealEnd: now + 340, lpBps: 8000 }); // v2's factory needs a reveal window of 5 minutes or more
   console.log("  launch", l.auction, "token", l.token);
 
   // queue the token's listing at once: it can land 3 days later, after settlement
@@ -75,6 +75,9 @@ try {
   const round = s.tlockRound;
   while (Date.now() / 1000 < drandRoundTime(round) + 1) await sleep(500);
   await creator.revealAll(l.auction, { fromBlock: l.block });
+  // the bid is open, so skip the rest of the reveal window on the fork's clock
+  await rpc(rpcUrl, "evm_setNextBlockTimestamp", [s.revealEnd + 1]);
+  await mine();
   await waitChainTime(s.revealEnd);
   await mine();
   await creator.settle(l.auction);
