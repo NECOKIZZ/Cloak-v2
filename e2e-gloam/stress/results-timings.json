@@ -1,0 +1,193 @@
+{
+  "runs": 3,
+  "table": [
+    {
+      "action": "shield HYPE (launch vault)",
+      "medianMs": 645,
+      "worstMs": 939,
+      "medianProofMs": 303,
+      "proofs": 1,
+      "medianOtherMs": 342,
+      "note": "1 shield proof, deposit from the wallet, memo by relay"
+    },
+    {
+      "action": "shield USDC (Gloam's vault)",
+      "medianMs": 423,
+      "worstMs": 478,
+      "medianProofMs": 232,
+      "proofs": 1,
+      "medianOtherMs": 191,
+      "note": "approve + deposit from the wallet, memo by relay"
+    },
+    {
+      "action": "balance (warm)",
+      "medianMs": 187,
+      "worstMs": 424,
+      "medianProofMs": 0,
+      "proofs": 0,
+      "medianOtherMs": 187,
+      "note": ""
+    },
+    {
+      "action": "send 0.5 HYPE privately",
+      "medianMs": 1424,
+      "worstMs": 1797,
+      "medianProofMs": 904,
+      "proofs": 1,
+      "medianOtherMs": 520,
+      "note": "1 transfer + memo"
+    },
+    {
+      "action": "receive: payee's next balance (sweep)",
+      "medianMs": 1257,
+      "worstMs": 2267,
+      "medianProofMs": 903,
+      "proofs": 1,
+      "medianOtherMs": 470,
+      "note": "the payee's sync sweeps the payment: 1 transfer + memo"
+    },
+    {
+      "action": "withdraw 0.3 HYPE",
+      "medianMs": 1934,
+      "worstMs": 2968,
+      "medianProofMs": 1372,
+      "proofs": 2,
+      "medianOtherMs": 665,
+      "note": "split (transfer + memo) then unshield"
+    },
+    {
+      "action": "withdraw USDC exact note (max)",
+      "medianMs": 1317,
+      "worstMs": 1540,
+      "medianProofMs": 951,
+      "proofs": 1,
+      "medianOtherMs": 356,
+      "note": "1 unshield, no split"
+    },
+    {
+      "action": "instant buy 0.2 HYPE",
+      "medianMs": 3889,
+      "worstMs": 4471,
+      "medianProofMs": 2192,
+      "proofs": 4,
+      "medianOtherMs": 1394,
+      "note": "split, out-note deposit proof, spend proof, swap, buffer claim (deposit proof)"
+    },
+    {
+      "action": "instant sell (tokens)",
+      "medianMs": 3770,
+      "worstMs": 3981,
+      "medianProofMs": 2221,
+      "proofs": 4,
+      "medianOtherMs": 1234,
+      "note": "same shape as a buy"
+    },
+    {
+      "action": "batch order 0.07 HYPE (2 orders)",
+      "medianMs": 5621,
+      "worstMs": 6035,
+      "medianProofMs": 3742,
+      "proofs": 4,
+      "medianOtherMs": 1708,
+      "note": "per order: split + spend proof + place"
+    },
+    {
+      "action": "batch payout (finishPending)",
+      "medianMs": 912,
+      "worstMs": 947,
+      "medianProofMs": 472,
+      "proofs": 2,
+      "medianOtherMs": 458,
+      "note": "per order: deposit proof + claim + memo"
+    },
+    {
+      "action": "payment link: make (0.1 HYPE)",
+      "medianMs": 1601,
+      "worstMs": 1808,
+      "medianProofMs": 746,
+      "proofs": 1,
+      "medianOtherMs": 806,
+      "note": "a private send to the link's account"
+    },
+    {
+      "action": "payment link: claim into a private balance",
+      "medianMs": 1941,
+      "worstMs": 2305,
+      "medianProofMs": 713,
+      "proofs": 1,
+      "medianOtherMs": 1022,
+      "note": "link account spends the note to the claimant (transfer + memo)"
+    },
+    {
+      "action": "payment link: make, locked (scrypt)",
+      "medianMs": 1728,
+      "worstMs": 1939,
+      "medianProofMs": 1008,
+      "proofs": 1,
+      "medianOtherMs": 720,
+      "note": ""
+    },
+    {
+      "action": "payment link: open locked (scrypt only)",
+      "medianMs": 155,
+      "worstMs": 173,
+      "medianProofMs": 0,
+      "proofs": 0,
+      "medianOtherMs": 155,
+      "note": "N=2^15 scrypt, on device"
+    },
+    {
+      "action": "payment link: claim to a fresh wallet",
+      "medianMs": 1833,
+      "worstMs": 1845,
+      "medianProofMs": 965,
+      "proofs": 1,
+      "medianOtherMs": 605,
+      "note": "unshield from the link account"
+    },
+    {
+      "action": "receive address: collect 0.25 HYPE",
+      "medianMs": 510,
+      "worstMs": 573,
+      "medianProofMs": 232,
+      "proofs": 1,
+      "medianOtherMs": 280,
+      "note": "deposit proof + shield via relay + memo"
+    },
+    {
+      "action": "split withdraw plan (3 pieces, 1.5 HYPE)",
+      "medianMs": 7500,
+      "worstMs": 11599,
+      "medianProofMs": 4600,
+      "proofs": 6,
+      "medianOtherMs": 2900,
+      "note": "3 splits + 3 unshield proofs, nothing sent but the splits"
+    },
+    {
+      "action": "proveFunds (>= 1 HYPE)",
+      "medianMs": 3082,
+      "worstMs": 5371,
+      "medianProofMs": 2968,
+      "proofs": 1,
+      "medianOtherMs": 346,
+      "note": "funds circuit, off chain"
+    }
+  ],
+  "perCircuit": {
+    "shield": {
+      "median": 232,
+      "worst": 501,
+      "n": 27
+    },
+    "transfer": {
+      "median": 904,
+      "worst": 1594,
+      "n": 39
+    },
+    "unshield": {
+      "median": 884,
+      "worst": 1661,
+      "n": 30
+    }
+  }
+}
