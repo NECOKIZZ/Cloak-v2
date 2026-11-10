@@ -1,0 +1,61 @@
+# $CLOAK
+
+Nov 10. What's decided, what's open, and how $CLOAK fits into Cloak's vaults. The decisions behind it are in `docs/MAINNET-DECISIONS.md` (Part D and Part E).
+
+## In one paragraph
+
+$CLOAK is Cloak's own token. There are 500,000 of them. It launches after the audit, wherever demand is best (Cloak itself is not promised). Its main job is the buyback: part of what Cloak earns buys $CLOAK in the market, and part of that is burned, so supply shrinks as Cloak is used. It's traded privately like any other token in Cloak, and the goal is to get it into Gloam's main vault as fast as Gloam allows.
+
+## Decided
+
+- **Supply:** 500,000 $CLOAK, fixed. If it launches on Cloak it has no mint, no owner and no tax, like every Cloak launch token. If it launches elsewhere, we pick a launchpad whose tokens are the same.
+- **Timing:** after the audit of Cloak's own contracts. The mainnet beta opens without it.
+- **Where it launches:** open. It goes wherever it gets the most demand.
+- **Utility:** the buyback, copying Gloam's $GLOAM model. Plus a "pay with $CLOAK" option in the trade picker once it trades (it routes through HYPE, so it needs nothing new), and governance later, when the owner wallet becomes a multisig.
+- **Tone:** facts only, like Gloam: "half of Cloak's revenue buys back $CLOAK". No promises of price, yield or returns.
+
+## Not doing, and why
+
+- **Holder fee discounts or launch priority.** To get a discount you'd have to prove you hold $CLOAK, which ties your wallet to your private trades. That breaks the point of Cloak. Doing it privately needs a new zero-knowledge circuit, which is a big build for a small perk.
+- **Staking for yield.** Paying holders from revenue looks like a security. Burning does the same job (less supply) without the promise.
+
+## Where $CLOAK lives in Cloak
+
+Cloak has three vaults: Gloam's (HYPE, USDC and whatever Gloam lists), our launch vault (Cloak launch tokens) and our ecosystem vault (vetted outside tokens). The router picks the vault from the token, so a token has one home.
+
+The order we'll try:
+1. **Gloam's vault, if Gloam agrees.** We wait out their 3-day timelock. The router already sends any token that isn't in our vaults to Gloam's, so nothing needs building.
+2. **If Gloam says no:** our ecosystem vault, through the launchpad it launched on (once we vet that launchpad), or listed on its own as KNTQ was. Listing is instant.
+3. **If it launches on Cloak:** our launch vault, automatically, the moment the sale settles.
+
+Two rules to remember:
+- **Our listings are permanent.** Once $CLOAK is in one of our vaults, the router always routes it there. Moving it to Gloam's later needs a new router version (easy, it holds no money) and holders moving their balance across. So wait for Gloam's answer before listing it in the ecosystem vault.
+- **Its pool must be one our router can trade:** a plain HYPE Uniswap v4 pool with no hook, or a Cloak launch pool. A launchpad whose pools use its own hook can't be routed, so $CLOAK must also get a plain pool, or Cloak can't trade it privately.
+
+## If it launches on Cloak
+
+Cloak's own rules apply to us like anyone:
+- Cloak, as the creator, can keep **at most 20%** of the supply (up to 100,000 $CLOAK) for the team and treasury. That share unlocks a little every second over a period we pick (at least 30 days; 12 to 24 months is normal for a team), and bidders see it before they bid.
+- Everything else is sold in the sealed-bid auction or goes into the pool, all at one clearing price, with no snipers (10% anti-snipe fee in the first 5 minutes).
+- The raise is capped by the beta bid caps (10,000 HYPE per launch) until we raise them after the audit. Raising them waits 3 days in public, which doubles as an announcement.
+- Cloak is the creator, so the pool's trading fees come to us too: 80% as creator plus the 20% treasury share.
+
+## The buyback (waiting on Gloam's fee answer)
+
+Proposed, copying Gloam (their fees go to a treasury wallet; half buy back $GLOAM; half of that is burned and half kept):
+- Cloak's revenue goes to a `CloakBuyback` contract with no owner and fixed splits: 50% to the treasury; 50% buys $CLOAK, of which half is burned and half kept by the treasury.
+- Anyone can trigger it, and the keeper does daily. Each buy is small and refuses to run when the price is more than 1% off its 30-minute average, so bots can't skim it.
+- It's built once we know where $CLOAK trades. Until then revenue sits in the treasury wallet.
+
+Cloak's revenue, for reference:
+- 1.5% of every successful launch raise (in HYPE);
+- 20% of every Cloak launch pool's trading fee (in HYPE and the token), since Nov 10;
+- our vaults' withdrawal fee (rate waiting on Gloam; launch-token fees are burned, outside-token fees go to the treasury);
+- optionally later, a small fee on bridging in through Relay (off for now).
+
+## Still open
+
+- Where it launches, and who gets the first allocation.
+- Gloam's answer on listing $CLOAK, and their fee terms (which set the buyback's size).
+- If it launches on Cloak: the team share (0% to 20%) and its unlock period.
+- The `CloakBuyback` contract (after the above).
