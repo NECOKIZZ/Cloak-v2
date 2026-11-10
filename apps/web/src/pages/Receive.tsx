@@ -108,9 +108,10 @@ export function Receive({ bridge = false }: { bridge?: boolean }) {
     };
   }, [issued, priv]);
 
-  const back = <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>;
+  // the Bridge tab is in the nav, so no way back is needed there
+  const back = bridge ? null : <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>;
   if (!RECEIVE) return <>{back}<div className="empty">Receive addresses aren't available on this network yet.</div></>;
-  if (!priv) return <>{back}<div className="empty">Unlock your private account on the Portfolio first.</div></>;
+  if (!priv) return <>{back}{bridge && <div className="page-head"><div><h1>Bridge</h1></div></div>}<div className="empty">Unlock your private account on the <Link to="/app" className="link">Portfolio</Link> first.</div></>;
   const cur = issued?.at(-1);
   const curUsed = cur && ((state[cur.address]?.waiting.length ?? 0) > 0 || (state[cur.address]?.delivered.length ?? 0) > 0);
   const copy = () => {
@@ -126,13 +127,14 @@ export function Receive({ bridge = false }: { bridge?: boolean }) {
       {bridge ? (
         <div className="page-head"><div><h1>Bridge</h1><p>Bring HYPE or USDC in from another chain or an exchange. It lands in your private balance.</p></div></div>
       ) : (
-        <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay: an exchange, a bridge or any wallet. What arrives moves into your private balance whenever Cloak is open.</p></div></div>
+        <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay on Elysium: an exchange, a bridge or any wallet. What arrives moves into your private balance whenever Cloak is open.</p></div></div>
       )}
-      {bridge && (
-        <div style={{ marginBottom: 16 }}>
+      {bridge ? (
+        // the Bridge tab: the bridge alone. It delivers to a fresh receive address of this account, made in the background
+        <div style={{ maxWidth: 640 }}>
           <BridgeIn to={cur?.address} onArrived={() => priv && issued && collectIssued(priv, issued).then(() => refresh()).catch(() => {})} />
         </div>
-      )}
+      ) : (
       <div className="grid">
         <div className="card">
           {!cur ? (
@@ -154,7 +156,6 @@ export function Receive({ bridge = false }: { bridge?: boolean }) {
           </p>
         </div>
         <div className="col">
-          {!bridge && <BridgeIn to={cur?.address} onArrived={() => priv && issued && collectIssued(priv, issued).then(() => refresh()).catch(() => {})} />}
           {issued && issued.length > 0 && (
             <div className="card">
               <div className="card-head"><h3>Your addresses</h3><span className="xs mute">{issued.length}</span></div>
@@ -186,6 +187,7 @@ export function Receive({ bridge = false }: { bridge?: boolean }) {
           </div>
         </div>
       </div>
+      )}
     </>
   );
 }
