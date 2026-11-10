@@ -206,10 +206,23 @@ try {
 
   const b = cfg.batch;
   if (DEPLOY_WHYPE) cfg.whype = await deploy("CloakWHYPE", ourArtifact("CloakWHYPE.sol", "CloakWHYPE"));
+  // Cloak's fee on sales out of its vaults, taken in HYPE (or USDC) by the router and batch rounds: "tradeFee": { bps,
+  // treasury } in the config. Owned by the owner wallet from the start (lower at once; raise or move the treasury after
+  // 3 days). Our vaults then charge no withdrawal fee (withdrawFeeBps 0), so Cloak never holds launch or outside tokens.
+  let tradeFee = zeroAddress;
+  if (cfg.tradeFee) {
+    const tf = cfg.tradeFee;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(tf.treasury ?? "") || !Number.isInteger(tf.bps) || tf.bps < 0 || tf.bps > 100) throw new Error("config: tradeFee needs treasury (an address) and bps (0 to 100)");
+    tradeFee = await deploy("CloakTradeFee", ourArtifact("CloakTradeFee.sol", "CloakTradeFee"), [cfg.safe, tf.treasury, tf.bps]);
+    const TF = parseAbi(["function current() view returns (uint16, address)", "function owner() view returns (address)"]);
+    const [[bps, to], own] = await Promise.all([pub.readContract({ address: tradeFee, abi: TF, functionName: "current" }), pub.readContract({ address: tradeFee, abi: TF, functionName: "owner" })]);
+    if (bps !== tf.bps || !same(to, tf.treasury) || !same(own, cfg.safe)) throw new Error("CloakTradeFee didn't read back as configured");
+    console.log(`  Cloak's trade fee ${tf.bps / 100}% on sales out of Cloak's vaults, in HYPE, to ${tf.treasury}; owner the owner wallet`);
+  }
   const launchSwapV4 = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, cfg.poolManager, cfg.whype, cfg.v4Hook]);
   // buys and sells between HYPE in Gloam's vault and launch tokens in the launch vault (one private call either way)
-  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, cfg.gloamVault, ev ?? zeroAddress, cfg.poolManager, cfg.whype, cfg.v4Hook]);
-  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.gloamVault, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter)]);
+  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, cfg.gloamVault, ev ?? zeroAddress, cfg.poolManager, cfg.whype, cfg.v4Hook, tradeFee]);
+  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.gloamVault, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter), tradeFee]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [cfg.gloamVault, lv]);
   const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv, cfg.gloamVault]);
   // graduation into Gloam's vault is off unless asked for: launch tokens live in the launch vault (one home per asset)
@@ -255,6 +268,7 @@ try {
     launchFactory: cfg.factory,
     launchSwapV4,
     router,
+    tradeFee: tradeFee === zeroAddress ? undefined : { address: tradeFee, ...cfg.tradeFee },
     assets,
     ecosystemVault: ev,
     ecosystemVaultGuard: evGuard,

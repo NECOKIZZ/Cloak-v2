@@ -139,6 +139,8 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     event OrderPlaced(bytes32 indexed id, address indexed token, uint64 indexed round, bool buy, uint256 size, uint256 net);
     event BatchSettled(address indexed token, uint64 indexed round, uint256 tokensForBuyers, uint256 hypeForSellers, int256 netHype);
     event BatchCancelled(address indexed token, uint64 indexed round);
+    /// @notice Cloak's fee on a round's sales, taken from the sellers' HYPE at settlement (CloakGloamBatcherV4).
+    event TradeFeePaid(address indexed token, uint64 indexed round, address indexed to, uint256 amount);
     event OrderPaid(bytes32 indexed id, address indexed asset, uint256 amount, bool toVault);
 
     error Reentrancy();
@@ -207,6 +209,11 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
 
     /// @dev Sell `tokensIn` held here for HYPE; returns what arrived.
     function _swapTokensForHype(address token, uint256 tokensIn) internal virtual returns (uint256 out);
+
+    /// @dev Cloak's fee on sales: its rate in basis points and where it goes. None here; CloakGloamBatcherV4 reads it.
+    function _sellFee() internal view virtual returns (uint256 bps, address to) {
+        return (0, address(0));
+    }
 
     /// @dev Who may pay HYPE in outside an escrow opening (WHYPE unwrapping, a market paying out while settling).
     function _venueMayPay(address from) internal view virtual returns (bool);
@@ -330,6 +337,17 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
             b.tokensForBuyers = uint128((uint256(b.buyHype) * spot) / 1e18);
             b.hypeForSellers = uint128(b.buyHype + got);
             netHype = -int256(got);
+        }
+        // Cloak's fee on the round's sales, from the sellers' HYPE (held here), to the treasury
+        (uint256 feeBps, address feeTo) = _sellFee();
+        if (feeBps != 0 && b.hypeForSellers != 0) {
+            uint256 fee = (uint256(b.hypeForSellers) * feeBps) / 10_000;
+            if (fee != 0) {
+                b.hypeForSellers -= uint128(fee);
+                (bool ok,) = feeTo.call{value: fee}("");
+                require(ok, "fee");
+                emit TradeFeePaid(token, round, feeTo, fee);
+            }
         }
         b.settled = true;
         b.settledAt = uint64(block.timestamp);

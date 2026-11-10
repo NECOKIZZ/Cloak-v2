@@ -96,6 +96,8 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
     event LaunchSwap(bytes32 indexed id, address indexed assetIn, address indexed assetOut, uint256 amountIn, uint256 amountOut, uint256 leftover);
     event Rescued(bytes32 indexed id, address indexed asset, uint256 amount);
     event OwedPaid(bytes32 indexed id, address indexed asset, uint256 amount, bool toVault);
+    /// @notice Cloak's fee on a sale out of its vaults, paid in what the sale brought (CloakRouterV4).
+    event TradeFeePaid(bytes32 indexed id, address indexed asset, address indexed to, uint256 amount);
 
     error Reentrancy();
     error ZeroAddress();
@@ -146,6 +148,15 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
     ///         vault here; CloakRouterV4 splits launch tokens (Cloak's launch vault) from HYPE and USDC (Gloam's).
     function vaultFor(address) public view virtual returns (IGloamVault) {
         return vault;
+    }
+
+    /// @notice Cloak's fee on a swap from `assetIn` to `assetOut`: what it takes (on top of the note's exact amount) and
+    ///         where it goes. None here; CloakRouterV4 charges sales out of Cloak's vaults.
+    function tradeFee(address assetIn, address assetOut, uint256 amountOut) public view virtual returns (uint256 fee, address to) {
+        assetIn;
+        assetOut;
+        amountOut;
+        return (0, address(0));
     }
 
     /// @dev The venue's own contracts, where money sent in an exit would stop.
@@ -200,7 +211,7 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         if (block.timestamp > deadline) revert Expired();
         id = _enter(s, keyOf(s, d, route, ownerKey, deadline));
         uint256 available = _open(id, s.asset);
-        uint256 amountIn = _buy(d, available, s.asset, route);
+        uint256 amountIn = _buy(id, d, available, s.asset, route);
         leftover = available - amountIn;
         if (leftover != 0) owed[id] = Owed(s.asset, ownerKey, leftover);
         emit LaunchSwap(id, s.asset, d.asset, amountIn, d.amount, leftover);
@@ -213,18 +224,34 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         if (!v.isSpent(s.nullifier)) v.unshield(s.proof, s.root, s.nullifier, s.asset, escrowFor(k), s.amount);
     }
 
-    /// @dev Buys exactly d.amount and deposits it as note d. Returns the input spent.
-    function _buy(Deposit calldata d, uint256 available, address assetIn, bytes calldata route)
+    /// @dev Buys exactly d.amount (plus Cloak's fee, if any) and deposits d.amount as note d, the fee to the treasury.
+    ///      Returns the input spent.
+    function _buy(bytes32 id, Deposit calldata d, uint256 available, address assetIn, bytes calldata route)
         private
         returns (uint256 amountIn)
     {
+        (uint256 fee, address feeTo) = tradeFee(assetIn, d.asset, d.amount);
+        uint256 want = d.amount + fee;
         uint256 outBefore = _balance(d.asset);
         _swappingNow = true;
-        amountIn = _swapExactOut(assetIn, d.asset, d.amount, available, route);
+        amountIn = _swapExactOut(assetIn, d.asset, want, available, route);
         _swappingNow = false;
         uint256 got = _balance(d.asset) - outBefore;
-        if (got < d.amount) revert ShortOutput(got, d.amount);
+        if (got < want) revert ShortOutput(got, want);
         _deposit(d.asset, d.amount, d.commitment, d.proof);
+        if (fee != 0) {
+            _pay(d.asset, feeTo, fee);
+            emit TradeFeePaid(id, d.asset, feeTo, fee);
+        }
+    }
+
+    function _pay(address asset, address to, uint256 amount) private {
+        if (asset == NATIVE) {
+            (bool ok,) = to.call{value: amount}("");
+            if (!ok) revert TokenCallFailed();
+        } else {
+            _call(asset, abi.encodeWithSelector(0xa9059cbb, to, amount));
+        }
     }
 
     /// @notice After its deadline, a swap whose spend was sent alone owes its whole input back. Anyone may call it.

@@ -64,7 +64,8 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | Rule | Value | Where |
 |---|---|---|
 | Proofs | Gloam's circuits and final keys, made on your device. Cloak never changes them | Contract (fixed) |
-| Withdrawal fee | **0.5%** on both vaults, kept in the vault and collected to the fee recipient (ceiling **1%**) | Vault owner |
+| Withdrawal fee | **0%** on Cloak's launch and ecosystem vaults on mainnet (testnet: 0.5%). Cloak's fee is the trade fee below | Vault owner |
+| Trade fee | Sales out of Cloak's vaults into Gloam's pay **0.5%** (draft) of what they bring, in HYPE or USDC, to the treasury, taken by the router and batch rounds. Buys pay none. The owner lowers it at once; raising it or moving the treasury waits **3 days**; never above **1%** (CloakTradeFee) | Contract (owner-changeable) |
 | Gloam's vault (Cloak's testnet instance) | USDC only, **500** per deposit, **25,000** in total | Vault owner |
 | Launch vault | HYPE **10** per deposit, **1,000** in total. Each launch token is admitted once its launch settles, with fixed caps | Vault owner |
 | Who controls it | Gloam's `VaultOwnerGuard`. The launch pauser can only stop admissions, never touch funds | Contract (fixed) |

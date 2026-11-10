@@ -29,6 +29,8 @@ const KNTQ = "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0";
 const POOL_MANAGER = "0xe2e105d3f7209a9da11f83ccf3e7398a753823f1";
 const t0 = performance.now();
 const anvil = await startAnvil({ port: 8576, forkUrl: MAINNET_RPC, chainId: MAINNET });
+const TREASURY = "0x000000000000000000000000000000000000c7ea";
+const ERC20B = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 const rpcUrl = anvil.rpcUrl;
 const who = (i) => clients(rpcUrl, ANVIL_KEYS[i], MAINNET);
 const [dep, alice, keeper, owner] = [who(0), who(1), who(8), who(5)];
@@ -62,7 +64,7 @@ try {
 
   // 3. the real partner deploy script, from the mainnet config with the stand-in's addresses filled in
   const mc = JSON.parse(readFileSync(join(REPO, "deployments/elysium-mainnet-gloam.input.example.json"), "utf8"));
-  const cfg = { ...mc, name: "rehearsal-mainnet-fork", rpcUrl, gloamVault: gloam.pool, memoBoard: gloam.payMemo, poseidon, verifier: gloam.dual, shieldVerifier: gloam.shieldVerifier, factory: f.factory, v4Hook: f.hook, safe: owner.account.address, pauser: owner.account.address, ecosystemFeeRecipient: owner.account.address };
+  const cfg = { ...mc, name: "rehearsal-mainnet-fork", rpcUrl, gloamVault: gloam.pool, memoBoard: gloam.payMemo, poseidon, verifier: gloam.dual, shieldVerifier: gloam.shieldVerifier, factory: f.factory, v4Hook: f.hook, safe: owner.account.address, pauser: owner.account.address, feeRecipient: TREASURY, tradeFee: { bps: 50, treasury: TREASURY } };
   const cfgPath = join(tmp, "partner.json");
   const recPath = join(tmp, "record.json");
   writeFileSync(cfgPath, JSON.stringify(cfg));
@@ -113,8 +115,13 @@ try {
   assert(k2 === r2.amountOut && k2 > parseEther("100"), `100 USDC bought ${formatEther(k2)} KNTQ through HYPE on two real pools, ${Math.round(performance.now() - t)} ms`);
   t = performance.now();
   const u2 = await held(gCore, USDC);
+  const ev0 = await pub.readContract({ address: KNTQ, abi: ERC20B, functionName: "balanceOf", args: [TREASURY] });
   const r3 = await A.trade(KNTQ, USDC, k2 / 2n);
   assert((await held(gCore, USDC)) === u2 + r3.amountOut, `half the KNTQ sold for ${U(r3.amountOut)} USDC, ${Math.round(performance.now() - t)} ms`);
+  const feeUsdc = await pub.readContract({ address: USDC, abi: ERC20B, functionName: "balanceOf", args: [TREASURY] });
+  assert(feeUsdc > 0n && feeUsdc * 10_000n >= (feeUsdc + r3.amountOut) * 49n && feeUsdc * 10_000n <= (feeUsdc + r3.amountOut) * 51n, `Cloak's 0.5% trade fee went to the treasury in USDC: ${U(feeUsdc)} USDC`);
+  assert((await pub.readContract({ address: KNTQ, abi: ERC20B, functionName: "balanceOf", args: [TREASURY] })) === ev0, "and no KNTQ: Cloak never holds the outside token");
+  out.tradeFeeUsdc = U(feeUsdc);
   const h4 = await held(gCore, zeroAddress);
   const r4 = await A.trade(USDC, rec.whype, 50n * 10n ** 6n);
   assert((await held(gCore, zeroAddress)) === h4 + r4.amountOut, `50 USDC sold for ${formatEther(r4.amountOut)} HYPE`);

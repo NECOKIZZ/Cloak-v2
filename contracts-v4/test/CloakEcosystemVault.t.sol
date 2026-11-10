@@ -302,7 +302,7 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
         gv.turnOnDepositLimits();
         gv.setDepositLimit(address(0), 1_000 ether, 100_000 ether);
         gv.endSetup();
-        rv = new CloakRouterV4(address(lv), address(gv), address(ev), address(pm), address(whype), address(hook));
+        rv = new CloakRouterV4(address(lv), address(gv), address(ev), address(pm), address(whype), address(hook), address(0));
         gv.shieldBound{value: 1 ether}(address(0), 1 ether, bytes32(uint256(0xA0)), hex"00");
         kntq.approve(address(ev), type(uint256).max);
         ev.shieldBound(address(kntq), 500e18, bytes32(uint256(0xC0)), hex"00");

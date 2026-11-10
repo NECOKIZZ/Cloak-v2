@@ -198,6 +198,12 @@ interface IEcosystemTokens {
     function isEcosystemToken(address token) external view returns (bool);
 }
 
+/// CloakTradeFee: Cloak's fee on sales out of its vaults.
+interface ITradeFee {
+    function current() external view returns (uint16 feeBps, address treasury);
+    function feeOn(uint256 net) external view returns (uint256);
+}
+
 /**
  * @title CloakRouterV4
  * @notice Private swaps between fixed vaults: Cloak launch tokens live in Cloak's launch vault, admitted outside
@@ -210,22 +216,40 @@ interface IEcosystemTokens {
  *         vault, anything else Gloam's vault. Neither flag is ever cleared, and the vaults are fixed at deploy with no
  *         owner, so nobody can point a swap at another vault. A vault only pays out a note with its owner's proof, to the
  *         escrow that proof names, so a bug here can cost at most a swap in flight, never what the vaults hold.
+ *
+ *         Cloak's fee. A sale out of Cloak's vaults (a launch or ecosystem token) into Gloam's vault (HYPE, USDC) pays
+ *         CloakTradeFee's rate on what it brings, in that asset, to Cloak's treasury: the router buys the trader's exact
+ *         note plus the fee, deposits the note and sends the fee. Buys, and trades between Cloak's own vaults, pay none.
  */
 contract CloakRouterV4 is CloakLaunchSwapV4 {
     /// @notice Gloam's vault: HYPE, USDC and every asset that isn't a Cloak launch token or an admitted ecosystem token.
     IGloamVault public immutable gloamVault;
     /// @notice Cloak's ecosystem vault (CloakEcosystemVault), or address(0) for none.
     address public immutable ecosystemVault;
+    /// @notice Cloak's fee settings (CloakTradeFee), or address(0) for no fee.
+    ITradeFee public immutable tradeFees;
 
     /// @param launchVault_ Cloak's launch vault (CloakLaunchVault): Cloak launch tokens
     /// @param ecosystemVault_ Cloak's ecosystem vault, or address(0)
-    constructor(address launchVault_, address gloamVault_, address ecosystemVault_, address poolManager_, address weth_, address allowedHook_)
+    /// @param tradeFees_ CloakTradeFee, or address(0)
+    constructor(address launchVault_, address gloamVault_, address ecosystemVault_, address poolManager_, address weth_, address allowedHook_, address tradeFees_)
         CloakLaunchSwapV4(launchVault_, poolManager_, weth_, allowedHook_)
     {
         if (gloamVault_ == address(0) || gloamVault_ == launchVault_) revert ZeroAddress();
         if (ecosystemVault_ == launchVault_ || ecosystemVault_ == gloamVault_) revert ZeroAddress();
         gloamVault = IGloamVault(gloamVault_);
         ecosystemVault = ecosystemVault_;
+        tradeFees = ITradeFee(tradeFees_);
+    }
+
+    /// @notice Cloak's fee on a swap: on a sale from Cloak's launch or ecosystem vault into Gloam's vault, the fee
+    ///         rate of the whole output, on top of the note's exact `amountOut`; nothing otherwise.
+    function tradeFee(address assetIn, address assetOut, uint256 amountOut) public view override returns (uint256 fee, address to) {
+        if (address(tradeFees) == address(0)) return (0, address(0));
+        if (vaultFor(assetIn) == gloamVault || vaultFor(assetOut) != gloamVault) return (0, address(0));
+        (uint16 bps, address treasury) = tradeFees.current();
+        if (bps == 0) return (0, address(0));
+        return (tradeFees.feeOn(amountOut), treasury);
     }
 
     function vaultFor(address asset) public view override returns (IGloamVault) {

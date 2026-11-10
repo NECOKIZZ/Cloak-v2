@@ -218,11 +218,30 @@ async function legQuote(m: Market, toToken: boolean, amountIn: bigint): Promise<
  * What `amountIn` of `from` gets in `to` (null is HYPE), after the fee of the vault it's spent from: one pool when
  * either side is HYPE, else two through HYPE (USDC to HYPE, then HYPE to the token).
  */
+const TRADE_FEE = parseAbi(["function tradeFee(address assetIn, address assetOut, uint256 amountOut) view returns (uint256 fee, address to)"]);
+
+/** Cloak's trade fee on a sale out of Cloak's vaults (a launch or outside token into HYPE or USDC), in the output. */
+export async function cloakFeeOn(from: Market | null, to: Market | null, gross: bigint): Promise<bigint> {
+  if (!GLOAM?.router || !from || gross <= 0n) return 0n;
+  const [fee] = await publicClient.readContract({ address: GLOAM.router, abi: TRADE_FEE, functionName: "tradeFee", args: [from.token, to?.token ?? ZERO, gross] }).catch(() => [0n, ZERO] as const);
+  return fee;
+}
+
+/** Cloak's trade fee rate on sales out of Cloak's vaults, as "0.5%" ("no" when none). */
+export function useTradeFeePct(from: Market | null, to: Market | null): string {
+  const [pct, setPct] = useState("no");
+  useEffect(() => {
+    cloakFeeOn(from, to, 10n ** 18n).then((f) => setPct(f === 0n ? "no" : `${Math.round(Number((f * 10n ** 6n) / (10n ** 18n + f)) / 100) / 100}%`));
+  }, [from?.token, to?.token]);
+  return pct;
+}
+
 export async function quoteRoute(from: Market | null, to: Market | null, amountIn: bigint): Promise<bigint> {
   if (amountIn <= 0n) return 0n;
   amountIn -= (amountIn * BigInt(await withdrawFeeBps(vaultOf(from)))) / 10_000n; // what the router actually trades
   const hype = from ? await legQuote(from, false, amountIn) : amountIn;
-  return to ? legQuote(to, true, hype) : hype;
+  const gross = to ? await legQuote(to, true, hype) : hype;
+  return gross - (await cloakFeeOn(from, to, gross));
 }
 
 export function quote(m: Market, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {CloakTradeFee} from "cloak-gloam/CloakTradeFee.sol";
 import {CloakGloamBatcherBase} from "cloak-gloam/CloakGloamBatcher.sol";
 import {CloakGloamBatcherV4} from "cloak-gloam/CloakGloamBatcherV4.sol";
 import {ShieldPoolPayments} from "gloam/ShieldPoolPayments.sol";
@@ -17,7 +18,7 @@ contract CloakGloamBatcherV4Test is CloakLaunchSwapV4Test {
 
     function _setUpBatcher() internal {
         _setUpVault();
-        batcher = new CloakGloamBatcherV4(address(lv), address(0), address(factory), ROUND, 200, 600);
+        batcher = new CloakGloamBatcherV4(address(lv), address(0), address(factory), ROUND, 200, 600, address(0));
     }
 
     function _key(bytes32 n, bool buy, uint128 size) internal view returns (CloakGloamBatcherBase.OrderKey memory) {
@@ -92,7 +93,7 @@ contract CloakGloamBatcherV4Test is CloakLaunchSwapV4Test {
         gv.setDepositLimit(address(0), 1_000 ether, 100_000 ether);
         gv.endSetup();
         gv.shieldBound{value: 1 ether}(address(0), 1 ether, bytes32(uint256(0xA0)), hex"00");
-        batcher = new CloakGloamBatcherV4(address(lv), address(gv), address(factory), ROUND, 200, 600);
+        batcher = new CloakGloamBatcherV4(address(lv), address(gv), address(factory), ROUND, 200, 600, address(0));
         batcher.register(0);
     }
 
@@ -143,6 +144,25 @@ contract CloakGloamBatcherV4Test is CloakLaunchSwapV4Test {
         batcher.claim(ks, CloakGloamBatcherBase.Deposit(hex"00", c2, address(0), hypeOwed), abi.encodePacked(r2, s2, v2));
         assertEq(gv.deposited(address(0)) - g1, hypeOwed, "the seller's HYPE is a note in Gloam's vault");
         assertEq(lv.deposited(address(0)), lh0, "and none of it in the launch vault");
+    }
+
+    function test_twoVaults_sellersPayCloaksFeeInHype() public {
+        _setUpTwoVaults();
+        address treasury = address(0x7EA5);
+        CloakTradeFee fees = new CloakTradeFee(address(this), treasury, 50);
+        batcher = new CloakGloamBatcherV4(address(lv), address(gv), address(factory), ROUND, 200, 600, address(fees));
+        batcher.register(0);
+        lv.lowerWithdrawFee(0); // the launch vault charges nothing: the round takes Cloak's fee in HYPE
+        (, bytes32 buyId) = _placeIn(bytes32(uint256(0xA0)), true, 1 ether);
+        (, bytes32 sellId) = _placeIn(bytes32(uint256(0x70)), false, 2_000e18);
+        _settleRound(batcher.currentRound());
+        (, uint256 hypeOwed) = batcher.owed(sellId);
+        uint256 fee = treasury.balance;
+        assertGt(fee, 0, "the treasury got Cloak's fee in HYPE");
+        assertApproxEqAbs(fee * 10_000, (fee + hypeOwed) * 50, 10_000, "0.5% of the sellers' HYPE");
+        assertEq(lv.feesOwed(address(token)), 0, "the launch vault kept no tokens");
+        (, uint256 tokensOwed) = batcher.owed(buyId);
+        assertGt(tokensOwed, 0, "buyers pay no Cloak fee: they get their tokens as before");
     }
 
     function test_twoVaults_aHypeNoteInTheLaunchVaultCantBuy() public {

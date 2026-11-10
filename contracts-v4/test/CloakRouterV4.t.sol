@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {ShieldPoolPayments} from "gloam/ShieldPoolPayments.sol";
 import {CloakLaunchSwapBase} from "cloak-gloam/CloakLaunchSwap.sol";
 import {CloakRouterV4} from "cloak-gloam/CloakLaunchSwapV4.sol";
+import {CloakTradeFee} from "cloak-gloam/CloakTradeFee.sol";
 import {CloakLaunchSwapV4Test, ToV, YesV} from "./CloakLaunchSwapV4.t.sol";
 
 /**
@@ -24,7 +25,7 @@ contract CloakRouterV4Test is CloakLaunchSwapV4Test {
         gv.turnOnDepositLimits();
         gv.setDepositLimit(address(0), 1_000 ether, 100_000 ether);
         gv.endSetup();
-        rv = new CloakRouterV4(address(lv), address(gv), address(0), address(pm), address(whype), address(hook));
+        rv = new CloakRouterV4(address(lv), address(gv), address(0), address(pm), address(whype), address(hook), address(0));
         for (uint256 i = 0; i < 3; i++) gv.shieldBound{value: 1 ether}(address(0), 1 ether, bytes32(0xA0 + i), hex"00");
     }
 
@@ -95,6 +96,60 @@ contract CloakRouterV4Test is CloakLaunchSwapV4Test {
         assertEq(amount, left, "the token buffer is owed back into the launch vault");
     }
 
+    /// Cloak's fee: the vaults charge nothing, and a sale out of the launch vault pays 0.5% of what it brings, in HYPE.
+    function _withFee() internal returns (CloakTradeFee fees, address treasury) {
+        treasury = address(0x7EA5);
+        fees = new CloakTradeFee(address(this), treasury, 50);
+        rv = new CloakRouterV4(address(lv), address(gv), address(0), address(pm), address(whype), address(hook), address(fees));
+        lv.lowerWithdrawFee(0); // Cloak's launch vault charges nothing: the router takes Cloak's fee in HYPE
+    }
+
+    function test_router_saleOutOfTheLaunchVaultPaysCloaksFeeInHype() public {
+        _setUpBoth();
+        (CloakTradeFee fees, address treasury) = _withFee();
+        uint256 g0 = gv.deposited(address(0));
+        (uint256 fee, address to) = rv.tradeFee(address(token), address(0), 1 ether);
+        assertEq(to, treasury);
+        assertEq(fee, fees.feeOn(1 ether));
+        assertApproxEqAbs(fee * 10_000, (1 ether + fee) * 50, 10_000, "0.5% of the whole sale");
+        (bytes32 id, uint256 left) = _go(_prep(bytes32(uint256(0x70)), address(token), 2_000e18, address(0), 1 ether));
+        assertEq(gv.deposited(address(0)) - g0, 1 ether, "the trader's note is exactly what they asked for");
+        assertEq(treasury.balance, fee, "Cloak's fee went to the treasury, in HYPE");
+        assertEq(lv.feesOwed(address(token)), 0, "the launch vault kept no tokens");
+        (,, uint256 owedBack) = rv.owed(id);
+        assertEq(owedBack, left, "the token buffer is still owed back");
+        assertEq(address(rv).balance, 0, "the router holds no HYPE afterwards");
+    }
+
+    function test_router_buysPayNoCloakFee() public {
+        _setUpBoth();
+        (, address treasury) = _withFee();
+        (uint256 fee,) = rv.tradeFee(address(0), address(token), 300e18);
+        assertEq(fee, 0, "a buy (into Cloak's vault) pays no Cloak fee");
+        _go(_prep(bytes32(uint256(0xA0)), address(0), 1 ether, address(token), 300e18));
+        assertEq(treasury.balance, 0);
+        assertEq(token.balanceOf(treasury), 0);
+    }
+
+    function test_router_feeChangesFollowTheRules() public {
+        _setUpBoth();
+        (CloakTradeFee fees,) = _withFee();
+        fees.lower(25);
+        (uint256 fee,) = rv.tradeFee(address(token), address(0), 1 ether);
+        assertEq(fee, fees.feeOn(1 ether), "a lower fee applies at once");
+        fees.lower(0);
+        (fee,) = rv.tradeFee(address(token), address(0), 1 ether);
+        assertEq(fee, 0, "and zero means none");
+        fees.queue(100, address(0xBEEF));
+        (fee,) = rv.tradeFee(address(token), address(0), 1 ether);
+        assertEq(fee, 0, "a raise waits");
+        vm.warp(block.timestamp + 3 days);
+        fees.applyQueued();
+        (uint256 fee2, address to2) = rv.tradeFee(address(token), address(0), 1 ether);
+        assertEq(to2, address(0xBEEF));
+        assertApproxEqAbs(fee2 * 10_000, (1 ether + fee2) * 100, 10_000, "1% after the wait");
+    }
+
     function test_router_aHypeNoteInTheLaunchVaultCantBeSpentHere() public {
         _setUpBoth();
         // the launch vault's HYPE notes (from _setUpVault) are 0xE0..: the router spends HYPE only from Gloam's vault
@@ -151,9 +206,9 @@ contract CloakRouterV4Test is CloakLaunchSwapV4Test {
     function test_router_vaultsAreFixedAndDistinct() public {
         _setUpBoth();
         vm.expectRevert(CloakLaunchSwapBase.ZeroAddress.selector);
-        new CloakRouterV4(address(lv), address(0), address(0), address(pm), address(whype), address(hook));
+        new CloakRouterV4(address(lv), address(0), address(0), address(pm), address(whype), address(hook), address(0));
         vm.expectRevert(CloakLaunchSwapBase.ZeroAddress.selector);
-        new CloakRouterV4(address(lv), address(lv), address(0), address(pm), address(whype), address(hook));
+        new CloakRouterV4(address(lv), address(lv), address(0), address(pm), address(whype), address(hook), address(0));
         assertEq(address(rv.gloamVault()), address(gv));
         assertEq(address(rv.vault()), address(lv));
     }

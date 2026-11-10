@@ -71,7 +71,7 @@ try {
   for (const [f, a] of [["setShieldVerifier", [stack.shieldVerifier]], ["setWithdrawFee", [50, addr]], ["turnOnDepositLimits", []], ["endSetup", []]]) await write(ev, LV_ABI, f, a);
   await write(ev, EV, "list", [kntq, kntqKey, parseEther("1000"), parseEther("20000"), zeroAddress]);
 
-  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, ev, D.poolManager, D.whype, D.v4Hook]);
+  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, ev, D.poolManager, D.whype, D.v4Hook, zeroAddress]);
   const block = await pub.getBlockNumber();
   const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, ecosystemVault: ev, memoBoard: stack.payMemo, escrows: [router], hourlySpendWei: parseEther("5") });
   let saved = [];

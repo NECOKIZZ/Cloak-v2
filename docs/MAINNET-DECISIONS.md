@@ -90,21 +90,24 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 ## Part B. Our vaults
 
-### B1. What do our vaults charge on the way out? (WAITING on Gloam's fee answer)
+### B1. What does Cloak charge on private trades? (BUILT Nov 10; the rate waits on Gloam)
 
-**Plain words.** Selling a launch token or KNTQ privately takes it out of our vault, and the vault keeps a cut. Buying isn't charged by us (the HYPE comes from Gloam's vault, which charges its own 0.5%). Each vault has one rate for every token in it, and the two vaults can have different rates. The cut is paid in the token being sold, not HYPE.
+**Decided.** Our vaults charge nothing. Cloak's fee is taken in HYPE (or USDC) when a token is sold out of our vaults, after the swap, and sent to the treasury. Buys pay no Cloak fee (Gloam's 0.5% applies there). Nothing is burned, and Cloak never holds launch or outside tokens.
 
-**Options.**
-- 0.5% (today's code default), the same on launch tokens and outside tokens.
-- 0.25% (v1's rate), so a buy and a sell cost about 0.75% plus pool fees.
-- **Take our fee in HYPE instead (preferred, Nov 10).** Bob doesn't want to burn fees, and we don't want to hold outside tokens. The fix is to set both vaults' fee to 0 and have the router take Cloak's cut in HYPE on the HYPE side of every private trade (from the HYPE a sell receives, or from the HYPE a buy spends), sent straight to the treasury. All trading revenue then arrives as HYPE, from launch tokens and outside tokens alike. It's a router change of moderate size, plus tests, to build once Gloam answers on fees.
-- Not burning: the draft "burn launch-token fees" is dropped.
+**Example (0.5%).** Selling 9,950 CASHCAT: all 9,950 is swapped into 995 HYPE; Cloak takes 4.975 HYPE to the treasury, and 990.03 HYPE lands in Gloam's vault as the seller's note. The seller gets exactly what the old vault fee left them; Cloak just gets HYPE instead of CASHCAT.
 
-**Status.** Waiting to hear Gloam's fee terms. The config still holds the old draft (0.25%, launch-token fees to 0x…dEaD); it gets replaced when this is decided. After deploy the owner can lower a vault's rate at once; raising it waits 3 days.
+**Technical. Done.**
+- `CloakTradeFee` holds the rate and the treasury. The owner wallet lowers the rate at once; raising it or moving the treasury is queued and waits 3 days in public; the rate can never pass 1%. Ownership moves in two steps.
+- `CloakRouterV4` buys the seller's exact note plus the fee, deposits the note and sends the fee (`tradeFee(assetIn, assetOut, amountOut)` shows it). It applies only to sales from the launch or ecosystem vault into Gloam's vault.
+- Batch rounds (`CloakGloamBatcherV4`) take the same rate from the sellers' HYPE when a round settles.
+- Both vaults deploy with `withdrawFeeBps: 0`. The SDK, the site and the MCP tools quote net of the fee.
+- Tests: 8 for CloakTradeFee, 3 for the router, 1 for batch rounds; end to end, part 20 (KNTQ sold into HYPE: 0.5% to the treasury in HYPE, no KNTQ) and part 22 on the mainnet fork (KNTQ sold into USDC: 0.5% in USDC).
+
+**Status.** The rate is the only open part. The mainnet config holds 0.5% (`tradeFee.bps: 50`) until Gloam answers.
 
 ### B2. Who pays the relay's gas?
 
-The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a month at beta volume. (The vault fee no longer pays it, see B1.)
+The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a month at beta volume. (Cloak's fee arrives in HYPE, see B1, so the treasury tops it up from that.)
 
 ### B3. Launch-token caps in the launch vault
 

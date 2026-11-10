@@ -42,7 +42,7 @@ contract CloakRouterV4RoutesTest is CloakLaunchSwapV4Test {
         gv.setDepositLimit(address(0), 1_000 ether, 100_000 ether);
         gv.setDepositLimit(address(usdc), 10_000e6, 1_000_000e6);
         gv.endSetup();
-        rv = new CloakRouterV4(address(lv), address(gv), address(0), address(pm), address(whype), address(hook));
+        rv = new CloakRouterV4(address(lv), address(gv), address(0), address(pm), address(whype), address(hook), address(0));
         usdc.mint(address(this), 1_000e6);
         usdc.approve(address(gv), type(uint256).max);
         gv.shieldBound(address(usdc), 50e6, bytes32(uint256(0xD0)), hex"00");

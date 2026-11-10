@@ -62,7 +62,7 @@ try {
   // the ecosystem vault: approver and pauser the deploy wallet here (the Safe on mainnet)
   const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), liquidityFloor: parseEther("50"), mcapFloor: parseEther("5000"), maxPerDepositBps: 10, maxTotalBps: 200 };
   const ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [poseidon, stack.dual, D.poolManager, lv, addr, addr, rules]);
-  for (const [f, a] of [["setShieldVerifier", [stack.shieldVerifier]], ["setWithdrawFee", [50, addr]], ["turnOnDepositLimits", []], ["endSetup", []]]) await write(ev, LV_ABI, f, a);
+  for (const [f, a] of [["setShieldVerifier", [stack.shieldVerifier]], ["setWithdrawFee", [0, addr]], ["turnOnDepositLimits", []], ["endSetup", []]]) await write(ev, LV_ABI, f, a);
   const [liq, mcap] = await pub.readContract({ address: ev, abi: EV, functionName: "marketOf", args: [kntq, v4Key] });
   assert(liq >= rules.minHypeLiquidity && mcap >= rules.minMcapHype, `KNTQ's pool passes the rules: ${formatEther(liq)} HYPE in range, a market cap of ${formatEther(mcap)} HYPE`);
   let stranger = false;
@@ -72,7 +72,10 @@ try {
   assert(await pub.readContract({ address: ev, abi: EV, functionName: "isEcosystemToken", args: [kntq] }), "the approver lists KNTQ at once, the rules checked");
 
   // the router over all three vaults, and the relay serving them
-  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, ev, D.poolManager, D.whype, D.v4Hook]);
+  // Cloak's fee: the ecosystem vault charges nothing, and a sale out of it pays 0.5% of what it brings, in HYPE
+  const TREASURY = "0x000000000000000000000000000000000000c7ea";
+  const tradeFee = await deploy("CloakTradeFee", ourArtifact("CloakTradeFee.sol", "CloakTradeFee"), [addr, TREASURY, 50]);
+  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, ev, D.poolManager, D.whype, D.v4Hook, tradeFee]);
   const block = await pub.getBlockNumber();
   const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, ecosystemVault: ev, memoBoard: stack.payMemo, escrows: [router], hourlySpendWei: parseEther("5") });
   let saved = [];
@@ -96,6 +99,9 @@ try {
   const t2 = performance.now();
   const sell = await A.sell(kntq, got / 2n);
   assert((await held(gCore, zeroAddress)) === gAfterBuy + sell.amountOut, `sold half back: ${formatEther(sell.amountOut)} HYPE landed in Gloam's vault, ${Math.round(performance.now() - t2)} ms`);
+  const fee = await pub.getBalance({ address: TREASURY });
+  assert(fee > 0n && fee * 10_000n >= (fee + sell.amountOut) * 49n && fee * 10_000n <= (fee + sell.amountOut) * 51n, `Cloak's 0.5% trade fee went to the treasury in HYPE: ${formatEther(fee)} HYPE, and the buy paid none`);
+  assert((await pub.readContract({ address: kntq, abi: parseAbi(["function balanceOf(address) view returns (uint256)"]), functionName: "balanceOf", args: [TREASURY] })) === 0n, "no KNTQ to the treasury");
   assert((await held(lCore, zeroAddress)) === 0n && (await held(lCore, kntq)) === 0n, "the launch vault was never touched");
 
   // a wallet's KNTQ shields straight into the ecosystem vault (the only vault that lists it)

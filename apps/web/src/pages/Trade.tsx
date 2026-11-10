@@ -8,7 +8,7 @@ import { Link, useRoute } from "../router";
 import { useApp } from "../state";
 import { friendly } from "../errors";
 import { Icon, TokenIcon } from "../ui";
-import { quoteRoute, useFeePct, useMarkets, vaultOf, type Market } from "./markets";
+import { quoteRoute, useFeePct, useMarkets, useTradeFeePct, vaultOf, type Market } from "./markets";
 import { isHidden } from "../hidden";
 import { usePrivateBalances } from "../balances";
 import { Skel } from "../skel";
@@ -156,6 +156,7 @@ export function Trade() {
   const from = side === "buy" ? base : market;
   const to = side === "buy" ? market : base;
   const feePct = useFeePct(vaultOf(from));
+  const cloakPct = useTradeFeePct(from, to);
   // the "pay with" list: HYPE and USDC (or any market but the one traded), once the router is live
   const bases = useMemo(() => (GLOAM?.router && markets ? markets.filter((m) => m.kind === "asset") : []), [markets]);
   const [q, setQ] = useState(0n);
@@ -323,7 +324,7 @@ export function Trade() {
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               {tracked && <div className={tracked.tone === "warn" ? "err" : tracked.tone === "ok" ? "okmsg" : "summary small"} style={{ marginTop: 8 }} aria-live="polite">{tracked.tone === "wait" && <span className="dot live" style={{ marginRight: 8 }} />}{tracked.text}</div>}
             </div>
-            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees: {feePct} Cloak fee on the amount traded. The relayer pays the gas, and whatever the trade didn't need comes back to your private balance.</p>
+            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees. {from && feePct !== "no" ? `${feePct} vault fee on the amount sold.` : !from ? `Gloam's vault keeps ${feePct} of the HYPE spent.` : ""} {cloakPct !== "no" ? `Cloak keeps ${cloakPct} of what a sale brings, in ${to ? to.symbol : "HYPE"}.` : ""} The relayer pays the gas, and whatever the trade didn't need comes back to your private balance.</p>
           </div>
           <div className="col">
             <div className="card">

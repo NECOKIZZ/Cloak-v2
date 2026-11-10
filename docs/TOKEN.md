@@ -50,7 +50,7 @@ Proposed, copying Gloam (their fees go to a treasury wallet; half buy back $GLOA
 Cloak's revenue, for reference:
 - 1.5% of every successful launch raise (in HYPE);
 - 20% of every Cloak launch pool's trading fee (in HYPE and the token), since Nov 10;
-- our vaults' withdrawal fee (rate waiting on Gloam; launch-token fees are burned, outside-token fees go to the treasury);
+- the trade fee: a share of every private sale out of Cloak's vaults, taken in HYPE or USDC (rate waiting on Gloam, 0.5% drafted);
 - optionally later, a small fee on bridging in through Relay (off for now).
 
 ## Still open

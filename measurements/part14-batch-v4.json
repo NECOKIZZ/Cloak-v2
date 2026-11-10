@@ -9,7 +9,7 @@
   },
   "settleBuy": [
     {
-      "round": "29904805",
+      "round": "29905577",
       "action": "settled"
     }
   ],
@@ -22,5 +22,5 @@
     "orders": 6,
     "hypeOut": "0.000630541955707593"
   },
-  "seconds": 70
+  "seconds": 73
 }

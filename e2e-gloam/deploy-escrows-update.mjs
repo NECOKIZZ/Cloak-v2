@@ -36,7 +36,7 @@ try {
   const start = await pub.getBalance({ address: me.account.address });
   console.log(`Updating Cloak v2's escrows on ${FORK ? "a fork of " : ""}Elysium testnet from ${me.account.address} (${formatEther(start)} HYPE)`);
   const r = rec.batcherV4Rounds ?? { roundSecs: 60, maxSlippageBps: 200, refundAfter: 600 };
-  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [rec.launchVault, zeroAddress, rec.launchFactory, BigInt(r.roundSecs), BigInt(r.maxSlippageBps), BigInt(r.refundAfter)]);
+  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [rec.launchVault, zeroAddress, rec.launchFactory, BigInt(r.roundSecs), BigInt(r.maxSlippageBps), BigInt(r.refundAfter), zeroAddress]);
   const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [rec.launchVault, zeroAddress]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [rec.gloamVault, rec.launchVault]);
   const graduation = await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [rec.launchVault, rec.gloamVault, 3600n]);

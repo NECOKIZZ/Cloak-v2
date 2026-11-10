@@ -99,10 +99,10 @@ try {
   await write(guard, guardArt.abi, "acceptVaultOwnership");
   const router = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, D.poolManager, D.whype, f.hook]);
   // the cross-vault router: the launch vault (home) and Gloam's vault
-  const crossRouter = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, zeroAddress, D.poolManager, D.whype, f.hook]);
+  const crossRouter = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, zeroAddress, D.poolManager, D.whype, f.hook, zeroAddress]);
   // and batch rounds with HYPE in Gloam's vault (mainnet's model)
-  const batcherG = await deploy("CloakGloamBatcherV4 (HYPE in Gloam's vault)", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, stack.pool, f.factory, 60n, 200n, 600n]);
-  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, zeroAddress, f.factory, 60n, 200n, 600n]);
+  const batcherG = await deploy("CloakGloamBatcherV4 (HYPE in Gloam's vault)", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, stack.pool, f.factory, 60n, 200n, 600n, zeroAddress]);
+  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, zeroAddress, f.factory, 60n, 200n, 600n, zeroAddress]);
   const block = await pub.getBlockNumber();
   const loop = createGloamLoop({ publicClient: pub, account: keeper.account, send: async (x) => (await sendAndLog(pub, x.functionName, keeper.wallet.writeContract(x))).transactionHash, launchVault: lv, batcherV4, batcherV4Block: block });
   const t = await loop.tick();

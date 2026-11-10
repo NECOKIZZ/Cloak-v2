@@ -112,6 +112,9 @@ const ECO = parseAbi([
 const ERC20 = parseAbi(["function symbol() view returns (string)", "function decimals() view returns (uint8)"]);
 const VAULT = parseAbi(["function withdrawFeeBps() view returns (uint16)", "function launchTokensCount() view returns (uint256)", "function launchTokens(uint256) view returns (address)"]);
 const V2 = parseAbi(["function factory() view returns (address)", "function getPair(address, address) view returns (address)", "function token0() view returns (address)", "function getReserves() view returns (uint112, uint112, uint32)"]);
+/** CloakRouterV4's trade fee: what it adds on top of a note of `amountOut` (0 for buys and earlier routers). */
+const TRADE_FEE = [{ type: "function", name: "tradeFee", stateMutability: "view", inputs: [{ name: "assetIn", type: "address" }, { name: "assetOut", type: "address" }, { name: "amountOut", type: "uint256" }], outputs: [{ name: "fee", type: "uint256" }, { name: "to", type: "address" }] }] as const;
+
 const V4MARKET = parseAbi([
   "function reserveHype() view returns (uint256)",
   "function reserveToken() view returns (uint256)",
@@ -578,14 +581,27 @@ export class GloamPrivate {
   }
 
   /**
-   * What the pools give for `amountIn` of `tokenIn` in `tokenOut` (before the vault's fee), through HYPE when neither
-   * side is HYPE: USDC to a launch token is USDC to HYPE, then HYPE to the token.
+   * What the trader gets for `amountIn` of `tokenIn` in `tokenOut` (before the vault's fee on the input), through HYPE
+   * when neither side is HYPE: USDC to a launch token is USDC to HYPE, then HYPE to the token. A sale out of Cloak's
+   * vaults into Gloam's (a launch or outside token into HYPE or USDC) is net of Cloak's trade fee, which the router takes
+   * from what the sale brings.
    */
   async quoteTrade(tokenIn: Address, tokenOut: Address, amountIn: bigint): Promise<bigint> {
     const [a, b] = [this.assetOf(tokenIn), this.assetOf(tokenOut)];
     if (a === b) throw new Error("Pick two different tokens.");
     const hype = a === zeroAddress ? amountIn : await this.v2Quote(a, "sell", amountIn);
-    return b === zeroAddress ? hype : this.v2Quote(b, "buy", hype);
+    const gross = b === zeroAddress ? hype : await this.v2Quote(b, "buy", hype);
+    return gross - (await this.tradeFeeOn(a, b, gross));
+  }
+
+  /** Cloak's trade fee on a sale whose output is `gross` in all: the router's own reading, 0 when none applies. */
+  async tradeFeeOn(assetIn: Address, assetOut: Address, gross: bigint): Promise<bigint> {
+    if (!this.cfg.router || !this.cfg.gloamVault || gross === 0n) return 0n;
+    const pub = this.cfg.publicClient;
+    // the fee the router adds to a note of `gross`: a note of gross - fee then needs gross - fee + (a fee no larger),
+    // which fits in `gross`
+    const [fee] = await pub.readContract({ address: this.cfg.router, abi: TRADE_FEE, functionName: "tradeFee", args: [assetIn, assetOut, gross] }).catch(() => [0n, zeroAddress] as const);
+    return fee;
   }
 
   buy(token: Address, hypeIn: bigint, opts: { slippageBps?: number; onStatus?: Status } = {}) {

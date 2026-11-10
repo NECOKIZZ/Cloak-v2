@@ -30,6 +30,10 @@ interface IERC20Bv {
     function approve(address, uint256) external returns (bool);
 }
 
+interface ITradeFeeB {
+    function current() external view returns (uint16 feeBps, address treasury);
+}
+
 /**
  * @title CloakGloamBatcherV4
  * @notice The Uniswap v4 venue for CloakGloamBatcherBase: batch rounds on Cloak's v4 launches. A token's market is its
@@ -51,13 +55,22 @@ contract CloakGloamBatcherV4 is CloakGloamBatcherBase {
     /// @notice The vault HYPE orders are spent from and HYPE payouts go into: Gloam's vault, or `vault` when built
     ///         with none. Launch tokens always use `vault` (Cloak's launch vault).
     IGloamVault public immutable hypeVault;
+    /// @notice Cloak's fee settings (CloakTradeFee), or address(0) for none: a round's sales pay its rate in HYPE.
+    ITradeFeeB public immutable tradeFees;
 
-    constructor(address vault_, address hypeVault_, address launchFactory_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_)
+    constructor(address vault_, address hypeVault_, address launchFactory_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_, address tradeFees_)
         CloakGloamBatcherBase(vault_, roundSecs_, maxSlippageBps_, refundAfter_)
     {
         require(launchFactory_ != address(0), "factory");
         launchFactory = ILaunchFactoryB(launchFactory_);
         hypeVault = IGloamVault(hypeVault_ == address(0) ? vault_ : hypeVault_);
+        tradeFees = ITradeFeeB(tradeFees_);
+    }
+
+    function _sellFee() internal view override returns (uint256 bps, address to) {
+        if (address(tradeFees) == address(0)) return (0, address(0));
+        (uint16 b, address t) = tradeFees.current();
+        return (b, t);
     }
 
     function vaultFor(address asset) public view override returns (IGloamVault) {
