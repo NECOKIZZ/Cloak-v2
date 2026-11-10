@@ -1,0 +1,135 @@
+diff --git a/contracts-gloam/src/CloakGloamBatcher.sol b/contracts-gloam/src/CloakGloamBatcher.sol
+index 2b61956..c833931 100644
+--- a/contracts-gloam/src/CloakGloamBatcher.sol
++++ b/contracts-gloam/src/CloakGloamBatcher.sol
+@@ -257,7 +257,10 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
+         bool sentAlone = _spendInto(s, asset, escrow);
+         uint256 net = _openEscrow(id, asset);
+         // what landed is a note of this size less at most the vault's fee ceiling: not an amount paid in from outside
+-        if (net > k.size || net * 10_000 < uint256(k.size) * (10_000 - MAX_VAULT_FEE_BPS)) revert NotStandard();
++        if (net * 10_000 < uint256(k.size) * (10_000 - MAX_VAULT_FEE_BPS)) revert NotStandard();
++        // anything over the size was sent to the escrow by someone else (its address is public once a spend is sent
++        // alone): the order counts as its size and the extra stays here, so a top-up can't lock the escrow's money out
++        if (net > k.size) net = k.size;
+         _checkpoint(k.token);
+         uint64 round = currentRound();
+         Batch storage b = batches[k.token][round];
+diff --git a/contracts-gloam/src/CloakGraduation.sol b/contracts-gloam/src/CloakGraduation.sol
+index 6ccd8ad..8216344 100644
+--- a/contracts-gloam/src/CloakGraduation.sol
++++ b/contracts-gloam/src/CloakGraduation.sol
+@@ -145,7 +145,10 @@ contract CloakGraduation is IEscrowPayee {
+         uint256 net = _openEscrow(id, k.token);
+         // what landed is a note of this size less at most the vault's 1% fee ceiling, not an amount paid in from outside,
+         // so the round's crowd count can't be padded (review C-07)
+-        if (net > k.size || net * 10_000 < uint256(k.size) * 9_900 || k.size < 1e12) revert NotStandard();
++        if (net * 10_000 < uint256(k.size) * 9_900 || k.size < 1e12) revert NotStandard();
++        // anything over the size was sent to the escrow by someone else (its address is public once a spend is sent
++        // alone): the entry counts as its size and the extra stays here, so a top-up can't lock the escrow's money out
++        if (net > k.size) net = k.size;
+         uint64 round = currentRound();
+         entries[id] = Entry(k.token, round, false, uint128(net));
+         roundEntries[k.token][round] += 1;
+diff --git a/contracts-gloam/test/stress/BatcherStress.t.sol b/contracts-gloam/test/stress/BatcherStress.t.sol
+index 54cb5c6..38c1b79 100644
+--- a/contracts-gloam/test/stress/BatcherStress.t.sol
++++ b/contracts-gloam/test/stress/BatcherStress.t.sol
+@@ -267,6 +267,43 @@ contract BatcherStressTest is Test {
+         assertEq(_claim(k, ownerPk, 0x5557), 4.975e18, "claimed into the vault as a note");
+     }
+ 
++    /// A spend sent alone leaves the money at the order's escrow, whose address is then public. A 1-wei top-up of that
++    /// escrow must not lock it there: the order still goes in, at its size, and the extra wei is the sender's loss.
++    function test_batcher_spentAloneEscrow_toppedUp_stillPlaces() public {
++        pool.setWithdrawFee(0, address(0xFEE)); // no vault fee: the note lands as exactly its size
++        _startOfNextRound();
++        pool.shieldBound{value: 1e18}(address(0), 1e18, bytes32(uint256(0x6661)), hex"00");
++        CloakGloamBatcherBase.OrderKey memory k = CloakGloamBatcherBase.OrderKey(bytes32(uint256(0x6662)), address(launch), true, 1e18, owner, fallbackTo);
++        CloakGloamBatcherBase.Spend memory s = _spend(k);
++        address escrow = batcher.escrowFor(k);
++        vm.startPrank(attacker);
++        pool.unshield(s.proof, s.root, s.nullifier, address(0), escrow, s.amount);
++        (bool ok, ) = escrow.call{value: 1}("");
++        require(ok, "top up");
++        vm.stopPrank();
++        bytes32 id = batcher.place(s, k);
++        (,,,, uint128 net) = batcher.orders(id);
++        assertEq(net, 1e18, "the order is its note, not the top-up");
++    }
++
++    /// The same in Graduation: a 1-unit top-up of an entry's escrow doesn't lock the entry out.
++    function test_graduation_spentAloneEscrow_toppedUp_stillEnters() public {
++        pool.setWithdrawFee(0, address(0xFEE));
++        ShieldPoolPayments gv = new ShieldPoolPayments(_poseidon(), address(new ToBindingVerifier()));
++        CloakGraduation grad = new CloakGraduation(address(pool), address(gv), 1 hours);
++        pool.shieldBound(address(launch), 1e18, bytes32(uint256(0x6671)), hex"00");
++        CloakGraduation.EntryKey memory k = CloakGraduation.EntryKey(bytes32(uint256(0x6672)), address(launch), 1e18, owner, fallbackTo);
++        address escrow = grad.escrowFor(k);
++        launch.mint(attacker, 1);
++        vm.startPrank(attacker);
++        pool.unshield(abi.encode(escrow), pool.currentRoot(), k.nullifier, address(launch), escrow, 1e18);
++        launch.transfer(escrow, 1);
++        vm.stopPrank();
++        bytes32 id = grad.enter(CloakGraduation.Spend(abi.encode(escrow), pool.currentRoot(), k.nullifier, 1e18), k);
++        (,,, uint128 net) = grad.entries(id);
++        assertEq(net, 1e18, "the entry is its note, not the top-up");
++    }
++
+     // ── C-04: a seller's payout over the vault's per-deposit cap can't be claimed; it waits 30 days ──────────────────
+ 
+     /// C-04, fixed: a payout over the vault's per-deposit cap comes back as several notes (claimMany).
+diff --git a/services/keeper/index.mjs b/services/keeper/index.mjs
+index 57013ce..c46e4e9 100644
+--- a/services/keeper/index.mjs
++++ b/services/keeper/index.mjs
+@@ -138,6 +138,16 @@ for (const m of ["writeContract", "sendTransaction"]) {
+   const send = m === "writeContract" ? broadcast : walletClient[m].bind(walletClient);
+   walletClient[m] = (args) =>
+     serial(async () => {
++      // A relayed call was simulated when it arrived, but others may have been sent since (the same call handed in
++      // several times at once, say). Checked again now that it's its turn: one that would revert is refused here and
++      // costs nothing, instead of burning its whole gas limit on chain. A node that doesn't answer doesn't block it.
++      if (m === "sendTransaction") {
++        try {
++          await publicClient.call({ account: account.address, to: args.to, data: args.data, value: args.value });
++        } catch (e) {
++          if (!isNetworkError(e)) throw Object.assign(new Error(`this call would fail: ${e.shortMessage ?? e.message}`), { status: 400 });
++        }
++      }
+       const hash = await send(args);
+       // once it's sent, the hash is the answer: a node that stops answering while we wait doesn't unsend it
+       await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 }).catch((e) => console.error(`[tx] ${hash} not confirmed yet: ${e.shortMessage ?? e.message}`));
+diff --git a/services/keeper/leaves.mjs b/services/keeper/leaves.mjs
+index 20c3d97..523ac5b 100644
+--- a/services/keeper/leaves.mjs
++++ b/services/keeper/leaves.mjs
+@@ -18,6 +18,9 @@ export function startLeaves(pub, { vaults = [] }) {
+   let refreshedAt = 0;
+   let refreshing = null;
+   let cache = null; // every vault: { json, gz, etag }
++  // one vault each (what the site asks for): packed once per refresh, not on every request, since turning a whole
++  // leaf list into JSON and gzipping it holds the keeper's one thread
++  const one = new Map();
+ 
+   async function fresh() {
+     if (Date.now() - refreshedAt < MIN_REFRESH_MS && refreshedAt) return;
+@@ -25,6 +28,7 @@ export function startLeaves(pub, { vaults = [] }) {
+       .then(() => {
+         refreshedAt = Date.now();
+         cache = null;
++        one.clear();
+       })
+       .finally(() => (refreshing = null));
+     await refreshing;
+@@ -44,7 +48,10 @@ export function startLeaves(pub, { vaults = [] }) {
+       await fresh();
+       if (pool) {
+         const t = trees.find((x) => x.pool.toLowerCase() === pool.toLowerCase());
+-        return t ? pack(JSON.stringify(view(t)), [t]) : null;
++        if (!t) return null;
++        const k = t.pool.toLowerCase();
++        if (!one.has(k)) one.set(k, pack(JSON.stringify(view(t)), [t]));
++        return one.get(k);
+       }
+       const ready = trees.filter((t) => t.scannedTo > t.fromBlock);
+       cache ??= pack(JSON.stringify({ vaults: ready.map(view) }), ready);
