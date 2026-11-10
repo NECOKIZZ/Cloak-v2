@@ -12,6 +12,7 @@
  * The state can be exported (commitments only, all public) and imported, so a reload reads only new blocks, and
  * seeded from the keeper's public list (`GET /leaves`), checked against a root the vault knows.
  */
+import { readToHead } from "../head.js";
 import * as gloam from "@gloamtrade/sdk";
 import type { Address, Hex, PublicClient } from "viem";
 
@@ -113,7 +114,12 @@ export class GloamTree implements GloamTreeView {
   }
 
   private async read(client: PublicClient) {
-    const latest = await client.getBlockNumber({ cacheTime: 0 }); // a cached head can miss a note made seconds before it's spent
+    // up to a fresh head (a cached one can miss a note made seconds before it's spent), a few blocks back if a lagging
+    // node of the RPC refuses the range (head.ts)
+    await readToHead(client, (latest) => this.readTo(client, latest));
+  }
+
+  private async readTo(client: PublicClient, latest: bigint) {
     // no new block: nothing to read, but the leaf count is still checked (a seeded list missing a leaf shows here)
     const ins: Insert[] = [];
     for (let a = this.next; a <= latest; a += this.chunk) {

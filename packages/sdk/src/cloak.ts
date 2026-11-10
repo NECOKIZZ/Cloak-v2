@@ -12,6 +12,7 @@ import {
   parseEventLogs,
   toHex,
 } from "viem";
+import { logsToHead } from "./head.js";
 import { cloakAuctionAbi, cloakFactoryAbi, cloakFeeLockerAbi, cloakPairAbi, cloakTokenAbi, cloakV4HookAbi } from "./abis.js";
 
 /** `lpLockUntil` for "locked forever, the creator earns the pool's trading fees". */
@@ -510,16 +511,9 @@ export class Cloak {
     const launches = await this.listLaunches();
     if (!launches.length) return [];
     const me = owner.toLowerCase();
-    const latest = await this.publicClient.getBlockNumber({ cacheTime: 0 });
     const get = (from: bigint, to: bigint) =>
       this.publicClient.getContractEvents({ address: launches.map((l) => l.auction), abi: cloakAuctionAbi, eventName: "Committed", args: { bidder: owner }, strict: true, fromBlock: from, toBlock: to });
-    let logs: Awaited<ReturnType<typeof get>>;
-    try {
-      logs = await get(fromBlock, latest);
-    } catch {
-      logs = [];
-      for (let from = fromBlock; from <= latest; from += 10_000n) logs.push(...(await get(from, from + 9_999n > latest ? latest : from + 9_999n)));
-    }
+    const logs = await logsToHead(this.publicClient, fromBlock, get, { step: 10_000n });
     const bidIds = new Map<string, bigint[]>();
     for (const l of logs) {
       const k = l.address.toLowerCase();
@@ -607,7 +601,6 @@ export class Cloak {
   // ───────────── keeper side ─────────────
 
   async committedLogs(auction: Address, fromBlock = 0n) {
-    const latest = await this.publicClient.getBlockNumber({ cacheTime: 0 });
     const get = (from: bigint, to: bigint) =>
       this.publicClient.getContractEvents({
         address: auction,
@@ -617,18 +610,8 @@ export class Cloak {
         fromBlock: from,
         toBlock: to,
       });
-    try {
-      return await get(fromBlock, latest);
-    } catch {
-      // RPCs that cap eth_getLogs ranges: walk in chunks
-      const out: Awaited<ReturnType<typeof get>> = [];
-      const step = 10_000n;
-      for (let from = fromBlock; from <= latest; from += step) {
-        const to = from + step - 1n > latest ? latest : from + step - 1n;
-        out.push(...(await get(from, to)));
-      }
-      return out;
-    }
+    // one call to the head, else pieces where the RPC caps ranges (head.ts)
+    return logsToHead(this.publicClient, fromBlock, get, { step: 10_000n });
   }
 
   /**

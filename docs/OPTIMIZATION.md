@@ -66,6 +66,34 @@ v1 measured that Render's bandwidth is mostly **the keeper's own RPC reads**, no
 ### Hosting files
 - `render.yaml` is now the v2 keeper's Blueprint (free plan, testnet addresses, `TRUSTED_PROXY_HOPS=1`, CORS for gloak.boblabs.tech, the build filter). The site goes on Vercel, whose `vercel.json` already skips builds that don't touch the site (v1's V2).
 
+### R1. Reads up to the head on a load-balanced RPC (Nov 10, from Cloak v1's keeper notes)
+- **The bug:** Elysium's public RPC is several nodes behind one address, a block or two apart. `eth_getLogs` up to the head one node just reported can land on a node that hasn't reached it and is refused ("invalid block range params", shown by viem as "Missing or invalid parameters").
+- **Measured on the testnet RPC, Nov 10, 300 tries each:** logs up to the reported head failed 4 times (1.3%); up to 3 blocks back, 0 times. Reading the vault's state at the head block failed 0 times, and the head never went backwards in this sample (v1 saw it twice in 300).
+- **Fixed with a fallback, not a fixed lag** (`packages/sdk/src/head.ts`): read to the head; only if a node refuses the range, read again to 3 blocks back. v1's note proposed always reading to head minus 3. That breaks on chains that make blocks only with transactions: the newest 3 blocks stay hidden until more transactions arrive. It broke parts 16, 18 and 19 on the local fork, where a fresh deposit stayed invisible. Elysium itself makes a block every 0.15 to 0.2 s, each with at least 2 system transactions (checked on testnet and mainnet), so there the fallback costs about half a second, and only when it's needed.
+- **Where:** the keeper's batch-round reader (`settleRounds`, whose cursor now moves only past what was read), the leaf tree (keeper `/leaves` and every app's sync), the payment-memo reader (its cursor only moves forward), and the one-shot reads (reveals, claims, the bell, drops, NFTs). Those used to fall into a piece-by-piece walk on any error, about 270 calls for the bell's read from block 0. Now they walk in pieces only when the RPC really caps the range.
+- **Tests:** 4 unit tests (`packages/sdk/test/head.test.mjs`), and parts 7, 8, 16, 18 and 19 pass.
+
+### R2. `/leaves` ETag that stays put
+- **Before:** the ETag hashed the whole JSON, including `block`, which moves on every refresh. So a browser's `If-None-Match` almost never matched.
+- **Now:** it hashes each vault's address, leaf count and last leaf. The list is append-only and checked against the vault's count, so that names the list exactly. Measured locally: the same ETag across refreshes, and a repeat request gets a 304 with no body.
+- **Not done: v1's `x-leaves-block` header.** Not needed. A browser holding a 304'd copy has an older `block`, and that is still right: no leaf came after it, and the app reads the chain from there. A header would also need CORS exposure for nothing.
+
+### R3. Awake through time-only deadlines (H1, checked)
+- **A launch in bidding counts:** the keeper records it in its pending list before waiting for bidding to close, so `awake.why` shows "launches" through bidding, the drand round, the reveal window and settling. Drops count in their GTD and bidding phases too. A failed launch still ends as `settled`, so it can't hold the keeper awake forever.
+- **The claim delay doesn't apply any more:** the keeper no longer pushes claims (`PUSH_CLAIMS` off), so a settled launch is done once the fee is collected.
+- **Batch rounds:** count from the first order the loop reads.
+- **Fixed:** `/health` showed `awake.why` as of the last self-ping, up to 10 minutes old (empty for the first 10 minutes). It's now computed on every `/health`.
+- **Bob to check on Render** (it can't be seen from here): during a launch's bidding, Render's logs should show no `==> Running 'node services/keeper/index.mjs'` restart lines. If they do, Render isn't counting the self-request as incoming traffic, and we fall back to cron-job.org pinging `/health` every 12 minutes, as v1 is doing.
+
+### R4. What v2's keeper sends (measured Nov 10)
+- **How:** run locally against testnet with a throwaway key, with `fetch` wrapped to add up request bodies plus about 350 bytes of headers each. It counts outbound only, which is what Render bills per v1's note.
+- **Startup:** about 370 KB in the first 30 s (140 requests: every launch, the 16 shared drops, both leaf lists).
+- **Then, with nothing pending:** about **1.3 MB an hour**. That's about 0.95 GB a month even if it never slept, against 5 GB. With nothing pending, Render lets it sleep anyway.
+- **Not done: raising `IDLE_MS`** (v1's option). At 1.3 MB an hour it isn't needed, and a longer idle wait would delay the first reveal or settle after bidding closes.
+- **Render workspace:** the plan already puts v2's keeper on its own Render account (Stage 2), so it doesn't share v1's 5 GB.
+- **Open, for Bob:** v2's keeper also runs the NFT drop factories shared with v1. If v1's keeper runs them too, both read and race on the same drops. One of them should own drops.
+- **v1's on-demand snapshot advice** (build a public JSON only when asked): v2 has no keeper-built JSON besides `/leaves`, which already works that way (read only when asked, at most every 10 s).
+
 ## What it costs now (estimates, per open tab)
 
 | | Before | Now |

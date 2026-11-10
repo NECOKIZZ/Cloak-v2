@@ -17,6 +17,7 @@
  * Every transaction goes through the injected submitter: a relayer by default, so the user's address never appears
  * next to a private action.
  */
+import { readToHead } from "../head.js";
 import { p256 } from "@noble/curves/p256";
 import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha256";
@@ -361,9 +362,8 @@ export class GloamCore implements PrivateCore {
     onStatus("Reading the vault");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await this.tree.update(pub as any);
-    const head = await pub.getBlockNumber();
     onStatus("Reading sealed notes");
-    const logs = await this.memoLogs(this.memoFrom, head);
+    const { to: head, value: logs } = await readToHead(pub, (to) => this.memoLogs(this.memoFrom, to));
     for (const log of logs) {
       const key = `${log.transactionHash}:${log.logIndex}`;
       if (this.seenMemo.has(key)) continue;
@@ -371,7 +371,7 @@ export class GloamCore implements PrivateCore {
       const text = new TextDecoder().decode(hexToBytes(log.args.memo as Hex));
       for (const t of text.split("\n")) await this.tryTicket(t);
     }
-    this.memoFrom = head + 1n;
+    if (head + 1n > this.memoFrom) this.memoFrom = head + 1n; // only forward (a lagging head never re-reads or skips)
     // Keep what is in the tree and unspent.
     const stillWaiting: typeof this.candidates = [];
     for (const c of this.candidates) {

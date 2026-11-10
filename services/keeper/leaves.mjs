@@ -30,7 +30,12 @@ export function startLeaves(pub, { vaults = [] }) {
     await refreshing;
   }
 
-  const pack = (json) => ({ json, gz: gzipSync(json), etag: `W/"${createHash("sha256").update(json).digest("base64url").slice(0, 22)}"` });
+  // The ETag names the leaves only (each vault's address, leaf count and last leaf: the list is append-only and checked
+  // against the vault's count), not `block`, which moves on every refresh. So a browser asking again gets a bodiless 304
+  // until a new leaf lands. Its cached copy then carries an older `block`, which is still right: no leaf came after it,
+  // and the app reads the chain from there.
+  const tag = (ts) => `W/"${createHash("sha256").update(ts.map((t) => `${t.pool.toLowerCase()}:${t.leafCount}:${t.list().at(-1) ?? ""}`).join(",")).digest("base64url").slice(0, 22)}"`;
+  const pack = (json, ts) => ({ json, gz: gzipSync(json), etag: tag(ts) });
   const view = (t) => ({ pool: t.pool, block: (t.scannedTo - 1n).toString(), leaves: t.list().map((c, i) => [i, c, "0x"]) });
 
   return {
@@ -39,9 +44,10 @@ export function startLeaves(pub, { vaults = [] }) {
       await fresh();
       if (pool) {
         const t = trees.find((x) => x.pool.toLowerCase() === pool.toLowerCase());
-        return t ? pack(JSON.stringify(view(t))) : null;
+        return t ? pack(JSON.stringify(view(t)), [t]) : null;
       }
-      cache ??= pack(JSON.stringify({ vaults: trees.filter((t) => t.scannedTo > t.fromBlock).map(view) }));
+      const ready = trees.filter((t) => t.scannedTo > t.fromBlock);
+      cache ??= pack(JSON.stringify({ vaults: ready.map(view) }), ready);
       return cache;
     },
   };

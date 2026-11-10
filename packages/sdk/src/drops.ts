@@ -10,6 +10,7 @@
  * The GTD and WL lists live on chain only as Merkle roots. The lists themselves are published once, in the factory's
  * DropDetails event, so anyone can rebuild a proof; a list that doesn't match the root proves nothing.
  */
+import { logsToHead } from "./head.js";
 import { encodeAbiParameters, getAddress, isAddress, keccak256, toHex, type Address, type Hex, type PublicClient } from "viem";
 import { cloakDropAbi, cloakDropFactoryAbi, cloakEscrowDropAbi, cloakEscrowDropFactoryAbi } from "./abis.js";
 import { commitmentOf, type Wallet } from "./cloak.js";
@@ -516,14 +517,7 @@ export class CloakDrops {
     const from = opts.fromBlock ?? (await this.deployBlock(collection, latest));
     const seen = new Set<bigint>();
     const get = (a: bigint, b: bigint) => this.publicClient.getLogs({ address: collection, event: ev, args: { to: owner }, fromBlock: a, toBlock: b });
-    try {
-      for (const l of await get(from, latest)) if (l.args.tokenId !== undefined) seen.add(l.args.tokenId);
-    } catch {
-      for (let a = from; a <= latest; a += 100_000n) {
-        const b = a + 99_999n > latest ? latest : a + 99_999n;
-        for (const l of await get(a, b).catch(() => [])) if (l.args.tokenId !== undefined) seen.add(l.args.tokenId);
-      }
-    }
+    for (const l of await logsToHead(this.publicClient, from, get, { step: 100_000n, quiet: true })) if (l.args.tokenId !== undefined) seen.add(l.args.tokenId);
     const ids = [...seen].sort((a, b) => (a < b ? -1 : 1));
     const owners = await this.reads(ids.map((id) => ({ ...c, functionName: "ownerOf", args: [id] }))).catch(() => ids.map(() => null));
     return ids.filter((_, i) => String(owners[i]).toLowerCase() === owner.toLowerCase()).slice(0, max);
@@ -614,17 +608,7 @@ export class CloakDrops {
 
   /** Read logs from `fromBlock` to now in one call, or in 100k-block pieces where the RPC limits ranges. */
   private async chunked<T>(get: (from: bigint, to: bigint) => Promise<T[]>, firstOnly = false): Promise<T[]> {
-    const latest = await this.publicClient.getBlockNumber({ cacheTime: 0 });
-    try {
-      return await get(this.fromBlock, latest);
-    } catch {
-      const out: T[] = [];
-      for (let from = this.fromBlock; from <= latest; from += 100_000n) {
-        out.push(...(await get(from, from + 99_999n > latest ? latest : from + 99_999n)));
-        if (firstOnly && out.length) break;
-      }
-      return out;
-    }
+    return logsToHead(this.publicClient, this.fromBlock, get, { step: 100_000n, firstOnly });
   }
 
   async committedLogs(drop: Address) {

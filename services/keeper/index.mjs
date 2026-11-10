@@ -489,6 +489,7 @@ createServer((req, res) => {
     return;
   }
   if (req.method === "GET" && (path === "/" || path === "/health")) {
+    status.awake.why = pendingWork(); // live, not as of the last self-ping (up to 10 minutes old)
     return send(req, res, 200, { ...status, relay: !!gloamRelay, schedule: !!gloamRelay, leaves: leafVaults.map((v) => v.address), claimDelay: CLAIM_DELAY, pushClaims: PUSH_CLAIMS });
   }
   send(req, res, 404, { error: "not found" });
