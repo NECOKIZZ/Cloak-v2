@@ -13,7 +13,7 @@ import { Icon, TokenIcon } from "../ui";
 import { recipientNow } from "../names";
 import { RecipientNote } from "../recipient";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
-import { useFeePct, useMarkets, type Market } from "./markets";
+import { useFeePct, useMarkets, vaultOf, type Market } from "./markets";
 import { usePrivateBalances } from "../balances";
 import { schedule, useScheduled } from "../scheduled";
 import { Skel } from "../skel";
@@ -77,7 +77,8 @@ function useAssets(): Asset[] {
   return [
     { key: "HYPE", symbol: "HYPE", name: "Hyperliquid", decimals: 18, kind: "hype" },
     ...ASSETS.map((x): Asset => ({ key: x.token, symbol: x.symbol, name: x.symbol === "USDC" ? "USD Coin" : x.symbol, decimals: x.decimals, kind: "stable" })),
-    ...(markets ?? []).map((m): Asset => ({ key: m.token, symbol: m.symbol, name: m.name, iconToken: m.token, decimals: 18, kind: "launch", market: m })),
+    // USDC is listed above; its market is only for trading
+    ...(markets ?? []).filter((m) => m.kind !== "asset").map((m): Asset => ({ key: m.token, symbol: m.symbol, name: m.name, iconToken: m.token, decimals: m.decimals, kind: "launch", market: m })),
   ];
 }
 
@@ -256,9 +257,11 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   const { query } = useRoute();
   const assets = useAssets();
   const { bals, refresh } = usePrivateBalances();
-  const feePct = useFeePct();
   const [pub, setPub] = useState<Record<string, bigint>>({});
   const [asset, setAsset] = useState<Key | undefined>((query.get("token") as Key | null) ?? (kind === "shield" ? "HYPE" : undefined));
+  // the fee of the vault this asset sits in (HYPE and USDC in Gloam's once the router is live, tokens in their own)
+  const sel = assets.find((x) => x.key === asset);
+  const feePct = useFeePct(sel?.kind === "stable" ? GLOAM?.gloamVault : vaultOf(sel?.market ?? null));
   const [amt, setAmt] = useState("");
   const [to, setTo] = useState("");
   // withdraw in pieces over time

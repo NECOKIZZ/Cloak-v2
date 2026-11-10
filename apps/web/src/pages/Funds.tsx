@@ -26,7 +26,7 @@ export function ProveFunds() {
     () => [
       { key: "HYPE", symbol: "HYPE", decimals: 18 },
       ...ASSETS.map((a) => ({ key: a.token as string, symbol: a.symbol, decimals: a.decimals })),
-      ...(markets ?? []).map((m) => ({ key: m.token as string, symbol: m.symbol, decimals: 18 })),
+      ...(markets ?? []).filter((m) => m.kind !== "asset").map((m) => ({ key: m.token as string, symbol: m.symbol, decimals: m.decimals })),
     ].filter((a) => (bals[a.key] ?? 0n) > 0n),
     [bals, markets],
   );

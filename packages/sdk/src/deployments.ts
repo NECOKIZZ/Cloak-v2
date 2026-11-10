@@ -28,8 +28,12 @@ export interface CloakDeployment {
   spotBook?: Address;
   /** CloakEscrowDropFactory: sealed auctions of NFTs that already exist (listed with the drops). */
   escrowDropFactory?: Address;
-  /** Tokens that aren't launches (USDC): private balances in Gloam's vault. */
-  assets?: { symbol: string; token: Address; decimals: number }[];
+  /**
+   * Tokens that aren't launches (USDC): private balances in Gloam's vault. `pool` is the asset's plain native-HYPE
+   * Uniswap v4 pool (no hook): with gloam.router set, the asset trades privately against HYPE, and through HYPE against
+   * every launch token and outside token in one swap.
+   */
+  assets?: { symbol: string; token: Address; decimals: number; pool?: { fee: number; tickSpacing: number } }[];
   /** Gloam's vault and Cloak's launch vault and escrows on it. */
   gloam: GloamDeployment;
 }

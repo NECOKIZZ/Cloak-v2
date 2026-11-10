@@ -19,11 +19,13 @@
 //
 // The config (JSON): { name, chainId, rpcUrl, gloamVault, memoBoard, poseidon, verifier, shieldVerifier, factory,
 //   poolManager, v4Hook, whype, safe, pauser, feeRecipient, hype: { perDeposit, total }, launchCaps: { perDeposit,
-//   total }, graduationRoundSecs, batch: { roundSecs, maxSlippageBps, refundAfter } }. Amounts are wei strings.
+//   total }, graduationRoundSecs, batch: { roundSecs, maxSlippageBps, refundAfter }, assets: [{ symbol, token, decimals,
+//   fee, tickSpacing }] (USDC and its plain HYPE pool), ecosystem: {...} }. Amounts are wei strings.
+// Then `node scripts/sdk-entry.mjs deployments/<name>.json deployments/<factory>.json` prints the SDK's deployment entry.
 // Key: DEPLOYER_PK, or GLOAM_TESTNET_PK from ../.env (a fresh key that holds nothing else). Never Cloak v1's keys.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { encodeFunctionData, formatEther, parseAbi, zeroAddress } from "viem";
+import { encodeAbiParameters, encodeFunctionData, formatEther, keccak256, parseAbi, toHex, zeroAddress } from "viem";
 import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
 import { LV_ABI, checkLaunchVault } from "./stack.mjs";
 import { ANVIL_KEYS, ELYSIUM_TESTNET_RPC, REPO, clients, gloamArtifact, ourArtifact, sendAndLog, startAnvil } from "./lib.mjs";
@@ -86,6 +88,15 @@ const addr = me.account.address;
 const write = (address, abi, functionName, args = []) => sendAndLog(pub, functionName, me.wallet.writeContract({ address, abi, functionName, args }));
 const deploy = async (label, art, args = []) => (await sendAndLog(pub, `deploy ${label}`, me.wallet.deployContract({ ...art, args }))).contractAddress;
 const same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+
+/** A plain v4 pool's price and in-range liquidity, read from the PoolManager's storage (pools: slot 6). */
+async function plainPool(pub, poolManager, key) {
+  const EXT = parseAbi(["function extsload(bytes32) view returns (bytes32)"]);
+  const id = keccak256(encodeAbiParameters([{ type: "tuple", components: [{ type: "address" }, { type: "address" }, { type: "uint24" }, { type: "int24" }, { type: "address" }] }], [[key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks]]));
+  const slot = BigInt(keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "uint256" }], [id, 6n])));
+  const [s0, l] = await Promise.all([0n, 3n].map((o) => pub.readContract({ address: poolManager, abi: EXT, functionName: "extsload", args: [toHex(slot + o, { size: 32 })] })));
+  return { sqrtPriceX96: BigInt(s0) & ((1n << 160n) - 1n), liquidity: BigInt(l) & ((1n << 128n) - 1n) };
+}
 try {
   // checks before anything is sent
   if ((await pub.getChainId()) !== cfg.chainId) throw new Error(`the RPC is chain ${await pub.getChainId()}, the config says ${cfg.chainId}`);
@@ -97,6 +108,18 @@ try {
   if (!same(gp, cfg.poseidon)) throw new Error("the Poseidon in the config isn't the one Gloam's vault uses");
   if (gSetup) throw new Error("Gloam's vault is still in setup: wait until it's live");
   console.log(`Gloam's vault ${cfg.gloamVault} checked: live, on verifiers ${gv} / ${gsv}`);
+  // USDC and the other assets in Gloam's vault: each one's plain native-HYPE pool (no hook), which the router trades
+  // it through against HYPE and, through HYPE, against every launch and outside token
+  const assets = [];
+  for (const a of cfg.assets ?? []) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(a.token)) throw new Error(`asset ${a.symbol}: not an address (${a.token})`);
+    const { sqrtPriceX96, liquidity } = await plainPool(pub, cfg.poolManager, { currency0: zeroAddress, currency1: a.token, fee: a.fee, tickSpacing: a.tickSpacing, hooks: zeroAddress });
+    if (sqrtPriceX96 === 0n || liquidity === 0n) throw new Error(`asset ${a.symbol}: no plain HYPE pool at ${a.fee} / ${a.tickSpacing} on this chain`);
+    const hypeIn = (liquidity << 96n) / sqrtPriceX96;
+    const perHype = Number((sqrtPriceX96 * sqrtPriceX96 * 10n ** 6n) >> 192n) / 1e6 / 10 ** (18 - a.decimals);
+    console.log(`  ${a.symbol}: HYPE pool ${a.fee / 10_000}% / ${a.tickSpacing}, ${formatEther(hypeIn)} HYPE in range, ${perHype.toFixed(4)} ${a.symbol} per HYPE`);
+    assets.push({ symbol: a.symbol, token: a.token, decimals: a.decimals, pool: { fee: a.fee, tickSpacing: a.tickSpacing } });
+  }
 
   const start = await pub.getBalance({ address: addr });
   console.log(`Deploying Cloak v2 next to it on chain ${cfg.chainId}${REHEARSE ? " (a fork)" : ""} from ${addr} (${formatEther(start)} HYPE)`);
@@ -210,6 +233,7 @@ try {
     launchFactory: cfg.factory,
     launchSwapV4,
     router,
+    assets,
     ecosystemVault: ev,
     ecosystemVaultGuard: evGuard,
     ecosystemRules: eco ? { minHypeLiquidity: eco.minHypeLiquidity, minMcapHype: eco.minMcapHype, admitDelaySecs: eco.admitDelaySecs, maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps } : undefined,

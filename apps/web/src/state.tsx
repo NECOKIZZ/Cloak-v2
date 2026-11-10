@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { GloamPrivate, gloamRelaySubmitter, walletCoreSubmitter, type Wallet } from "@cloakely/sdk";
-import { ASSETS, RELAYER_URL, chain, GLOAM } from "./config";
+import { ASSETS, DEPLOYMENT, RELAYER_URL, chain, GLOAM } from "./config";
 import { collectOnUnlock, gloamProvers, launchRecords, gloamPending } from "./gloam";
 import { friendly, Hint } from "./errors";
 import { WalletModal } from "./walletModal";
@@ -197,6 +197,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         launchSwap: GLOAM.launchSwap,
         launchSwapV4: GLOAM.launchSwapV4,
         router: GLOAM.router,
+        poolManager: DEPLOYMENT?.poolManager,
         ecosystemVault: GLOAM.ecosystemVault ? { pool: GLOAM.ecosystemVault, poolBlock: GLOAM.ecosystemVaultBlock ?? GLOAM.block } : undefined,
         batcher: GLOAM.batcher,
         batcherV4: GLOAM.batcherV4,
@@ -207,7 +208,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         logChunk: 1_000_000n, // the public RPCs cap logs per call, not ranges: 1M blocks answer in under a second
       });
       await g.loadMarkets();
-      ASSETS.forEach((a) => g.addAsset(a));
+      ASSETS.forEach((a) => g.addAsset({ ...a, pool: a.hop }));
       setPrivAddress(await g.address());
       setPriv(g);
       g.finishPending().catch(() => {}); // a swap's buffer, a graduation: whatever can finish now

@@ -1,0 +1,9 @@
+{
+  "routes": {
+    "hypeToUsdc": "19.603003",
+    "usdcToKntq": "19.483259624056854192",
+    "kntqToUsdc": "9.508895",
+    "usdcToHype": "0.09830012676106818"
+  },
+  "seconds": 42
+}

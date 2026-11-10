@@ -24,6 +24,7 @@ async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>)
       chainId: chain.id,
       gloamVault: { pool: GLOAM.gloamVault, poolBlock: GLOAM.block },
       launchVault: { pool: GLOAM.launchVault, poolBlock: GLOAM.launchVaultBlock ?? GLOAM.block },
+      ecosystemVault: GLOAM.ecosystemVault ? { pool: GLOAM.ecosystemVault, poolBlock: GLOAM.ecosystemVaultBlock ?? GLOAM.block } : undefined,
       payMemo: GLOAM.memoBoard,
       provers: gloamProvers(),
       submit: gloamRelaySubmitter(RELAYER_URL),
@@ -34,7 +35,7 @@ async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>)
     keys,
   );
   await p.loadMarkets();
-  ASSETS.forEach((a) => p.addAsset(a));
+  ASSETS.forEach((a) => p.addAsset({ ...a, pool: a.hop }));
   return p;
 }
 

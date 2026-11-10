@@ -1,11 +1,13 @@
-import { deployments, elysiumTestnet, type CloakDeployment } from "@cloakely/sdk";
+import { deployments, elysium, elysiumTestnet, type CloakDeployment } from "@cloakely/sdk";
 import type { Address } from "viem";
 
 const env = import.meta.env;
+/** VITE_CHAIN_ID picks the network: 99801 (Elysium testnet, the default) or 99901 (Elysium mainnet). */
 export const CHAIN_ID = Number(env.VITE_CHAIN_ID ?? 99801);
-export const RPC_URL: string = env.VITE_RPC_URL ?? elysiumTestnet.rpcUrls.default.http[0];
-export const chain = { ...elysiumTestnet, rpcUrls: { default: { http: [RPC_URL] } } };
-export const EXPLORER = elysiumTestnet.blockExplorers.default.url;
+const BASE = CHAIN_ID === elysium.id ? elysium : elysiumTestnet;
+export const RPC_URL: string = env.VITE_RPC_URL ?? BASE.rpcUrls.default.http[0];
+export const chain = { ...BASE, rpcUrls: { default: { http: [RPC_URL] } } };
+export const EXPLORER: string | undefined = (BASE as { blockExplorers?: { default: { url: string } } }).blockExplorers?.default.url;
 export const txLink = (h: string) => (EXPLORER ? `${EXPLORER}/tx/${h}` : undefined);
 export const addrLink = (a: string) => (EXPLORER ? `${EXPLORER}/address/${a}` : undefined);
 
@@ -31,7 +33,7 @@ export const DROP_FACTORY_BLOCK = D?.dropFactoryBlock ?? 0n;
 export const ESCROW_DROP_FACTORY = (D?.escrowDropFactory || undefined) as Address | undefined;
 export const SPOT_BOOK = (D?.spotBook || undefined) as Address | undefined;
 /** Tokens that aren't launches (USDC). On Gloam an asset's pool id is its token. */
-export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number }[] = (D?.assets ?? []).map((a) => ({ ...a, pool: a.token }));
+export const ASSETS: { symbol: string; token: Address; pool: Address; decimals: number; hop?: { fee: number; tickSpacing: number } }[] = (D?.assets ?? []).map((a) => ({ ...a, pool: a.token, hop: a.pool }));
 
 /** Gloam's vault and Cloak's launch vault and escrows on this chain (the SDK's deployment record). */
 export const GLOAM = D?.gloam;

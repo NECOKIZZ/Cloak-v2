@@ -54,6 +54,11 @@ export interface GloamPrivateConfig {
    * Gloam's vault and lands the token in the launch vault; a sell does the reverse.
    */
   router?: Address;
+  /**
+   * Uniswap v4's PoolManager: plain pools' prices are read from it (USDC's HYPE pool, outside tokens' pools). Without
+   * it they're read through the ecosystem vault's poolState().
+   */
+  poolManager?: Address;
   /** CloakGloamBatcher on the launch vault (rounds through Uniswap V2 pairs). */
   batcher?: Address;
   /** CloakGloamBatcherV4 on the launch vault: rounds through launches' own v4 pools (their CloakV4Market). */
@@ -86,8 +91,16 @@ export interface GloamMarket {
   /** traded through its launch's Uniswap v4 pool (pair is the CloakV4Market) */
   v4?: boolean;
   /** an outside token in the ecosystem vault, traded through this plain native-HYPE v4 pool (via the router) */
-  ecoKey?: { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
+  ecoKey?: PoolKeyV4;
+  /** an asset in Gloam's vault (USDC) with a plain native-HYPE v4 pool, traded through the router */
+  hypeKey?: PoolKeyV4;
 }
+
+/** A Uniswap v4 pool key. */
+export type PoolKeyV4 = { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
+
+const EXTSLOAD = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
+const POOL_KEY_TYPE = [{ type: "tuple", components: [{ name: "currency0", type: "address" }, { name: "currency1", type: "address" }, { name: "fee", type: "uint24" }, { name: "tickSpacing", type: "int24" }, { name: "hooks", type: "address" }] }] as const;
 
 const ECO = parseAbi([
   "function ecosystemTokensCount() view returns (uint256)",
@@ -277,10 +290,16 @@ export class GloamPrivate {
     return m;
   }
 
-  /** An asset with no launch market (USDC): its pool id is its token. */
-  addAsset(a: { symbol: string; token: Address; decimals: number }): GloamMarket {
-    const m: GloamMarket = { token: a.token, pool: a.token, pair: null, symbol: a.symbol, decimals: a.decimals };
-    if (!this.markets.some((x) => lc(x.token) === lc(a.token))) this.markets.push(m);
+  /**
+   * An asset with no launch market (USDC): its pool id is its token. With `pool` (its plain native-HYPE v4 pool, no
+   * hook) and the router set, it trades privately against HYPE and, through HYPE, against every other market.
+   */
+  addAsset(a: { symbol: string; token: Address; decimals: number; pool?: { fee: number; tickSpacing: number } }): GloamMarket {
+    const hypeKey = a.pool && this.cfg.router ? { currency0: zeroAddress, currency1: a.token, fee: a.pool.fee, tickSpacing: a.pool.tickSpacing, hooks: zeroAddress } : undefined;
+    const m: GloamMarket = { token: a.token, pool: a.token, pair: null, symbol: a.symbol, decimals: a.decimals, v4: !!hypeKey, hypeKey };
+    const i = this.markets.findIndex((x) => lc(x.token) === lc(a.token));
+    if (i < 0) this.markets.push(m);
+    else if (hypeKey) this.markets[i] = { ...this.markets[i], ...m };
     return m;
   }
 
@@ -512,14 +531,15 @@ export class GloamPrivate {
   private async v2Quote(token: Address, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
     const m = this.market(token);
     const pub = this.cfg.publicClient;
-    if (m.ecoKey && this.cfg.ecosystemVault) {
+    const plain = m.ecoKey ?? m.hypeKey;
+    if (plain) {
       // a plain v4 pool: its in-range reserves (L / sqrtP HYPE, L * sqrtP token) and its fee; exact for a trade that
       // stays in the current range, and the swap's slippage allowance covers the rest (a short output reverts whole)
-      const [sqrtP, liq] = await pub.readContract({ address: this.cfg.ecosystemVault.pool, abi: ECO, functionName: "poolState", args: [m.ecoKey] });
+      const [sqrtP, liq] = await this.poolState(plain);
       if (sqrtP === 0n || liq === 0n) throw new Error("This token's pool has no liquidity right now.");
       const rH = (liq << 96n) / sqrtP;
       const rT = (liq * sqrtP) >> 96n;
-      const x = (amountIn * BigInt(1_000_000 - m.ecoKey.fee)) / 1_000_000n;
+      const x = (amountIn * BigInt(1_000_000 - plain.fee)) / 1_000_000n;
       const [rIn, rOut] = side === "buy" ? [rH, rT] : [rT, rH];
       return (x * rOut) / (rIn + x);
     }
@@ -538,55 +558,107 @@ export class GloamPrivate {
     return (x * BigInt(rOut)) / (BigInt(rIn) * 1000n + x);
   }
 
+  /** A plain v4 pool's price and in-range liquidity, read from the PoolManager (or the ecosystem vault). */
+  private async poolState(key: PoolKeyV4): Promise<[bigint, bigint]> {
+    const pub = this.cfg.publicClient;
+    if (this.cfg.poolManager) {
+      // v4-core StateLibrary: pools is mapping slot 6; slot0 (sqrtPriceX96 in its low 160 bits) first, liquidity fourth
+      const id = keccak256(encodeAbiParameters(POOL_KEY_TYPE, [key]));
+      const slot = BigInt(keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "uint256" }], [id, 6n])));
+      const [s0, l] = await Promise.all([0n, 3n].map((o) => pub.readContract({ address: this.cfg.poolManager!, abi: EXTSLOAD, functionName: "extsload", args: [toHex(slot + o, { size: 32 })] })));
+      return [BigInt(s0) & ((1n << 160n) - 1n), BigInt(l) & ((1n << 128n) - 1n)];
+    }
+    if (!this.cfg.ecosystemVault) throw new Error("No pool reader configured (poolManager).");
+    const [sqrtP, liq] = await pub.readContract({ address: this.cfg.ecosystemVault.pool, abi: ECO, functionName: "poolState", args: [key] });
+    return [sqrtP, liq];
+  }
+
   async quote(token: Address, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
     return this.v2Quote(token, side, amountIn);
   }
 
+  /**
+   * What the pools give for `amountIn` of `tokenIn` in `tokenOut` (before the vault's fee), through HYPE when neither
+   * side is HYPE: USDC to a launch token is USDC to HYPE, then HYPE to the token.
+   */
+  async quoteTrade(tokenIn: Address, tokenOut: Address, amountIn: bigint): Promise<bigint> {
+    const [a, b] = [this.assetOf(tokenIn), this.assetOf(tokenOut)];
+    if (a === b) throw new Error("Pick two different tokens.");
+    const hype = a === zeroAddress ? amountIn : await this.v2Quote(a, "sell", amountIn);
+    return b === zeroAddress ? hype : this.v2Quote(b, "buy", hype);
+  }
+
   buy(token: Address, hypeIn: bigint, opts: { slippageBps?: number; onStatus?: Status } = {}) {
-    return this.swap(token, "buy", hypeIn, opts);
+    return this.trade(zeroAddress, token, hypeIn, opts);
   }
 
   sell(token: Address, tokensIn: bigint, opts: { slippageBps?: number; onStatus?: Status } = {}) {
-    return this.swap(token, "sell", tokensIn, opts);
+    return this.trade(token, zeroAddress, tokensIn, opts);
+  }
+
+  /** The vault that holds `asset` for trading: with the router, HYPE and USDC in Gloam's, outside tokens in the ecosystem vault, launch tokens in the launch vault. */
+  private tradeCore(asset: Address): GloamCore | undefined {
+    const find = (v?: { pool: Address }) => (v ? this.cores.find((c) => lc(c.config.pool) === lc(v.pool)) : undefined);
+    if (!this.cfg.router) return this.launchCore;
+    if (asset === zeroAddress || this.market(asset).hypeKey) return find(this.cfg.gloamVault);
+    if (this.market(asset).ecoKey) return find(this.cfg.ecosystemVault);
+    return this.launchCore;
+  }
+
+  /** The pool between `asset` and HYPE, as a route hop. */
+  private async hopOf(asset: Address): Promise<PoolKeyV4> {
+    const m = this.market(asset);
+    const k = m.ecoKey ?? m.hypeKey;
+    if (k) return k;
+    if (m.v4 && m.pair) return this.cfg.publicClient.readContract({ address: m.pair, abi: V4MARKET, functionName: "key" });
+    throw new Error(`${m.symbol ?? "This token"} has no pool the router can trade yet.`);
   }
 
   /**
-   * Exact input from the private balance, exact output as a new note: the output is the quote on what the vault
-   * releases, less the slippage allowance, and whatever the swap didn't need comes back as a note (finishPending).
+   * Trade `amountIn` of `tokenIn` from the private balance for `tokenOut`, landing as a new note in `tokenOut`'s vault.
+   * HYPE to a token, a token to HYPE, or (through the router) any two markets through HYPE in one swap, such as USDC
+   * to a launch token. Exact input, exact output: the output is the quote on what the vault releases, less the slippage
+   * allowance, and whatever the swap didn't need comes back as a note (finishPending).
    */
-  private async swap(token: Address, side: "buy" | "sell", amountIn: bigint, opts: { slippageBps?: number; onStatus?: Status }) {
-    const m = this.market(token);
-    // the token's vault: the ecosystem vault for an outside token, else the launch vault
-    const ecoCore = this.cfg.ecosystemVault ? this.cores.find((c) => lc(c.config.pool) === lc(this.cfg.ecosystemVault!.pool)) : undefined;
-    const core = m.ecoKey ? ecoCore : this.launchCore;
-    // with the router, HYPE is in Gloam's vault and the token in its own vault; otherwise both in the launch vault
-    const gloamCore = this.cfg.gloamVault ? this.cores.find((c) => lc(c.config.pool) === lc(this.cfg.gloamVault!.pool)) : undefined;
-    const viaRouter = !!(this.cfg.router && m.v4 && gloamCore);
-    if (m.ecoKey && !viaRouter) throw new Error("Outside tokens trade through the router, which isn't set up here.");
-    const router = viaRouter ? this.cfg.router : m.v4 ? this.cfg.launchSwapV4 : this.cfg.launchSwap;
-    if (!core || !router) throw new Error("Private trading isn't set up on this deployment yet.");
+  async trade(tokenIn: Address, tokenOut: Address, amountIn: bigint, opts: { slippageBps?: number; onStatus?: Status } = {}) {
+    const [assetIn, assetOut] = [this.assetOf(tokenIn), this.assetOf(tokenOut)];
+    if (assetIn === assetOut) throw new Error("Pick two different tokens.");
+    const viaRouter = !!(this.cfg.router && this.cfg.gloamVault);
+    let router: Address | undefined;
+    let route: Hex;
+    if (viaRouter) {
+      router = this.cfg.router;
+      const hops: PoolKeyV4[] = [];
+      if (assetIn !== zeroAddress) hops.push(await this.hopOf(assetIn));
+      if (assetOut !== zeroAddress) hops.push(await this.hopOf(assetOut));
+      route = launchRouteV4(hops);
+    } else {
+      // before the router: HYPE and launch tokens both in the launch vault, one pool between them
+      const token = assetIn === zeroAddress ? assetOut : assetIn;
+      if (assetIn !== zeroAddress && assetOut !== zeroAddress) throw new Error("Trading between two tokens needs the router, which isn't set up here.");
+      const m = this.market(token);
+      if (m.ecoKey || m.hypeKey) throw new Error("This token trades through the router, which isn't set up here.");
+      router = m.v4 ? this.cfg.launchSwapV4 : this.cfg.launchSwap;
+      // V2: the path through WHYPE. v4: the launch's own pool key (native HYPE, behind Cloak's hook)
+      route = m.v4 ? launchRouteV4([await this.hopOf(token)]) : launchRoute(assetIn === zeroAddress ? [this.cfg.whype, token] : [token, this.cfg.whype]);
+    }
+    const from = this.tradeCore(assetIn);
+    const to = this.tradeCore(assetOut);
+    if (!from || !to || !router) throw new Error("Private trading isn't set up on this deployment yet.");
     const onStatus = opts.onStatus ?? (() => {});
-    const assetIn = side === "buy" ? zeroAddress : token;
-    const from = viaRouter && side === "buy" ? gloamCore! : core;
-    const to = viaRouter ? (side === "buy" ? core : gloamCore!) : undefined;
     await from.sync(onStatus);
     if (from.ownNotes(assetIn).reduce((a, n) => a + n.amount, 0n) < amountIn) throw new Error("insufficient private balance in the trading vault (deposits made for trading land there)");
-    const assetOut = side === "buy" ? token : zeroAddress;
     const bps = await this.feeBpsOf(from);
     const released = amountIn - ((amountIn / 10_000n) * bps + ((amountIn % 10_000n) * bps) / 10_000n);
-    const expected = await this.v2Quote(token, side, released);
-    const amountOut = (expected * BigInt(10_000 - (opts.slippageBps ?? 100))) / 10_000n;
+    const expected = await this.quoteTrade(assetIn, assetOut, released);
+    // two pools: the allowance covers both
+    const slip = BigInt(opts.slippageBps ?? (assetIn !== zeroAddress && assetOut !== zeroAddress ? 150 : 100));
+    const amountOut = (expected * (10_000n - slip)) / 10_000n;
     if (amountOut === 0n) throw new Error("amount too small to trade");
-    // V2: the path through WHYPE. v4: the launch's own pool key (native HYPE, behind Cloak's hook)
-    const route = m.ecoKey
-      ? launchRouteV4([m.ecoKey])
-      : m.v4
-      ? launchRouteV4([await this.cfg.publicClient.readContract({ address: m.pair!, abi: V4MARKET, functionName: "key" })])
-      : launchRoute(side === "buy" ? [this.cfg.whype, token] : [token, this.cfg.whype]);
     // the chain's clock, not this device's: the contract checks the deadline against block time
     const deadline = (await this.cfg.publicClient.getBlock()).timestamp + 600n;
     // the record is saved before the swap is sent, so its buffer is taken back even if the answer is lost
-    const rec = await launchSwap(from, { router, route, assetIn, amountIn, assetOut, amountOut, deadline, to }, onStatus, (r) => this.remember(r));
+    const rec = await launchSwap(from, { router, route, assetIn, amountIn, assetOut, amountOut, deadline, to: viaRouter ? to : undefined }, onStatus, (r) => this.remember(r));
     if ("id" in rec) this.updateRecord(rec.id, { txHash: rec.txHash });
     // take the buffer back at once when it can be; otherwise the next open does
     await this.finishPending(onStatus).catch(() => {});

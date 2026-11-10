@@ -24,7 +24,8 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - **The ecosystem vault** (`CloakEcosystemVault`, Nov 10) holds outside tokens: KNTQ first, then other launchpads' tokens and stocks. Gloam's vault engine and keys, run by our Safe, with one way in: the Safe proposes a token, and after a 3-day delay anyone admits it if the preset rules still hold (below). The router knows all three vaults (launch tokens, ecosystem tokens, everything else in Gloam's). Tested in forge (16 tests) and with real proofs (`part20-ecosystem.mjs`).
   - **Admission rules, fixed at deploy** (values in the mainnet config, `ecosystem`): only the Safe proposes (partner approval); a plain native-HYPE Uniswap v4 pool with no hook (one the router can trade); at least 250 HYPE in range; a market cap of at least 50,000 HYPE at the pool price; caps of at most 0.1% of supply per deposit and 1% in total; and the delay, after which every rule is checked again, so a pool pushed for a moment doesn't get a token in. The pauser can cancel a proposal or pause admissions; the Safe can lower or zero a listed token's caps at once; withdrawals never close.
   - [x] **KNTQ on Elysium** (scan of mainnet, Nov 10): `0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0` (Kinetiq's docs give the HyperEVM address, which has no code on Elysium). Its deepest native-HYPE v4 pool with no hook is 0.3% / 60 with about 30,200 HYPE in range, so it passes the rules and the router trades it today. Its market cap on Elysium (only the KNTQ bridged there, about 13.0M) is about 69,900 HYPE, so the market-cap preset is 50,000 HYPE, not 100,000.
-  - [x] **HYPE/USDC needs nothing new:** a native-HYPE v4 pool with no hook, 0.3% / 60, holds about 27,300 HYPE and 2.0M USDC in range, so the router trades HYPE/USDC inside Gloam's vault with our own contracts (leftovers back to the user, no 3-day pool wait). The app's USDC market and two-hop routes (USDC to HYPE to a token) are still to add.
+  - [x] **HYPE/USDC needs nothing new:** a native-HYPE v4 pool with no hook, 0.3% / 60, holds about 27,300 HYPE and 2.0M USDC in range, so the router trades HYPE/USDC inside Gloam's vault with our own contracts (leftovers back to the user, no 3-day pool wait).
+  - [x] **USDC as a market, and two-pool routes** (Nov 10). The router needed no change: a route is up to 3 pools, so USDC to a launch token or KNTQ is USDC to HYPE, then HYPE to the token, in one private swap (HYPE only passes through the PoolManager). The SDK has `trade(from, to, amount)` and `quoteTrade`; the Trade page has a "pay with" picker (HYPE or USDC); the MCP's `private_swap` takes `with`. USDC's pool comes from the deployment record (`assets[].pool`). Tested in forge (`CloakRouterV4Routes.t.sol`, 5 tests) and with real proofs (`part21-routes.mjs`: HYPE to USDC, USDC to KNTQ, KNTQ to USDC, USDC to HYPE). On testnet nothing changes until a router is in the deployment record.
   - [ ] **Bob:** the rule values (liquidity, market cap, caps). They're fixed once deployed.
   - [ ] **After deploy:** from the Safe, propose KNTQ (the deploy script prints the call); 3 days later anyone calls `admit`. Then set the keeper's `GLOAM_ECOSYSTEM_VAULT` and `GLOAM_ECOSYSTEM_VAULT_BLOCK`, and add `ecosystemVault` / `ecosystemVaultBlock` to the SDK's deployment record.
 - **Fees:** a swap pays the withdrawal fee of the vault it spends from. Gloam's is 0.5% on Elysium (it was 0.25% until Nov 3, and their Base, Ethereum and Tempo deploys use 0.25%). With HYPE in Gloam's vault, every launch-token buy pays Gloam's fee, with no room for ours.
@@ -74,10 +75,11 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - [ ] Whether Cloak takes an interface fee inside its escrows (Gloam's partner fee can't be paid privately yet).
 
 **Claude, once those are in:**
-- [ ] `deploy-partner.mjs --config deployments/elysium-mainnet-gloam.input.json`, then:
+- [ ] `deploy-partner.mjs --config deployments/elysium-mainnet-gloam.input.json` (it checks USDC's HYPE pool before deploying and writes `assets` with it), then:
   - verify every contract on the explorer;
-  - add the mainnet block to `deployments.ts`;
-  - small live checks (shield, swap, batch, send, withdraw).
+  - `node scripts/sdk-entry.mjs deployments/elysium-mainnet-gloam.json deployments/elysium-mainnet-v2-factory.json <keeper url>` prints the SDK's mainnet entry (router, ecosystem vault, USDC and its pool included): paste it into `deployments.ts` and publish the SDK;
+  - the site picks mainnet with `VITE_CHAIN_ID=99901` (chain, RPC and addresses all follow from it); the keeper needs the router in `GLOAM_ESCROWS` and the ecosystem vault in `GLOAM_ECOSYSTEM_VAULT`;
+  - small live checks (shield, swap, a USDC route, batch, send, withdraw).
 - [ ] Send Gloam the mainnet v4 pool list for their router, once the first mainnet launches settle.
 
 ## Stage 4: public mainnet

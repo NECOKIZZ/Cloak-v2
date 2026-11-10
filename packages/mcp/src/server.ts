@@ -22,7 +22,6 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   Cloak,
   cloakAuctionAbi,
-  cloakPairAbi,
   buildClaimLink,
   buildRequestLink,
   newLinkSecret,
@@ -75,7 +74,7 @@ It never signs and never holds keys. Use it to find launches (list_launches, get
 type Asset =
   | { kind: "hype"; symbol: "HYPE"; token: Address; pool: Address; decimals: 18 }
   | { kind: "asset"; symbol: string; token: Address; pool: Address; decimals: number }
-  | { kind: "token"; symbol: string; token: Address; pool: Address; pair: Address; decimals: 18 };
+  | { kind: "token"; symbol: string; token: Address; pool: Address; pair: Address; decimals: number };
 
 const LAUNCH_VAULT = parseAbi(["function isLaunchToken(address) view returns (bool)", "function factory() view returns (address)", "function admitLaunch(uint256 launchIndex) returns (address)"]);
 
@@ -175,6 +174,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
         launchSwap: g.launchSwap,
         launchSwapV4: g.launchSwapV4,
         router: g.router,
+        poolManager: d.poolManager,
         ecosystemVault: g.ecosystemVault ? { pool: g.ecosystemVault, poolBlock: g.ecosystemVaultBlock ?? g.block } : undefined,
         batcher: g.batcher,
         batcherV4: g.batcherV4,
@@ -255,8 +255,9 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
       const out: Asset[] = [{ kind: "hype", symbol: "HYPE", token: p.hypeMarket.token, pool: p.hypeMarket.pool, decimals: 18 }];
       for (const a of d.assets ?? []) out.push({ kind: "asset", symbol: a.symbol, token: a.token, pool: p.market(a.token).pool, decimals: a.decimals });
       for (const m of p.markets) {
-        if (!m.pair || out.some((a) => a.token.toLowerCase() === m.token.toLowerCase())) continue;
-        out.push({ kind: "token", symbol: m.symbol ?? (await symbolOf(m.token)), token: m.token, pool: m.pool, pair: m.pair, decimals: 18 });
+        // launch tokens with their market, and outside tokens in the ecosystem vault (their plain HYPE pool)
+        if (!(m.pair || m.ecoKey) || out.some((a) => a.token.toLowerCase() === m.token.toLowerCase())) continue;
+        out.push({ kind: "token", symbol: m.symbol ?? (await symbolOf(m.token)), token: m.token, pool: m.pool, pair: m.pair ?? m.token, decimals: m.decimals ?? 18 });
       }
       return out;
     }
@@ -289,11 +290,9 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
   async function cost(a: Asset, amount: bigint): Promise<{ budget: Budget; value: bigint }> {
     if (a.kind === "hype") return { budget: "hype", value: amount };
     if (a.kind === "asset") return { budget: "usdc", value: (amount * 10n ** 6n) / 10n ** BigInt(a.decimals) };
-    const [rH, rT] = await Promise.all([
-      pub.readContract({ address: a.pair, abi: cloakPairAbi, functionName: "reserveHype" }),
-      pub.readContract({ address: a.pair, abi: cloakPairAbi, functionName: "reserveToken" }),
-    ]);
-    return { budget: "hype", value: rT === 0n ? 0n : (amount * rH) / rT }; // at the pool's spot price, before impact
+    // what the pools give for it in HYPE (launch tokens through their market, outside tokens through their HYPE pool)
+    const p = await gloamPriv();
+    return { budget: "hype", value: amount === 0n ? 0n : await p.quoteTrade(a.token, p.hypeMarket.token, amount) };
   }
 
   const fmtAmt = (a: Asset, x: bigint) => `${formatUnits(x, a.decimals)} ${a.symbol}`;
@@ -886,32 +885,31 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
     "private_swap",
     {
       title: "Private swap",
-      description: "Buy a launch token with private HYPE, or sell it for private HYPE. Proven on this machine and sent by a relayer, so the wallet never appears on the trade. The output lands back in the private balance.",
-      inputSchema: { token: z.string().describe("Launch token symbol or address"), side: z.enum(["buy", "sell"]), amount: amt('HYPE to spend (buy) or tokens to sell (sell); "max" for the whole balance'), slippage_bps: z.number().int().min(1).max(5000).optional().describe("Max slippage in basis points (default 100 = 1%)"), dry_run: dry },
+      description: "Buy a token with private HYPE (or with USDC or any other private token, through HYPE in one swap), or sell it. Tokens are launch tokens, outside tokens such as KNTQ, and USDC. Proven on this machine and sent by a relayer, so the wallet never appears on the trade. The output lands back in the private balance.",
+      inputSchema: { token: z.string().describe("The token bought or sold: a launch token, an outside token or USDC (symbol or address)"), side: z.enum(["buy", "sell"]), amount: amt('What you pay (buy) or the tokens to sell (sell); "max" for the whole balance'), with: z.string().optional().describe('What you pay with (buy) or get (sell): "HYPE" (default), "USDC" or another token'), slippage_bps: z.number().int().min(1).max(5000).optional().describe("Max slippage in basis points (default 100 = 1%, 150 through two pools)"), dry_run: dry },
       annotations: WRITE,
     },
-    safe(async ({ token, side, amount, slippage_bps, dry_run }: { token: string; side: "buy" | "sell"; amount: string; slippage_bps?: number; dry_run?: boolean }) => {
+    safe(async ({ token, side, amount, with: other, slippage_bps, dry_run }: { token: string; side: "buy" | "sell"; amount: string; with?: string; slippage_bps?: number; dry_run?: boolean }) => {
       const { spending } = needWallet();
       const t = await resolve(token);
-      if (t.kind !== "token") throw new Error(`${t.symbol} isn't a launch token: private swaps trade launch tokens against HYPE.`);
+      const o = await resolve(other ?? "HYPE");
+      if (t.kind === "hype") throw new Error("Name the token you buy or sell; HYPE is what you pay with by default.");
+      if (t.token.toLowerCase() === o.token.toLowerCase()) throw new Error("Pick two different tokens.");
+      const [a, b] = side === "buy" ? [o, t] : [t, o];
       const p = await priv();
-      const poolIn = side === "buy" ? (await vaults())[0].pool : t.pool;
-      const x = amountOf(amount, 18) ?? (await p.maxSpendable(poolIn));
-      if (x <= 0n) throw new Error("Not enough private balance for this, counting the relayer's fee.");
-      const c = await cost(side === "buy" ? (await vaults())[0] : t, x);
+      const x = amountOf(amount, a.decimals) ?? (await p.maxSpendable(a.pool));
+      if (x <= 0n) throw new Error("Not enough private balance for this.");
+      const c = await cost(a, x);
       spending.check(c.budget, c.value);
-      const q = await quoteSwap(t, side, x);
-      const inSym = side === "buy" ? "HYPE" : t.symbol;
-      const outSym = side === "buy" ? t.symbol : "HYPE";
-      if (isDry(dry_run)) return { dryRun: true, wouldSwap: `${formatEther(x)} ${inSym} for about ${formatEther(q.out)} ${outSym}`, relayerFee: `${formatEther(q.fee)} ${inSym}`, slippage: `${(slippage_bps ?? 100) / 100}%` };
+      const out = await p.quoteTrade(a.token, b.token, await p.afterFee(a.pool, x));
+      if (isDry(dry_run)) return { dryRun: true, wouldSwap: `${fmtAmt(a, x)} for about ${fmtAmt(b, out)}`, route: a.kind === "hype" || b.kind === "hype" ? "one pool" : `through HYPE (${a.symbol} to HYPE to ${b.symbol})`, slippage: `${(slippage_bps ?? (a.kind === "hype" || b.kind === "hype" ? 100 : 150)) / 100}%` };
       return exclusive(async () => {
         // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
         spending.check(c.budget, c.value);
-        const r = await (side === "buy" ? p.buy(t.token, x, { slippageBps: slippage_bps }) : p.sell(t.token, x, { slippageBps: slippage_bps }));
+        const r = await p.trade(a.token, b.token, x, { slippageBps: slippage_bps });
         await receipt(r.txHash);
         spending.record(c.budget, c.value);
-        const outPool = side === "buy" ? t.pool : (await vaults())[0].pool;
-        return { swapped: `${formatEther(x)} ${inSym}`, expected: `${formatEther(r.expectedOut)} ${outSym}`, minimum: `${formatEther(r.minOut)} ${outSym}`, relayerFee: `${formatEther(r.relayerFee)} ${inSym}`, privateBalance: { [inSym]: formatEther(await p.balance(poolIn)), [outSym]: formatEther(await p.balance(outPool)) }, tx: link(r.txHash), sentBy: "the relayer, not this wallet" };
+        return { swapped: fmtAmt(a, x), received: fmtAmt(b, r.minOut), privateBalance: { [a.symbol]: formatUnits(await p.balance(a.pool), a.decimals), [b.symbol]: formatUnits(await p.balance(b.pool), b.decimals) }, tx: link(r.txHash), sentBy: "the relayer, not this wallet" };
       });
     }),
   );

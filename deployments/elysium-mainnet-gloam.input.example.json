@@ -24,6 +24,16 @@
     "maxSlippageBps": 200,
     "refundAfter": 600
   },
+  "assets": [
+    {
+      "symbol": "USDC",
+      "token": "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65",
+      "decimals": 6,
+      "fee": 3000,
+      "tickSpacing": 60,
+      "_pool": "USDC's deepest native-HYPE v4 pool with no hook (Nov 10 scan): 0.3% / 60, about 27,300 HYPE and 2.0M USDC in range. The router trades USDC against HYPE through it, and through HYPE against every launch and outside token (two pools, one private swap)."
+    }
+  ],
   "ecosystem": {
     "_note": "Outside tokens (CloakEcosystemVault). Fixed at deploy: a token needs the Safe's proposal, a plain native-HYPE v4 pool (no hook) with at least minHypeLiquidity HYPE in range, a market cap of at least minMcapHype HYPE, caps at most maxPerDepositBps / maxTotalBps of its supply, and admitDelaySecs before admit() checks it all again.",
     "minHypeLiquidity": "250000000000000000000",
