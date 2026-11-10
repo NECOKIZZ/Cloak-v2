@@ -12,7 +12,7 @@
     },
     "deploy CloakGloamBids": {
       "n": 1,
-      "median": 2530468
+      "median": 2570402
     },
     "relayed memo": {
       "n": 4,
@@ -24,12 +24,12 @@
     },
     "relayed escrow": {
       "n": 4,
-      "median": 732983
+      "median": 732993
     },
     "claim (anyone)": {
       "n": 1,
       "median": 216458
     }
   },
-  "wallMs": 446188
+  "wallMs": 446334
 }
