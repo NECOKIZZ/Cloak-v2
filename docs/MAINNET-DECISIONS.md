@@ -21,7 +21,9 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 ## Part A. Launches
 
-### A1. How much does Cloak take from a successful launch?
+### A1. How much does Cloak take from a successful launch? (DECIDED: 1.5%)
+
+**Decided (Nov 10).** Keep 1.5%.
 
 **Plain words.** When a sale succeeds, Cloak keeps a cut of the HYPE raised. It's our main income today. If the sale fails, nobody pays anything.
 
@@ -33,7 +35,9 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Recommendation.** Keep 1.5%. Pump-style launchpads take about 1% plus trading fees; we give a fair, snipe-free price, which is worth a little more.
 
-### A2. Should Cloak earn from trading in launch pools? (decided Nov 10: yes, 20%)
+### A2. Should Cloak earn from trading in launch pools? (DECIDED: 20%, built)
+
+**Decided (Nov 10).** 20% to the treasury, 80% to the creator. Built into the hook.
 
 **Plain words.** Every trade in a launch's pool pays 0.3% (more in the first 5 minutes). Cloak now keeps 20% of that, and the creator gets 80%. Cloak earns more as trading grows, not only when new launches happen.
 
@@ -44,7 +48,9 @@ The values live in two config files, which were rehearsed end to end on a fork o
 - Forge test `test_treasuryTakesTwentyPercentOfTradingFees`, including the anti-snipe fee. The mainnet fork rehearsal passes.
 - The create form, the creator fees card and the docs page show the split, read from the hook (earlier testnet hooks show 100% to the creator, which is true for them).
 
-### A3. How big can a bid and a launch be?
+### A3. How big can a bid and a launch be? (DECIDED: keep the caps)
+
+**Decided (Nov 10).** Keep 100 HYPE per bid and 10,000 HYPE per launch until the audit.
 
 **Plain words.** Until the audit, one bid is at most 100 HYPE (about $7,300) and one launch raises at most 10,000 HYPE (about $730,000). If something goes wrong, that limits the damage.
 
@@ -56,7 +62,9 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Recommendation.** Keep the caps until the audit, as Gloam does. They can be raised for $CLOAK's own launch (Part E).
 
-### A4. What does sniping cost at listing?
+### A4. What does sniping cost at listing? (DECIDED: keep)
+
+**Decided (Nov 10).** Keep 10% falling to 0.3% over 5 minutes.
 
 **Plain words.** In the first 5 minutes after a launch's pool opens, the trading fee starts at 10% and falls to 0.3%. Bots that race the listing pay the creator for it.
 
@@ -66,13 +74,17 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Recommendation.** Keep it. It's tested and it suits the brand. If A2 goes ahead, the split applies to this fee too.
 
-### A5. What happens to a bid that's never opened? (decided Nov 10: floor 20%)
+### A5. What happens to a bid that's never opened? (DECIDED: floor 20%, built)
+
+**Decided (Nov 10).** Floor 20%, burned. Built.
 
 **Plain words.** Bids are encrypted and unlock by themselves when bidding closes, and the keeper reveals them, so honest bidders never pay anything. A cheater can instead post a fake encrypted bid that never unlocks and keep the real one to themselves: their deposit makes demand look bigger, and when bidding closes they choose whether to reveal (if the sale looks good) or walk away (if it doesn't). The penalty is what walking away costs: part of the deposit, burned.
 
 **Technical. Done.** `MIN_NO_REVEAL_PENALTY_BPS = 2_000` in CloakAuction (stress item W-03); the creator picks 20% to 50%. The create form, the SDK default and the docs follow. Earlier factories keep their 10% floor. The penalty stays burned.
 
-### A6. Can one wallet fill a whole launch?
+### A6. Can one wallet fill a whole launch? (DECIDED: accept for the beta)
+
+**Decided (Nov 10).** Accept for the beta. The caps keep it small.
 
 **Plain words.** Yes, within the caps. Many wallets can belong to one person, and a sealed sale can't tell them apart.
 
@@ -82,7 +94,9 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Recommendation.** Accept it for the beta. The caps keep it small, and no launchpad can stop it.
 
-### A7. How long can a reveal window be?
+### A7. How long can a reveal window be? (DECIDED: 5 minutes to 7 days, built)
+
+**Decided (Nov 10).** 5 minutes to 7 days. Built.
 
 **Now.** 5 minutes to 7 days. Done (W-08). Nothing to decide.
 
@@ -105,11 +119,19 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Status.** Gloam answered (Part H): no lower rate, but a 50/50 share of their 0.5% on our flow. Recommended rate 0.25% (H2). The config holds 0.5% until Bob decides.
 
-### B2. Who pays the relay's gas?
+### B2. Who pays the relay's gas? (DECIDED: Cloak, from fee income)
+
+**Decided (Nov 10).** The treasury pays the relay's gas out of fee income. Part H's fee structure covers it many times over (H2).
 
 The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a month at beta volume. (Cloak's fee arrives in HYPE, see B1, so the treasury tops it up from that.)
 
-### B3. Launch-token caps in the launch vault
+### B3. Launch-token caps in the launch vault (DECIDED: no cap)
+
+**Decided (Nov 10).** No cap on how much of a Cloak launch token can be private.
+
+**What this is, plainly.** Every vault can limit how much of a token can be deposited into it: per deposit, and in total. For **Cloak launch tokens** (the launch vault) the limit is effectively none, so all of a launch's supply could be held privately. The bid caps already limit how big a launch can be.
+
+**The 1% cap you remember is for outside tokens only** (the ecosystem vault, C2): at most 0.1% of a token's supply per deposit and 1% of its supply in total can be private there. That protects another project's token from Cloak becoming its biggest holder. It's fixed at deploy. Tokens in **Gloam's vault** (HYPE, USDC, KNTQ) follow Gloam's own caps, such as KNTQ's 1,400 per deposit and 70,000 in total.
 
 **Plain words.** How much of a launch token can be deposited privately.
 
@@ -121,7 +143,9 @@ The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a mon
 
 ## Part C. Outside tokens (the ecosystem vault)
 
-### C1. How do outside tokens get in? (decided Nov 10)
+### C1. How do outside tokens get in? (DECIDED, built)
+
+**Decided (Nov 10).** Vet a launchpad's code once, then list its tokens at once by market cap and importance. A token can also be listed on its own (as KNTQ would have been, or $CLOAK if it launches on a launchpad we haven't vetted), but **only after its own token code is vetted**, the same way a launchpad's is.
 
 **Decided.** Cloak vets each launchpad's code once, then lists that launchpad's tokens at once, with no wait. The owner wallet chooses which ones by market cap and importance, so a launchpad with 10,000 tokens might give us 20. KNTQ is the one token vetted on its own, because Elysium itself made it an ecosystem token.
 
@@ -137,7 +161,9 @@ The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a mon
 
 **What we gave up.** With no wait, a copied owner wallet could list a fake token straight away. Two things limit that: the rules still demand a real pool with 250 HYPE in range, and a bad token can't touch other tokens' funds. The hardware wallet is the protection.
 
-### C2. What must a token pass to be listed?
+### C2. What must a token pass to be listed? (DECIDED: adjustable above the floors, built)
+
+**Decided (Nov 10).** Start at 250 HYPE in range and a 50,000 HYPE market cap. The owner adjusts both any time, never below the floors (100 HYPE and 10,000 HYPE).
 
 **Plain words.** A real market and a real size.
 
@@ -156,7 +182,9 @@ The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a mon
 - KNTQ passes: about 15,800 HYPE in range and a market cap of about 70,400 HYPE.
 - Lowering the market cap to 25,000 HYPE would let smaller Elysium tokens in. That's your call on taste.
 
-### C3. KNTQ's caps
+### C3. KNTQ's caps (CLOSED: KNTQ lives in Gloam's vault)
+
+**Closed (Nov 10).** Gloam lists KNTQ in their own vault on Thursday at 1,400 per deposit and 70,000 in total, so its caps are Gloam's. Our ecosystem vault starts empty.
 
 **Now.**
 - 0.05% of the supply per deposit, about 6,500 KNTQ (about $2,600);
@@ -183,7 +211,9 @@ Not revenue:
 - The unrevealed-bid penalty is burned (A5).
 - The router, batch rounds, bids and receive addresses take no fee. Keep it that way: every hidden fee is a reason not to trust the escrows.
 
-### D2. Where revenue goes (WAITING on Gloam, with B1)
+### D2. Where revenue goes (DECIDED: buyback and burn; amounts follow H2)
+
+**Decided (Nov 10).** Copy Gloam: half of revenue buys $CLOAK, half of that burned and half kept; the other half to the treasury. `CloakBuyback` is built once $CLOAK trades.
 
 Copy Gloam's split, automated in a contract:
 - `CloakBuyback` is the fee recipient. It has no owner and fixed splits:
@@ -301,6 +331,34 @@ The user's cost doesn't change with the share; it's money Gloam already charges.
 - **Set our trade fee to 0.25%.** The total privacy cost of a round trip is then 0.75%, the target from B1, and Cloak still earns half of every round trip's privacy fees.
 - KNTQ and USDC trades never leave Gloam's vault, so they pay no trade fee. We earn the 0.25% share on them instead.
 
+**H6. The whole fee structure, now that Gloam has answered (Claude's recommendation)**
+
+What a user pays, and what Cloak earns:
+1. **Launch fee: 1.5%** of every successful raise, in HYPE. (Decided.)
+2. **Trading share: 20%** of every Cloak launch pool's 0.3% fee. (Decided, built.)
+3. **Gloam's share: 0.25%** of every private buy, bid, and USDC or KNTQ swap through our router. That's half of Gloam's 0.5%, paid monthly. The user pays nothing extra for it.
+4. **Our trade fee: 0.25%** of every private sale out of our vaults, in HYPE or USDC. (Built; the rate is the decision.)
+5. **Our vaults' withdrawal fee: 0.** Cloak never holds launch or outside tokens.
+6. **Relay: free** to the user. Cloak pays the gas.
+
+*A $1,000 round trip on a launch token (buy, then sell), at 0.25%:*
+- **The user pays about $13.50:** Gloam $5, Cloak $2.50, the pool's fees $6. A public round trip costs $6. Gloam's $5 is fixed, so this is close to the floor.
+- **Cloak earns about $6.20:**
+  - $2.50 from Gloam's share;
+  - $2.50 from our trade fee;
+  - $1.19 as 20% of the pool fees.
+
+*Does revenue cover gas? Yes, easily.* Elysium mainnet's gas price is 0.5 gwei (read Nov 10). A private trade uses about 1.5M to 2.5M gas, and the biggest relayed actions about 4M. That's about 0.001 HYPE, or **$0.05 to $0.15** per relayed transaction. A $1,000 round trip earns $6.20 for about $0.20 of gas, roughly 30 times over.
+
+*The weak spots:*
+- **Very small trades.** Below about $40, a trade's 0.25% is less than its gas. I suggest the app sets a minimum private trade of 0.25 HYPE, about $18. That still loses a few cents on the smallest trades, but stops dust spam.
+- **Actions with no fee.** Private sends, cash-outs from our vaults and claims of leftovers are relayed for free. Cash-outs from Gloam's vault pay Gloam 0.5%, and plain withdrawals aren't in the share, since Gloam counts only exits into our router, batcher and bids. Each costs us $0.05 to $0.15. That's fine at beta volume, and the relay's hourly budget stops abuse.
+
+*The alternatives for our trade fee:*
+- **0.1%.** The user pays about $12 per $1,000 round trip, and Cloak earns about $4.70. The cheapest option that still covers gas.
+- **0.25% (recommended).** The user pays about $13.50, and Cloak earns about $6.20.
+- **0.5%.** The user pays about $16, and Cloak earns about $8.70. You felt $13 was already a lot, so I wouldn't.
+
 **H3. The memo board: what do we do until Gloam deploys it?**
 
 *Plain words.* The memo board is how a private payment's recipient finds it. Gloam hasn't deployed theirs on Elysium yet. Our app needs one for payments, links and receive addresses.
@@ -313,10 +371,23 @@ The user's cost doesn't change with the share; it's money Gloam already charges.
 
 **Not needed from their SDK 0.7.0.** It now knows Elysium mainnet, but our SDK has its own Elysium settings. The change-note seed and memo posts before a note lands are on their list. We keep the pin at 16dac34 until there's a reason to move it.
 
+## Part I. Ideas for later
+
+**GLOAK, a fully private token (Bob, Nov 10).** A token that can only ever be held privately: every unit lives in a vault, and withdrawals to outside wallets are blocked, so it can only be bought and sold privately through Cloak.
+- **How it could work.** The token's own transfer rule allows only the vault, Cloak's router and its one-time escrows, and the Uniswap pool. A transfer to any other wallet reverts, so a withdrawal to a wallet fails, and the only exit is selling privately for HYPE.
+- **What stays public.** The pool itself, so the price and each trade's size are visible. Who holds it isn't.
+- **The risks Bob named.** Liquidity and availability: no other exchange or app can hold it. It's also a token that can't be withdrawn, which some users will dislike, so it needs very clear wording.
+- **Why try it on GLOAK.** It's a contained experiment, and if it works it's a first worth announcing (with Gloam).
+- **When.** After mainnet is live. It needs its own token contract and a review.
+
 ## Done and still open
 
-**Done (Nov 10):** C1 instant listing from vetted launchpads (or a token vetted on its own); A2 the 20% trading share in the hook; A5 the 20% penalty floor; F software wallets; E1 the $CLOAK plan.
+**Decided (Nov 10):** A1 to A7, B2, B3, C1, C2, C3 (closed), D2, F, the $CLOAK plan (E1), and Gloam's points done in Part H.
 
-**Waiting on Gloam's fee answer:** B1 (our vault fee) and D2 (revenue split and buyback).
+**For Bob now:**
+1. **H1:** the HYPE caps to ask Gloam for (recommended 100 per deposit, 10,000 in total).
+2. **H2 and H6:** accept the 50/50 share, and our trade fee (recommended 0.25%), plus a 0.25 HYPE minimum private trade.
+3. **H3:** what to do about the memo board until Gloam deploys theirs.
+4. **E:** the rest of $CLOAK (where it launches, the team's share), which also waits on Gloam (H4).
 
-**Later:** `CloakBuyback` once $CLOAK trades; a Relay app fee on bridging, if wanted (off for now).
+**Later:** `CloakBuyback` once $CLOAK trades; a Relay fee on bridging, if wanted (off for now); GLOAK (Part I).
