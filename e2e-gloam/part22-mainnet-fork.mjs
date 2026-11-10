@@ -121,15 +121,16 @@ try {
   const gCore = A.cores.find((c) => c.config.pool.toLowerCase() === rec.gloamVault.toLowerCase());
   const held = async (c, asset) => (await c.sync(), c.ownNotes(asset).reduce((a, n) => a + n.amount, 0n));
 
-  await A.shieldHype(alice.wallet, parseEther("2"));
-  await forkFund(rpcUrl, USDC, POOL_MANAGER, alice.account.address, 500n * 10n ** 6n);
-  await A.shieldToken(alice.wallet, USDC, 500n * 10n ** 6n);
-  assert((await held(gCore, USDC)) === 500n * 10n ** 6n && (await held(gCore, zeroAddress)) === parseEther("2"), "500 real USDC and 2 HYPE shielded into Gloam's real vault, within its limits");
+  // Gloam's caps: 12 HYPE and 500 USDC per deposit, so bigger deposits go in pieces
+  await A.shieldHype(alice.wallet, parseEther("30"));
+  await forkFund(rpcUrl, USDC, POOL_MANAGER, alice.account.address, 1_000n * 10n ** 6n);
+  await A.shieldToken(alice.wallet, USDC, 1_000n * 10n ** 6n);
+  assert((await held(gCore, USDC)) === 1_000n * 10n ** 6n && (await held(gCore, zeroAddress)) === parseEther("30"), "30 HYPE (as 12 + 12 + 6) and 1,000 USDC (as 500 + 500) shielded into Gloam's real vault, every deposit within its caps");
 
   let t = performance.now();
   const r1 = await A.trade(rec.whype, USDC, parseEther("1"));
   const u1 = await held(gCore, USDC);
-  assert(u1 - 500n * 10n ** 6n === r1.amountOut && r1.amountOut > 60n * 10n ** 6n, `1 HYPE bought ${U(r1.amountOut)} USDC on the real 0.3% pool, ${Math.round(performance.now() - t)} ms`);
+  assert(u1 - 1_000n * 10n ** 6n === r1.amountOut && r1.amountOut > 60n * 10n ** 6n, `1 HYPE bought ${U(r1.amountOut)} USDC on the real 0.3% pool, ${Math.round(performance.now() - t)} ms`);
   t = performance.now();
   const r2 = await A.trade(USDC, KNTQ, 100n * 10n ** 6n);
   const k2 = await held(gCore, KNTQ);
@@ -144,7 +145,12 @@ try {
   const r4 = await A.trade(USDC, rec.whype, 50n * 10n ** 6n);
   assert((await held(gCore, zeroAddress)) === h4 + r4.amountOut, `50 USDC sold for ${formatEther(r4.amountOut)} HYPE`);
 
-  out.trades = { hypeToUsdc: U(r1.amountOut), usdcToKntq: formatEther(k2), kntqToUsdc: U(r3.amountOut), usdcToHype: formatEther(r4.amountOut) };
+  // a sale whose HYPE is over Gloam's 12 per deposit goes in pieces that each fit
+  const h5 = await held(gCore, zeroAddress);
+  t = performance.now();
+  const r5 = await A.trade(USDC, rec.whype, 900n * 10n ** 6n);
+  assert((r5.pieces ?? 1) >= 2 && (await held(gCore, zeroAddress)) === h5 + r5.amountOut && r5.amountOut > parseEther("12"), `900 USDC sold for ${formatEther(r5.amountOut)} HYPE in ${r5.pieces} trades, each under Gloam's 12 HYPE per deposit, ${Math.round(performance.now() - t)} ms`);
+  out.trades = { usdc900ToHype: formatEther(r5.amountOut), pieces: r5.pieces, hypeToUsdc: U(r1.amountOut), usdcToKntq: formatEther(k2), kntqToUsdc: U(r3.amountOut), usdcToHype: formatEther(r4.amountOut) };
   writeMeasurements("part22-mainnet-fork", { ...out, forkBlock: Number(block), seconds: Math.round((performance.now() - t0) / 1000) });
   console.log(`\nPart 22 passed in ${Math.round((performance.now() - t0) / 1000)} s`);
 } finally {

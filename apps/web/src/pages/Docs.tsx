@@ -203,7 +203,7 @@ export function Docs() {
           </ul>
           <p>Everything sits after the # in the link, which browsers never send to a server, so the details stay between the people who share it. A claim link is like cash: anyone who has it can claim it. The links you make are kept encrypted in your browser, under Your links.</p>
           <h2 id="private-usdc">Private USDC</h2>
-          <><p>USDC lives in Gloam's main vault, shared with everyone who uses Gloam, so it hides in the biggest crowd. Shield it on Portfolio (the first time asks for an approval), then send it privately to any <code>cloak:</code> address or withdraw it to a fresh address. Gloam's vault takes at most 500 USDC per deposit and 25,000 in total for now, and caps go up as volume shows up.</p></>
+          <><p>USDC lives in Gloam's main vault, shared with everyone who uses Gloam, so it hides in the biggest crowd. Shield it on Portfolio (the first time asks for an approval), then send it privately to any <code>cloak:</code> address or withdraw it to a fresh address. Like every private vault it has caps for now, per deposit and in total. A bigger deposit goes in as several, one signature each. The caps go up as Cloak and Gloam grow.</p></>
           <p>Elysium's USDC is bridged from Circle's USDC on HyperEVM. Circle can freeze the USDC held by the bridge, and the bridge operator can upgrade the Elysium USDC contract. That applies to everyone holding USDC on Elysium, inside Cloak or not.</p>
 
           <h2 id="what-stays-private">What stays private</h2>
@@ -292,12 +292,13 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <table>
                 <tbody>
                   <tr><td>Deposits and private sends</td><td>Free</td></tr>
-                  <tr><td>Withdrawals, private swaps, batch orders and bids from a private balance</td><td>0.5% of what leaves the vault (Gloam's vault fee on Elysium)</td></tr>
+                  <tr><td>Withdrawals, private buys, batch orders and bids from Gloam's vault</td><td>0.5% of what leaves the vault (Gloam's vault fee, part of which Gloam shares with Cloak)</td></tr>
+                  {G?.router && <tr><td>Private sales out of Cloak's vaults</td><td>0.25% of what the sale brings, in HYPE or USDC, to Cloak (Cloak's own vaults charge nothing on the way out)</td></tr>}
                   <tr><td>Launch fee</td><td>1.5% of a successful raise, taken at settlement. Nothing if the launch doesn't fill (hard cap 3%)</td></tr>
                   <tr><td>Relayer</td><td>Free for you. Cloak pays the gas</td></tr>
                 </tbody>
               </table>
-              <p>While this is in beta, deposits are capped. Gloam's vault takes 500 USDC per deposit and 25,000 in total, and the launch vault takes 10 HYPE per deposit. Withdrawals are never capped.</p>
+              <p>While this is young, the private vaults cap deposits, both per deposit and in total. On Elysium mainnet, Gloam's vault starts at <b>12 HYPE per deposit and 600 HYPE in total</b>, and 500 USDC per deposit and 25,000 in total. That's small on purpose, and it rises as Cloak and Gloam grow together. The cap never limits what you can do. A bigger deposit goes in as several, a bigger trade goes in as several trades, and a bigger bid goes in as several sealed bids at the same price, all automatically. Only the vault's total can stop a deposit, and the app says so when it's full. Withdrawals are never capped.</p>
             </></>
           <p>A creator's own share is capped at 20% of the supply and vests over at least 30 days from the end of the auction.</p>
 

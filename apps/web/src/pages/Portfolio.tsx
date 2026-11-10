@@ -291,6 +291,13 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   const balOf = (k: Key) => (kind === "shield" ? pub[k] : bals[k]);
   const options: Option[] = list.map((a) => ({ a, sub: balOf(a.key) === undefined ? "…" : `${amountOf(a, balOf(a.key)!)} ${kind === "shield" ? "in wallet" : "private"}` }));
   const cur = list.find((a) => a.key === asset);
+  // the vault's caps on this asset, shown honestly before a deposit (Gloam's vault: 12 HYPE per deposit for now)
+  const [caps, setCaps] = useState<{ perDeposit: bigint; left: bigint } | null>(null);
+  useEffect(() => {
+    setCaps(null);
+    if (kind !== "shield" || !priv || !cur) return;
+    priv.depositCaps(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).then(setCaps).catch(() => {});
+  }, [kind, cur?.key, priv]);
 
   async function useMax() {
     if (!cur || !priv) return;
@@ -298,9 +305,9 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     if (kind === "shield") {
       // leave a little HYPE for gas
       let x = cur.key === "HYPE" ? (have > 2_000_000_000_000_000n ? have - 2_000_000_000_000_000n : 0n) : have;
-      // on Gloam, one deposit is capped by the vault: max is what one deposit can be right now
-      const room = await priv.depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => x);
-      if (room < x) x = room;
+      // the vault's room left under its total cap (bigger than one deposit goes in several)
+      const { left } = await priv.depositCaps(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => ({ left: x }));
+      if (left < x) x = left;
       return setAmt(formatUnits(x, cur.decimals));
     }
     const pool = cur.key === "HYPE" ? priv.hypeMarket.pool : priv.market(cur.key).pool;
@@ -321,11 +328,12 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     if (have !== undefined && a > have) return setRes({ err: `You have ${amountOf(cur, have)} ${cur.symbol}${kind === "shield" ? " in your wallet" : " private"}. Enter that or less.` });
     try {
       if (kind === "shield") {
-        const room = await priv.depositRoom(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => a);
-        if (room === 0n) throw new Hint(`Cloak isn't taking ${cur.symbol} deposits right now. Its private vault is full or doesn't list it yet.`);
-        if (a > room) throw new Hint(`Cloak takes up to ${amountOf(cur, room)} ${cur.symbol} in one deposit right now. Shield it in parts.`);
-        setBusy("Depositing into your private balance…");
-        const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a) : await priv.shieldToken(wallet, cur.key, a, setBusy);
+        const caps = await priv.depositCaps(cur.key === "HYPE" ? priv.hypeMarket.token : (cur.key as Address)).catch(() => ({ perDeposit: a, left: a }));
+        if (caps.left === 0n) throw new Hint(`The private vault for ${cur.symbol} is full right now. Its cap goes up as Cloak and Gloam grow, so try again soon.`);
+        if (a > caps.left) throw new Hint(`The private vault has room for ${amountOf(cur, caps.left)} more ${cur.symbol} right now. Enter that or less.`);
+        const parts = caps.perDeposit > 0n ? Number((a + caps.perDeposit - 1n) / caps.perDeposit) : 1;
+        setBusy(parts > 1 ? `Depositing in ${parts} parts (up to ${amountOf(cur, caps.perDeposit)} ${cur.symbol} each), one wallet signature per part…` : "Depositing into your private balance…");
+        const tx = cur.key === "HYPE" ? await priv.shieldHype(wallet, a, setBusy) : await priv.shieldToken(wallet, cur.key, a, setBusy);
         markDone("shield");
         setRes({ ok: `${amt} ${cur.symbol} is now private.`, tx });
       } else {
@@ -429,10 +437,10 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               <p className="note">
                 {kind === "shield"
-                  ? `Shielding is the one public step: your wallet deposits ${cur?.symbol ?? "it"}. It lands on a one-time key, so it can't be linked to anything you do next.${cur && cur.key !== "HYPE" ? ` ${cur.symbol} needs two confirmations the first time: an approval, then the deposit.` : ""} Then swap privately into other tokens on Trade.`
+                  ? `Shielding is the one public step: your wallet deposits ${cur?.symbol ?? "it"}. It lands on a one-time key, so it can't be linked to anything you do next.${cur && cur.key !== "HYPE" ? ` ${cur.symbol} needs two confirmations the first time: an approval, then the deposit.` : ""} Then swap privately into other tokens on Trade.${caps && cur && caps.perDeposit > 0n ? ` For now the private vault takes up to ${amountOf(cur, caps.perDeposit)} ${cur.symbol} per deposit, so a bigger amount goes in parts, one signature each, and has room for ${amountOf(cur, caps.left)} more in total. These caps rise as Cloak and Gloam grow.` : ""}`
                   : kind === "send"
                     ? <>A transfer inside the vault. The chain only sees that a private transaction happened. No cloak: address to send to? <Link to="/app/links" className="link">Send it as a link</Link> they can claim to any wallet.</>
-                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. Cloak keeps ${feePct} fee on withdrawals, and the relayer pays the gas.`}
+                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. The vault keeps ${feePct} of a withdrawal, and the relayer pays the gas.`}
               </p>
             </>
           )}

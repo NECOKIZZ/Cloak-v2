@@ -237,7 +237,7 @@ export function Trade() {
         const tokenOf = (m: Market | null) => (m ? m.token : p.hypeMarket.token) as Address;
         const r = await p.trade(tokenOf(from), tokenOf(to), amountIn, { onStatus: setBusy });
         markDone("swap");
-        setRes({ ok: `Swapped privately for ~${fmtOut(r.expectedOut)} ${toSym}.`, tx: r.txHash });
+        setRes({ ok: `Swapped privately for ~${fmtOut(r.expectedOut)} ${toSym}${r.pieces && r.pieces > 1 ? ` in ${r.pieces} trades, since the private vault takes this much at a time for now` : ""}.`, tx: r.txHash });
       }
       refreshBal();
     } catch (e) {

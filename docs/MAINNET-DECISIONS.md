@@ -104,7 +104,7 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 ## Part B. Our vaults
 
-### B1. What does Cloak charge on private trades? (BUILT Nov 10; the rate: see H2)
+### B1. What does Cloak charge on private trades? (DECIDED: 0.25% on sales, built)
 
 **Decided.** Our vaults charge nothing. Cloak's fee is taken in HYPE (or USDC) when a token is sold out of our vaults, after the swap, and sent to the treasury. Buys pay no Cloak fee (Gloam's 0.5% applies there). Nothing is burned, and Cloak never holds launch or outside tokens.
 
@@ -117,7 +117,7 @@ The values live in two config files, which were rehearsed end to end on a fork o
 - Both vaults deploy with `withdrawFeeBps: 0`. The SDK, the site and the MCP tools quote net of the fee.
 - Tests: 8 for CloakTradeFee, 3 for the router, 1 for batch rounds; end to end, part 20 (KNTQ sold into HYPE: 0.5% to the treasury in HYPE, no KNTQ) and part 22 on the mainnet fork (KNTQ sold into USDC: 0.5% in USDC).
 
-**Status.** Gloam answered (Part H): no lower rate, but a 50/50 share of their 0.5% on our flow. Recommended rate 0.25% (H2). The config holds 0.5% until Bob decides.
+**Status.** Gloam answered (Part H): no lower rate, but a 50/50 share of their 0.5% on our flow. Decided: 0.25% (H2), in the mainnet config.
 
 ### B2. Who pays the relay's gas? (DECIDED: Cloak, from fee income)
 
@@ -301,7 +301,22 @@ Gloam read the brief with their team. What they said, what's already done, and t
 - **Our escrows work on their vault without sign-off**, since it's permissionless. We run our own relay until they've reviewed them.
 - **The site and docs say whose vaults are whose.** Every page names Cloak's launch and ecosystem vaults as Cloak's own, run by Cloak, and Gloam's main vault as Gloam's.
 
-**H1. HYPE caps in Gloam's vault: what do we ask for?**
+**H1. HYPE caps in Gloam's vault (DECIDED Nov 10: keep Gloam's)**
+
+*Decided.* We don't ask for more. Gloam's caps stay as they set them (12 HYPE per deposit, 600 in total), so Cloak's growth is tied to Gloam's. We're honest about the caps on the site and say they'll rise. Our own limits stay as they are, including the 100 HYPE bid cap.
+
+*Built so the cap never limits a user* (Nov 10):
+- **Deposits** bigger than the cap go in as several, one signature each. 30 HYPE goes in as 12 + 12 + 6.
+- **Trades** go in as several, one after another, each fitting two limits:
+  - one trade spends one note, and notes can never be merged (Gloam's transfers take one note in and give two out), so no HYPE note is ever above 12;
+  - each trade's output lands as one deposit.
+- **Bids** bigger than the biggest note go in as several sealed bids at the same price, one note each. With one clearing price, that's the same as one bid.
+- **Refunds and payouts** come back as several notes.
+- **Tested:** part 22 on Gloam's real vault (30 HYPE and 1,000 USDC shielded in pieces; 900 USDC sold for 12.45 HYPE in 2 trades) and part 13 (a bid paid from small notes became 2 sealed bids, all won and refunded).
+- **The site shows each vault's caps live** before a deposit, explains the splitting, and says the caps rise as Cloak and Gloam grow.
+- **The only real limit is the vault's total** (600 HYPE shared by everyone on Gloam). The app says plainly when it's full.
+
+*Original question, kept for the record:*
 
 *Plain words.* From Thursday, Gloam's vault takes at most 12 HYPE per deposit and 600 HYPE in total. Every private HYPE balance on Cloak lives there. So:
 - a private sale that brings more than 12 HYPE fails;
@@ -314,7 +329,11 @@ One launch at our beta cap raises up to 10,000 HYPE, so 600 in total wouldn't co
 
 *Recommendation.* Ask for **100 HYPE per deposit**, which matches our 100 HYPE bid cap, and **10,000 HYPE in total**, which covers one full beta launch. Raise both together after our audit, when we lift the bid caps.
 
-**H2. The fee share: accept 50/50?**
+**H2. The fee share (DECIDED Nov 10: accept 50/50, our trade fee 0.25%)**
+
+*Decided.* Accept Gloam's 50/50 share of their 0.5% on our flow, and set our trade fee to 0.25% (`tradeFee.bps: 25` in the mainnet config). No minimum trade size: like Gloam, we don't limit what people trade. Gloam charges a flat 0.5% at any size, its relay pays the gas, and abuse is stopped by the relay's hourly budget and per-sender shares, not a minimum. Ours works the same way.
+
+*Original question:*
 
 *Plain words.* Gloam can't give us a lower rate: their vault is already deployed with no upgrade path, and a lower rate would apply to everyone. Instead they'll pay us half of their 0.5% on everything that leaves their vault into our router, batch rounds and bids, counted from the chain's events and paid monthly. That's 0.25% of every private buy, and of every bid.
 
@@ -359,7 +378,11 @@ What a user pays, and what Cloak earns:
 - **0.25% (recommended).** The user pays about $13.50, and Cloak earns about $6.20.
 - **0.5%.** The user pays about $16, and Cloak earns about $8.70. You felt $13 was already a lot, so I wouldn't.
 
-**H3. The memo board: what do we do until Gloam deploys it?**
+**H3. The memo board (DECIDED Nov 10: ask Gloam)**
+
+*Decided.* Ask Gloam when it's coming (it's in the reply draft). Fallback: deploy their code unchanged until theirs is live.
+
+*Original question:*
 
 *Plain words.* The memo board is how a private payment's recipient finds it. Gloam hasn't deployed theirs on Elysium yet. Our app needs one for payments, links and receive addresses.
 
@@ -384,10 +407,9 @@ What a user pays, and what Cloak earns:
 
 **Decided (Nov 10):** A1 to A7, B2, B3, C1, C2, C3 (closed), D2, F, the $CLOAK plan (E1), and Gloam's points done in Part H.
 
+**Decided since (Nov 10):** H1 (keep Gloam's caps, everything splits to fit), H2 (50/50 share, our trade fee 0.25%, no minimum trade), H3 (ask Gloam about the memo board).
+
 **For Bob now:**
-1. **H1:** the HYPE caps to ask Gloam for (recommended 100 per deposit, 10,000 in total).
-2. **H2 and H6:** accept the 50/50 share, and our trade fee (recommended 0.25%), plus a 0.25 HYPE minimum private trade.
-3. **H3:** what to do about the memo board until Gloam deploys theirs.
-4. **E:** the rest of $CLOAK (where it launches, the team's share), which also waits on Gloam (H4).
+1. **E:** the rest of $CLOAK (where it launches, the team's share), after the audit and Gloam's listing answer (docs/CLOAK.md).
 
 **Later:** `CloakBuyback` once $CLOAK trades; a Relay fee on bridging, if wanted (off for now); GLOAK (Part I).

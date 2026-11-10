@@ -19,10 +19,10 @@
   "withdrawFeeBps": 0,
   "_withdrawFeeBps": "Our vaults charge no withdrawal fee: Cloak's fee is taken in HYPE by the router and batch rounds (tradeFee below), so Cloak never holds launch or outside tokens (decided Nov 10).",
   "tradeFee": {
-    "bps": 50,
+    "bps": 25,
     "treasury": "FILL IN: the treasury wallet"
   },
-  "_tradeFee": "Cloak's fee on private sales out of its vaults (launch and ecosystem tokens into HYPE or USDC), in basis points, taken from what the sale brings and sent to the treasury. Buys pay none (Gloam's 0.5% applies there). CloakTradeFee, owned by the owner wallet: lower at once, raise or move the treasury after a public 3-day wait, never above 1%. RATE WAITING on Gloam's fee answer (docs/MAINNET-DECISIONS.md, B1).",
+  "_tradeFee": "Cloak's fee on private sales out of its vaults (launch and ecosystem tokens into HYPE or USDC): 25 = 0.25% (decided Nov 10), taken from what the sale brings and sent to the treasury. Buys pay none here: Gloam's 0.5% applies, half of it shared with Cloak monthly. CloakTradeFee, owned by the owner wallet: lower at once, raise or move the treasury after a public 3-day wait, never above 1%.",
   "launchCaps": {
     "perDeposit": "1000000000000000000000000000",
     "total": "100000000000000000000000000000"
@@ -68,5 +68,5 @@
   },
   "_scan": "Elysium mainnet (99901), Nov 10: Uniswap v4 PoolManager 0xe2e105d3f7209a9da11f83ccf3e7398a753823f1 (81,107 pools). USDC 0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65 (6 decimals). WHYPE 0xbA876237B0F021A6c6D852d6c26E107997cC5E81. Deepest HYPE/USDC pool with no hook: native HYPE, 0.3% / 60, about 27,300 HYPE and 2.0M USDC in range; then 0.2% / 40 with about 14,400 HYPE and 1.06M USDC.",
   "_whype": "deploy: the script deploys CloakWHYPE, Cloak's own fixed WHYPE (Elysium's 0xbA87...5E81 is an upgradeable proxy). Or an address of a fixed WHYPE.",
-  "_assets_caps": "Gloam's caps on Elysium (Nov 10): USDC 500 per deposit / 25,000 total (live); HYPE 12 / 600 from Thursday (we ask for more, docs/MAINNET-DECISIONS.md); KNTQ 1,400 / 70,000 from Thursday."
+  "_assets_caps": "Gloam's caps on Elysium (Nov 10): USDC 500 per deposit / 25,000 total (live); HYPE 12 / 600 from Thursday Nov 12; KNTQ 1,400 / 70,000 from Thursday. Kept as Gloam set them (decided Nov 10): the SDK splits deposits, trades and bids to fit, and the caps rise with Gloam."
 }

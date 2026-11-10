@@ -108,7 +108,17 @@ export async function gloamFinishBid(core: GloamCore, rec: GloamBidRecord, back:
   onStatus("Proving the returning notes");
   const made = [];
   const coreFor = (asset: Address) => (asset === "0x0000000000000000000000000000000000000000" ? hypeCore : core);
-  for (const b of back.filter((x) => x.amount > 0n)) made.push({ ...(await coreFor(b.asset).depositFor(b.asset, b.amount)), core: coreFor(b.asset) });
+  const LIMIT = [{ type: "function", name: "depositLimit", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint128" }, { type: "uint128" }] }] as const;
+  for (const b of back.filter((x) => x.amount > 0n)) {
+    // over the vault's per-deposit cap (Gloam's vault takes 12 HYPE at a time for now): several notes, each under it
+    const c = coreFor(b.asset);
+    const [per] = await pub.readContract({ address: c.config.pool, abi: LIMIT, functionName: "depositLimit", args: [b.asset] }).catch(() => [0n, 0n] as const);
+    for (let left = b.amount; left > 0n; ) {
+      const part = per > 0n && left > per ? per : left;
+      made.push({ ...(await c.depositFor(b.asset, part)), core: c });
+      left -= part;
+    }
+  }
   const ds = made.map((m) => m.deposit);
   const digest: Hex = (await pub.readContract({ address: rec.bids, abi: BIDS, functionName: "finishDigest", args: [rec.account, ds] })) as Hex;
   const signature = await privateKeyToAccount(core.exitKeyFor(rec.key.nullifier)).sign({ hash: digest });

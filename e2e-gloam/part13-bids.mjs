@@ -33,7 +33,7 @@ try {
   console.log("Part 13 on a fork of Elysium testnet: a sealed bid from the private balance, back with no 3-day wait");
   const addr = dep.account.address;
   const poseidon = await deployPoseidon(dep);
-  const stack = await deployGloamStack({ rpcUrl, pk: ANVIL_KEYS[0], poseidon, assets: [{ address: ELYSIUM_TESTNET_USDC, perDeposit: 500n * 10n ** 6n, total: 25_000n * 10n ** 6n }, { address: zeroAddress, perDeposit: parseEther("10"), total: parseEther("100") }], feeBps: 50, feeRecipient: addr, controller: addr });
+  const stack = await deployGloamStack({ rpcUrl, pk: ANVIL_KEYS[0], poseidon, assets: [{ address: ELYSIUM_TESTNET_USDC, perDeposit: 500n * 10n ** 6n, total: 25_000n * 10n ** 6n }, { address: zeroAddress, perDeposit: parseEther("0.003"), total: parseEther("100") }], feeBps: 50, feeRecipient: addr, controller: addr });
   const caps = [parseEther("1000000000"), parseEther("100000000000")];
   const lv = await deploy("CloakLaunchVault", ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), [poseidon, stack.dual, D.factory, ...caps, addr]);
   await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
@@ -56,11 +56,12 @@ try {
   const provers = { shield: await finalProver("shield"), transfer: await finalProver("transfer"), unshield: await finalProver("unshield") };
   const A = await GloamPrivate.unlock(alice.wallet, { publicClient: pub, chainId: ELYSIUM_TESTNET_ID, gloamVault: { pool: stack.pool, poolBlock: block }, launchVault: { pool: lv, poolBlock: block }, payMemo: stack.payMemo, provers, submit: (call) => relay({ kind: call.kind, to: call.to, data: call.data }), whype: D.whype, bids, logChunk: 5_000n, records: { load: () => saved, save: (x) => (saved = x) } });
   await A.loadMarkets();
-  await A.shieldHype(alice.wallet, parseEther("1"));
+  // HYPE at 0.003 per deposit here (Gloam's mainnet vault: 12), so 0.01 HYPE goes in as four deposits
+  await A.shieldHype(alice.wallet, parseEther("0.01"));
   const gCore = A.cores.find((c) => c.config.pool.toLowerCase() === stack.pool.toLowerCase());
   const lCore = A.cores.find((c) => c.config.pool.toLowerCase() === lv.toLowerCase());
   const held = async (c, asset) => (await c.sync(), c.ownNotes(asset).reduce((a, n) => a + n.amount, 0n));
-  assert((await held(gCore, zeroAddress)) === parseEther("1") && (await held(lCore, zeroAddress)) === 0n, "Alice's HYPE went into Gloam's vault (the launch vault takes no HYPE)");
+  assert((await held(gCore, zeroAddress)) === parseEther("0.01") && gCore.ownNotes(zeroAddress).length === 4 && (await held(lCore, zeroAddress)) === 0n, "Alice's 0.01 HYPE went into Gloam's vault as 4 deposits under its cap (the launch vault takes no HYPE)");
 
   // a new launch on Cloak's live v4 factory (on the fork)
   const creator = new Cloak(pub, creatorC.wallet, D.factory);
@@ -77,9 +78,9 @@ try {
   const placed = await pub.getTransaction({ hash: r.fundTx });
   assert(placed.from.toLowerCase() === keeper.account.address.toLowerCase(), "the bid was sent by the relay: Alice's wallet appears nowhere");
   const ws = await A.bidWallets(l.auction);
-  assert(ws.length === 1 && ws[0].address === r.bidWallet, "the launch page lists the bid's one-time account as the bidder");
+  assert((r.bids ?? 1) >= 2 && ws.length === r.bids && ws[0].address === r.bidWallet, `no note holds 0.005 HYPE, so the bid went in as ${r.bids} sealed bids at the same price, one note each; the launch page lists each one-time account`);
   const hypeAfterBid = await A.balance(A.hypeMarket.pool);
-  assert((await held(gCore, zeroAddress)) < parseEther("1"), "the bid's HYPE came out of Gloam's vault");
+  assert((await held(gCore, zeroAddress)) < parseEther("0.01"), "the bid's HYPE came out of Gloam's vault");
 
   // reveal from the drand timelock, settle
   await waitChainTime(s.commitEnd);
@@ -97,7 +98,7 @@ try {
   assert(t.admitted.some((x) => x.token.toLowerCase() === l.token.toLowerCase()), "the keeper loop admitted the new launch's token at settlement");
   await A.loadMarkets();
   const res = await A.finishPending();
-  assert(res.done.length === 1 && res.errors.length === 0, `the next open finished the bid: ${res.done[0]?.outcome}`);
+  assert(res.done.length === r.bids && res.errors.length === 0, `the next open finished all ${r.bids} bids: ${res.done[0]?.outcome}`);
   const won = await A.balance(l.token);
   assert(won > 0n, `${formatEther(won)} GBID won, in the private balance at once (no 3-day wait)`);
   const refundBack = (await A.balance(A.hypeMarket.pool)) - hypeAfterBid;

@@ -428,6 +428,23 @@ export class GloamPrivate {
    * The most one deposit of `token` (or hypeMarket.token for HYPE) can be right now, in whichever vault takes it: its
    * per-deposit cap, and what's left under its total cap. 0 when no vault takes it.
    */
+  /**
+   * A vault's caps on `token` as they stand: the most one deposit can be, and what's left under its total, in the vault
+   * with the most room. Shields bigger than one deposit go in several (shieldHype / shieldToken split them).
+   */
+  async depositCaps(token: Address): Promise<{ perDeposit: bigint; left: bigint }> {
+    const asset = this.assetOf(token);
+    const LIMIT = parseAbi(["function depositLimit(address) view returns (uint128 perDeposit, uint128 total)", "function deposited(address) view returns (uint256)"]);
+    let best = { perDeposit: 0n, left: 0n };
+    for (const c of this.cores) {
+      const [per, total] = await this.cfg.publicClient.readContract({ address: c.config.pool, abi: LIMIT, functionName: "depositLimit", args: [asset] }).catch(() => [0n, 0n] as const);
+      const dep = await this.cfg.publicClient.readContract({ address: c.config.pool, abi: LIMIT, functionName: "deposited", args: [asset] }).catch(() => 0n);
+      const left = total > dep ? total - dep : 0n;
+      if (per > 0n && left > best.left) best = { perDeposit: per, left };
+    }
+    return best;
+  }
+
   async depositRoom(token: Address): Promise<bigint> {
     const asset = this.assetOf(token);
     const LIMIT = parseAbi(["function depositLimit(address) view returns (uint128 perDeposit, uint128 total)", "function deposited(address) view returns (uint256)"]);
@@ -444,15 +461,40 @@ export class GloamPrivate {
 
   // ── in and out ─────────────────────────────────────────────────────────
 
-  async shieldHype(wallet: WalletClient, amount: bigint): Promise<Hex> {
-    const c = await this.depositCore(zeroAddress, amount);
-    const hs = await c.shield(wallet, zeroAddress, amount);
+  /** A vault's per-deposit cap on `asset` (0 when it doesn't take it). */
+  private async perDeposit(pool: Address, asset: Address): Promise<bigint> {
+    const LIMIT = parseAbi(["function depositLimit(address) view returns (uint128 perDeposit, uint128 total)"]);
+    const [per] = await this.cfg.publicClient.readContract({ address: pool, abi: LIMIT, functionName: "depositLimit", args: [asset] }).catch(() => [0n, 0n] as const);
+    return per;
+  }
+
+  /**
+   * `amount` as deposits a vault takes: one when it fits its per-deposit cap, else as many as needed (a vault's cap of
+   * 12 HYPE per deposit makes a 30 HYPE deposit three: 12, 12, 6). Each is its own transaction from the wallet.
+   */
+  private async splitShield(wallet: WalletClient, asset: Address, amount: bigint, onStatus: Status): Promise<Hex[]> {
+    const fits = await this.depositCore(asset, amount).catch(() => null);
+    if (fits) return fits.shield(wallet, asset, amount, onStatus);
+    const per = (await Promise.all(this.cores.map((c) => this.perDeposit(c.config.pool, asset)))).reduce((a, b) => (b > a ? b : a), 0n);
+    if (per === 0n) throw new Error("No private vault takes this deposit right now (the asset isn't listed, or its cap is full).");
+    const out: Hex[] = [];
+    for (let left = amount, i = 1, n = (amount + per - 1n) / per; left > 0n; i++) {
+      const part = left < per ? left : per;
+      onStatus(`Deposit ${i} of ${n} (the vault takes at most ${part === per ? "this much" : "the rest"} at a time)`);
+      const c = await this.depositCore(asset, part);
+      out.push(...(await c.shield(wallet, asset, part, onStatus)));
+      left -= part;
+    }
+    return out;
+  }
+
+  async shieldHype(wallet: WalletClient, amount: bigint, onStatus: Status = () => {}): Promise<Hex> {
+    const hs = await this.splitShield(wallet, zeroAddress, amount, onStatus);
     return hs[0];
   }
 
   async shieldToken(wallet: WalletClient, token: Address, amount: bigint, onStatus: Status = () => {}): Promise<Hex> {
-    const c = await this.depositCore(token, amount);
-    const hs = await c.shield(wallet, token, amount, onStatus);
+    const hs = await this.splitShield(wallet, token, amount, onStatus);
     return hs[token === zeroAddress ? 0 : 1] ?? hs[0];
   }
 
@@ -636,9 +678,48 @@ export class GloamPrivate {
    * to a launch token. Exact input, exact output: the output is the quote on what the vault releases, less the slippage
    * allowance, and whatever the swap didn't need comes back as a note (finishPending).
    */
-  async trade(tokenIn: Address, tokenOut: Address, amountIn: bigint, opts: { slippageBps?: number; onStatus?: Status } = {}) {
+  async trade(tokenIn: Address, tokenOut: Address, amountIn: bigint, opts: { slippageBps?: number; onStatus?: Status; whole?: boolean } = {}): Promise<{ txHash: Hex; amountOut: bigint; expectedOut: bigint; minOut: bigint; relayerFee: bigint; pieces?: number }> {
     const [assetIn, assetOut] = [this.assetOf(tokenIn), this.assetOf(tokenOut)];
     if (assetIn === assetOut) throw new Error("Pick two different tokens.");
+    // Two limits make a big trade go in pieces, one after another:
+    // - the input: one trade spends one note, and a vault's notes are never bigger than its per-deposit cap (notes can't
+    //   be merged), so 30 HYPE held as 12 + 12 + 6 trades as three;
+    // - the output: it lands as one deposit in its vault, so it must fit that vault's per-deposit cap (Gloam's vault
+    //   takes 12 HYPE at a time for now).
+    const src = this.tradeCore(assetIn);
+    const dest = this.tradeCore(assetOut);
+    if (!opts.whole && src && dest) {
+      await src.sync(opts.onStatus ?? (() => {}));
+      const notes = src.ownNotes(assetIn).map((n) => n.amount).sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+      const per = await this.perDeposit(dest.config.pool, assetOut);
+      const out = per > 0n ? await this.quoteTrade(assetIn, assetOut, amountIn).catch(() => 0n) : 0n;
+      // the most one piece may spend so its output stays under about 95% of the cap
+      const capIn = per > 0n && out > 0n ? (amountIn * per * 95n) / (out * 100n) : amountIn;
+      if (notes.length && (amountIn > notes[0] || amountIn > capIn)) {
+        if (notes.reduce((a, b) => a + b, 0n) < amountIn) throw new Error("insufficient private balance in the trading vault (deposits made for trading land there)");
+        const parts: bigint[] = [];
+        let left = amountIn;
+        for (const note of notes) {
+          for (let room = note; room > 0n && left > 0n; ) {
+            const p = [room, capIn, left].reduce((a, b) => (b < a ? b : a));
+            if (p === 0n) break;
+            parts.push(p);
+            room -= p;
+            left -= p;
+          }
+          if (left === 0n) break;
+        }
+        if (parts.length > 50) throw new Error(`This trade would take ${parts.length} pieces under the vault's caps. Trade a smaller amount.`);
+        let total = 0n;
+        let last: { txHash: Hex; amountOut: bigint; expectedOut: bigint; minOut: bigint; relayerFee: bigint } | undefined;
+        for (let i = 0; i < parts.length; i++) {
+          (opts.onStatus ?? (() => {}))(`Trade ${i + 1} of ${parts.length}: the vault takes this much at a time`);
+          last = await this.trade(tokenIn, tokenOut, parts[i], { ...opts, whole: true });
+          total += last.amountOut;
+        }
+        return { ...last!, amountOut: total, expectedOut: total, minOut: total, pieces: parts.length };
+      }
+    }
     const viaRouter = !!(this.cfg.router && this.cfg.gloamVault);
     let router: Address | undefined;
     let route: Hex;
@@ -834,7 +915,7 @@ export class GloamPrivate {
    * and the refund come back into the vault as notes (finishPending, or finishPrivateBids). If nobody finishes it, its
    * timeout exit goes to this account's receive address, which moves back in on the next open.
    */
-  async bidPrivately(auction: Address, opts: { maxPrice: bigint; quantity: bigint; deposit?: bigint }, onStatus: Status = () => {}) {
+  async bidPrivately(auction: Address, opts: { maxPrice: bigint; quantity: bigint; deposit?: bigint; single?: boolean }, onStatus: Status = () => {}): Promise<{ secret: { auction: Address; bidder: Address; tick: number; quantity: bigint; salt: Hex; id: bigint; deposit: bigint; commitment: Hex; txHash: Hex }; bidWallet: Address; n: number; fundTx: Hex; bids?: number; secrets?: { auction: Address; bidder: Address; tick: number; quantity: bigint; salt: Hex; id: bigint; deposit: bigint; commitment: Hex; txHash: Hex }[] }> {
     const launch = this.launchCore;
     if (!launch || !this.cfg.bids) throw new Error(NOT_YET);
     // the bid's HYPE comes from the bids contract's HYPE vault (Gloam's, on one built for it)
@@ -848,7 +929,38 @@ export class GloamPrivate {
     if (deposit < q.cost) throw new Error("deposit is below the bid's cost");
     // what arrives at the bid account is the note less the vault's fee: send enough that the deposit lands in full
     const bps = await this.feeBpsOf(core);
-    const amount = (deposit * 10_000n + (10_000n - bps) - 1n) / (10_000n - bps);
+    const gross = (d: bigint) => (d * 10_000n + (10_000n - bps) - 1n) / (10_000n - bps);
+    const amount = gross(deposit);
+    // A bid is paid from one note, and a vault's notes are never bigger than its per-deposit cap (Gloam's vault takes
+    // 12 HYPE at a time for now). A bid bigger than the biggest note goes in as several sealed bids at the same price,
+    // one note each: with one clearing price, that's the same as one bid for the total.
+    if (!opts.single) {
+      await core.sync(onStatus);
+      const notes = core.ownNotes(zeroAddress).map((n) => n.amount).sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+      if (notes.length && amount > notes[0]) {
+        // each part leaves a little of its note for the fee and rounding: ask for 1% of room overall
+        if (notes.reduce((a, b) => a + b, 0n) * 100n < amount * 101n) throw new Error("Not enough private HYPE for this bid (a bid paid from several notes needs about 1% of room).");
+        let qLeft = opts.quantity;
+        let first: Awaited<ReturnType<GloamPrivate["bidPrivately"]>> | undefined;
+        let count = 0;
+        const secrets: NonNullable<Awaited<ReturnType<GloamPrivate["bidPrivately"]>>["secrets"]> = [];
+        for (const note of notes) {
+          if (qLeft === 0n) break;
+          // the most of the bid this note pays for, a little under the note so its fee and rounding fit
+          let qi = (opts.quantity * ((note * 995n) / 1000n)) / amount;
+          if (qi > qLeft) qi = qLeft;
+          if (qi === 0n) continue;
+          onStatus(`Bid ${count + 1}: one private note pays for each part`);
+          const r = await this.bidPrivately(auction, { maxPrice: opts.maxPrice, quantity: qi, deposit: opts.deposit === undefined ? undefined : (opts.deposit * qi) / opts.quantity, single: true }, onStatus);
+          first ??= r;
+          secrets.push(r.secret);
+          count++;
+          qLeft -= qi;
+        }
+        if (!first || qLeft > 0n) throw new Error("Not enough private HYPE in your notes for this bid.");
+        return { ...first, bids: count, secrets };
+      }
+    }
     const fallbackTo = this.cfg.receive ? await this.receiveAddress(0) : this.receiveKey(0).address;
     const { gloamBid } = await import("./gloamBids.js");
     const rec = await gloamBid(core, { bids: this.cfg.bids, auction, tick: q.tick, quantity: opts.quantity, tlockRound: s.tlockRound, amount, fallbackTo, exitAfter: BigInt(s.revealEnd) + 30n * 86_400n }, onStatus);
