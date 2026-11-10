@@ -97,9 +97,10 @@ The values live in two config files, which were rehearsed end to end on a fork o
 **Options.**
 - 0.5% (today's code default), the same on launch tokens and outside tokens.
 - 0.25% (v1's rate), so a buy and a sell cost about 0.75% plus pool fees.
-- Either way: burn launch-token fees (never sell into our creators' pools), and send outside-token fees (KNTQ) to the treasury.
+- **Take our fee in HYPE instead (preferred, Nov 10).** Bob doesn't want to burn fees, and we don't want to hold outside tokens. The fix is to set both vaults' fee to 0 and have the router take Cloak's cut in HYPE on the HYPE side of every private trade (from the HYPE a sell receives, or from the HYPE a buy spends), sent straight to the treasury. All trading revenue then arrives as HYPE, from launch tokens and outside tokens alike. It's a router change of moderate size, plus tests, to build once Gloam answers on fees.
+- Not burning: the draft "burn launch-token fees" is dropped.
 
-**Status.** Waiting to hear Gloam's fee terms. The mainnet config currently holds 0.25% with launch-token fees burned as a draft. After deploy the owner can lower the rate at once; raising it waits 3 days.
+**Status.** Waiting to hear Gloam's fee terms. The config still holds the old draft (0.25%, launch-token fees to 0x…dEaD); it gets replaced when this is decided. After deploy the owner can lower a vault's rate at once; raising it waits 3 days.
 
 ### B2. Who pays the relay's gas?
 
