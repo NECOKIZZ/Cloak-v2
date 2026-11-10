@@ -31,7 +31,8 @@ const load = async (p: GloamPrivate): Promise<Issued[]> => {
   }
 };
 
-export function Receive() {
+/** The Receive page; with `bridge` (the Bridge tab) the bridge from other chains and exchanges comes first. */
+export function Receive({ bridge = false }: { bridge?: boolean }) {
   const { priv } = useApp();
   const [issued, setIssued] = useState<Issued[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -122,7 +123,16 @@ export function Receive() {
   return (
     <>
       {back}
-      <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay: an exchange, a bridge or any wallet. What arrives moves into your private balance whenever Cloak is open.</p></div></div>
+      {bridge ? (
+        <div className="page-head"><div><h1>Bridge</h1><p>Bring HYPE or USDC in from another chain or an exchange. It lands in your private balance.</p></div></div>
+      ) : (
+        <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay: an exchange, a bridge or any wallet. What arrives moves into your private balance whenever Cloak is open.</p></div></div>
+      )}
+      {bridge && (
+        <div style={{ marginBottom: 16 }}>
+          <BridgeIn to={cur?.address} onArrived={() => priv && issued && collectIssued(priv, issued).then(() => refresh()).catch(() => {})} />
+        </div>
+      )}
       <div className="grid">
         <div className="card">
           {!cur ? (
@@ -144,7 +154,7 @@ export function Receive() {
           </p>
         </div>
         <div className="col">
-          <BridgeIn to={cur?.address} onArrived={() => priv && issued && collectIssued(priv, issued).then(() => refresh()).catch(() => {})} />
+          {!bridge && <BridgeIn to={cur?.address} onArrived={() => priv && issued && collectIssued(priv, issued).then(() => refresh()).catch(() => {})} />}
           {issued && issued.length > 0 && (
             <div className="card">
               <div className="card-head"><h3>Your addresses</h3><span className="xs mute">{issued.length}</span></div>

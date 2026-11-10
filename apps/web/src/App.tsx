@@ -56,6 +56,7 @@ function Routes() {
       : path === "/app/drops" ? <Drops />
       : path === "/app/drops/create" ? <DropCreate />
       : path === "/app/portfolio/receive" ? <Receive />
+      : path === "/app/bridge" ? <Receive bridge />
       : path === "/app/portfolio/prove" ? <ProveFunds />
       : act ? <PortfolioAction key={act[1]} kind={act[1] as "shield" | "send" | "withdraw"} />
       : path === "/app/trade" ? <Trade />

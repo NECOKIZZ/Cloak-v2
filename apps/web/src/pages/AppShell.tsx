@@ -38,6 +38,7 @@ const GROUPS: [string, Item[]][] = [
   ["Private", [
     { to: "/app", label: "Portfolio", I: Icon.wallet, on: (p) => p === "/app" || (p.startsWith("/app/portfolio") && p !== "/app/portfolio/prove") },
     { to: "/app/trade", label: "Trade", I: Icon.swap, on: (p) => p.startsWith("/app/trade") },
+    { to: "/app/bridge", label: "Bridge", I: Icon.bridge, on: (p) => p === "/app/bridge" },
     { to: "/app/links", label: "Payment links", I: Icon.link, on: (p) => p === "/app/links" || p === "/claim" || p === "/pay" },
     { to: "/app/portfolio/prove", label: "Prove funds", I: Icon.shield, on: (p) => p === "/app/portfolio/prove" || p === "/proof" },
     { to: "/agents", label: "Agents", I: Icon.users, on: (p) => p === "/agents" },
