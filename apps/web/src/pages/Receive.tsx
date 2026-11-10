@@ -11,6 +11,7 @@ import { Link } from "../router";
 import { Icon } from "../ui";
 import { QR } from "../qr";
 import { every } from "../every";
+import { BridgeIn } from "../bridge";
 
 /** The receive-address contract (CloakGloamReceive). */
 const RECEIVE = GLOAM?.receive;
@@ -143,6 +144,7 @@ export function Receive() {
           </p>
         </div>
         <div className="col">
+          <BridgeIn to={cur?.address} onArrived={() => priv && issued && collectIssued(priv, issued).then(() => refresh()).catch(() => {})} />
           {issued && issued.length > 0 && (
             <div className="card">
               <div className="card-head"><h3>Your addresses</h3><span className="xs mute">{issued.length}</span></div>

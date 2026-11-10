@@ -32,6 +32,10 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - [ ] **Bob with Gloam's founder:** the fee. A lower rate for cash outs into reviewed partner escrows (he's open to it, but their vault has no per-recipient rate, so it needs code before their Elysium vault is deployed), or a share of the 0.5% on the flows Cloak brings.
 - [ ] **Bob:** our launch vault's rate (0.5% today, v1 charged 0.25%). Lowering it is instant.
 
+- [x] **Money in from other chains and exchanges (Relay)**, Nov 10: deposit addresses and wallet bridging into the account's receive addresses on Elysium mainnet, from 20 chains. See `docs/BRIDGES.md`.
+- [ ] **Spicenet:** their Elysium release (UI 4.23.2, core 0.10.1 and service activation), and a Privy app id from Bob. Then **Claude** adds the Spice Flow panel next to Relay's (`docs/BRIDGES.md`).
+- [ ] **Bob:** a Relay API key if we want Solana deposits (and Relay's volume tagging).
+
 ## Stage 1: testnet complete (now)
 
 - [x] **v2's own launch factory** on testnet (Nov 9): CloakConfig `0xfedf…4f1e`, factory `0x59d2…5784`, CloakV4Hook `0xC629…2A80`. The launch vault, batcher v4 (`0xbd4a…28f8`) and every escrow redeployed on it, the first launch GLOAK admitted and registered. `render.yaml` and `deployments.ts` point at them.

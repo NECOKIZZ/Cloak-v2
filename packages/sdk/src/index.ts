@@ -8,3 +8,4 @@ export * from "./private/index.js";
 export * from "./core/index.js";
 export * from "./spots.js";
 export * from "./names.js";
+export * from "./bridge/relay.js";
