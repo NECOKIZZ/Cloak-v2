@@ -27,16 +27,6 @@ export const CLOAK_LAUNCH_SWAP_ABI = parseAbi([
   "function claimDigest(bytes32 id, bytes32 commitment) view returns (bytes32)",
   "function exitDigest(bytes32 id, address to) view returns (bytes32)",
 ]);
-const ENDS = "(address vaultIn, address vaultOut, address ownerKey, uint256 deadline)";
-/** CloakRouterV4: the same swaps, plus swaps and moves from one vault into another (swapAcross). */
-export const CLOAK_ROUTER_ABI = parseAbi([
-  `function swapAcross(${SPEND_SWAP} s, ${DEPOSIT_SWAP} d, bytes route, ${ENDS} e) returns (bytes32 id, uint256 leftover)`,
-  `function rescueAcross(${SWAP_KEY} k, address vaultIn, address vaultOut) returns (uint256)`,
-  `function escrowAcross(${SWAP_KEY} k, address vaultIn, address vaultOut) view returns (address)`,
-  `function idAcross(${SWAP_KEY} k, address vaultIn, address vaultOut) pure returns (bytes32)`,
-  "function owedVault(bytes32) view returns (address)",
-  "function isVault(address) view returns (bool)",
-]);
 
 const SPEND_GRAD = "(bytes proof, bytes32 root, bytes32 nullifier, uint256 amount)";
 const DEPOSIT_GRAD = "(bytes proof, bytes32 commitment)";
@@ -108,7 +98,7 @@ export interface BatchOrderKey {
 
 export type LaunchRecord =
   | { kind: "batchOrder"; batcher: Address; id: Hex; key: BatchOrderKey; round: bigint; txHash: Hex }
-  | { kind: "launchSwap"; router: Address; id: Hex; key: LaunchSwapKey; txHash: Hex; vaultIn?: Address; vaultOut?: Address }
+  | { kind: "launchSwap"; router: Address; id: Hex; key: LaunchSwapKey; txHash: Hex; vaultIn?: Address }
   | { kind: "graduation"; graduation: Address; id: Hex; key: GraduationKey; txHash: Hex }
   | ({ kind: "bid" } & GloamBidRecord);
 
@@ -140,18 +130,22 @@ const signer = (core: GloamCore, nullifier: Hex) => privateKeyToAccount(core.exi
 /**
  * Spend exactly `amountIn` of `assetIn` from the launch vault for exactly `amountOut` of `assetOut`. The price buffer
  * (what the swap didn't need, less the vault's fee) stays owed to this swap, and finishPending() takes it back as a note.
+ * Through CloakRouterV4 the input and output live in different vaults (launch tokens in the launch vault, HYPE in
+ * Gloam's): pass `to`, the core of the output's vault. `core` is always the input's.
  */
 export async function launchSwap(
   core: GloamCore,
-  p: { router: Address; route: Hex; assetIn: Address; amountIn: bigint; assetOut: Address; amountOut: bigint; deadline: bigint },
+  p: { router: Address; route: Hex; assetIn: Address; amountIn: bigint; assetOut: Address; amountOut: bigint; deadline: bigint; to?: GloamCore },
   onStatus: Status = () => {},
   /** called with the record before the swap is sent, so its buffer is never forgotten if the answer is lost */
   onRecord: (r: LaunchRecord) => void = () => {},
 ): Promise<LaunchRecord> {
   const pub = core.config.publicClient;
+  const to = p.to ?? core;
+  const vaultIn = p.to ? core.config.pool : undefined;
   const note = await core.exactNote(p.assetIn, p.amountIn, onStatus);
   onStatus("Proving the new note");
-  const out = await core.depositFor(p.assetOut, p.amountOut);
+  const out = await to.depositFor(p.assetOut, p.amountOut);
   const nullifier = toHex(note.nullifier, { size: 32 });
   const key: LaunchSwapKey = {
     nullifier,
@@ -167,7 +161,7 @@ export async function launchSwap(
   const escrow = (await pub.readContract({ address: p.router, abi: SWAP, functionName: "escrowFor", args: [key] })) as Address;
   const id = (await pub.readContract({ address: p.router, abi: SWAP, functionName: "idOf", args: [key] })) as Hex;
   const s = await core.spendProof(note, escrow, onStatus);
-  onRecord({ kind: "launchSwap", router: p.router, id, key, txHash: "0x" });
+  onRecord({ kind: "launchSwap", router: p.router, id, key, txHash: "0x", vaultIn });
   onStatus("Swapping");
   let txHash: Hex = "0x";
   try {
@@ -177,59 +171,8 @@ export async function launchSwap(
     onStatus("It went through, though the relay's answer was lost");
   }
   // the memo lets the account's other devices find the note; relays take it only once the note is in the vault
-  await announce(core, out.deposit.commitment, out.ticket, onStatus);
-  return { kind: "launchSwap", router: p.router, id, key, txHash };
-}
-
-/**
- * Spend exactly `amountIn` of `assetIn` from `from`'s vault and deposit exactly `amountOut` of `assetOut` into `to`'s
- * vault, through a CloakRouterV4 that lists both. Different assets trade through `route`; the same asset in two vaults
- * is a move (`route` "0x"). One relayed call: the wallet never appears, and if any part fails the note stays where it
- * was. The buffer goes back into `from`'s vault through finishPending({ cores }).
- */
-export async function swapAcross(
-  from: GloamCore,
-  to: GloamCore,
-  p: { router: Address; route: Hex; assetIn: Address; amountIn: bigint; assetOut: Address; amountOut: bigint; deadline: bigint },
-  onStatus: Status = () => {},
-  onRecord: (r: LaunchRecord) => void = () => {},
-): Promise<LaunchRecord> {
-  const pub = from.config.publicClient;
-  const vaultIn = from.config.pool;
-  const vaultOut = to.config.pool;
-  const note = await from.exactNote(p.assetIn, p.amountIn, onStatus);
-  onStatus("Proving the new note");
-  const out = await to.depositFor(p.assetOut, p.amountOut);
-  const nullifier = toHex(note.nullifier, { size: 32 });
-  const key: LaunchSwapKey = {
-    nullifier,
-    assetIn: p.assetIn,
-    amountIn: p.amountIn,
-    outCommitment: out.deposit.commitment,
-    assetOut: p.assetOut,
-    amountOut: p.amountOut,
-    routeHash: keccak256(p.route),
-    ownerKey: signer(from, nullifier).address,
-    deadline: p.deadline,
-  };
-  const [escrow, id] = (await Promise.all([
-    pub.readContract({ address: p.router, abi: CLOAK_ROUTER_ABI, functionName: "escrowAcross", args: [key, vaultIn, vaultOut] as never }),
-    pub.readContract({ address: p.router, abi: CLOAK_ROUTER_ABI, functionName: "idAcross", args: [key, vaultIn, vaultOut] as never }),
-  ])) as [Address, Hex];
-  const s = await from.spendProof(note, escrow, onStatus);
-  const record: LaunchRecord = { kind: "launchSwap", router: p.router, id, key, txHash: "0x", vaultIn, vaultOut };
-  onRecord(record);
-  onStatus(p.assetIn === p.assetOut ? "Moving" : "Swapping");
-  let txHash: Hex = "0x";
-  try {
-    const ends = { vaultIn, vaultOut, ownerKey: key.ownerKey, deadline: p.deadline };
-    txHash = await from.config.submit({ kind: "escrow", to: p.router, data: encodeFunctionData({ abi: CLOAK_ROUTER_ABI, functionName: "swapAcross", args: [s, out.deposit, p.route, ends] }) });
-  } catch (e) {
-    if (!(await from.landedAnyway(note.nullifier))) throw e;
-    onStatus("It went through, though the relay's answer was lost");
-  }
   await announce(to, out.deposit.commitment, out.ticket, onStatus);
-  return { ...record, txHash };
+  return { kind: "launchSwap", router: p.router, id, key, txHash, vaultIn };
 }
 
 /**
@@ -299,7 +242,7 @@ export async function finishPending(
   return out;
 }
 
-/** The core of a record's vault: the one passed, or one of `cores`. */
+/** The core of a vault: the one passed, or one of `cores`. */
 function coreOf(vault: Address, core: GloamCore, cores: GloamCore[] = []): GloamCore {
   const c = [core, ...cores].find((x) => x.config.pool.toLowerCase() === vault.toLowerCase());
   if (!c) throw new Error(`no account open on vault ${vault}`);
@@ -310,21 +253,15 @@ async function finishSwap(core: GloamCore, r: Extract<LaunchRecord, { kind: "lau
   const pub = core.config.publicClient;
   let [asset, , amount] = (await pub.readContract({ address: r.router, abi: SWAP, functionName: "owed", args: [r.id] })) as [Address, Address, bigint];
   const txHashes: Hex[] = [];
-  const across = r.vaultIn && r.vaultOut ? ([r.key, r.vaultIn, r.vaultOut] as const) : null;
   if (amount === 0n) {
-    const escrow = (
-      across
-        ? await pub.readContract({ address: r.router, abi: CLOAK_ROUTER_ABI, functionName: "escrowAcross", args: across as never })
-        : await pub.readContract({ address: r.router, abi: SWAP, functionName: "escrowFor", args: [r.key] })
-    ) as Address;
+    const escrow = (await pub.readContract({ address: r.router, abi: SWAP, functionName: "escrowFor", args: [r.key] })) as Address;
     const opened = ((await pub.getCode({ address: escrow })) ?? "0x") !== "0x";
     if (opened) return { outcome: "swapped, no leftover", txHashes };
     const spent = (await pub.readContract({ address: core.config.pool, abi: parseAbi(["function isSpent(bytes32) view returns (bool)"]), functionName: "isSpent", args: [r.key.nullifier] })) as boolean;
     if (!spent) return now > r.key.deadline ? { outcome: "expired, the note never left the vault", txHashes } : null;
     if (now <= r.key.deadline) return null; // the spend landed alone: the swap may still be sent again
     onStatus("Rescuing a swap that didn't finish");
-    const data = across ? encodeFunctionData({ abi: CLOAK_ROUTER_ABI, functionName: "rescueAcross", args: across as never }) : encodeFunctionData({ abi: SWAP, functionName: "rescue", args: [r.key] });
-    txHashes.push(await core.config.submit({ kind: "escrow", to: r.router, data }));
+    txHashes.push(await core.config.submit({ kind: "escrow", to: r.router, data: encodeFunctionData({ abi: SWAP, functionName: "rescue", args: [r.key] }) }));
     [asset, , amount] = (await pub.readContract({ address: r.router, abi: SWAP, functionName: "owed", args: [r.id] })) as [Address, Address, bigint];
     if (amount === 0n) return null;
   }

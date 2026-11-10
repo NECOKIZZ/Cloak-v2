@@ -8,13 +8,12 @@
   },
   "buy": {
     "hypeIn": "0.02",
-    "tokensOut": "17422.098518410123894242"
+    "tokensOut": "17434.281901294833884559"
   },
-  "across": {
-    "moved": "0.98",
-    "buyFromGloamsVault": "0.013260866919506581",
-    "tokensOut": "11385.863486299256027882",
-    "gloamVaultHype": "0.961982335324586887"
+  "router": {
+    "buyHype": "0.01",
+    "tokensOut": "8626.523083716750402715",
+    "sellHypeOut": "0.008011885224837413"
   },
-  "seconds": 34
+  "seconds": 41
 }

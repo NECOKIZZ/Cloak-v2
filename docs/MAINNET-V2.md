@@ -15,10 +15,13 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 
 ## The vault model (decided Nov 9)
 
-- **Gloam's vault** holds the ecosystem's major assets: USDC now, HYPE once Gloam lists it, maybe KNTQ. Cloak doesn't hold them.
-- **Cloak's launch vault** (Gloam's audited vault engine and final keys, plus `admitLaunch`, run by our Safe) holds every Cloak launch token, and HYPE until Gloam lists it.
+- **Gloam's vault** holds HYPE and USDC (maybe KNTQ later). Cloak doesn't hold the ecosystem's major assets.
+- **Cloak's launch vault** (Gloam's audited vault engine and final keys, plus `admitLaunch`, run by our Safe) holds Cloak launch tokens.
 - **One home per asset.** No graduation: `CloakGraduation` isn't deployed on mainnet (`deploy-partner.mjs` deploys it only with `"graduation": true`).
-- **CloakRouterV4** joins them, as v1's router did: a private swap spends a note in one vault and lands the output in the other, in one relayed call, and the balance reads as one. Tested with real proofs in `part19-v2-factory.mjs` (HYPE in Gloam's vault buys a launch token into the launch vault).
+- **CloakRouterV4** joins the two, as v1's router did: a buy spends HYPE in Gloam's vault and lands the token in the launch vault, in one relayed call; a sell does the reverse. The router decides each asset's vault (a launch token: the launch vault, anything else: Gloam's), so nobody can point a swap elsewhere. It's CloakLaunchSwapV4 plus one rule (about 40 lines). Tested in forge and with real proofs in `part19-v2-factory.mjs`.
+- **Until Gloam lists HYPE** (their mainnet vault opens USDC only), HYPE stays in the launch vault and trades through `CloakLaunchSwapV4` as on testnet. The app switches to the router when the deployment record names one.
+- [ ] **Before switching HYPE to Gloam's vault:** batch rounds (`CloakGloamBatcherV4`) and private bids (`CloakGloamBids`) still spend HYPE from the launch vault. They need the same one-rule change, or stay launch-vault only.
+- **A third vault for outside ecosystem tokens** (launchpads, stocks): when it comes, a new router that also knows it is deployed next to this one. Routers hold no money, so the old one keeps working.
 - **Fees:** a swap pays the withdrawal fee of the vault it spends from. Gloam's is 0.5% on Elysium (it was 0.25% until Nov 3, and their Base, Ethereum and Tempo deploys use 0.25%). With HYPE in Gloam's vault, every launch-token buy pays Gloam's fee, with no room for ours.
 - [ ] **Bob with Gloam's founder:** the fee. A lower rate for cash outs into reviewed partner escrows (he's open to it, but their vault has no per-recipient rate, so it needs code before their Elysium vault is deployed), or a share of the 0.5% on the flows Cloak brings.
 - [ ] **Bob:** our launch vault's rate (0.5% today, v1 charged 0.25%). Lowering it is instant.

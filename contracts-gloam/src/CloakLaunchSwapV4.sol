@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {CloakLaunchSwapBase} from "./CloakLaunchSwap.sol";
 import {PoolKey, SwapParams, IPoolManagerSwap} from "gloam/GloamVaultSwapV4.sol";
 import {IWETH} from "gloam/GloamVaultSwapV4b.sol";
+import {IGloamVault} from "gloam/GloamVaultSwap.sol";
 
 /**
  * @title CloakLaunchSwapV4
@@ -189,41 +190,39 @@ contract CloakLaunchSwapV4 is CloakLaunchSwapBase {
     }
 }
 
+interface ILaunchTokens {
+    function isLaunchToken(address token) external view returns (bool);
+}
+
 /**
  * @title CloakRouterV4
- * @notice CloakLaunchSwapV4 across vaults: a private swap can spend a note from one vault and deposit its output into
- *         another (swapAcross), for example USDC from Gloam's vault into a launch token in Cloak's launch vault, or move
- *         one asset between two vaults. Same-vault swaps (swap) work exactly as in CloakLaunchSwapV4.
+ * @notice Private swaps between two fixed vaults: Cloak launch tokens live in Cloak's launch vault, HYPE and USDC in
+ *         Gloam's vault. A buy spends a HYPE note in Gloam's vault and deposits the launch token as a note in the
+ *         launch vault; a sell does the reverse. Same calls, escrows, refunds and exits as CloakLaunchSwapV4.
  *
- *         The vaults are fixed at deploy: its home vault (`vault`) and up to three more. There is no owner and no way to
- *         add one later. A vault only pays out a note with its owner's proof, to the escrow that proof names, and the
- *         escrow address is made from the whole swap including both vaults, so a bug here can cost at most a swap in
- *         flight, never what the vaults hold.
+ *         Which vault an asset uses is decided here, not by the caller: a token the launch vault admitted
+ *         (isLaunchToken) uses the launch vault, anything else Gloam's vault. Both are fixed at deploy, with no owner, so
+ *         nobody can point a swap at another vault. A vault only pays out a note with its owner's proof, to the escrow
+ *         that proof names, so a bug here can cost at most a swap in flight, never what the vaults hold.
  */
 contract CloakRouterV4 is CloakLaunchSwapV4 {
-    address public immutable vault1;
-    address public immutable vault2;
-    address public immutable vault3;
+    /// @notice Gloam's vault: HYPE, USDC and every asset that isn't a Cloak launch token.
+    IGloamVault public immutable gloamVault;
 
-    constructor(address vault_, address[] memory others, address poolManager_, address weth_, address allowedHook_)
-        CloakLaunchSwapV4(vault_, poolManager_, weth_, allowedHook_)
+    /// @param launchVault_ Cloak's launch vault (CloakLaunchVault): Cloak launch tokens
+    constructor(address launchVault_, address gloamVault_, address poolManager_, address weth_, address allowedHook_)
+        CloakLaunchSwapV4(launchVault_, poolManager_, weth_, allowedHook_)
     {
-        if (others.length > 3) revert BadRoute();
-        address[3] memory v;
-        for (uint256 i = 0; i < others.length; i++) {
-            if (others[i] == address(0) || others[i] == vault_) revert ZeroAddress();
-            for (uint256 j = 0; j < i; j++) if (others[j] == others[i]) revert ZeroAddress();
-            v[i] = others[i];
-        }
-        (vault1, vault2, vault3) = (v[0], v[1], v[2]);
+        if (gloamVault_ == address(0) || gloamVault_ == launchVault_) revert ZeroAddress();
+        gloamVault = IGloamVault(gloamVault_);
     }
 
-    function isVault(address a) public view override returns (bool) {
-        return a != address(0) && (a == address(vault) || a == vault1 || a == vault2 || a == vault3);
+    function vaultFor(address asset) public view override returns (IGloamVault) {
+        return asset != NATIVE && ILaunchTokens(address(vault)).isLaunchToken(asset) ? vault : gloamVault;
     }
 
-    /// @notice The PoolManager, WHYPE and every listed vault hold nothing for an exit's recipient.
+    /// @dev Neither vault holds anything for an exit's recipient.
     function _stopsHere(address to) internal view override returns (bool) {
-        return super._stopsHere(to) || isVault(to);
+        return super._stopsHere(to) || to == address(gloamVault);
     }
 }

@@ -73,14 +73,6 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         uint256 deadline;
     }
 
-    /// @dev The two ends of a swap across vaults, and who may claim its leftover, until when.
-    struct Ends {
-        address vaultIn;
-        address vaultOut;
-        address ownerKey;
-        uint256 deadline;
-    }
-
     struct Owed {
         address asset;
         address ownerKey;
@@ -96,8 +88,6 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
 
     /// @notice What each swap (by keccak256 of its SwapKey) is owed: its leftover, or its whole input after a rescue.
     mapping(bytes32 => Owed) public owed;
-    /// @notice For a swap across vaults, the vault its debt goes back into (its input's vault). Zero means `vault`.
-    mapping(bytes32 => address) public owedVault;
 
     uint256 private _entered;
     bool private _openingNow;
@@ -106,9 +96,6 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
     event LaunchSwap(bytes32 indexed id, address indexed assetIn, address indexed assetOut, uint256 amountIn, uint256 amountOut, uint256 leftover);
     event Rescued(bytes32 indexed id, address indexed asset, uint256 amount);
     event OwedPaid(bytes32 indexed id, address indexed asset, uint256 amount, bool toVault);
-    /// @notice A swap (or a move of one asset) from one vault into another; LaunchSwap or Moved has the amounts.
-    event Across(bytes32 indexed id, address indexed vaultIn, address indexed vaultOut);
-    event Moved(bytes32 indexed id, address indexed asset, uint256 amount, uint256 leftover);
 
     error Reentrancy();
     error ZeroAddress();
@@ -127,8 +114,6 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
     error BadExit();
     error NativeRefused();
     error TokenCallFailed();
-    error UnknownVault(address vault);
-    error SameVault();
 
     modifier nonReentrant() {
         if (_entered == 1) revert Reentrancy();
@@ -157,10 +142,10 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         return _swappingNow;
     }
 
-    /// @dev The vaults this venue spends from and deposits into. Only its own vault here; a router lists more, fixed
-    ///      at deploy, so nobody can add one later.
-    function isVault(address v) public view virtual returns (bool) {
-        return v == address(vault);
+    /// @notice The vault that holds `asset`: a note of it is spent from there and a note of it is deposited there. One
+    ///         vault here; CloakRouterV4 splits launch tokens (Cloak's launch vault) from HYPE and USDC (Gloam's).
+    function vaultFor(address) public view virtual returns (IGloamVault) {
+        return vault;
     }
 
     /// @dev The venue's own contracts, where money sent in an exit would stop.
@@ -221,80 +206,15 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         emit LaunchSwap(id, s.asset, d.asset, amountIn, d.amount, leftover);
     }
 
-    /// @notice The id of a swap across vaults: its key and both vaults, so a relay can't move either end.
-    function idAcross(SwapKey memory k, address vaultIn, address vaultOut) public pure returns (bytes32) {
-        return keccak256(abi.encode(k, vaultIn, vaultOut));
-    }
-
-    /// @notice The address a swap across vaults' unshield proof must name.
-    function escrowAcross(SwapKey memory k, address vaultIn, address vaultOut) public view returns (address) {
-        return _escrowAt(idAcross(k, vaultIn, vaultOut), k.assetIn);
-    }
-
-    /**
-     * @notice Spend note `s` from `e.vaultIn` and deposit note `d` into `e.vaultOut`: through `route` when the assets
-     *         differ (a swap), or as is when they're the same asset in two vaults (a move, `route` empty). What the
-     *         note brought in beyond what was needed is owed to this swap and goes back into `e.vaultIn` on claim.
-     *         Both vaults must be on this venue's fixed list, and the escrow is made from both, so nobody can redirect
-     *         either end. Fails whole (the note stays) if anything in it fails, as swap does.
-     */
-    function swapAcross(Spend calldata s, Deposit calldata d, bytes calldata route, Ends calldata e)
-        external
-        nonReentrant
-        returns (bytes32 id, uint256 leftover)
-    {
-        if (!isVault(e.vaultIn)) revert UnknownVault(e.vaultIn);
-        if (!isVault(e.vaultOut)) revert UnknownVault(e.vaultOut);
-        if (s.asset == d.asset && e.vaultIn == e.vaultOut) revert SameVault();
-        if (d.amount == 0 || e.ownerKey == address(0)) revert BadKey();
-        if (block.timestamp > e.deadline) revert Expired();
-        id = idAcross(keyOf(s, d, route, e.ownerKey, e.deadline), e.vaultIn, e.vaultOut);
-        _enterAcross(s, e.vaultIn, id);
-        uint256 available = _open(id, s.asset);
-        uint256 amountIn = _fillAcross(s.asset, d, e.vaultOut, available, route);
-        leftover = available - amountIn;
-        if (leftover != 0) {
-            owed[id] = Owed(s.asset, e.ownerKey, leftover);
-            if (e.vaultIn != address(vault)) owedVault[id] = e.vaultIn;
-        }
-        emit Across(id, e.vaultIn, e.vaultOut);
-        if (s.asset == d.asset) emit Moved(id, s.asset, amountIn, leftover);
-        else emit LaunchSwap(id, s.asset, d.asset, amountIn, d.amount, leftover);
-    }
-
-    function _enterAcross(Spend calldata s, address vaultIn, bytes32 id) private {
-        if (!IGloamVault(vaultIn).isSpent(s.nullifier)) {
-            IGloamVault(vaultIn).unshield(s.proof, s.root, s.nullifier, s.asset, _escrowAt(id, s.asset), s.amount);
-        }
-    }
-
-    /// @dev A move deposits the asset as is; a swap buys exactly d.amount. Returns the input used.
-    function _fillAcross(address assetIn, Deposit calldata d, address vaultOut, uint256 available, bytes calldata route)
-        private
-        returns (uint256)
-    {
-        if (assetIn != d.asset) return _buyInto(vaultOut, d, available, assetIn, route);
-        if (route.length != 0) revert BadRoute();
-        if (d.amount > available) revert OverInput(d.amount, available);
-        _depositInto(vaultOut, d.asset, d.amount, d.commitment, d.proof);
-        return d.amount;
-    }
-
     /// @dev Pays the note to the swap's escrow, unless a spend sent alone already did.
     function _enter(Spend calldata s, SwapKey memory k) private returns (bytes32 id) {
         id = idOf(k);
-        if (!vault.isSpent(s.nullifier)) vault.unshield(s.proof, s.root, s.nullifier, s.asset, escrowFor(k), s.amount);
+        IGloamVault v = vaultFor(s.asset);
+        if (!v.isSpent(s.nullifier)) v.unshield(s.proof, s.root, s.nullifier, s.asset, escrowFor(k), s.amount);
     }
 
     /// @dev Buys exactly d.amount and deposits it as note d. Returns the input spent.
     function _buy(Deposit calldata d, uint256 available, address assetIn, bytes calldata route)
-        private
-        returns (uint256 amountIn)
-    {
-        return _buyInto(address(vault), d, available, assetIn, route);
-    }
-
-    function _buyInto(address vaultOut, Deposit calldata d, uint256 available, address assetIn, bytes calldata route)
         private
         returns (uint256 amountIn)
     {
@@ -304,7 +224,7 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         _swappingNow = false;
         uint256 got = _balance(d.asset) - outBefore;
         if (got < d.amount) revert ShortOutput(got, d.amount);
-        _depositInto(vaultOut, d.asset, d.amount, d.commitment, d.proof);
+        _deposit(d.asset, d.amount, d.commitment, d.proof);
     }
 
     /// @notice After its deadline, a swap whose spend was sent alone owes its whole input back. Anyone may call it.
@@ -314,18 +234,6 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         bytes32 id = idOf(k);
         amount = _open(id, k.assetIn);
         owed[id] = Owed(k.assetIn, k.ownerKey, amount);
-        emit Rescued(id, k.assetIn, amount);
-    }
-
-    /// @notice rescue for a swap across vaults: its whole input is owed back into `vaultIn`.
-    function rescueAcross(SwapKey calldata k, address vaultIn, address vaultOut) external nonReentrant returns (uint256 amount) {
-        if (block.timestamp <= k.deadline) revert NotYet();
-        if (k.ownerKey == address(0)) revert BadKey();
-        if (!isVault(vaultIn)) revert UnknownVault(vaultIn);
-        bytes32 id = idAcross(k, vaultIn, vaultOut);
-        amount = _open(id, k.assetIn);
-        owed[id] = Owed(k.assetIn, k.ownerKey, amount);
-        if (vaultIn != address(vault)) owedVault[id] = vaultIn;
         emit Rescued(id, k.assetIn, amount);
     }
 
@@ -343,10 +251,8 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         if (o.amount == 0) revert NothingOwed();
         if (d.asset != o.asset || d.amount != o.amount) revert WrongAmount(o.amount);
         if (_recover(claimDigest(id, d.commitment), signature) != o.ownerKey) revert BadSignature();
-        address into = owedVault[id] == address(0) ? address(vault) : owedVault[id];
         delete owed[id];
-        delete owedVault[id];
-        _depositInto(into, o.asset, o.amount, d.commitment, d.proof);
+        _deposit(o.asset, o.amount, d.commitment, d.proof);
         emit OwedPaid(id, o.asset, o.amount, true);
     }
 
@@ -354,10 +260,9 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
     function exit(bytes32 id, address to, bytes calldata signature) external nonReentrant {
         Owed memory o = owed[id];
         if (o.amount == 0) revert NothingOwed();
-        if (to == address(0) || to == address(this) || isVault(to) || to == o.asset || _stopsHere(to)) revert BadExit();
+        if (to == address(0) || to == address(this) || to == address(vault) || to == o.asset || _stopsHere(to)) revert BadExit();
         if (_recover(exitDigest(id, to), signature) != o.ownerKey) revert BadSignature();
         delete owed[id];
-        delete owedVault[id];
         if (o.asset == NATIVE) {
             (bool ok,) = to.call{value: o.amount}("");
             if (!ok) revert TokenCallFailed();
@@ -385,14 +290,15 @@ abstract contract CloakLaunchSwapBase is IEscrowPayee {
         if (arrived == 0) revert Used();
     }
 
-    function _depositInto(address into, address asset, uint256 amount, bytes32 commitment, bytes calldata proof) private {
+    function _deposit(address asset, uint256 amount, bytes32 commitment, bytes calldata proof) private {
+        IGloamVault v = vaultFor(asset);
         if (asset == NATIVE) {
-            IGloamVault(into).shieldBound{value: amount}(NATIVE, amount, commitment, proof);
+            v.shieldBound{value: amount}(NATIVE, amount, commitment, proof);
             return;
         }
-        _call(asset, abi.encodeWithSelector(0x095ea7b3, into, amount));
-        IGloamVault(into).shieldBound(asset, amount, commitment, proof);
-        _call(asset, abi.encodeWithSelector(0x095ea7b3, into, 0));
+        _call(asset, abi.encodeWithSelector(0x095ea7b3, address(v), amount));
+        v.shieldBound(asset, amount, commitment, proof);
+        _call(asset, abi.encodeWithSelector(0x095ea7b3, address(v), 0));
     }
 
     function _balance(address token) internal view returns (uint256) {

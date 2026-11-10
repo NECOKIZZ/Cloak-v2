@@ -60,7 +60,7 @@ Cloak's code only (Gloam's vault and circuits are audited separately). Counted w
 |---|---|---|
 | Launches | CloakConfig, CloakFactory, CloakAuction, CloakToken, CloakVesting | about 950 |
 | Uniswap v4 | CloakV4Hook, CloakV4Market | about 420 |
-| On Gloam's vault | CloakLaunchVault (our one addition to Gloam's vault code), CloakLaunchSwap base and V4, CloakRouterV4 (swaps and moves across vaults), CloakGloamBatcher base and V4, CloakGloamBids, CloakGloamReceive, CloakFundsGate, CloakReceiptCheck | about 1,700 |
+| On Gloam's vault | CloakLaunchVault (our one addition to Gloam's vault code), CloakLaunchSwap base and V4, CloakRouterV4 (buys and sells between the two vaults), CloakGloamBatcher base and V4, CloakGloamBids, CloakGloamReceive, CloakFundsGate, CloakReceiptCheck | about 1,700 |
 | Deployment and roles | `deploy-v2-factory.mjs`, `deploy-partner.mjs`, the guard, pauser and Safe handover | included |
 | **Total** | | **about 3,070** |
 

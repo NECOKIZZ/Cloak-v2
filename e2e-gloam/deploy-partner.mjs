@@ -5,7 +5,7 @@
 //   - CloakLaunchVault on Cloak's v4 launch factory, on Gloam's verifiers and Poseidon. HYPE listed in setup, then setup
 //     ends and ownership goes to its own VaultOwnerGuard (the deploy wallet is the controller only until it hands
 //     control to the Safe), read back with 12 checks.
-//   - Around it: CloakLaunchSwapV4, CloakRouterV4 (swaps and moves between the launch vault and Gloam's vault),
+//   - Around it: CloakLaunchSwapV4, CloakRouterV4 (buys and sells between Gloam's vault and the launch vault),
 //     CloakGloamBatcherV4, CloakGloamReceive, CloakGloamBids, CloakFundsGate and CloakReceiptCheck with their final-key
 //     verifiers. CloakGraduation (into Gloam's vault) only with "graduation": true in the config.
 //   - Every settled launch admitted and registered for batch rounds.
@@ -115,8 +115,8 @@ try {
 
   const b = cfg.batch;
   const launchSwapV4 = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, cfg.poolManager, cfg.whype, cfg.v4Hook]);
-  // swaps and moves between the launch vault and Gloam's vault (one private call either way)
-  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, [cfg.gloamVault], cfg.poolManager, cfg.whype, cfg.v4Hook]);
+  // buys and sells between HYPE in Gloam's vault and launch tokens in the launch vault (one private call either way)
+  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, cfg.gloamVault, cfg.poolManager, cfg.whype, cfg.v4Hook]);
   const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter)]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [cfg.gloamVault, lv]);
   const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv]);
