@@ -6,8 +6,8 @@
 //   3. The real partner deploy script (deploy-partner.mjs) from the mainnet config: Cloak's own fixed WHYPE, the launch
 //      vault, the ecosystem vault with the mainnet rules, the router and every escrow; it checks USDC's real HYPE pool
 //      and real KNTQ against the rules.
-//   4. The owner wallet proposes real KNTQ (the calldata the script prints), 3 days pass, anyone admits it: the rules
-//      checked again on KNTQ's real 0.3% pool.
+//   4. The owner wallet lists real KNTQ at once (the calldata the script prints): the rules checked on KNTQ's real 0.3%
+//      pool.
 //   5. Private trades through the router on real Uniswap pools: HYPE to USDC, USDC to KNTQ (two pools), KNTQ to USDC,
 //      USDC to HYPE.
 //
@@ -38,8 +38,7 @@ const U = (x) => formatUnits(x, 6);
 const out = {};
 
 const EV = parseAbi([
-  "function propose(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total)",
-  "function admit(address token)",
+  "function list(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total, address launchpad)",
   "function isEcosystemToken(address) view returns (bool)",
   "function approver() view returns (address)",
 ]);
@@ -80,14 +79,11 @@ try {
   for (const g of [rec.launchVaultGuard, rec.ecosystemVaultGuard]) await sendAndLog(pub, "owner accepts a guard", owner.wallet.writeContract({ address: g, abi: GUARD, functionName: "acceptController" }));
   for (const g of [rec.launchVaultGuard, rec.ecosystemVaultGuard]) assert((await pub.readContract({ address: g, abi: GUARD, functionName: "controller" })).toLowerCase() === owner.account.address.toLowerCase(), "the owner wallet controls a vault guard");
 
-  // 4. KNTQ in: the owner proposes it with the script's calldata, 3 days pass, anyone admits it
-  const proposeLine = log.split("\n").find((l) => l.includes("to propose KNTQ"));
-  const data = proposeLine.match(/data (0x[0-9a-fA-F]+)/)[1];
-  await sendAndLog(pub, "owner proposes KNTQ", owner.wallet.sendTransaction({ to: rec.ecosystemVault, data }));
-  await rpc(rpcUrl, "evm_increaseTime", [3 * 86_400]);
-  await rpc(rpcUrl, "evm_mine", []);
-  await sendAndLog(pub, "admit KNTQ (anyone)", alice.wallet.writeContract({ address: rec.ecosystemVault, abi: EV, functionName: "admit", args: [KNTQ] }));
-  assert(await pub.readContract({ address: rec.ecosystemVault, abi: EV, functionName: "isEcosystemToken", args: [KNTQ] }), "real KNTQ admitted after the delay, every rule checked again on its real pool");
+  // 4. KNTQ in: the owner lists it at once with the script's calldata
+  const listLine = log.split("\n").find((l) => l.includes("to list KNTQ"));
+  const data = listLine.match(/data (0x[0-9a-fA-F]+)/)[1];
+  await sendAndLog(pub, "owner lists KNTQ", owner.wallet.sendTransaction({ to: rec.ecosystemVault, data }));
+  assert(await pub.readContract({ address: rec.ecosystemVault, abi: EV, functionName: "isEcosystemToken", args: [KNTQ] }), "real KNTQ listed at once, every rule checked on its real pool");
 
   // 5. the app on this record: router, PoolManager, USDC with its pool (what scripts/sdk-entry.mjs prints)
   const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: rec.gloamVault, launchVault: rec.launchVault, ecosystemVault: rec.ecosystemVault, memoBoard: rec.memoBoard, escrows: [rec.router], hourlySpendWei: parseEther("5") });

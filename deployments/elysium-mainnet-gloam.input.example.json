@@ -37,12 +37,13 @@
     }
   ],
   "ecosystem": {
-    "_note": "Outside tokens (CloakEcosystemVault). Fixed at deploy: a token needs the Safe's proposal, a plain native-HYPE v4 pool (no hook) with at least minHypeLiquidity HYPE in range, a market cap of at least minMcapHype HYPE, caps at most maxPerDepositBps / maxTotalBps of its supply, and admitDelaySecs before admit() checks it all again.",
+    "_note": "Outside tokens (CloakEcosystemVault). Cloak vets a launchpad's code once (launchpads below: the script deploys a CloakLaunchpadCheck for each and prints the owner wallet's approveLaunchpad call). The owner wallet then lists that launchpad's tokens at once, choosing by market cap and importance; KNTQ is vetted on its own (no launchpad). Fixed at deploy for every listing: a plain native-HYPE v4 pool (no hook) with at least minHypeLiquidity HYPE in range, a market cap of at least minMcapHype HYPE, caps at most maxPerDepositBps / maxTotalBps of its supply.",
     "minHypeLiquidity": "250000000000000000000",
     "minMcapHype": "50000000000000000000000",
-    "admitDelaySecs": 259200,
     "maxPerDepositBps": 10,
     "maxTotalBps": 100,
+    "launchpads": [],
+    "_launchpads": "Each vetted launchpad: { name, factory, selector }. factory is its contract that records the tokens it made; selector is a view f(address token) there that returns non-zero for its tokens and zero otherwise (for example isToken(address) or tokenInfo(address)). A token then names its launchpad with \"launchpad\": name.",
     "tokens": [
       {
         "symbol": "KNTQ",

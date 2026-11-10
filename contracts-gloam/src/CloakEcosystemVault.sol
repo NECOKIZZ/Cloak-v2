@@ -16,27 +16,36 @@ interface ILaunchTokensE {
     function isLaunchToken(address token) external view returns (bool);
 }
 
+interface ILaunchpadCheck {
+    /// @notice True if `token` was made by this launchpad's factory (an adapter Cloak writes per launchpad, reading the
+    ///         launchpad's own registry).
+    function isLaunchpadToken(address token) external view returns (bool);
+}
+
 /**
  * @title CloakEcosystemVault
- * @notice Cloak's vault for outside ecosystem tokens (KNTQ, other launchpads' tokens, stocks): Gloam's ShieldPoolCore,
- *         unchanged, plus one way in for a token: a proposal by Cloak's approver (the Safe) that passes preset rules
- *         twice, when proposed and again when admitted after a delay. HYPE and USDC stay in Gloam's vault and Cloak's
- *         launch tokens in the launch vault; CloakRouterV4 trades between the three.
+ * @notice Cloak's vault for outside tokens (KNTQ, other launchpads' tokens, stocks): Gloam's ShieldPoolCore, unchanged,
+ *         plus one way in. HYPE and USDC stay in Gloam's vault and Cloak's launch tokens in the launch vault;
+ *         CloakRouterV4 trades between the three.
+ *
+ * Cloak vets code once and markets each time:
+ *  - A launchpad is vetted once. The approver (Cloak's owner wallet) approves a checker for it, a small adapter that
+ *    answers "did this launchpad's factory make this token?". Its tokens' code is then known.
+ *  - Each token is listed by the approver at once, with no wait, if it comes from an approved launchpad (or is named
+ *    directly, as a token vetted on its own, like KNTQ) and passes the fixed rules below. The approver picks which
+ *    tokens matter; the rules cut off the small ones.
  *
  * The rules are fixed at deploy, and nobody can change them:
- *  1. Approval: only the approver proposes a token, with its Uniswap v4 pool and its deposit caps.
- *  2. A market Cloak can trade: the pool is native HYPE / the token with no hook (the router routes it), and initialized.
- *  3. Liquidity: the pool's in-range HYPE is at least `minHypeLiquidity`.
- *  4. Market cap: the token's total supply at the pool's price is at least `minMcapHype` (in HYPE).
- *  5. Caps: per deposit at most `maxPerDepositBps`, and in total at most `maxTotalBps`, of the token's supply.
- *  6. The token: real code, 6 to 18 decimals, a supply under 2^128, never a Cloak launch token, not listed already.
- *  7. Time: admit() runs at least `admitDelay` after the proposal and checks 2 to 6 again, so a pool pushed for one
- *     block doesn't get a token in; the approver (or the pauser) can cancel any proposal meanwhile.
+ *  1. A market Cloak can trade: the pool is native HYPE / the token with no hook (the router routes it), and initialized.
+ *  2. Liquidity: the pool's in-range HYPE is at least `minHypeLiquidity`.
+ *  3. Market cap: the token's total supply at the pool's price is at least `minMcapHype` (in HYPE).
+ *  4. Caps: per deposit at most `maxPerDepositBps`, and in total at most `maxTotalBps`, of the token's supply.
+ *  5. The token: real code, 6 to 18 decimals, a supply under 2^128, never a Cloak launch token, not listed already.
  *
- * Once admitted a token is never un-listed here (isEcosystemToken stays true, so the router always knows its vault),
+ * Once listed a token is never un-listed here (isEcosystemToken stays true, so the router always knows its vault),
  * but the owner can still lower or zero its caps at once (ShieldPoolCore.lowerDepositLimit), and withdrawals never
- * close. Prices are spot reads of the pool at two moments, so the approval and the delay are what keep a token out;
- * the rules make a bad listing expensive, not impossible.
+ * close. Removing a launchpad stops new listings from it. The pauser can stop all listings. Prices are spot reads of
+ * the pool, so the approver's judgment is what keeps a token out; the rules make a bad listing expensive.
  */
 contract CloakEcosystemVault is ShieldPoolCore {
     struct PoolKey {
@@ -47,47 +56,41 @@ contract CloakEcosystemVault is ShieldPoolCore {
         address hooks;
     }
 
-    struct Proposal {
-        PoolKey key;
-        uint128 perDeposit;
-        uint128 total;
-        uint64 readyAt;
-    }
-
     /// @dev Uniswap v4 PoolManager's storage: `pools` is mapping slot 6; a pool's slot0 is its first word and its
     ///      liquidity its fourth (v4-core StateLibrary).
     uint256 internal constant POOLS_SLOT = 6;
     uint256 internal constant LIQUIDITY_OFFSET = 3;
 
     IPoolState public immutable poolManager;
-    /// @notice Proposes and cancels tokens: Cloak's Safe.
+    /// @notice Approves launchpads and lists tokens: Cloak's owner wallet.
     address public immutable approver;
-    /// @notice Can cancel proposals and pause admissions; can't touch funds or caps.
+    /// @notice Can pause listings and remove launchpads; can't touch funds or caps.
     address public immutable pauser;
     /// @notice Cloak's launch vault: its tokens never come here.
     ILaunchTokensE public immutable launchVault;
     uint256 public immutable minHypeLiquidity;
     uint256 public immutable minMcapHype;
-    uint64 public immutable admitDelay;
     uint16 public immutable maxPerDepositBps;
     uint16 public immutable maxTotalBps;
 
-    mapping(address => Proposal) internal _proposals;
     mapping(address => PoolKey) internal _poolKeys;
-    /// @notice Tokens admitted through admit() (never cleared).
+    /// @notice Launchpad checkers the approver vetted.
+    mapping(address => bool) public isApprovedLaunchpad;
+    /// @notice Where a listed token came from: its launchpad's checker, or address(0) for a token vetted on its own.
+    mapping(address => address) public launchpadOf;
+    /// @notice Tokens listed through list() (never cleared).
     mapping(address => bool) public isEcosystemToken;
     address[] public ecosystemTokens;
     bool public admissionsPaused;
 
-    event TokenProposed(address indexed token, uint256 readyAt, uint128 perDeposit, uint128 total);
-    event TokenCancelled(address indexed token);
-    event TokenAdmitted(address indexed token, uint128 perDeposit, uint128 total);
+    event LaunchpadApproved(address indexed checker, string name);
+    event LaunchpadRemoved(address indexed checker);
+    event TokenListed(address indexed token, address indexed launchpad, uint128 perDeposit, uint128 total);
     event AdmissionsPaused(bool paused);
 
     error NotApprover();
     error NotPauser();
-    error NoProposal();
-    error NotReady();
+    error NotFromLaunchpad();
     error AdmissionStopped();
     error AlreadyListed();
     error BadToken();
@@ -100,7 +103,6 @@ contract CloakEcosystemVault is ShieldPoolCore {
     struct Rules {
         uint256 minHypeLiquidity;
         uint256 minMcapHype;
-        uint64 admitDelay;
         uint16 maxPerDepositBps;
         uint16 maxTotalBps;
     }
@@ -115,7 +117,7 @@ contract CloakEcosystemVault is ShieldPoolCore {
         Rules memory r
     ) ShieldPoolCore(poseidon2_, verifier_) {
         if (poolManager_ == address(0) || approver_ == address(0) || pauser_ == address(0)) revert ZeroAddress();
-        if (r.minHypeLiquidity == 0 || r.minMcapHype == 0 || r.admitDelay == 0) revert BadRules();
+        if (r.minHypeLiquidity == 0 || r.minMcapHype == 0) revert BadRules();
         if (r.maxPerDepositBps == 0 || r.maxPerDepositBps > r.maxTotalBps || r.maxTotalBps > 10_000) revert BadRules();
         poolManager = IPoolState(poolManager_);
         launchVault = ILaunchTokensE(launchVault_);
@@ -123,43 +125,44 @@ contract CloakEcosystemVault is ShieldPoolCore {
         pauser = pauser_;
         minHypeLiquidity = r.minHypeLiquidity;
         minMcapHype = r.minMcapHype;
-        admitDelay = r.admitDelay;
         maxPerDepositBps = r.maxPerDepositBps;
         maxTotalBps = r.maxTotalBps;
     }
 
     // ── admission ──────────────────────────────────────────────────────
 
-    /// @notice Propose `token` with its pool and caps. Only the approver; the rules must already pass.
-    function propose(address token, PoolKey calldata key, uint128 perDeposit, uint128 total) external {
+    /// @notice Vet a launchpad: its checker says which tokens its factory made. Only the approver.
+    function approveLaunchpad(address checker, string calldata name) external {
         if (msg.sender != approver) revert NotApprover();
-        _check(token, key, perDeposit, total);
-        uint64 readyAt = uint64(block.timestamp) + admitDelay;
-        _proposals[token] = Proposal(key, perDeposit, total, readyAt);
-        emit TokenProposed(token, readyAt, perDeposit, total);
+        if (checker.code.length == 0) revert BadToken();
+        isApprovedLaunchpad[checker] = true;
+        emit LaunchpadApproved(checker, name);
     }
 
-    /// @notice Drop a proposal. The approver or the pauser.
-    function cancel(address token) external {
+    /// @notice Stop new listings from a launchpad (its listed tokens stay). The approver or the pauser.
+    function removeLaunchpad(address checker) external {
         if (msg.sender != approver && msg.sender != pauser) revert NotPauser();
-        if (_proposals[token].readyAt == 0) revert NoProposal();
-        delete _proposals[token];
-        emit TokenCancelled(token);
+        isApprovedLaunchpad[checker] = false;
+        emit LaunchpadRemoved(checker);
     }
 
-    /// @notice Admit a proposed token once its delay has passed and the rules still hold. Anyone may call it.
-    function admit(address token) external {
-        Proposal memory p = _proposals[token];
-        if (p.readyAt == 0) revert NoProposal();
-        if (block.timestamp < p.readyAt) revert NotReady();
+    /**
+     * @notice List `token` at once with its pool and caps. Only the approver. `launchpad` is the approved checker of the
+     *         launchpad that made it, or address(0) for a token vetted on its own (KNTQ). The rules must pass.
+     */
+    function list(address token, PoolKey calldata key, uint128 perDeposit, uint128 total, address launchpad) external {
+        if (msg.sender != approver) revert NotApprover();
         if (admissionsPaused) revert AdmissionStopped();
-        _check(token, p.key, p.perDeposit, p.total);
-        delete _proposals[token];
+        if (launchpad != address(0)) {
+            if (!isApprovedLaunchpad[launchpad] || !ILaunchpadCheck(launchpad).isLaunchpadToken(token)) revert NotFromLaunchpad();
+        }
+        _check(token, key, perDeposit, total);
         isEcosystemToken[token] = true;
         ecosystemTokens.push(token);
-        _poolKeys[token] = p.key;
-        _setDepositLimit(token, p.perDeposit, p.total);
-        emit TokenAdmitted(token, p.perDeposit, p.total);
+        _poolKeys[token] = key;
+        launchpadOf[token] = launchpad;
+        _setDepositLimit(token, perDeposit, total);
+        emit TokenListed(token, launchpad, perDeposit, total);
     }
 
     function pauseAdmissions(bool paused) external {
@@ -170,11 +173,7 @@ contract CloakEcosystemVault is ShieldPoolCore {
 
     // ── reads ──────────────────────────────────────────────────────────
 
-    function proposalOf(address token) external view returns (Proposal memory) {
-        return _proposals[token];
-    }
-
-    /// @notice The pool an admitted token trades through (the router's route).
+    /// @notice The pool a listed token trades through (the router's route).
     function poolKeyOf(address token) external view returns (PoolKey memory) {
         return _poolKeys[token];
     }

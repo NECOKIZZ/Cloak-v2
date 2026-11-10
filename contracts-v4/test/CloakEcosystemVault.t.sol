@@ -11,6 +11,7 @@ import {ModifyLiquidityParams} from "v4-core/types/PoolOperation.sol";
 import {ShieldPoolPayments} from "gloam/ShieldPoolPayments.sol";
 import {PoolKey} from "gloam/GloamVaultSwapV4.sol";
 import {CloakEcosystemVault} from "cloak-gloam/CloakEcosystemVault.sol";
+import {CloakLaunchpadCheck} from "cloak-gloam/CloakLaunchpadCheck.sol";
 import {CloakLaunchSwapBase} from "cloak-gloam/CloakLaunchSwap.sol";
 import {CloakRouterV4} from "cloak-gloam/CloakLaunchSwapV4.sol";
 import {TestToken} from "cloak-gloam/TestToken.sol";
@@ -52,9 +53,18 @@ contract PlainLp is IUnlockCallback {
     receive() external payable {}
 }
 
+/// A launchpad's own registry, as most keep one: tokenInfo(token) is the creator, or zero for a token it didn't make.
+contract FakeLaunchpad {
+    mapping(address => address) public tokenInfo;
+
+    function made(address token) external {
+        tokenInfo[token] = msg.sender;
+    }
+}
+
 /**
- * CloakEcosystemVault: an outside token (KNTQ here) gets in only through the approver's proposal, a market Cloak can
- * trade with enough liquidity and market cap, capped deposits, and a delay with the checks run again. Then
+ * CloakEcosystemVault: an outside token (KNTQ here) gets in only when the approver lists it, from a vetted launchpad
+ * or vetted on its own, with a market Cloak can trade, enough liquidity and market cap, and capped deposits. Then
  * CloakRouterV4 buys it with HYPE from Gloam's vault into the ecosystem vault, and sells it back.
  */
 contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
@@ -70,7 +80,7 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
     int256 constant LIQ = 1_000e18;
 
     function _rules(uint256 minLiq, uint256 minMcap) internal pure returns (CloakEcosystemVault.Rules memory) {
-        return CloakEcosystemVault.Rules({minHypeLiquidity: minLiq, minMcapHype: minMcap, admitDelay: 3 days, maxPerDepositBps: 10, maxTotalBps: 200});
+        return CloakEcosystemVault.Rules({minHypeLiquidity: minLiq, minMcapHype: minMcap, maxPerDepositBps: 10, maxTotalBps: 200});
     }
 
     function _vault(CloakEcosystemVault.Rules memory r) internal returns (CloakEcosystemVault v) {
@@ -101,8 +111,8 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
         ev = _vault(_rules(50 ether, 5_000 ether));
     }
 
-    function _propose() internal {
-        ev.propose(address(kntq), _kntqKey(), 1_000e18, 20_000e18);
+    function _list() internal {
+        ev.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(0));
     }
 
     // ── the rules ──────────────────────────────────────────────────────
@@ -114,15 +124,11 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
         assertApproxEqRel(mcap, 10_000 ether, 1e15, "a market cap of about 10,000 HYPE");
     }
 
-    function test_eco_proposeWaitAdmit() public {
+    function test_eco_listedAtOnce() public {
         _setUpEco();
-        _propose();
-        vm.expectRevert(CloakEcosystemVault.NotReady.selector);
-        ev.admit(address(kntq));
-        vm.warp(block.timestamp + 3 days);
-        vm.prank(address(0xA11)); // anyone
-        ev.admit(address(kntq));
+        _list();
         assertTrue(ev.isEcosystemToken(address(kntq)));
+        assertEq(ev.launchpadOf(address(kntq)), address(0), "vetted on its own");
         (uint128 per, uint128 total) = ev.depositLimit(address(kntq));
         assertEq(per, 1_000e18);
         assertEq(total, 20_000e18);
@@ -135,25 +141,63 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
         ev.shieldBound(address(kntq), 1_001e18, bytes32(uint256(0xC2)), hex"00");
     }
 
-    function test_eco_onlyTheApproverProposes() public {
+    function test_eco_fromAVettedLaunchpad() public {
+        _setUpEco();
+        FakeLaunchpad pad = new FakeLaunchpad();
+        CloakLaunchpadCheck check = new CloakLaunchpadCheck(address(pad), bytes4(keccak256("tokenInfo(address)")));
+        // not approved yet
+        vm.expectRevert(CloakEcosystemVault.NotFromLaunchpad.selector);
+        ev.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(check));
+        ev.approveLaunchpad(address(check), "Pad");
+        assertTrue(ev.isApprovedLaunchpad(address(check)));
+        // approved, but the launchpad didn't make this token
+        vm.expectRevert(CloakEcosystemVault.NotFromLaunchpad.selector);
+        ev.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(check));
+        pad.made(address(kntq));
+        assertTrue(check.isLaunchpadToken(address(kntq)));
+        assertFalse(check.isLaunchpadToken(address(0xBEEF)));
+        ev.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(check));
+        assertTrue(ev.isEcosystemToken(address(kntq)));
+        assertEq(ev.launchpadOf(address(kntq)), address(check));
+    }
+
+    function test_eco_launchpadRemovedStopsNewListings() public {
+        _setUpEco();
+        FakeLaunchpad pad = new FakeLaunchpad();
+        CloakLaunchpadCheck check = new CloakLaunchpadCheck(address(pad), bytes4(keccak256("tokenInfo(address)")));
+        ev.approveLaunchpad(address(check), "Pad");
+        pad.made(address(kntq));
+        vm.prank(PAUSER);
+        ev.removeLaunchpad(address(check));
+        vm.expectRevert(CloakEcosystemVault.NotFromLaunchpad.selector);
+        ev.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(check));
+        vm.prank(address(0xBAD));
+        vm.expectRevert(CloakEcosystemVault.NotPauser.selector);
+        ev.removeLaunchpad(address(check));
+        vm.prank(address(0xBAD));
+        vm.expectRevert(CloakEcosystemVault.NotApprover.selector);
+        ev.approveLaunchpad(address(check), "Pad");
+    }
+
+    function test_eco_onlyTheApproverLists() public {
         _setUpEco();
         vm.prank(address(0xBAD));
         vm.expectRevert(CloakEcosystemVault.NotApprover.selector);
-        ev.propose(address(kntq), _kntqKey(), 1_000e18, 20_000e18);
+        ev.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(0));
     }
 
     function test_eco_thinLiquidityRefused() public {
         _setUpEco();
         CloakEcosystemVault strict = _vault(_rules(500 ether, 5_000 ether));
         vm.expectRevert();
-        strict.propose(address(kntq), _kntqKey(), 1_000e18, 20_000e18);
+        strict.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(0));
     }
 
     function test_eco_smallMcapRefused() public {
         _setUpEco();
         CloakEcosystemVault strict = _vault(_rules(50 ether, 50_000 ether));
         vm.expectRevert();
-        strict.propose(address(kntq), _kntqKey(), 1_000e18, 20_000e18);
+        strict.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(0));
     }
 
     function test_eco_onlyAPlainHypePool() public {
@@ -161,69 +205,53 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
         CloakEcosystemVault.PoolKey memory k = _kntqKey();
         k.hooks = address(hook);
         vm.expectRevert(CloakEcosystemVault.BadPool.selector);
-        ev.propose(address(kntq), k, 1_000e18, 20_000e18);
+        ev.list(address(kntq), k, 1_000e18, 20_000e18, address(0));
         k = _kntqKey();
         k.currency0 = address(whype);
         vm.expectRevert(CloakEcosystemVault.BadPool.selector);
-        ev.propose(address(kntq), k, 1_000e18, 20_000e18);
+        ev.list(address(kntq), k, 1_000e18, 20_000e18, address(0));
         k = _kntqKey();
         k.fee = 500; // a pool nobody opened
         vm.expectRevert();
-        ev.propose(address(kntq), k, 1_000e18, 20_000e18);
+        ev.list(address(kntq), k, 1_000e18, 20_000e18, address(0));
     }
 
     function test_eco_capsBoundedBySupply() public {
         _setUpEco();
         vm.expectRevert(CloakEcosystemVault.CapsTooHigh.selector);
-        ev.propose(address(kntq), _kntqKey(), 1_001e18, 20_000e18); // over 0.1% per deposit
+        ev.list(address(kntq), _kntqKey(), 1_001e18, 20_000e18, address(0)); // over 0.1% per deposit
         vm.expectRevert(CloakEcosystemVault.CapsTooHigh.selector);
-        ev.propose(address(kntq), _kntqKey(), 1_000e18, 20_001e18); // over 2% in total
+        ev.list(address(kntq), _kntqKey(), 1_000e18, 20_001e18, address(0)); // over 2% in total
         vm.expectRevert(CloakEcosystemVault.CapsTooHigh.selector);
-        ev.propose(address(kntq), _kntqKey(), 2e18, 1e18); // per deposit over the total
+        ev.list(address(kntq), _kntqKey(), 2e18, 1e18, address(0)); // per deposit over the total
     }
 
     function test_eco_launchTokensNeverComeHere() public {
         _setUpEco();
         vm.expectRevert(CloakEcosystemVault.BadToken.selector);
-        ev.propose(address(token), _kntqKey(), 1, 1);
+        ev.list(address(token), _kntqKey(), 1, 1, address(0));
     }
 
-    function test_eco_liquidityPulledDuringTheDelayStopsIt() public {
+    function test_eco_pausedStopsListing() public {
         _setUpEco();
-        _propose();
-        lp.liquidity(_v4Key(), -(LIQ * 6) / 10); // 40 HYPE left in range, under the 50 needed
-        vm.warp(block.timestamp + 3 days);
-        vm.expectRevert();
-        ev.admit(address(kntq));
-        assertFalse(ev.isEcosystemToken(address(kntq)));
-    }
-
-    function test_eco_cancelAndPause() public {
-        _setUpEco();
-        _propose();
-        vm.prank(PAUSER);
-        ev.cancel(address(kntq));
-        vm.warp(block.timestamp + 3 days);
-        vm.expectRevert(CloakEcosystemVault.NoProposal.selector);
-        ev.admit(address(kntq));
-        _propose();
         vm.prank(PAUSER);
         ev.pauseAdmissions(true);
-        vm.warp(block.timestamp + 3 days);
         vm.expectRevert(CloakEcosystemVault.AdmissionStopped.selector);
-        ev.admit(address(kntq));
+        _list();
         vm.prank(address(0xBAD));
         vm.expectRevert(CloakEcosystemVault.NotPauser.selector);
         ev.pauseAdmissions(false);
+        vm.prank(PAUSER);
+        ev.pauseAdmissions(false);
+        _list();
+        assertTrue(ev.isEcosystemToken(address(kntq)));
     }
 
-    function test_eco_admittedOnceAndNotTwice() public {
+    function test_eco_listedOnceAndNotTwice() public {
         _setUpEco();
-        _propose();
-        vm.warp(block.timestamp + 3 days);
-        ev.admit(address(kntq));
+        _list();
         vm.expectRevert(CloakEcosystemVault.AlreadyListed.selector);
-        ev.propose(address(kntq), _kntqKey(), 1_000e18, 20_000e18);
+        _list();
     }
 
     function test_eco_rulesAreChecked() public {
@@ -242,9 +270,7 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
 
     function _setUpTrading() internal {
         _setUpEco();
-        _propose();
-        vm.warp(block.timestamp + 3 days);
-        ev.admit(address(kntq));
+        _list();
         owner = vm.addr(ownerPk);
         gv = new ShieldPoolPayments(_poseidon(), address(new ToV()));
         gv.setShieldVerifier(address(new YesV()));

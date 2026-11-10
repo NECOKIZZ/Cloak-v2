@@ -67,7 +67,7 @@ function rehearsalConfig() {
     launchCaps: { perDeposit: String(10n ** 27n), total: String(10n ** 29n) },
     graduationRoundSecs: 3600,
     batch: { roundSecs: 60, maxSlippageBps: 200, refundAfter: 600 },
-    ecosystem: { minHypeLiquidity: String(250n * 10n ** 18n), minMcapHype: String(50_000n * 10n ** 18n), admitDelaySecs: 259200, maxPerDepositBps: 10, maxTotalBps: 100, tokens: [] },
+    ecosystem: { minHypeLiquidity: String(250n * 10n ** 18n), minMcapHype: String(50_000n * 10n ** 18n), maxPerDepositBps: 10, maxTotalBps: 100, tokens: [] },
   };
 }
 
@@ -145,11 +145,12 @@ try {
   const checks = await checkLaunchVault(pub, lv, { guard, dual: cfg.verifier, shieldVerifier: cfg.shieldVerifier, factory: cfg.factory, feeRecipient: cfg.feeRecipient, pauser: cfg.pauser, caps, feeBps: FEE_BPS });
   console.log(`  launch vault read back: ${checks} checks passed`);
 
-  // the ecosystem vault: outside tokens (KNTQ first), admitted only by the Safe's proposal under the preset rules
+  // the ecosystem vault: outside tokens, listed at once by the owner wallet from a vetted launchpad (or KNTQ, vetted on
+  // its own), under the preset rules
   const eco = cfg.ecosystem;
   let ev, evGuard;
   if (eco) {
-    const rules = { minHypeLiquidity: BigInt(eco.minHypeLiquidity), minMcapHype: BigInt(eco.minMcapHype), admitDelay: BigInt(eco.admitDelaySecs), maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps };
+    const rules = { minHypeLiquidity: BigInt(eco.minHypeLiquidity), minMcapHype: BigInt(eco.minMcapHype), maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps };
     ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [cfg.poseidon, cfg.verifier, cfg.poolManager, lv, cfg.safe, cfg.pauser, rules]);
     await write(ev, LV_ABI, "setShieldVerifier", [cfg.shieldVerifier]);
     await write(ev, LV_ABI, "setWithdrawFee", [FEE_BPS, cfg.feeRecipient]);
@@ -165,17 +166,26 @@ try {
       "function setupMode() view returns (bool)",
       "function owner() view returns (address)",
       "function marketOf(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key) view returns (uint256 hypeLiquidity, uint256 mcapHype)",
-      "function propose(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total)",
+      "function list(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total, address launchpad)",
+      "function approveLaunchpad(address checker, string name)",
     ]);
     const [ap, ml, mm, setup, own] = await Promise.all(["approver", "minHypeLiquidity", "minMcapHype", "setupMode", "owner"].map((f) => pub.readContract({ address: ev, abi: EV, functionName: f })));
     if (!same(ap, cfg.safe) || ml !== rules.minHypeLiquidity || mm !== rules.minMcapHype || setup || !same(own, evGuard)) throw new Error("the ecosystem vault didn't read back as configured");
-    console.log(`  ecosystem vault ${ev}: approver the Safe, min ${formatEther(ml)} HYPE in range, min market cap ${formatEther(mm)} HYPE, ${eco.admitDelaySecs} s delay`);
-    // the first tokens: checked against the rules now, proposed by the Safe (only it can), admitted by anyone after the delay
+    console.log(`  ecosystem vault ${ev}: approver the Safe, min ${formatEther(ml)} HYPE in range, min market cap ${formatEther(mm)} HYPE, listing at once`);
+    // vetted launchpads: one checker each (CloakLaunchpadCheck reads the launchpad's own registry), approved by the owner
+    const pads = {};
+    for (const p of eco.launchpads ?? []) {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(p.factory) || !/^0x[0-9a-fA-F]{8}$/.test(p.selector)) throw new Error(`launchpad ${p.name}: needs factory (an address) and selector (4 bytes)`);
+      pads[p.name] = await deploy(`CloakLaunchpadCheck (${p.name})`, ourArtifact("CloakLaunchpadCheck.sol", "CloakLaunchpadCheck"), [p.factory, p.selector]);
+      const data = encodeFunctionData({ abi: EV, functionName: "approveLaunchpad", args: [pads[p.name], p.name] });
+      console.log(`  From the owner wallet, to approve the launchpad ${p.name}: a call to ${ev}, value 0, data ${data}`);
+    }
+    // the first tokens: checked against the rules now, listed by the owner wallet (only it can) at once
     const ERC20 = parseAbi(["function totalSupply() view returns (uint256)", "function symbol() view returns (string)"]);
     for (const t of eco.tokens ?? []) {
       if (!/^0x[0-9a-fA-F]{40}$/.test(t.token)) throw new Error(`ecosystem token ${t.symbol}: not an address (${t.token})`);
       if (((await pub.getCode({ address: t.token })) ?? "0x") === "0x") {
-        console.log(`  ${t.symbol} (${t.token}) has no code on this chain: not proposed. Check its Elysium address.`);
+        console.log(`  ${t.symbol} (${t.token}) has no code on this chain: not listed. Check its Elysium address.`);
         continue;
       }
       const supply = await pub.readContract({ address: t.token, abi: ERC20, functionName: "totalSupply" });
@@ -185,9 +195,10 @@ try {
       const [liq, mcap] = await pub.readContract({ address: ev, abi: EV, functionName: "marketOf", args: [t.token, key] });
       const ok = liq >= ml && mcap >= mm;
       console.log(`  ${t.symbol}: ${formatEther(liq)} HYPE in range, market cap ${formatEther(mcap)} HYPE: ${ok ? "passes the rules" : "does NOT pass the rules yet"}`);
-      const data = encodeFunctionData({ abi: EV, functionName: "propose", args: [t.token, key, per, total] });
-      console.log(`  From the Safe, to propose ${t.symbol}: a call to ${ev}, value 0, data ${data}`);
-      console.log(`  Then after the delay anyone calls admit(${t.token}) on ${ev}.`);
+      const pad = t.launchpad ? pads[t.launchpad] : zeroAddress;
+      if (!pad) throw new Error(`ecosystem token ${t.symbol}: launchpad ${t.launchpad} isn't in ecosystem.launchpads`);
+      const data = encodeFunctionData({ abi: EV, functionName: "list", args: [t.token, key, per, total, pad] });
+      console.log(`  From the owner wallet, to list ${t.symbol}: a call to ${ev}, value 0, data ${data}`);
     }
   }
 
@@ -244,7 +255,7 @@ try {
     assets,
     ecosystemVault: ev,
     ecosystemVaultGuard: evGuard,
-    ecosystemRules: eco ? { minHypeLiquidity: eco.minHypeLiquidity, minMcapHype: eco.minMcapHype, admitDelaySecs: eco.admitDelaySecs, maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps } : undefined,
+    ecosystemRules: eco ? { minHypeLiquidity: eco.minHypeLiquidity, minMcapHype: eco.minMcapHype, maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps } : undefined,
     batcherV4,
     batcherV4Rounds: b,
     receive,

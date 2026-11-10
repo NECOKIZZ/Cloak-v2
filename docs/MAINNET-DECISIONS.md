@@ -134,27 +134,21 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 ## Part C. Outside tokens (the ecosystem vault)
 
-### C1. Should outside tokens wait 3 days before they're listed?
+### C1. How do outside tokens get in? (decided Nov 10)
 
-**Plain words.** Today the owner wallet proposes a token such as KNTQ, and anyone can add it 3 days later if the rules still hold. You asked for "vet and add" like Cloak's own tokens.
+**Decided.** Cloak vets each launchpad's code once, then lists that launchpad's tokens at once, with no wait. The owner wallet chooses which ones by market cap and importance, so a launchpad with 10,000 tokens might give us 20. KNTQ is the one token vetted on its own, because Elysium itself made it an ecosystem token.
 
-**Technical.** `admitDelay` is set in the vault's constructor and must be above zero. Setting `admitDelaySecs` to 1 in the mainnet config means "propose, then admit in the next block", with no contract change. The rules (C2) are still checked both times.
+**Plain words.** We check a launchpad's token code once. Every token it makes is then the same known code, as with Cloak's own launches. Listing a token is then one call from the owner wallet, live in the next block.
 
-**Why Cloak's own tokens skip it.** The vault knows our factory's code, so every Cloak token is a known contract. An outside token is anyone's code.
+**Technical.**
+- `CloakEcosystemVault` no longer has a proposal or a delay. It has `approveLaunchpad(checker, name)`, `removeLaunchpad(checker)` and `list(token, pool, caps, launchpad)`, all instant.
+- `launchpad` is the launchpad's checker, or zero for a token vetted on its own (KNTQ).
+- A checker answers "did this launchpad's factory make this token?". `CloakLaunchpadCheck` does it for most launchpads by asking the factory's own registry, such as `isToken(token)`. A launchpad without one gets a small adapter.
+- The C2 rules are checked at listing.
+- The vault records where each token came from (`launchpadOf`), so anyone can check it on chain.
+- The pauser (the owner wallet) can pause listings or remove a launchpad. Removing one stops new listings and leaves listed tokens alone.
 
-**What the wait buys.**
-- If the owner wallet were ever copied, a fake token can't be listed before we notice and cancel it. A fake "KNTQ" shown as vetted in our app is the real risk here. A bad token can't touch other tokens' funds.
-- A public notice ahead of each listing.
-
-**What it costs.**
-- KNTQ arrives 3 days after mainnet opens.
-- Each new listing is slower.
-
-**Now.** 3 days. **Fixed per vault.**
-
-**Gloam.** Gloam waits a public 3-day timelock for **every** new asset, and for every limit raise.
-
-**Recommendation.** I'd push back once. Gloam does exactly this, and with a single owner wallet it's our only safety net. A middle ground is **24 hours**: it keeps the cancel window, and the public notice works as a marketing beat ("KNTQ lists on Cloak tomorrow"). If you still want instant, it's one config value, `admitDelaySecs: 1`. I'll switch it the moment you say so.
+**What we gave up.** With no wait, a copied owner wallet could list a fake token straight away. Two things limit that: the rules still demand a real pool with 250 HYPE in range, and a bad token can't touch other tokens' funds. The hardware wallet is the protection.
 
 ### C2. What must a token pass to be listed?
 
@@ -305,7 +299,7 @@ Gloam runs one owner wallet, a separate treasury wallet and its own relay. Copy 
 
 1. A2: the pool-fee split in CloakV4Hook, with tests. Before the factory.
 2. A5: the 20% penalty floor. One line.
-3. B1 and C1: config values.
+3. B1: the vault fee in the config. (C1 is done: instant listing from vetted launchpads.)
 4. D2: `CloakBuyback`, with tests, once $CLOAK's supply is set.
 5. D1.5: the Relay app fee switch, if wanted.
 6. Re-run the mainnet fork rehearsal (part 22) with the final values.

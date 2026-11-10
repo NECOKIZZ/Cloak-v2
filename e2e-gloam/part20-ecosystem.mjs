@@ -1,6 +1,6 @@
 // Part 20: Cloak's ecosystem vault (CloakEcosystemVault) on a fork of Elysium testnet, with real proofs. A KNTQ stand-in
-// with a plain native-HYPE Uniswap v4 pool is proposed by the approver, refused before the delay, admitted after it
-// (every rule checked again), then traded privately through CloakRouterV4: HYPE from Gloam's vault buys KNTQ into the
+// with a plain native-HYPE Uniswap v4 pool is listed at once by the approver (nobody else
+// can), every rule checked, then traded privately through CloakRouterV4: HYPE from Gloam's vault buys KNTQ into the
 // ecosystem vault, and KNTQ sells back into Gloam's vault. A wallet's KNTQ shields straight into the ecosystem vault.
 //
 //   node e2e-gloam/part20-ecosystem.mjs
@@ -30,8 +30,7 @@ const warp = async (secs) => {
   await rpc(rpcUrl, "evm_mine", []);
 };
 const EV = parseAbi([
-  "function propose(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total)",
-  "function admit(address token)",
+  "function list(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total, address launchpad)",
   "function isEcosystemToken(address) view returns (bool)",
   "function marketOf(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key) view returns (uint256 hypeLiquidity, uint256 mcapHype)",
   "function depositLimit(address) view returns (uint128 perDeposit, uint128 total)",
@@ -61,18 +60,16 @@ try {
   await write(lp, lpArt.abi, "liquidity", [v4Key, parseEther("1000")]);
 
   // the ecosystem vault: approver and pauser the deploy wallet here (the Safe on mainnet)
-  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), admitDelay: 3n * 86_400n, maxPerDepositBps: 10, maxTotalBps: 200 };
+  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), maxPerDepositBps: 10, maxTotalBps: 200 };
   const ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [poseidon, stack.dual, D.poolManager, lv, addr, addr, rules]);
   for (const [f, a] of [["setShieldVerifier", [stack.shieldVerifier]], ["setWithdrawFee", [50, addr]], ["turnOnDepositLimits", []], ["endSetup", []]]) await write(ev, LV_ABI, f, a);
   const [liq, mcap] = await pub.readContract({ address: ev, abi: EV, functionName: "marketOf", args: [kntq, v4Key] });
   assert(liq >= rules.minHypeLiquidity && mcap >= rules.minMcapHype, `KNTQ's pool passes the rules: ${formatEther(liq)} HYPE in range, a market cap of ${formatEther(mcap)} HYPE`);
-  await write(ev, EV, "propose", [kntq, v4Key, parseEther("1000"), parseEther("20000")]);
-  let early = false;
-  await pub.simulateContract({ address: ev, abi: EV, functionName: "admit", args: [kntq], account: alice.account }).catch(() => (early = true));
-  assert(early, "admission is refused before the delay");
-  await warp(3 * 86_400);
-  await sendAndLog(pub, "admit (anyone)", alice.wallet.writeContract({ address: ev, abi: EV, functionName: "admit", args: [kntq] }));
-  assert(await pub.readContract({ address: ev, abi: EV, functionName: "isEcosystemToken", args: [kntq] }), "after the delay anyone admits KNTQ, the rules checked again");
+  let stranger = false;
+  await pub.simulateContract({ address: ev, abi: EV, functionName: "list", args: [kntq, v4Key, parseEther("1000"), parseEther("20000"), zeroAddress], account: alice.account }).catch(() => (stranger = true));
+  assert(stranger, "only the approver lists a token");
+  await write(ev, EV, "list", [kntq, v4Key, parseEther("1000"), parseEther("20000"), zeroAddress]);
+  assert(await pub.readContract({ address: ev, abi: EV, functionName: "isEcosystemToken", args: [kntq] }), "the approver lists KNTQ at once, the rules checked");
 
   // the router over all three vaults, and the relay serving them
   const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, ev, D.poolManager, D.whype, D.v4Hook]);

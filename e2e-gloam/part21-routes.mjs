@@ -30,8 +30,7 @@ const warp = async (secs) => {
   await rpc(rpcUrl, "evm_mine", []);
 };
 const EV = parseAbi([
-  "function propose(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total)",
-  "function admit(address token)",
+  "function list(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total, address launchpad)",
   "function isEcosystemToken(address) view returns (bool)",
   "function marketOf(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key) view returns (uint256 hypeLiquidity, uint256 mcapHype)",
   "function depositLimit(address) view returns (uint128 perDeposit, uint128 total)",
@@ -67,12 +66,10 @@ try {
   await write(lp, lpArt.abi, "liquidity", [kntqKey, parseEther("1000")]);
 
   // KNTQ admitted to the ecosystem vault (part 20 checks the rules in full)
-  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), admitDelay: 3n * 86_400n, maxPerDepositBps: 10, maxTotalBps: 200 };
+  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), maxPerDepositBps: 10, maxTotalBps: 200 };
   const ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [poseidon, stack.dual, D.poolManager, lv, addr, addr, rules]);
   for (const [f, a] of [["setShieldVerifier", [stack.shieldVerifier]], ["setWithdrawFee", [50, addr]], ["turnOnDepositLimits", []], ["endSetup", []]]) await write(ev, LV_ABI, f, a);
-  await write(ev, EV, "propose", [kntq, kntqKey, parseEther("1000"), parseEther("20000")]);
-  await warp(3 * 86_400);
-  await write(ev, EV, "admit", [kntq]);
+  await write(ev, EV, "list", [kntq, kntqKey, parseEther("1000"), parseEther("20000"), zeroAddress]);
 
   const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, ev, D.poolManager, D.whype, D.v4Hook]);
   const block = await pub.getBlockNumber();
