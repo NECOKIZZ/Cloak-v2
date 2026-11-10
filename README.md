@@ -9,7 +9,7 @@
 
 **Testnet site: gloak.boblabs.tech** (being hosted). Cloak v1 stays at [cloak.boblabs.tech](https://cloak.boblabs.tech) and lives in its own repository.
 
-> **Launches nobody can snipe, and trades nobody can trace.** Bids stay sealed until bidding closes, hidden even from the sequencer. Every winner pays **one clearing price**, and the launch opens a Uniswap v4 pool at that price. After launch, anyone can hold, send, buy and sell the token **from a private balance** kept in [Gloam](https://github.com/cryptoduke01/gloam)'s shielded vault: proofs are made on your device and a relay sends them, so your wallet never appears.
+> **Launches nobody can snipe, and trades nobody can trace.** Bids stay sealed until bidding closes, hidden even from the sequencer. Every winner pays **one clearing price**, and the launch opens a Uniswap v4 pool at that price. After launch, anyone can hold, send, buy and sell the token **from a private balance** kept in [Gloam](https://github.com/gloamtrade/gloam)'s shielded vault: proofs are made on your device and a relay sends them, so your wallet never appears.
 
 Plain-English walkthrough: [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md). Handover for whoever works on this next: [HANDOVER.md](HANDOVER.md). Things to check after hosting: [CHECK.md](CHECK.md).
 

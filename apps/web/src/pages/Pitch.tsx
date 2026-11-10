@@ -138,7 +138,7 @@ export function Pitch() {
           </div>
           <div className="p-contracts">
             <Contract name="Launch factory" addr={FACTORY} />
-            <Contract name="Launch vault" addr={GLOAM?.launchVault} />
+            <Contract name="Cloak's launch vault (run by Cloak)" addr={GLOAM?.launchVault} />
             <Contract name="Batch rounds" addr={GLOAM?.batcherV4} />
           </div>
         </Slide>

@@ -2,7 +2,7 @@
 
 Cloak v2 runs on Gloam's vault, circuits and final ceremony keys, all unchanged. Cloak's launch features are built around them: sealed-bid launches, launch tokens with their own Uniswap v4 pools, private swaps, batch rounds, bids from a private balance, and receive addresses. Everything below is on Elysium testnet (99801) unless it says mainnet.
 
-**Repo:** github.com/NECOKIZZ/Cloak-v2. Gloam is pinned at `cryptoduke01/gloam@16dac34` as a submodule we never edit. Our contracts are in `contracts-gloam/src` (solc 0.8.24 like yours) and `contracts-v4` (the v4 venues, tested on the real PoolManager). The build log is `REPORT.md`, and review packs are in `docs/gloam-pack/`.
+**Repo:** github.com/NECOKIZZ/Cloak-v2. Gloam is pinned at `gloamtrade/gloam@16dac34` as a submodule we never edit. Our contracts are in `contracts-gloam/src` (solc 0.8.24 like yours) and `contracts-v4` (the v4 venues, tested on the real PoolManager). The build log is `REPORT.md`, and review packs are in `docs/gloam-pack/`.
 
 ## 1. What we shipped
 

@@ -90,7 +90,7 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 ## Part B. Our vaults
 
-### B1. What does Cloak charge on private trades? (BUILT Nov 10; the rate waits on Gloam)
+### B1. What does Cloak charge on private trades? (BUILT Nov 10; the rate: see H2)
 
 **Decided.** Our vaults charge nothing. Cloak's fee is taken in HYPE (or USDC) when a token is sold out of our vaults, after the swap, and sent to the treasury. Buys pay no Cloak fee (Gloam's 0.5% applies there). Nothing is burned, and Cloak never holds launch or outside tokens.
 
@@ -103,7 +103,7 @@ The values live in two config files, which were rehearsed end to end on a fork o
 - Both vaults deploy with `withdrawFeeBps: 0`. The SDK, the site and the MCP tools quote net of the fee.
 - Tests: 8 for CloakTradeFee, 3 for the router, 1 for batch rounds; end to end, part 20 (KNTQ sold into HYPE: 0.5% to the treasury in HYPE, no KNTQ) and part 22 on the mainnet fork (KNTQ sold into USDC: 0.5% in USDC).
 
-**Status.** The rate is the only open part. The mainnet config holds 0.5% (`tradeFee.bps: 50`) until Gloam answers.
+**Status.** Gloam answered (Part H): no lower rate, but a 50/50 share of their 0.5% on our flow. Recommended rate 0.25% (H2). The config holds 0.5% until Bob decides.
 
 ### B2. Who pays the relay's gas?
 
@@ -253,11 +253,65 @@ No hardware wallet: software wallets, with the seed phrases stored offline. Four
 
 ## Part G. Waiting on others
 
-- **Gloam.** Their mainnet vault addresses, the HYPE and USDC listing with caps, the fee answer, the relay, an audit slot and the SDK release (all in the Gloam brief).
+- **Gloam.** Answered Nov 10 (Part H). Still to come from them: the memo board on Elysium, our HYPE caps through their timelock (H1), the fee share in writing (H2), the escrow review for their relay, the audit quote, and the change-note seed in their SDK.
 - **Kinetiq.** The explorer's contract-verification API.
 - **Spicenet.** Answers to the 10 questions.
 - **Hosting.** Vercel and Render, by Bob. Also decide whether v2's keeper runs the NFT drops; the `DROPS` switch is ready.
 - **The audit**, then lifting the caps, then $CLOAK.
+
+## Part H. Gloam's answers (Nov 10), and what they decide
+
+Gloam read the brief with their team. What they said, what's already done, and the decisions it leaves for Bob.
+
+**Done already (no decision needed):**
+- **Their repo moved** to github.com/gloamtrade/gloam. The submodule points there now, still pinned at 16dac34, which Gloam confirmed has the same vault contracts and final keys as their main. The app downloads the circuit files from the new path first, then the old one, then our own copy, each hash-checked.
+- **Their Elysium vault** is `0x89d3...2164`, from block 3248495, owned by their guard `0x268D...FAf5`, with verifier `0x2905...FcEf`, shield verifier `0xAEB8...0016` and Poseidon `0x62c4...3457`. All checked on chain, and filled into the mainnet config.
+- **KNTQ lives in Gloam's vault** (they list it Thursday, Nov 12, at 1,400 per deposit and 70,000 in total). One home per asset, so it's an asset like USDC in our config, and our ecosystem vault starts empty for the next tokens. The router already sends any token not in our vaults to Gloam's, so no code changed.
+- **The rehearsal now runs on Gloam's real vault** (part 22, on a fork of mainnet). Acting as their controller on the fork, we pushed HYPE (12 / 600) and KNTQ (1,400 / 70,000) through their 3-day timelock. Their queue already held exactly those two changes. Then: our deploy against their real verifiers, and private trades with real proofs on real pools (1 HYPE to 69.39 USDC, 100 USDC to 285.9 KNTQ, KNTQ back to USDC, USDC to HYPE). It passes in 74 s.
+- **Our escrows work on their vault without sign-off**, since it's permissionless. We run our own relay until they've reviewed them.
+- **The site and docs say whose vaults are whose.** Every page names Cloak's launch and ecosystem vaults as Cloak's own, run by Cloak, and Gloam's main vault as Gloam's.
+
+**H1. HYPE caps in Gloam's vault: what do we ask for?**
+
+*Plain words.* From Thursday, Gloam's vault takes at most 12 HYPE per deposit and 600 HYPE in total. Every private HYPE balance on Cloak lives there. So:
+- a private sale that brings more than 12 HYPE fails;
+- a bid refund over 12 HYPE can't go back in as one deposit;
+- all of Cloak, plus every other Gloam user, shares 600 HYPE (about $44,000).
+
+One launch at our beta cap raises up to 10,000 HYPE, so 600 in total wouldn't cover one launch's bidders.
+
+*Technical.* The router deposits each trade's output as one note, so the per-deposit cap bounds the biggest sale, and the bid's refund is a deposit too. Each raise waits Gloam's 3-day timelock, so we should ask once, with room.
+
+*Recommendation.* Ask for **100 HYPE per deposit**, which matches our 100 HYPE bid cap, and **10,000 HYPE in total**, which covers one full beta launch. Raise both together after our audit, when we lift the bid caps.
+
+**H2. The fee share: accept 50/50?**
+
+*Plain words.* Gloam can't give us a lower rate: their vault is already deployed with no upgrade path, and a lower rate would apply to everyone. Instead they'll pay us half of their 0.5% on everything that leaves their vault into our router, batch rounds and bids, counted from the chain's events and paid monthly. That's 0.25% of every private buy, and of every bid.
+
+*What it means for a $1,000 round trip on a launch token:*
+- Buy: Gloam takes $5 and pays us back $2.50.
+- Sell: our trade fee, B1.
+- At a 0.5% trade fee: the user pays $10 in privacy fees on top of the pool fees, and Cloak earns $7.50.
+- At a 0.25% trade fee: the user pays $7.50, and Cloak earns $5.
+
+The user's cost doesn't change with the share; it's money Gloam already charges.
+
+*Recommendation.*
+- **Accept 50/50**, and ask them to write down which events they count, that it's paid to our treasury wallet, and a monthly statement we can check against the chain.
+- **Set our trade fee to 0.25%.** The total privacy cost of a round trip is then 0.75%, the target from B1, and Cloak still earns half of every round trip's privacy fees.
+- KNTQ and USDC trades never leave Gloam's vault, so they pay no trade fee. We earn the 0.25% share on them instead.
+
+**H3. The memo board: what do we do until Gloam deploys it?**
+
+*Plain words.* The memo board is how a private payment's recipient finds it. Gloam hasn't deployed theirs on Elysium yet. Our app needs one for payments, links and receive addresses.
+
+*Recommendation.* Ask Gloam when it's coming. If it isn't there before we launch, we deploy Gloam's own memo board code, unchanged, and switch to theirs later. The rehearsal already does exactly this.
+
+**H4. $CLOAK in Gloam's vault.** Gloam will look at listing it after our audit, once it has a market, with starting caps through their 3-day timelock. That matches Part E: a token launched elsewhere goes to their vault with no work from us.
+
+**H5. Announcements.** Any announcement goes to Gloam first, so we put it out together.
+
+**Not needed from their SDK 0.7.0.** It now knows Elysium mainnet, but our SDK has its own Elysium settings. The change-note seed and memo posts before a note lands are on their list. We keep the pin at 16dac34 until there's a reason to move it.
 
 ## Done and still open
 

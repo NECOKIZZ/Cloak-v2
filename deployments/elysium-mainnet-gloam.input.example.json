@@ -1,12 +1,14 @@
 {
   "name": "elysium-mainnet-gloam",
   "chainId": 99901,
-  "rpcUrl": "FILL IN: Elysium mainnet RPC that answers eth_getLogs",
-  "gloamVault": "FILL IN: Gloam's vault (expected 0x39E28Cde55CAB798874746ac52cb4B5Cc99a0194)",
-  "memoBoard": "FILL IN: Gloam's memo board",
-  "poseidon": "FILL IN: the Poseidon Gloam's vault uses (its poseidon2())",
-  "verifier": "FILL IN: Gloam's vault's verifier()",
-  "shieldVerifier": "FILL IN: Gloam's vault's shieldVerifier()",
+  "rpcUrl": "https://rpc.elysium.kinetiq.xyz",
+  "gloamVault": "0x89d3042390204f57b8b4F8949D3c2203E4002164",
+  "_gloamVault": "Gloam's Elysium mainnet vault (Gloam, Nov 10), deployed at block 3248495, owned by their VaultOwnerGuard 0x268D7CAd645282D1e77461b5B2dd997bd54eFAf5 (controller 0x76b7...D4D8). 0.5% withdrawal fee to their treasury 0xB390...30B8. Checked on chain Nov 10.",
+  "gloamVaultBlock": 3248495,
+  "memoBoard": "FILL IN: Gloam's memo board on Elysium (not deployed yet, Gloam Nov 10)",
+  "poseidon": "0x62c435CE6886fa91e3b0e91500c6dC9219723457",
+  "verifier": "0x29053A713E3a7D37053374446869a6f55858FcEf",
+  "shieldVerifier": "0xAEB8cb99B3BB43eB230F9fEB7293fB5E39080016",
   "factory": "FILL IN: Cloak's v4 launch factory on mainnet",
   "poolManager": "0xe2e105d3f7209a9da11f83ccf3e7398a753823f1",
   "v4Hook": "FILL IN: CloakV4Hook on mainnet",
@@ -16,7 +18,10 @@
   "feeRecipient": "FILL IN: the treasury wallet (unused while withdrawFeeBps is 0, but the vaults need an address)",
   "withdrawFeeBps": 0,
   "_withdrawFeeBps": "Our vaults charge no withdrawal fee: Cloak's fee is taken in HYPE by the router and batch rounds (tradeFee below), so Cloak never holds launch or outside tokens (decided Nov 10).",
-  "tradeFee": { "bps": 50, "treasury": "FILL IN: the treasury wallet" },
+  "tradeFee": {
+    "bps": 50,
+    "treasury": "FILL IN: the treasury wallet"
+  },
   "_tradeFee": "Cloak's fee on private sales out of its vaults (launch and ecosystem tokens into HYPE or USDC), in basis points, taken from what the sale brings and sent to the treasury. Buys pay none (Gloam's 0.5% applies there). CloakTradeFee, owned by the owner wallet: lower at once, raise or move the treasury after a public 3-day wait, never above 1%. RATE WAITING on Gloam's fee answer (docs/MAINNET-DECISIONS.md, B1).",
   "launchCaps": {
     "perDeposit": "1000000000000000000000000000",
@@ -36,6 +41,14 @@
       "fee": 3000,
       "tickSpacing": 60,
       "_pool": "USDC's deepest native-HYPE v4 pool with no hook (Nov 10 scan): 0.3% / 60, about 27,300 HYPE and 2.0M USDC in range. The router trades USDC against HYPE through it, and through HYPE against every launch and outside token (two pools, one private swap)."
+    },
+    {
+      "symbol": "KNTQ",
+      "token": "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0",
+      "decimals": 18,
+      "fee": 3000,
+      "tickSpacing": 60,
+      "_pool": "KNTQ's deepest native-HYPE v4 pool with no hook: 0.3% / 60. It lives in Gloam's vault (Gloam's listing, Thursday Nov 12), so the router trades it like USDC: HYPE in Gloam's vault to KNTQ in Gloam's vault, one pool; a launch token to KNTQ, two pools through HYPE."
     }
   ],
   "ecosystem": {
@@ -49,21 +62,11 @@
     "maxTotalBps": 100,
     "launchpads": [],
     "_launchpads": "Each vetted launchpad: { name, factory, selector }. factory is its contract that records the tokens it made; selector is a view f(address token) there that returns non-zero for its tokens and zero otherwise (for example isToken(address) or tokenInfo(address)). A token then names its launchpad with \"launchpad\": name.",
-    "tokens": [
-      {
-        "symbol": "KNTQ",
-        "token": "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0",
-        "_token": "KNTQ on Elysium mainnet (Kinetiq Governance Token, 18 decimals, not a proxy), found in the Nov 10 pool scan. Kinetiq's docs list 0x0000...c2d6, which is KNTQ on HyperEVM and has no code on Elysium.",
-        "fee": 3000,
-        "tickSpacing": 60,
-        "_pool": "KNTQ's deepest native-HYPE v4 pool with no hook: 0.3% fee, tick spacing 60, about 30,200 HYPE and 5.6M KNTQ in range on Nov 10. Others: 1% / 200 (about 28,000 HYPE), 0.8% / 120 (about 5,500 HYPE).",
-        "perDepositBps": 5,
-        "totalBps": 50,
-        "_caps": "5 and 50 bps of the Elysium supply: about 6,500 KNTQ per deposit and 65,000 KNTQ in total."
-      }
-    ],
-    "_minMcapHype": "The market cap counts the token's supply on Elysium only (a bridged token's Elysium supply, not its full supply): KNTQ, with about 13.0M KNTQ on Elysium at about 186 KNTQ per HYPE, is about 69,900 HYPE (scan of Nov 10). 50,000 HYPE is about $3.7M at HYPE near $73."
+    "tokens": [],
+    "_minMcapHype": "The market cap counts the token's supply on Elysium only (a bridged token's Elysium supply, not its full supply): KNTQ, with about 13.0M KNTQ on Elysium at about 186 KNTQ per HYPE, is about 69,900 HYPE (scan of Nov 10). 50,000 HYPE is about $3.7M at HYPE near $73.",
+    "_tokens": "None at launch. KNTQ lives in Gloam's vault (Gloam lists it Thursday, Nov 12, at 1,400 per deposit and 70,000 in total): one home per asset, so it's in assets above, and our ecosystem vault takes the next tokens."
   },
   "_scan": "Elysium mainnet (99901), Nov 10: Uniswap v4 PoolManager 0xe2e105d3f7209a9da11f83ccf3e7398a753823f1 (81,107 pools). USDC 0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65 (6 decimals). WHYPE 0xbA876237B0F021A6c6D852d6c26E107997cC5E81. Deepest HYPE/USDC pool with no hook: native HYPE, 0.3% / 60, about 27,300 HYPE and 2.0M USDC in range; then 0.2% / 40 with about 14,400 HYPE and 1.06M USDC.",
-  "_whype": "deploy: the script deploys CloakWHYPE, Cloak's own fixed WHYPE (Elysium's 0xbA87...5E81 is an upgradeable proxy). Or an address of a fixed WHYPE."
+  "_whype": "deploy: the script deploys CloakWHYPE, Cloak's own fixed WHYPE (Elysium's 0xbA87...5E81 is an upgradeable proxy). Or an address of a fixed WHYPE.",
+  "_assets_caps": "Gloam's caps on Elysium (Nov 10): USDC 500 per deposit / 25,000 total (live); HYPE 12 / 600 from Thursday (we ask for more, docs/MAINNET-DECISIONS.md); KNTQ 1,400 / 70,000 from Thursday."
 }

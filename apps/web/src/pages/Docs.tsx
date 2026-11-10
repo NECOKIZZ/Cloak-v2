@@ -171,7 +171,8 @@ export function Docs() {
           <div className="crumb" style={{ marginTop: 60 }}>Privacy</div>
           <h2 id="private-trading">Private trading</h2>
           <><>
-              <p>Private balances live in <b>Gloam's vault</b>, run on Gloam's audited contracts, circuits and final ceremony keys. USDC sits in Gloam's main vault. HYPE and launch tokens sit in Cloak's launch vault, which is Gloam's vault code with one addition that lets a settled Cloak launch in at once. A balance is a set of private notes, and your browser proves each spend without saying which notes are yours.</p>
+              <p>Private balances live in shielded vaults that all run Gloam's audited vault code, circuits and final ceremony keys. {G?.router ? <>HYPE, USDC and the tokens Gloam lists sit in <b>Gloam's main vault</b>, which Gloam runs. Cloak launch tokens sit in <b>Cloak's launch vault</b>, and other projects' tokens Cloak lists sit in <b>Cloak's ecosystem vault</b>.</> : <>USDC sits in <b>Gloam's main vault</b>, which Gloam runs. HYPE and launch tokens sit in <b>Cloak's launch vault</b>.</>} A balance is a set of private notes, and your browser proves each spend without saying which notes are yours.</p>
+              <p><b>Which vaults are whose.</b> Cloak's launch vault{G?.ecosystemVault ? " and ecosystem vault are" : " is"} Cloak's own. Cloak deployed {G?.ecosystemVault ? "them" : "it"}, Cloak's wallet controls {G?.ecosystemVault ? "them" : "it"}, and Cloak decides what goes in. Gloam doesn't run {G?.ecosystemVault ? "them" : "it"} and isn't responsible for {G?.ecosystemVault ? "them" : "it"}. {G?.ecosystemVault ? "They use" : "It uses"} Gloam's vault code unchanged, plus one addition that lets in a settled Cloak launch{G?.ecosystemVault ? " or a token Cloak lists" : ""}. Gloam's main vault is Gloam's.</p>
               <ol>
                 <li><b>Unlock</b>. You sign one message and your keys are made from it on this device.</li>
                 <li><b>Shield</b>. You deposit HYPE, USDC or a launch token. It's the only public step.</li>
@@ -260,9 +261,11 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <>
               <table>
                 <tbody>
-                  <tr><td>Gloam's vault (USDC)</td><td><a href={A(G.gloamVault)} target="_blank" rel="noreferrer"><code>{G.gloamVault}</code></a></td></tr>
+                  <tr><td>Gloam's main vault, run by Gloam ({G.router ? "HYPE, USDC" : "USDC"})</td><td><a href={A(G.gloamVault)} target="_blank" rel="noreferrer"><code>{G.gloamVault}</code></a></td></tr>
                   <tr><td>Gloam's memo board (how a payment's recipient finds it)</td><td><a href={A(G.memoBoard)} target="_blank" rel="noreferrer"><code>{G.memoBoard}</code></a></td></tr>
-                  <tr><td>CloakLaunchVault (HYPE and launch tokens, on Gloam's code and keys)</td><td><a href={A(G.launchVault)} target="_blank" rel="noreferrer"><code>{G.launchVault}</code></a></td></tr>
+                  <tr><td>CloakLaunchVault, Cloak's own, run by Cloak ({G.router ? "launch tokens" : "HYPE and launch tokens"}, on Gloam's code and keys)</td><td><a href={A(G.launchVault)} target="_blank" rel="noreferrer"><code>{G.launchVault}</code></a></td></tr>
+                  {G.ecosystemVault && <tr><td>CloakEcosystemVault, Cloak's own, run by Cloak (other projects' tokens Cloak lists, on Gloam's code and keys)</td><td><a href={A(G.ecosystemVault)} target="_blank" rel="noreferrer"><code>{G.ecosystemVault}</code></a></td></tr>}
+                  {G.router && <tr><td>CloakRouterV4 (private swaps between the vaults)</td><td><a href={A(G.router)} target="_blank" rel="noreferrer"><code>{G.router}</code></a></td></tr>}
                   {G.launchSwapV4 && <tr><td>CloakLaunchSwapV4 (private swaps through launches' v4 pools)</td><td><a href={A(G.launchSwapV4)} target="_blank" rel="noreferrer"><code>{G.launchSwapV4}</code></a></td></tr>}
                   {G.batcherV4 && <tr><td>CloakGloamBatcherV4 (batch rounds)</td><td><a href={A(G.batcherV4)} target="_blank" rel="noreferrer"><code>{G.batcherV4}</code></a></td></tr>}
                   {G.batcher && <tr><td>CloakGloamBatcher (batch rounds, V2 pools)</td><td><a href={A(G.batcher)} target="_blank" rel="noreferrer"><code>{G.batcher}</code></a></td></tr>}
@@ -279,7 +282,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
                   {DEPLOYMENT?.spotBook && <tr><td>CloakSpotBook (WL spot sales)</td><td><a href={A(DEPLOYMENT.spotBook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.spotBook}</code></a></td></tr>}
                 </tbody>
               </table>
-              <p>No function in any of these lets anyone, including us, move your money. A note leaves a vault only with its owner's proof, and every escrow has a way out after a timeout. The vaults sit under Gloam's owner guard, so the proof checkers can never be swapped and any new asset or higher cap waits a public 3 days. Source and tests are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
+              <p>No function in any of these lets anyone, including us, move your money. A note leaves a vault only with its owner's proof, and every escrow has a way out after a timeout. Cloak's vaults sit under a copy of Gloam's owner guard, controlled by Cloak, so their proof checkers can never be swapped and any new asset or higher cap waits a public 3 days (a Cloak launch, or a token Cloak lists through the ecosystem vault's fixed rules, goes in at once). Source and tests are on <a href={GITHUB} target="_blank" rel="noreferrer">GitHub</a>.</p>
             </>
           )}
 
@@ -291,7 +294,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
                   <tr><td>Deposits and private sends</td><td>Free</td></tr>
                   <tr><td>Withdrawals, private swaps, batch orders and bids from a private balance</td><td>0.5% of what leaves the vault (Gloam's vault fee on Elysium)</td></tr>
                   <tr><td>Launch fee</td><td>1.5% of a successful raise, taken at settlement. Nothing if the launch doesn't fill (hard cap 3%)</td></tr>
-                  <tr><td>Relayer</td><td>Free for you. Gas is paid from the launch vault's fee income</td></tr>
+                  <tr><td>Relayer</td><td>Free for you. Cloak pays the gas</td></tr>
                 </tbody>
               </table>
               <p>While this is in beta, deposits are capped. Gloam's vault takes 500 USDC per deposit and 25,000 in total, and the launch vault takes 10 HYPE per deposit. Withdrawals are never capped.</p>
@@ -316,7 +319,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>Batch round</td><td>60 s, priced at the average over at least a round, 4% of the pool per side, 2% price guard, 5% impact guard, refunds after 10 min</td><td>Contract</td></tr>
               <tr><td>Fees</td><td>0.5% on what leaves a vault, 1.5% of a successful raise (cap 3%), deposits and sends free</td><td>Vault, behind a 3-day wait</td></tr>
               <tr><td>Beta caps</td><td>See Fees & caps. Withdrawals never capped</td><td>Config</td></tr>
-              <tr><td>Relay fee</td><td>None, the relay is paid from the launch vault's fee</td><td>Keeper</td></tr>
+              <tr><td>Relay fee</td><td>None, Cloak pays the gas</td><td>Keeper</td></tr>
             </tbody>
           </table>
 
@@ -329,7 +332,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           </ul>
 
           <h2 id="keeper">Keeper & relayer</h2>
-          <><p>The keeper is a small Node service. It reveals bids once the drand round passes and settles launches. It admits each settled launch to the launch vault and settles batch rounds. It relays private transactions (<code>POST /gloam/relay</code>) with no fee to you, paying gas from the launch vault's fee income, and keeps its last gas each hour for withdrawals and refunds. It can delay or refuse a transaction but can't change one, because the proof binds every field. It also publishes sealed bids the time-lock key couldn't open (<code>GET /unopenable</code>). Anyone can run one with <code>node services/keeper/index.mjs</code>.</p></>
+          <><p>The keeper is a small Node service. It reveals bids once the drand round passes and settles launches. It admits each settled launch to the launch vault and settles batch rounds. It relays private transactions (<code>POST /gloam/relay</code>) with no fee to you, paying the gas itself, and keeps its last gas each hour for withdrawals and refunds. It can delay or refuse a transaction but can't change one, because the proof binds every field. It also publishes sealed bids the time-lock key couldn't open (<code>GET /unopenable</code>). Anyone can run one with <code>node services/keeper/index.mjs</code>.</p></>
 
           <h2 id="limits">Limits & threat model</h2>
           <ul>

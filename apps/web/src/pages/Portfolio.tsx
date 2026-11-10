@@ -138,7 +138,7 @@ export function Portfolio() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Portfolio</h1><p>Only you can see these balances. On-chain they're encrypted notes in Gloam's vaults.</p></div></div>
+      <div className="page-head"><div><h1>Portfolio</h1><p>Only you can see these balances. On chain they're encrypted notes in Gloam's main vault and in Cloak's own vaults, which run Gloam's code.</p></div></div>
       <div className="card wallet-hero">
         <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
         <div className="wallet-total">{!loaded || (px === null && held.some((h) => h.a.kind !== "stable")) ? <Skel w="5.5ch" /> : <span className="fade-in" key={dollars(total)}>{dollars(total)}</span>}</div>

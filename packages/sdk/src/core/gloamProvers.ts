@@ -13,9 +13,11 @@ import type { HolderProver } from "./gloamProofs.js";
 
 /** Gloam at the commit Cloak v2 is built and tested against. */
 export const GLOAM_COMMIT = "16dac3476be90529ed9578a3701d9fc36d6cd0b5";
-export const GLOAM_CIRCUITS_CDN = `https://cdn.jsdelivr.net/gh/cryptoduke01/gloam@${GLOAM_COMMIT}/app/public/circuits`;
+export const GLOAM_CIRCUITS_CDN = `https://cdn.jsdelivr.net/gh/gloamtrade/gloam@${GLOAM_COMMIT}/app/public/circuits`;
+/** The same commit under Gloam's earlier repo name (it moved to gloamtrade/gloam); every file is hash-checked either way. */
+export const GLOAM_CIRCUITS_CDN_OLD = `https://cdn.jsdelivr.net/gh/cryptoduke01/gloam@${GLOAM_COMMIT}/app/public/circuits`;
 /** Where the files are tried, in order: jsDelivr from Gloam's repo, then a copy the site serves itself. */
-export const GLOAM_CIRCUIT_SOURCES = [GLOAM_CIRCUITS_CDN, "/circuits/gloam"];
+export const GLOAM_CIRCUIT_SOURCES = [GLOAM_CIRCUITS_CDN, GLOAM_CIRCUITS_CDN_OLD, "/circuits/gloam"];
 
 export type GloamCircuit = "shield" | "transfer" | "unshield" | "funds" | "receipt";
 

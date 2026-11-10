@@ -40,6 +40,7 @@ import {
   gloamProvers,
   gloamRelaySubmitter,
   GLOAM_CIRCUITS_CDN,
+  GLOAM_CIRCUITS_CDN_OLD,
   gloamLinkAddress,
   gloamLinkCheck,
   gloamLinkKeys,
@@ -161,7 +162,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
           writeFileSync(file, JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? `${v}n` : v)), { mode: 0o600 });
         },
       };
-      const sources = settings.gloamCircuitsDir ? [`file://${settings.gloamCircuitsDir}`] : [GLOAM_CIRCUITS_CDN];
+      const sources = settings.gloamCircuitsDir ? [`file://${settings.gloamCircuitsDir}`] : [GLOAM_CIRCUITS_CDN, GLOAM_CIRCUITS_CDN_OLD];
       const p = await GloamPrivate.unlock(wallet, {
         publicClient: pub,
         chainId: settings.chain.id,
@@ -1032,7 +1033,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
     if (l.locked && passcode === undefined) throw new Error(`This link is locked. Pass its passcode${l.hint ? ` (the answer to: "${l.hint}")` : ""}.`);
     {
       // the link's own account: spends what it received directly, through the relay, with no wallet
-      const sources = settings.gloamCircuitsDir ? [`file://${settings.gloamCircuitsDir}`] : [GLOAM_CIRCUITS_CDN];
+      const sources = settings.gloamCircuitsDir ? [`file://${settings.gloamCircuitsDir}`] : [GLOAM_CIRCUITS_CDN, GLOAM_CIRCUITS_CDN_OLD];
       const g = new GloamPrivate(
         { publicClient: pub, chainId: settings.chain.id, gloamVault: { pool: G.gloamVault, poolBlock: G.block }, launchVault: { pool: G.launchVault, poolBlock: G.launchVaultBlock ?? G.block }, payMemo: G.memoBoard, provers: gloamProvers(sources), submit: gloamRelaySubmitter(d.relayerUrl), whype: G.whype, spendReceived: true, logChunk: 1_000_000n },
         await openGloamLinkKeys(l, passcode),
