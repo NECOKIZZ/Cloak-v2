@@ -31,7 +31,7 @@ console.log(`  ${g.chainId}: {
       gloamVault: ${q(g.gloamVault)},
       memoBoard: ${q(g.memoBoard)},
       block: ${g.block}n,
-      launchVault: ${q(g.launchVault)},${opt("launchSwapV4", g.launchSwapV4)}${opt("router", g.router)}${opt("ecosystemVault", g.ecosystemVault)}${g.ecosystemVault ? `\n      ecosystemVaultBlock: ${g.block}n,` : ""}${opt("batcherV4", g.batcherV4)}${opt("receive", g.receive)}${opt("bids", g.bids)}${opt("graduation", g.graduation)}${opt("fundsGate", g.fundsGate)}${opt("receiptCheck", g.receiptCheck)}
+      launchVault: ${q(g.launchVault)},${opt("launchSwapV4", g.launchSwapV4)}${opt("router", g.router)}${opt("ecosystemVault", g.ecosystemVault)}${g.ecosystemVault ? `\n      ecosystemVaultBlock: ${g.block}n,` : ""}${opt("batcherV4", g.batcherV4)}${opt("receive", g.receive)}${opt("bids", g.bids)}${opt("fundsGate", g.fundsGate)}${opt("receiptCheck", g.receiptCheck)}
       whype: ${q(g.whype)},
     },
   },`);

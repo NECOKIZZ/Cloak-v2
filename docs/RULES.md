@@ -69,7 +69,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | Gloam's vault (Cloak's testnet instance) | USDC only, **500** per deposit, **25,000** in total | Vault owner |
 | Launch vault | HYPE **10** per deposit, **1,000** in total. Each launch token is admitted once its launch settles, with fixed caps | Vault owner |
 | Who controls it | Gloam's `VaultOwnerGuard`. The launch pauser can only stop admissions, never touch funds | Contract (fixed) |
-| Graduation | Testnet only: `CloakGraduation` moves balances from the launch vault into Gloam's vault in **1-hour** rounds. Not deployed on mainnet, where each asset has one home | Contract (fixed) |
+| Graduation | Removed for the beta (each asset has one home). It comes back after the beta, for a token Gloam lists, so its holders can move their private balances across privately | Roadmap |
 
 ## Private swaps and batch rounds
 

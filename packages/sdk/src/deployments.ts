@@ -60,7 +60,6 @@ export interface GloamDeployment {
   /** CloakEcosystemVault: admitted outside tokens (KNTQ, ...), traded through `router`; and its deploy block. */
   ecosystemVault?: Address;
   ecosystemVaultBlock?: bigint;
-  graduation?: Address;
   /** CloakGloamBatcher: batch rounds through Uniswap V2 pairs. */
   batcher?: Address;
   /** CloakGloamBatcherV4: batch rounds through launches' own v4 pools; the keeper registers each settled launch. */
@@ -108,7 +107,6 @@ export const deployments: Record<number, CloakDeployment> = {
       launchSwapV4: "0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce",
       receive: "0xa462e810b985029b28b5cee49866760a7f8767bb",
       bids: "0xb3f6f2142439f1b4f088ea24569cc73726dcea32",
-      graduation: "0xfd0e96dec9c1edd885e86044790e50e48c1a6268",
       // batch rounds through launches' own v4 pools: time-weighted price, 0.5% settle band, 4% per side, real notes only
       batcherV4: "0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8",
       fundsGate: "0x79aafd041a283c334421a17c781b12e353093210",

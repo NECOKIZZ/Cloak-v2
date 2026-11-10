@@ -57,9 +57,9 @@ services:
         value: "26707908"
       - key: GLOAM_MEMO
         value: "0xf6816854b68CC4B67213289927d8e44050BA62D3"
-      # Cloak's escrows the relay sends for: launch swap v4, batcher v4, bids, receive, graduation, funds gate
+      # Cloak's escrows the relay sends for: launch swap v4, batcher v4, bids, receive, funds gate (graduation removed for the beta)
       - key: GLOAM_ESCROWS
-        value: "0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce,0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8,0xb3f6f2142439f1b4f088ea24569cc73726dcea32,0xa462e810b985029b28b5cee49866760a7f8767bb,0xfd0e96dec9c1edd885e86044790e50e48c1a6268,0x79aafd041a283c334421a17c781b12e353093210"
+        value: "0xc4b6ce66f12733e6737cda6cc1a882ea05bf99ce,0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8,0xb3f6f2142439f1b4f088ea24569cc73726dcea32,0xa462e810b985029b28b5cee49866760a7f8767bb,0x79aafd041a283c334421a17c781b12e353093210"
       - key: GLOAM_BATCHER_V4
         value: "0xbd4a41301b3c0ba2ca07677fd9ba3ba4640d28f8"
       - key: GLOAM_BATCHER_V4_BLOCK

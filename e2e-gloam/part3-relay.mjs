@@ -130,6 +130,15 @@ try {
     const third = await r({ to: captured.to, data: captured.data }).then(() => null, (x) => x);
     assert(third?.status === 409, "once it lands, the spend is spent and refused");
   }
+  {
+    // review R-03: copies of one escrow call sent together go out once; the others are refused at once (409), before
+    // anything is simulated or sent, so they can't burn the relay's gas
+    const escrow = stack.dual; // any contract stands in for an escrow here: the lock comes before the simulation
+    const r = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, memoBoard: stack.payMemo, escrows: [escrow], hourlySpendWei: parseEther("1") });
+    const call = { to: escrow, data: "0x12345678" };
+    const results = await Promise.all([1, 2, 3].map(() => r(call).then(() => 0, (x) => x?.status ?? 0)));
+    assert(results.filter((x) => x === 409).length === 2, `three copies of one escrow call sent together: two refused as already being relayed (${results.join(", ")})`);
+  }
   console.log(`\nPart 3b passed in ${Math.round((performance.now() - t0) / 1000)} s`);
 } finally {
   L.stop();

@@ -212,7 +212,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
     const p = await gloamP;
     await p.loadMarkets();
     for (const a of d.assets ?? []) p.addAsset(a);
-    // like the app on open: swap buffers, batch payouts, bids and graduations that can finish now
+    // like the app on open: swap buffers, batch payouts and bids that can finish now
     await p.finishPending().catch(() => {});
     return p;
   }
@@ -996,7 +996,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
       const { spending } = needWallet();
       const dest = await resolveRecipient(pub, to); // a .ely name resolves now: names expire and change hands
       // where money would stop or be lost, refused before anything is proved, dry runs included (review O-12)
-      const stops = [zeroAddress, d.whype, ...[G.gloamVault, G.launchVault, G.memoBoard, G.launchSwapV4, G.batcherV4, G.batcher, G.receive, G.bids, G.graduation].filter(Boolean)].map((x) => String(x).toLowerCase());
+      const stops = [zeroAddress, d.whype, ...[G.gloamVault, G.launchVault, G.memoBoard, G.launchSwapV4, G.batcherV4, G.batcher, G.receive, G.bids].filter(Boolean)].map((x) => String(x).toLowerCase());
       if (stops.includes(dest.address.toLowerCase())) throw new Error("That address can't take a withdrawal: the money would stop there. Use a normal wallet address.");
       const named = dest.name ? `${dest.name} (${dest.address})` : dest.address;
       to = dest.address;

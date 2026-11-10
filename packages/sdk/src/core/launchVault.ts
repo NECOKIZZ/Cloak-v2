@@ -1,11 +1,10 @@
 /**
  * Cloak's launch vault (CloakLaunchVault, contracts-gloam) from a GloamCore balance: private swaps that give the price
- * buffer back (CloakLaunchSwap), graduation into Gloam's vault (CloakGraduation), and the follow-ups both need.
+ * buffer back (CloakLaunchSwap), and the follow-ups it needs.
  *
  * A follow-up needs the account's seed (it signs with the one-time key made from the spent note and makes the new
  * note), so the keeper can't do it. The app keeps a record per action and calls finishPending() on every open: a swap's
- * leftover comes back as a note, and a graduation leaves for Gloam's vault once its round ends (or back into the launch
- * vault if Gloam's vault refuses it). Records hold no secrets: the keys come back from the account seed.
+ * leftover comes back as a note. Records hold no secrets: the keys come back from the account seed.
  */
 import { encodeAbiParameters, encodeFunctionData, keccak256, parseAbi, toHex, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -28,24 +27,6 @@ export const CLOAK_LAUNCH_SWAP_ABI = parseAbi([
   "function exitDigest(bytes32 id, address to) view returns (bytes32)",
 ]);
 
-const SPEND_GRAD = "(bytes proof, bytes32 root, bytes32 nullifier, uint256 amount)";
-const DEPOSIT_GRAD = "(bytes proof, bytes32 commitment)";
-const ENTRY_KEY = "(bytes32 nullifier, address token, uint128 size, address ownerKey, address fallbackTo)";
-export const CLOAK_GRADUATION_ABI = parseAbi([
-  `function enter(${SPEND_GRAD} s, ${ENTRY_KEY} k) returns (bytes32)`,
-  `function leave(${ENTRY_KEY} k, address toVault, ${DEPOSIT_GRAD} d, bytes signature)`,
-  `function exitAfterTimeout(${ENTRY_KEY} k)`,
-  `function escrowFor(${ENTRY_KEY} k) view returns (address)`,
-  `function idOf(${ENTRY_KEY} k) pure returns (bytes32)`,
-  "function entries(bytes32) view returns (address token, uint64 round, bool paid, uint128 net)",
-  "function roundEntries(address, uint64) view returns (uint256)",
-  "function roundSecs() view returns (uint256)",
-  "function gloamVault() view returns (address)",
-  "function launchVault() view returns (address)",
-  "function isStandard(uint256) pure returns (bool)",
-  "function claimDigest(bytes32 id, address toVault, bytes32 commitment) view returns (bytes32)",
-]);
-
 const ORDER_KEY = "(bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo)";
 export const CLOAK_GLOAM_BATCHER_ABI = parseAbi([
   `function claim(${ORDER_KEY} k, ${DEPOSIT_SWAP} d, bytes signature)`,
@@ -61,8 +42,6 @@ export const CLOAK_GLOAM_BATCHER_ABI = parseAbi([
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SWAP = CLOAK_LAUNCH_SWAP_ABI as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const GRAD = CLOAK_GRADUATION_ABI as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BATCHER = CLOAK_GLOAM_BATCHER_ABI as any;
 
 export interface LaunchSwapKey {
@@ -75,14 +54,6 @@ export interface LaunchSwapKey {
   routeHash: Hex;
   ownerKey: Address;
   deadline: bigint;
-}
-
-export interface GraduationKey {
-  nullifier: Hex;
-  token: Address;
-  size: bigint;
-  ownerKey: Address;
-  fallbackTo: Address;
 }
 
 /** What the app keeps per action until finishPending() reports it done. */
@@ -99,7 +70,6 @@ export interface BatchOrderKey {
 export type LaunchRecord =
   | { kind: "batchOrder"; batcher: Address; id: Hex; key: BatchOrderKey; round: bigint; txHash: Hex }
   | { kind: "launchSwap"; router: Address; id: Hex; key: LaunchSwapKey; txHash: Hex; vaultIn?: Address }
-  | { kind: "graduation"; graduation: Address; id: Hex; key: GraduationKey; txHash: Hex }
   | ({ kind: "bid" } & GloamBidRecord);
 
 /** A Uniswap v4 route as CloakLaunchSwapV4 reads it: abi.encode(PoolKey[]), pools from the input to the output. */
@@ -175,29 +145,6 @@ export async function launchSwap(
   return { kind: "launchSwap", router: p.router, id, key, txHash, vaultIn };
 }
 
-/**
- * Enter a graduation round: one note of a standard size (1, 2 or 5 x 10^n) of a launch token leaves the launch vault.
- * finishPending() moves it into Gloam's vault once the round ends. `fallbackTo` gets it in the clear if nobody finishes
- * it within 30 days of the round.
- */
-export async function graduate(
-  core: GloamCore,
-  p: { graduation: Address; token: Address; size: bigint; fallbackTo: Address },
-  onStatus: Status = () => {},
-): Promise<LaunchRecord> {
-  const pub = core.config.publicClient;
-  if (!(await pub.readContract({ address: p.graduation, abi: GRAD, functionName: "isStandard", args: [p.size] }))) throw new Error("Graduation moves standard sizes only (1, 2 or 5 times a power of ten).");
-  const note = await core.exactNote(p.token, p.size, onStatus);
-  const nullifier = toHex(note.nullifier, { size: 32 });
-  const key: GraduationKey = { nullifier, token: p.token, size: p.size, ownerKey: signer(core, nullifier).address, fallbackTo: p.fallbackTo };
-  const escrow = (await pub.readContract({ address: p.graduation, abi: GRAD, functionName: "escrowFor", args: [key] })) as Address;
-  const id = (await pub.readContract({ address: p.graduation, abi: GRAD, functionName: "idOf", args: [key] })) as Hex;
-  const s = await core.spendProof(note, escrow, onStatus);
-  onStatus("Entering the graduation round");
-  const txHash = await core.config.submit({ kind: "escrow", to: p.graduation, data: encodeFunctionData({ abi: GRAD, functionName: "enter", args: [{ proof: s.proof, root: s.root, nullifier: s.nullifier, amount: s.amount }, key] }) });
-  return { kind: "graduation", graduation: p.graduation, id, key, txHash };
-}
-
 export interface PendingResult {
   /** Still waiting (a round not over, a swap not landed): keep them. */
   waiting: LaunchRecord[];
@@ -210,13 +157,11 @@ export interface PendingResult {
 /**
  * Run on every app open: finishes every record that can be finished now. Never throws for one record: a failure is
  * reported and the record stays waiting.
- * @param opts.minRoundEntries wait for at least this many entries in a graduation round before leaving it, while the
- *        round is younger than `crowdWaitSecs` (default 3 entries, 1 day), so a lone entry isn't easy to follow
  */
 export async function finishPending(
   core: GloamCore,
   records: LaunchRecord[],
-  opts: { minRoundEntries?: bigint; crowdWaitSecs?: bigint; now?: bigint; cores?: GloamCore[] } = {},
+  opts: { now?: bigint; cores?: GloamCore[] } = {},
   onStatus: Status = () => {},
 ): Promise<PendingResult> {
   const pub = core.config.publicClient;
@@ -231,7 +176,7 @@ export async function finishPending(
             ? await finishBid(core, r, onStatus, opts.cores)
             : r.kind === "batchOrder"
               ? await finishBatchOrder(core, r, onStatus, opts.cores)
-              : await finishGraduation(core, r, now, opts, onStatus);
+              : null; // a record this version doesn't know (an earlier graduation): kept as it is
       if (res) out.done.push({ record: r, ...res });
       else out.waiting.push(r);
     } catch (e) {
@@ -333,50 +278,6 @@ async function finishBatchOrder(launchCore: GloamCore, r: Extract<LaunchRecord, 
   return { outcome: `batch payout of ${amount} back as a note`, txHashes };
 }
 
-async function finishGraduation(
-  core: GloamCore,
-  r: Extract<LaunchRecord, { kind: "graduation" }>,
-  now: bigint,
-  opts: { minRoundEntries?: bigint; crowdWaitSecs?: bigint },
-  onStatus: Status,
-) {
-  const pub = core.config.publicClient;
-  const [token, round, paid, net] = (await pub.readContract({ address: r.graduation, abi: GRAD, functionName: "entries", args: [r.id] })) as [Address, bigint, boolean, bigint];
-  if (round === 0n) return null; // not entered (yet)
-  if (paid) return { outcome: "already left", txHashes: [] as Hex[] };
-  const roundSecs = (await pub.readContract({ address: r.graduation, abi: GRAD, functionName: "roundSecs", args: [] })) as bigint;
-  const ends = (round + 1n) * roundSecs;
-  if (now < ends) return null;
-  const crowd = (await pub.readContract({ address: r.graduation, abi: GRAD, functionName: "roundEntries", args: [token, round] })) as bigint;
-  if (crowd < (opts.minRoundEntries ?? 3n) && now < ends + (opts.crowdWaitSecs ?? 86_400n)) return null;
-
-  const gloamVault = (await pub.readContract({ address: r.graduation, abi: GRAD, functionName: "gloamVault", args: [] })) as Address;
-  const launchVault = (await pub.readContract({ address: r.graduation, abi: GRAD, functionName: "launchVault", args: [] })) as Address;
-  const m = await core.depositFor(token, net);
-  const txHashes: Hex[] = [];
-  const call = async (toVault: Address) => {
-    const digest = (await pub.readContract({ address: r.graduation, abi: GRAD, functionName: "claimDigest", args: [r.id, toVault, m.deposit.commitment] })) as Hex;
-    const signature = await signer(core, r.key.nullifier).sign({ hash: digest });
-    return core.config.submit({ kind: "escrow", to: r.graduation, data: encodeFunctionData({ abi: GRAD, functionName: "leave", args: [r.key, toVault, { proof: m.deposit.proof, commitment: m.deposit.commitment }, signature] }) });
-  };
-  onStatus("Moving into Gloam's vault");
-  try {
-    txHashes.push(await call(gloamVault));
-    const memo = await announce(core, m.deposit.commitment, m.ticket, onStatus);
-    if (memo) txHashes.push(memo);
-    return { outcome: `${net} moved into Gloam's vault`, txHashes };
-  } catch {
-    // Gloam hasn't listed the token, or its cap is full: back into the launch vault, never stuck
-    onStatus("Gloam's vault can't take it yet, back into the launch vault");
-    txHashes.push(await call(launchVault));
-    core.track({ commitment: m.note.commitment, asset: token, amount: net, secret: m.note.secret });
-    const memo = await announce(core, m.deposit.commitment, m.ticket, onStatus);
-    if (memo) txHashes.push(memo);
-    return { outcome: `${net} back in the launch vault (Gloam's vault refused it)`, txHashes };
-  }
-}
-
-/** After its launch settles: the bid's won tokens and refund back into the vault as notes (the auction claim included). */
 async function finishBid(core: GloamCore, r: Extract<LaunchRecord, { kind: "bid" }>, onStatus: Status, cores: GloamCore[] = []) {
   const pub = core.config.publicClient;
   const A = parseAbi([

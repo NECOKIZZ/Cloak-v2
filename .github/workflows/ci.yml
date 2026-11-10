@@ -1,9 +1,11 @@
 name: CI
-# Run by hand (Actions > CI > Run workflow) or on a pull request, never on every push: the account's free plan has
-# 2,000 minutes a month, and pushes go to two branches. The same checks run locally before every push.
+# A scheduled run (a cron job), not on every push or pull request: the account's free plan has 2,000 minutes a month,
+# and pushes go to two branches. Once a week, Monday 03:17 UTC, or by hand (Actions > CI > Run workflow). The same
+# checks run locally before every push.
 on:
   workflow_dispatch:
-  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +27,7 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: cd vendor/gloam/contracts && forge build
+      - run: cd contracts && forge test
       - run: cd contracts-gloam && forge test
       - run: cd contracts-v4 && forge test
       - run: pnpm --filter @cloakely/sdk build && pnpm --filter @cloakely/sdk test

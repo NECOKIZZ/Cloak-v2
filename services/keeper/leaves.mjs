@@ -17,14 +17,15 @@ export function startLeaves(pub, { vaults = [] }) {
   const trees = vaults.map((g) => new GloamTree(g.address, BigInt(g.block)));
   let refreshedAt = 0;
   let refreshing = null;
-  let cache = null; // every vault: { json, gz, etag }
+  // Built answers, kept until a new leaf lands: each vault's alone (what the site asks for) and all of them together.
+  // Rebuilding and gzipping a big vault's list on every request was the keeper's busiest work (review, /leaves).
+  const cached = new Map(); // key -> { at, json, gz, etag }, at = the leaves it was built from
 
   async function fresh() {
     if (Date.now() - refreshedAt < MIN_REFRESH_MS && refreshedAt) return;
     refreshing ??= Promise.all(trees.map((t) => t.update(pub)))
       .then(() => {
         refreshedAt = Date.now();
-        cache = null;
       })
       .finally(() => (refreshing = null));
     await refreshing;
@@ -36,6 +37,16 @@ export function startLeaves(pub, { vaults = [] }) {
   // and the app reads the chain from there.
   const tag = (ts) => `W/"${createHash("sha256").update(ts.map((t) => `${t.pool.toLowerCase()}:${t.leafCount}:${t.list().at(-1) ?? ""}`).join(",")).digest("base64url").slice(0, 22)}"`;
   const pack = (json, ts) => ({ json, gz: gzipSync(json), etag: tag(ts) });
+  // the same leaves give the same answer (its `block` may lag, which is fine, as above): build it once per new leaf
+  const leavesOf = (ts) => ts.map((t) => `${t.pool.toLowerCase()}:${t.leafCount}:${t.list().at(-1) ?? ""}`).join(",");
+  const memo = (key, ts, build) => {
+    const at = leavesOf(ts);
+    const hit = cached.get(key);
+    if (hit && hit.at === at) return hit;
+    const fresh = { at, ...pack(build(), ts) };
+    cached.set(key, fresh);
+    return fresh;
+  };
   const view = (t) => ({ pool: t.pool, block: (t.scannedTo - 1n).toString(), leaves: t.list().map((c, i) => [i, c, "0x"]) });
 
   return {
@@ -44,11 +55,10 @@ export function startLeaves(pub, { vaults = [] }) {
       await fresh();
       if (pool) {
         const t = trees.find((x) => x.pool.toLowerCase() === pool.toLowerCase());
-        return t ? pack(JSON.stringify(view(t)), [t]) : null;
+        return t ? memo(t.pool.toLowerCase(), [t], () => JSON.stringify(view(t))) : null;
       }
       const ready = trees.filter((t) => t.scannedTo > t.fromBlock);
-      cache ??= pack(JSON.stringify({ vaults: ready.map(view) }), ready);
-      return cache;
+      return memo("*", ready, () => JSON.stringify({ vaults: ready.map(view) }));
     },
   };
 }

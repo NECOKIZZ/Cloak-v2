@@ -146,6 +146,40 @@ contract CloakGloamBatcherTest is Test {
         assertEq(net, 0.995e18);
     }
 
+    /// review R-01: the spend lands alone, then a stranger tops up the public escrow. The order still goes in, counted at
+    ///      its size, instead of being refused for good with the money locked in the escrow.
+    function test_R01_a_topped_up_escrow_still_places() public {
+        CloakGloamBatcherBase.OrderKey memory k = _key(true, 1e18);
+        CloakGloamBatcherBase.Spend memory s = _spend(k);
+        address escrow = batcher.escrowFor(k);
+        vm.prank(mallory);
+        pool.unshield(s.proof, s.root, s.nullifier, address(0), escrow, s.amount);
+        vm.deal(mallory, 1e18);
+        vm.prank(mallory);
+        (bool ok, ) = escrow.call{value: 0.005e18 + 1}(""); // over the vault's fee: more than the note's size arrives
+        assertTrue(ok);
+        batcher.place(s, k);
+        (, , , , uint128 net) = batcher.orders(batcher.idOf(k));
+        assertEq(net, 1e18, "counted at its size, the extra stays in the batcher");
+    }
+
+    /// review R-01 with no vault fee (mainnet's plan for Cloak's vaults): one wei was enough to block it.
+    function test_R01_one_wei_with_no_vault_fee() public {
+        pool.lowerWithdrawFee(0);
+        CloakGloamBatcherBase.OrderKey memory k = _key(true, 1e18);
+        CloakGloamBatcherBase.Spend memory s = _spend(k);
+        address escrow = batcher.escrowFor(k);
+        vm.prank(mallory);
+        pool.unshield(s.proof, s.root, s.nullifier, address(0), escrow, s.amount);
+        vm.deal(mallory, 1);
+        vm.prank(mallory);
+        (bool ok, ) = escrow.call{value: 1}("");
+        assertTrue(ok);
+        batcher.place(s, k);
+        (, , , , uint128 net) = batcher.orders(batcher.idOf(k));
+        assertEq(net, 1e18);
+    }
+
     function test_order_twice_is_refused() public {
         (CloakGloamBatcherBase.OrderKey memory k, ) = _order(true, 1e18);
         CloakGloamBatcherBase.Spend memory s = _spend(k);

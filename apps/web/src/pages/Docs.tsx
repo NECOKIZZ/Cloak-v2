@@ -269,7 +269,6 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
                   {G.batcher && <tr><td>CloakGloamBatcher (batch rounds, V2 pools)</td><td><a href={A(G.batcher)} target="_blank" rel="noreferrer"><code>{G.batcher}</code></a></td></tr>}
                   {G.bids && <tr><td>CloakGloamBids (sealed bids from a private balance)</td><td><a href={A(G.bids)} target="_blank" rel="noreferrer"><code>{G.bids}</code></a></td></tr>}
                   {G.receive && <tr><td>CloakGloamReceive (receive addresses)</td><td><a href={A(G.receive)} target="_blank" rel="noreferrer"><code>{G.receive}</code></a></td></tr>}
-                  {G.graduation && <tr><td>CloakGraduation (launch tokens into Gloam's vault)</td><td><a href={A(G.graduation)} target="_blank" rel="noreferrer"><code>{G.graduation}</code></a></td></tr>}
                   {G.fundsGate && <tr><td>CloakFundsGate (allocation gates by proof of funds)</td><td><a href={A(G.fundsGate)} target="_blank" rel="noreferrer"><code>{G.fundsGate}</code></a></td></tr>}
                   {DEPLOYMENT?.factory && <tr><td>CloakFactory (sealed launches into Uniswap v4 pools)</td><td><a href={A(DEPLOYMENT.factory)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.factory}</code></a></td></tr>}
                   {DEPLOYMENT?.v4Hook && <tr><td>CloakV4Hook (seeds each pool, keeps the liquidity, creator fees)</td><td><a href={A(DEPLOYMENT.v4Hook)} target="_blank" rel="noreferrer"><code>{DEPLOYMENT.v4Hook}</code></a></td></tr>}
@@ -341,6 +340,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <><>
                 <li>Proofs use Gloam's final ceremony keys, and Kann audited Gloam's vault. Cloak's own escrows and launch vault are reviewed internally, and an outside review comes next, with deposit caps until it's done.</li>
                 <li>A private payment is spendable by its sender until the recipient's app sweeps it, which happens every time Cloak is open. The pending balance shows it.</li>
+                <li>While the beta caps are on, one well-funded bidder (about 10,000 HYPE across 100 wallets) can fill a launch's deposit cap at the creator's minimum price and lock others out. They pay at least that minimum for every token. It goes away when the caps lift after the audit.</li>
                 <li>Testnet software. Mainnet comes in stages, privately first.</li>
               </></>
           </ul>

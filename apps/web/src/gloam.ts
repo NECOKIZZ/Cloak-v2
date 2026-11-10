@@ -8,7 +8,7 @@ let provers: GloamCoreConfig["provers"] | null = null;
 export const gloamProvers = () => (provers ??= sdkProvers());
 
 /**
- * The follow-ups this device owes (a swap's buffer, a graduation), per wallet. They hold no secrets: the keys come back
+ * The follow-ups this device owes (a swap's buffer, a bid), per wallet. They hold no secrets: the keys come back
  * from the account's one signature. Lost storage only delays them until the account acts again.
  */
 export function launchRecords(wallet: string): { load(): LaunchRecord[]; save(r: LaunchRecord[]): void } {

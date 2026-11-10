@@ -7,16 +7,16 @@
 //
 // Deploys: Gloam's guarded vault and memo board (Cloak's instance, HYPE and a test launch token listed at deploy, so
 // no 3-day wait is needed), CloakLaunchVault on the same final-key verifiers, CloakLaunchSwap with a V2 pool stand-in,
-// CloakGraduation, CloakGloamBatcher, CloakFundsGate, CloakReceiptCheck. The launch is a stand-in (FakeFactory and
+// CloakGloamBatcher, CloakFundsGate, CloakReceiptCheck. The launch is a stand-in (FakeFactory and
 // FakeAuction): Cloak's real testnet launches trade on Uniswap v4, and this wallet holds none of their tokens.
 // Then: deposit, relayed private send, sweep and cash out, the fee paying the relay, a swap whose buffer comes back,
-// a graduation into Gloam's vault, a batch round settled by the keeper loop, a gate and a receipt, and a final cash out
+// a batch round settled by the keeper loop, a gate and a receipt, and a final cash out
 // of what is left. Writes measurements/live-elysium[-anvil].json and deployments/elysium-testnet-gloam.json (live).
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { encodeFunctionData, formatEther, parseAbi, parseEther, zeroAddress } from "viem";
 import { generatePrivateKey } from "viem/accounts";
-import { CLOAK_FUNDS_GATE_ABI, CLOAK_RECEIPT_CHECK_ABI, GloamCore, finishPending, graduate, joinFundsGate, launchRoute, launchSwap, proveReceipt } from "@cloakely/sdk";
+import { CLOAK_FUNDS_GATE_ABI, CLOAK_RECEIPT_CHECK_ABI, GloamCore, finishPending, joinFundsGate, launchRoute, launchSwap, proveReceipt } from "@cloakely/sdk";
 import { createGloamRelay } from "../services/keeper/gloam.mjs";
 import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
 import { LV_ABI, deployCloakGloam } from "./stack.mjs";
@@ -114,7 +114,7 @@ try {
   const d = await deployCloakGloam({ me, rpcUrl, pk, roundSecs: ROUND, gloamAssets: ANVIL ? "realistic" : "open", warp: ANVIL ? async (secs) => (await rpc(rpcUrl, "evm_increaseTime", [secs]), await rpc(rpcUrl, "evm_mine")) : undefined });
   const stack = d.stack;
   ok(stack.forgeLog.includes("All checks passed"), "Gloam's deploy gate passed: its verifiers take final-key proofs and refuse dev-key ones");
-  const { launchVault: lv, launchSwap: router, graduation, batcher, fundsGate: gate, receiptCheck: receipts, launchToken: launch, whypeStandIn: weth } = d.contracts;
+  const { launchVault: lv, launchSwap: router, batcher, fundsGate: gate, receiptCheck: receipts, launchToken: launch, whypeStandIn: weth } = d.contracts;
   const lvBlock = d.block;
   out.contracts = d.contracts;
   out.deployedAtBlock = lvBlock.toString();
@@ -122,7 +122,7 @@ try {
   if (!ANVIL) writeFileSync(join(REPO, "deployments/elysium-testnet-gloam.json"), JSON.stringify({ chainId: ELYSIUM_TESTNET_ID, note: "Cloak v2 on Gloam, live test run (testnet only). Launch, WHYPE and V2 are stand-ins.", block: Number(lvBlock), ...out.contracts }, null, 2) + "\n");
 
   // ── 2. the keeper: relay and loop on the same wallet ───────────────────
-  const relay = createGloamRelay({ publicClient: pub, walletClient: wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, graduation, batcher, gate], hourlySpendWei: parseEther("0.2"), feeCollectWei: parseEther("0.0004"), log: (m) => console.log("  " + m) });
+  const relay = createGloamRelay({ publicClient: pub, walletClient: wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, batcher, gate], hourlySpendWei: parseEther("0.2"), feeCollectWei: parseEther("0.0004"), log: (m) => console.log("  " + m) });
   const loop = createGloamLoop({ publicClient: pub, account: me.account, send: async (call) => (await sendAndLog(pub, call.functionName, wallet.writeContract(call))).transactionHash, launchVault: lv, batcher, batcherBlock: lvBlock, fundsGate: gate, log: (m) => console.log("  " + m) });
   const t1 = await loop.tick();
   ok(t1.admitted.length === 1, "the keeper loop admitted the settled launch to Cloak's launch vault, with no wait");
@@ -155,16 +155,6 @@ try {
   ok(res.done.length === 1, `the next app open: ${res.done[0]?.outcome}`);
   await A.sync();
   out.swapBufferBackWei = (bal(await A.balances(), zeroAddress) - hypeBefore).toString();
-
-  // ── 5. graduation into Gloam's vault ───────────────────────────────────
-  const gradRec = await graduate(A, { graduation, token: launch, size: parseEther("50"), fallbackTo: addr });
-  const entered = await now();
-  await waitUntil(((entered / ROUND) + 1n) * ROUND, "the graduation round to end");
-  res = await finishPending(A, [gradRec], { minRoundEntries: 1n });
-  ok(res.done.length === 1 && res.errors.length === 0, `graduation: ${res.done[0]?.outcome}`);
-  const G = await GloamCore.unlock(wallet, { ...cfg, pool: stack.pool, poolBlock: lvBlock });
-  await G.sync();
-  ok(bal(await G.balances(), launch) === parseEther("49.75"), "the same wallet finds 49.75 tokens in Gloam's vault");
 
   // ── 6. a batch round settled by the keeper loop ────────────────────────
   const note = await A.exactNote(zeroAddress, parseEther("0.005"));
@@ -207,11 +197,6 @@ try {
   await A.sync();
   const left = bal(await A.balances(), zeroAddress);
   if (left > 0n) await A.withdraw(zeroAddress, addr, "max");
-  await G.sync();
-  const gTokens = bal(await G.balances(), launch);
-  if (gTokens > 0n) await G.withdraw(launch, addr, gTokens);
-  await G.sync();
-  ok(bal(await G.balances(), launch) === 0n, "the graduated tokens cash out of Gloam's vault with a final-key proof");
 
   const endBalance = await pub.getBalance({ address: addr });
   out.endBalance = formatEther(endBalance);

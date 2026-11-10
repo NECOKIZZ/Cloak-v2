@@ -27,7 +27,6 @@
     "perDeposit": "1000000000000000000000000000",
     "total": "100000000000000000000000000000"
   },
-  "graduationRoundSecs": 3600,
   "batch": {
     "roundSecs": 60,
     "maxSlippageBps": 200,

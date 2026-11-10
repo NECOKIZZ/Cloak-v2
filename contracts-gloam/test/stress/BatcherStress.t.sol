@@ -5,7 +5,6 @@ import {Test, stdJson, console2} from "forge-std/Test.sol";
 import {ShieldPoolPayments} from "gloam/ShieldPoolPayments.sol";
 import {ShieldPoolCore} from "gloam/ShieldPoolCore.sol";
 import {CloakGloamBatcher, CloakGloamBatcherBase} from "../../src/CloakGloamBatcher.sol";
-import {CloakGraduation} from "../../src/CloakGraduation.sol";
 import {TestToken} from "../../src/TestToken.sol";
 import {AcceptVerifier, ToBindingVerifier, WETH9, V2Factory, V2Pair} from "../CloakV2PairSwap.t.sol";
 
@@ -322,19 +321,6 @@ contract BatcherStressTest is Test {
         this.outsideOrder(address(launch), true, 123_456_789, 1);
         vm.expectRevert(CloakGloamBatcherBase.NotStandard.selector);
         this.outsideOrder(address(launch), true, 3.3e18, 2);
-    }
-
-    /// C-07 in Graduation, fixed: an entry paid from outside the vault is refused, so the crowd can't be padded.
-    function test_graduation_outsideEntries_fixed() public {
-        ShieldPoolPayments gv = new ShieldPoolPayments(_poseidon(), address(new ToBindingVerifier()));
-        CloakGraduation grad = new CloakGraduation(address(pool), address(gv), 1 hours);
-        launch.mint(attacker, 1000);
-        CloakGraduation.EntryKey memory k = CloakGraduation.EntryKey(SPENT, address(launch), 1, vm.addr(0x1000), attacker);
-        vm.startPrank(attacker);
-        launch.transfer(grad.escrowFor(k), 1);
-        vm.expectRevert(CloakGraduation.NotStandard.selector);
-        grad.enter(CloakGraduation.Spend(hex"", bytes32(0), SPENT, 1), k);
-        vm.stopPrank();
     }
 
     // ── C-06: the 4% side cap can be squatted by self-crossing orders ────────────────────────────────────────────────

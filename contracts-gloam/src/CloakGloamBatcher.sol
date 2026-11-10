@@ -256,8 +256,12 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         address escrow = escrowFor(k);
         bool sentAlone = _spendInto(s, asset, escrow);
         uint256 net = _openEscrow(id, asset);
+        // A stranger can top up an escrow whose spend was sent alone (its address is public). Counting more than the
+        // note's size would refuse the order for good and lock the money in the escrow, so the order counts at most its
+        // size and any extra stays here (review R-01).
+        if (net > k.size) net = k.size;
         // what landed is a note of this size less at most the vault's fee ceiling: not an amount paid in from outside
-        if (net > k.size || net * 10_000 < uint256(k.size) * (10_000 - MAX_VAULT_FEE_BPS)) revert NotStandard();
+        if (net * 10_000 < uint256(k.size) * (10_000 - MAX_VAULT_FEE_BPS)) revert NotStandard();
         _checkpoint(k.token);
         uint64 round = currentRound();
         Batch storage b = batches[k.token][round];

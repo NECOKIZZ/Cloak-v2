@@ -1,11 +1,10 @@
 // Part 5: the app's follow-ups on Cloak's launch vault, on Gloam's final keys, through the relay.
 //   - a private launch swap (CloakLaunchSwap) whose price buffer comes back as a note on the next app open
-//   - a graduation (CloakGraduation) that finishPending() moves into Gloam's vault once its round ends, where a
-//     GloamCore pointed at Gloam's vault finds it
+//   - a batch round the keeper loop settles
 //
 //   node e2e-gloam/part5-launch-auto.mjs
 import { encodeFunctionData, parseAbi, parseEther, zeroAddress } from "viem";
-import { GloamCore, finishPending, graduate, launchRoute, launchSwap } from "@cloakely/sdk";
+import { GloamCore, finishPending, launchRoute, launchSwap } from "@cloakely/sdk";
 import { createGloamRelay } from "../services/keeper/gloam.mjs";
 import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
 import { ANVIL_KEYS, ELYSIUM_TESTNET_ID, assert, clients, finalProver, localGloam, ourArtifact, rpc, sendAndLog, writeMeasurements } from "./lib.mjs";
@@ -59,7 +58,7 @@ try {
   await sendAndLog(pub, "mint", who(5).wallet.writeContract({ address: launch, abi: TOKEN_ABI, functionName: "mint", args: [pair, parseEther("100000")] }));
   await write(pair, PAIR_ABI, "sync");
 
-  // Cloak's launch vault on Gloam's final-key verifiers, its swap router and the graduation escrow
+  // Cloak's launch vault on Gloam's final-key verifiers, its swap router and its batcher
   const lv = (await sendAndLog(pub, "deploy CloakLaunchVault", dep.deployContract({ ...ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), args: [L.poseidon, stack.dual, factory, 10n ** 24n, 10n ** 26n, zeroAddress] }))).contractAddress;
   await write(lv, LV_ABI, "setShieldVerifier", [stack.shieldVerifier]);
   await write(lv, LV_ABI, "setWithdrawFee", [50, keeper.account.address]);
@@ -67,7 +66,6 @@ try {
   await write(lv, LV_ABI, "setDepositLimit", [zeroAddress, 10n ** 21n, 10n ** 23n]);
   await write(lv, LV_ABI, "endSetup");
   const router = (await sendAndLog(pub, "deploy CloakLaunchSwap", dep.deployContract({ ...ourArtifact("CloakLaunchSwap.sol", "CloakLaunchSwap"), args: [lv, v2, weth] }))).contractAddress;
-  const graduation = (await sendAndLog(pub, "deploy CloakGraduation", dep.deployContract({ ...ourArtifact("CloakGraduation.sol", "CloakGraduation"), args: [lv, stack.pool, ROUND] }))).contractAddress;
   const batcher = (await sendAndLog(pub, "deploy CloakGloamBatcher", dep.deployContract({ ...ourArtifact("CloakGloamBatcher.sol", "CloakGloamBatcher"), args: [lv, v2, weth, ROUND, 200n, 600n] }))).contractAddress;
   const lvBlock = await pub.getBlockNumber();
 
@@ -77,7 +75,7 @@ try {
   assert(t1.admitted.length === 1 && t1.admitted[0].token.toLowerCase() === launch.toLowerCase() && !t1.errors.length, "the keeper loop admitted the settled launch to the launch vault");
   assert((await loop.tick()).admitted.length === 0, "and does nothing the second time");
 
-  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, graduation, batcher], hourlySpendWei: parseEther("1"), log: (m) => console.log("  " + m) });
+  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, batcher], hourlySpendWei: parseEther("1"), log: (m) => console.log("  " + m) });
   const submit = (call) => relay({ kind: call.kind, to: call.to, data: call.data });
   const provers = { shield: await finalProver("shield"), transfer: await finalProver("transfer"), unshield: await finalProver("unshield") };
   const A = await GloamCore.unlock(alice.wallet, { publicClient: pub, chainId: ELYSIUM_TESTNET_ID, pool: lv, poolBlock: lvBlock, payMemo: stack.payMemo, provers, submit });
@@ -99,28 +97,7 @@ try {
   const buffer = ((await A.balances()).get(zeroAddress) ?? 0n) - hypeBefore;
   assert(buffer > parseEther("0.9"), `the price buffer came back privately (${buffer} wei of HYPE), where Gloam's base would send it to a treasury`);
 
-  // 3. graduation: 1000 tokens enter a round; finishPending waits for the round, then moves them into Gloam's vault
-  const gradRec = await graduate(A, { graduation, token: launch, size: parseEther("1000"), fallbackTo: alice.account.address });
-  records = [gradRec];
-  res = await finishPending(A, records, { minRoundEntries: 1n });
-  assert(res.waiting.length === 1 && res.done.length === 0, "before the round ends the graduation waits");
-  await rpc(rpcUrl, "evm_increaseTime", [Number(ROUND) + 1]);
-  await rpc(rpcUrl, "evm_mine");
-  res = await finishPending(A, records, { minRoundEntries: 1n });
-  assert(res.done.length === 1 && res.errors.length === 0, `after it, finishPending moves it: ${res.done[0]?.outcome}`);
-
-  const G = await GloamCore.unlock(alice.wallet, { publicClient: pub, chainId: ELYSIUM_TESTNET_ID, pool: stack.pool, poolBlock: L.poolBlock, payMemo: stack.payMemo, provers, submit });
-  await G.sync();
-  assert(bal(await G.balances(), launch) === parseEther("995"), "the same account sees 995 tokens in Gloam's vault (1000 less the launch vault's 0.5%)");
-  await A.sync();
-  assert(bal(await A.balances(), launch) === 0n, "and none left in the launch vault");
-
-  // 4. the graduated note is spendable in Gloam's vault
-  await G.withdraw(launch, alice.account.address, parseEther("995"));
-  await G.sync();
-  assert(bal(await G.balances(), launch) === 0n, "and cashes out of Gloam's vault with a final-key proof");
-
-  // 5. a batch round the keeper loop settles: one private buy order of 1 HYPE
+  // 3. a batch round the keeper loop settles: one private buy order of 1 HYPE
   const BATCH_ABI = parseAbi([
     "function place((bytes proof, bytes32 root, bytes32 nullifier, address asset, uint256 amount) s, (bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo) k) returns (bytes32)",
     "function escrowFor((bytes32 nullifier, address token, bool buy, uint128 size, address ownerKey, address fallbackTo) k) view returns (address)",

@@ -280,6 +280,37 @@ contract CloakV4Test is Test {
         assertEq(fh + ft, 0, "nothing twice");
     }
 
+    /// review R-02: a creator contract that refuses HYPE can't block Cloak's share. Its own HYPE is held for it, and it
+    ///      claims it to another address.
+    function test_R02_a_creator_that_refuses_hype_doesnt_block_cloaks_share() public {
+        address treasury = address(0x7EA5);
+        config.setFees(config.withdrawFeeBps(), config.launchFeeBps(), treasury);
+        RefusesHype c = new RefusesHype();
+        creator = address(c);
+        _launch(type(uint64).max);
+        _bidAndSettle();
+        vm.warp(block.timestamp + 300);
+        vm.prank(trader);
+        market.swapExactHypeForTokens{value: 10 ether}(0, trader);
+        (uint256 fh,) = hook.collectFees(address(token));
+        assertGt(treasury.balance, 0, "Cloak's 20% arrived");
+        assertEq(address(c).balance, 0, "the creator refused its HYPE");
+        assertEq(hook.heldFees(address(c)), fh, "so the hook holds it for the creator");
+        vm.prank(address(c));
+        hook.claimHeldFees(payable(address(0xC0DE)));
+        assertEq(address(0xC0DE).balance, fh, "and the creator claims it to another address");
+        assertEq(hook.heldFees(address(c)), 0);
+        vm.expectRevert(bytes("nothing held"));
+        vm.prank(address(c));
+        hook.claimHeldFees(payable(address(0xC0DE)));
+    }
+
+    function test_R02_only_the_pool_manager_sends_the_hook_hype() public {
+        vm.deal(address(this), 1 ether);
+        (bool ok,) = address(hook).call{value: 1 ether}("");
+        assertFalse(ok);
+    }
+
     // ───────────── trading through the adapter ─────────────
 
     function test_swapsMatchTheQuotes() public {
@@ -382,5 +413,12 @@ contract CloakV4Test is Test {
         assertLt(_relErr(market.price(), MIN_PRICE + t * TICK), 1e12, "lists at the clearing price");
         assertEq(address(hook).balance, 0);
         assertEq(token.balanceOf(address(hook)), 0);
+    }
+}
+
+/// A creator contract that refuses HYPE (review R-02).
+contract RefusesHype {
+    receive() external payable {
+        revert("no HYPE");
     }
 }
