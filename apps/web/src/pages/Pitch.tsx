@@ -166,8 +166,8 @@ export function Pitch() {
           <h2 className="p-h">Roadmap</h2>
           <div className="p-road">
             <div className="on"><span className="eyebrow">Now · testnet</span><h3>Launches, vault, SDK</h3><p>Sealed bids, one price, Uniswap pools with liquidity locked forever and creator fees. Private balances, swaps, sends, batch auctions and bids from a private balance. SDK and MCP server on npm.</p></div>
-            <div><span className="eyebrow">Next</span><h3>Harden</h3><p>A security audit, more keepers, and Uniswap V3 and V4 pools as launch options.</p></div>
-            <div><span className="eyebrow">Nov 9 · mainnet</span><h3>Mainnet on Elysium</h3><p>Launch with deposit caps and fees switched on. Caps lift after the audit and trusted-setup ceremony, then launchpad integrations and new private order types.</p></div>
+            <div><span className="eyebrow">Next · mainnet</span><h3>Mainnet on Elysium</h3><p>On Gloam's live vault and final keys, with deposit caps that grow with Gloam. Then an audit of Cloak's own contracts and higher caps.</p></div>
+            <div><span className="eyebrow">After</span><h3>Grow</h3><p>$CLOAK with buyback and burn from revenue, private xStocks, and partner launchpads in Cloak's ecosystem vault.</p></div>
           </div>
         </Slide>
 

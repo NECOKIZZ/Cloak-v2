@@ -673,6 +673,55 @@ export class GloamPrivate {
   }
 
   /**
+   * How a trade of `amountIn` goes in: one piece, or several one after another. Two limits split it:
+   * - the input: one trade spends one note, and a vault's notes are never bigger than its per-deposit cap (notes can't
+   *   be merged), so 30 HYPE held as 12 + 12 + 6 trades as three;
+   * - the output: it lands as one deposit in its vault, so it must fit that vault's per-deposit cap (Gloam's vault
+   *   takes 12 HYPE at a time for now).
+   * The app shows the count before a trade ("3 trades"); trade() follows the same plan.
+   */
+  async tradePlan(tokenIn: Address, tokenOut: Address, amountIn: bigint, onStatus?: Status): Promise<bigint[]> {
+    const [assetIn, assetOut] = [this.assetOf(tokenIn), this.assetOf(tokenOut)];
+    const src = this.tradeCore(assetIn);
+    const dest = this.tradeCore(assetOut);
+    if (!src || !dest || amountIn <= 0n) return [amountIn];
+    await src.sync(onStatus ?? (() => {}));
+    const notes = src.ownNotes(assetIn).map((n) => n.amount).sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+    const per = await this.perDeposit(dest.config.pool, assetOut);
+    const out = per > 0n ? await this.quoteTrade(assetIn, assetOut, amountIn).catch(() => 0n) : 0n;
+    // the most one piece may spend so its output stays under about 95% of the cap
+    const capIn = per > 0n && out > 0n ? (amountIn * per * 95n) / (out * 100n) : amountIn;
+    if (!notes.length || (amountIn <= notes[0] && amountIn <= capIn)) return [amountIn];
+    if (notes.reduce((a, b) => a + b, 0n) < amountIn) throw new Error("insufficient private balance in the trading vault (deposits made for trading land there)");
+    const parts: bigint[] = [];
+    let left = amountIn;
+    for (const note of notes) {
+      for (let room = note; room > 0n && left > 0n; ) {
+        const p = [room, capIn, left].reduce((a, b) => (b < a ? b : a));
+        if (p === 0n) break;
+        parts.push(p);
+        room -= p;
+        left -= p;
+      }
+      if (left === 0n) break;
+    }
+    if (parts.length > 50) throw new Error(`This trade would take ${parts.length} pieces under the vault's caps. Trade a smaller amount.`);
+    return parts;
+  }
+
+  /** How many sealed bids a private bid paying `deposit` becomes: one per note it needs (notes are never merged). */
+  async bidPieces(deposit: bigint): Promise<number> {
+    const launch = this.launchCore;
+    if (!launch || !this.cfg.bids) return 1;
+    const core = await hypeCoreOf(this.cfg.bids, launch, this.cores);
+    await core.sync(() => {});
+    const notes = core.ownNotes(zeroAddress).map((n) => (n.amount * 995n) / 1000n).sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+    let n = 0;
+    for (let left = deposit, i = 0; left > 0n && i < notes.length; i++, n++) left -= notes[i] < left ? notes[i] : left;
+    return Math.max(1, n);
+  }
+
+  /**
    * Trade `amountIn` of `tokenIn` from the private balance for `tokenOut`, landing as a new note in `tokenOut`'s vault.
    * HYPE to a token, a token to HYPE, or (through the router) any two markets through HYPE in one swap, such as USDC
    * to a launch token. Exact input, exact output: the output is the quote on what the vault releases, less the slippage
@@ -681,39 +730,13 @@ export class GloamPrivate {
   async trade(tokenIn: Address, tokenOut: Address, amountIn: bigint, opts: { slippageBps?: number; onStatus?: Status; whole?: boolean } = {}): Promise<{ txHash: Hex; amountOut: bigint; expectedOut: bigint; minOut: bigint; relayerFee: bigint; pieces?: number }> {
     const [assetIn, assetOut] = [this.assetOf(tokenIn), this.assetOf(tokenOut)];
     if (assetIn === assetOut) throw new Error("Pick two different tokens.");
-    // Two limits make a big trade go in pieces, one after another:
-    // - the input: one trade spends one note, and a vault's notes are never bigger than its per-deposit cap (notes can't
-    //   be merged), so 30 HYPE held as 12 + 12 + 6 trades as three;
-    // - the output: it lands as one deposit in its vault, so it must fit that vault's per-deposit cap (Gloam's vault
-    //   takes 12 HYPE at a time for now).
-    const src = this.tradeCore(assetIn);
-    const dest = this.tradeCore(assetOut);
-    if (!opts.whole && src && dest) {
-      await src.sync(opts.onStatus ?? (() => {}));
-      const notes = src.ownNotes(assetIn).map((n) => n.amount).sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
-      const per = await this.perDeposit(dest.config.pool, assetOut);
-      const out = per > 0n ? await this.quoteTrade(assetIn, assetOut, amountIn).catch(() => 0n) : 0n;
-      // the most one piece may spend so its output stays under about 95% of the cap
-      const capIn = per > 0n && out > 0n ? (amountIn * per * 95n) / (out * 100n) : amountIn;
-      if (notes.length && (amountIn > notes[0] || amountIn > capIn)) {
-        if (notes.reduce((a, b) => a + b, 0n) < amountIn) throw new Error("insufficient private balance in the trading vault (deposits made for trading land there)");
-        const parts: bigint[] = [];
-        let left = amountIn;
-        for (const note of notes) {
-          for (let room = note; room > 0n && left > 0n; ) {
-            const p = [room, capIn, left].reduce((a, b) => (b < a ? b : a));
-            if (p === 0n) break;
-            parts.push(p);
-            room -= p;
-            left -= p;
-          }
-          if (left === 0n) break;
-        }
-        if (parts.length > 50) throw new Error(`This trade would take ${parts.length} pieces under the vault's caps. Trade a smaller amount.`);
+    if (!opts.whole) {
+      const parts = await this.tradePlan(tokenIn, tokenOut, amountIn, opts.onStatus);
+      if (parts.length > 1) {
         let total = 0n;
         let last: { txHash: Hex; amountOut: bigint; expectedOut: bigint; minOut: bigint; relayerFee: bigint } | undefined;
         for (let i = 0; i < parts.length; i++) {
-          (opts.onStatus ?? (() => {}))(`Trade ${i + 1} of ${parts.length}: the vault takes this much at a time`);
+          (opts.onStatus ?? (() => {}))(`Trade ${i + 1} of ${parts.length}`);
           last = await this.trade(tokenIn, tokenOut, parts[i], { ...opts, whole: true });
           total += last.amountOut;
         }

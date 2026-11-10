@@ -1,9 +1,11 @@
-import { createPublicClient, createWalletClient, custom, http, numberToHex, type Address } from "viem";
+import { createPublicClient, createWalletClient, custom, fallback, http, numberToHex, type Address } from "viem";
 import { Cloak, type BidSecret, type Wallet } from "@cloakely/sdk";
-import { chain, FACTORY, RPC_URL } from "./config";
+import { chain, FACTORY, RPC_URL, RPC_URLS } from "./config";
 import { Hint } from "./errors";
 
-export const publicClient = createPublicClient({ chain, transport: http(RPC_URL, { retryCount: 4, retryDelay: 400 }), batch: { multicall: { wait: 16 } }, pollingInterval: 1000 });
+// the main RPC, then any backups (VITE_RPC_BACKUP): a failing or silent RPC hands over to the next
+const rpc = (u: string) => http(u, { retryCount: RPC_URLS.length > 1 ? 1 : 4, retryDelay: 400, timeout: 15_000 });
+export const publicClient = createPublicClient({ chain, transport: RPC_URLS.length > 1 ? fallback(RPC_URLS.map(rpc), { rank: false, retryCount: 2 }) : rpc(RPC_URL), batch: { multicall: { wait: 16 } }, pollingInterval: 1000 });
 export const readCloak = new Cloak(publicClient, undefined, FACTORY);
 
 export type Eip1193 = {

@@ -1,4 +1,4 @@
-# Mainnet decisions: Bob and Claude, one question at a time
+# Mainnet decisions: Bob and Claude, one question at a time (CLOSED Nov 10)
 
 Nov 10. Each decision is a question. For each one:
 - what it means in plain words;
@@ -226,40 +226,9 @@ Copy Gloam's split, automated in a contract:
 
 ---
 
-## Part E. $CLOAK
+## Part E. $CLOAK (moved to docs/CLOAK.md)
 
-### E1. Where does $CLOAK go? (decided Nov 10)
-
-- **Supply:** 500,000 $CLOAK.
-- **Timing:** after the audit.
-- **Where it launches:** not promised. It launches wherever demand is best.
-- **Where it's listed, in order:**
-  1. **Gloam's vault, if Gloam agrees.** We wait their 3-day timelock. Our router already sends it there by itself, since it isn't in our vaults, so nothing to build.
-  2. **If Gloam says no:** our ecosystem vault, through the launchpad it launched on (vetted), or on its own like KNTQ.
-  3. **If it launches on Cloak:** the launch vault, straight away.
-- **Keep in mind:** listing in our vaults is permanent (the router always routes it there), so wait for Gloam's answer before listing it in the ecosystem vault. And its pool must be a plain HYPE Uniswap v4 pool (no hook), or our router can't trade it.
-
-### E2. The 20% to Cloak with vesting (plain words)
-
-This only applies **if $CLOAK launches on Cloak.** When anyone launches a token on Cloak, the creator can keep up to 20% of the supply for themselves. Everything else is sold in the auction or goes into the pool. The creator's 20% isn't handed over at once: it unlocks a little every second, over a period the creator picks (at least 30 days). That stops a creator dumping on buyers on day one.
-
-For $CLOAK on Cloak, Cloak is the creator. So Cloak keeps up to 20% (team and treasury), and it unlocks gradually, say over 18 months. Buyers see on chain that the team can't dump.
-
-If $CLOAK launches elsewhere, that launchpad's rules apply instead.
-
-**Supply.** 500,000 $CLOAK.
-
-### E3. What does $CLOAK do?
-
-**Gloam.** $GLOAM's only stated utility is the buyback: half of fees buy it back.
-
-**Decided.** Buyback and burn from all revenue (D2) is the main utility, and we copy Gloam's honest "facts only" tone. Also:
-- a $CLOAK pay-with option in the trade picker (works through the HYPE route once it's tradeable);
-- governance later, when the owner wallet moves to a multisig.
-
-**Not doing:** holder fee discounts or launch priority (proving you hold $CLOAK ties your wallet to your private trades), and staking (a securities-shaped promise).
-
----
+Everything about $CLOAK, including its open questions, now lives in `docs/CLOAK.md`, so this file can close. Decided here: 500,000 supply, after the audit, Gloam's vault first if they list it, buyback and burn from revenue.
 
 ## Part F. Wallets and keys (decided Nov 10: software wallets)
 
@@ -280,14 +249,6 @@ No hardware wallet: software wallets, with the seed phrases stored offline. Four
 **Never.** No v1 key reused. No key in the repo, in chat, or in a committed `.env`.
 
 ---
-
-## Part G. Waiting on others
-
-- **Gloam.** Answered Nov 10 (Part H). Still to come from them: the memo board on Elysium, our HYPE caps through their timelock (H1), the fee share in writing (H2), the escrow review for their relay, the audit quote, and the change-note seed in their SDK.
-- **Kinetiq.** The explorer's contract-verification API.
-- **Spicenet.** Answers to the 10 questions.
-- **Hosting.** Vercel and Render, by Bob. Also decide whether v2's keeper runs the NFT drops; the `DROPS` switch is ready.
-- **The audit**, then lifting the caps, then $CLOAK.
 
 ## Part H. Gloam's answers (Nov 10), and what they decide
 
@@ -394,22 +355,20 @@ What a user pays, and what Cloak earns:
 
 **Not needed from their SDK 0.7.0.** It now knows Elysium mainnet, but our SDK has its own Elysium settings. The change-note seed and memo posts before a note lands are on their list. We keep the pin at 16dac34 until there's a reason to move it.
 
-## Part I. Ideas for later
+## Part I. Ideas for later (moved)
 
-**GLOAK, a fully private token (Bob, Nov 10).** A token that can only ever be held privately: every unit lives in a vault, and withdrawals to outside wallets are blocked, so it can only be bought and sold privately through Cloak.
-- **How it could work.** The token's own transfer rule allows only the vault, Cloak's router and its one-time escrows, and the Uniswap pool. A transfer to any other wallet reverts, so a withdrawal to a wallet fails, and the only exit is selling privately for HYPE.
-- **What stays public.** The pool itself, so the price and each trade's size are visible. Who holds it isn't.
-- **The risks Bob named.** Liquidity and availability: no other exchange or app can hold it. It's also a token that can't be withdrawn, which some users will dislike, so it needs very clear wording.
-- **Why try it on GLOAK.** It's a contained experiment, and if it works it's a first worth announcing (with Gloam).
-- **When.** After mainnet is live. It needs its own token contract and a review.
+GLOAK, the fully private token experiment, is in `docs/CLOAK.md`. The roadmap items ($CLOAK buyback, xStocks, and privately Spicenet) are in `apps/web/public/roadmap.html` and `docs/ROADMAP-PRIVATE.md`.
 
-## Done and still open
+## Closing (Nov 10)
 
-**Decided (Nov 10):** A1 to A7, B2, B3, C1, C2, C3 (closed), D2, F, the $CLOAK plan (E1), and Gloam's points done in Part H.
+**Every mainnet decision in this file is made.** Parts A to D, F and H are decided. $CLOAK continues in `docs/CLOAK.md`.
 
-**Decided since (Nov 10):** H1 (keep Gloam's caps, everything splits to fit), H2 (50/50 share, our trade fee 0.25%, no minimum trade), H3 (ask Gloam about the memo board).
-
-**For Bob now:**
-1. **E:** the rest of $CLOAK (where it launches, the team's share), after the audit and Gloam's listing answer (docs/CLOAK.md).
-
-**Later:** `CloakBuyback` once $CLOAK trades; a Relay fee on bridging, if wanted (off for now); GLOAK (Part I).
+What's left are a few facts and setup steps, not decisions:
+1. **The treasury address.** It goes in the mainnet configs (`treasury`, `tradeFee.treasury`, `feeRecipient`) and in the reply to Gloam, for their monthly share.
+2. **The memo board.** We deploy Gloam's own memo board code, unchanged, on Monday, unless Gloam gives an earlier date for theirs.
+3. **A backup RPC.** The site (`VITE_RPC_BACKUP`) and the keeper (`RPC_BACKUP`) take one or more and fail over automatically; tested with a dead main RPC. QuickNode lists Elysium endpoints. Alchemy doesn't appear to support Elysium yet.
+4. **Hosting** on Vercel and Render, then a UX and UI pass (friendly errors, the new look).
+5. **Waiting on others, not blocking launch:**
+   - Gloam: the fee share in writing, the escrow review for their relay, the audit quote, and the change-note seed in their SDK.
+   - Kinetiq: the explorer's verification API.
+   - Spicenet: answers (`docs/ROADMAP-PRIVATE.md`).

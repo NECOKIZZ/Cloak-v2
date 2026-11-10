@@ -108,6 +108,17 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     }
   }, [maxPrice, qty, s.minPrice, s.tickSize, s.numTicks]);
   const deposit = quote ? (bucket && bucket >= quote.cost ? bucket : quote.deposit) : 0n;
+  // a private bid bigger than the biggest note goes in as several sealed bids at the same price: show how many
+  const [bidParts, setBidParts] = useState(1);
+  useEffect(() => {
+    setBidParts(1);
+    if (from !== "private" || !priv || deposit === 0n) return;
+    let alive = true;
+    priv.bidPieces(deposit).then((n) => alive && setBidParts(n)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [from, priv, deposit]);
   const [walletBal, setWalletBal] = useState<bigint | null>(null);
   useEffect(() => {
     if (!wallet) return;
@@ -240,6 +251,7 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
       <div className="summary">
         <div className="row"><span className="mute">If you win, you pay at most</span><span className="mono">{quote ? `${hype(quote.cost)} HYPE` : "—"}</span></div>
         <div className="row"><span className="mute">You lock now</span><span className="mono">{quote ? `${hype(deposit)} HYPE` : "—"}</span></div>
+        {bidParts > 1 && <div className="row"><span className="mute">Parts</span><span>{bidParts} sealed bids, same price</span></div>}
       </div>
       {problem && <div className="hint">{problem}</div>}
       <button className="btn btn-ink btn-block" disabled={!!wallet && (!!problem || busy)} onClick={wallet ? submit : () => connect()}>

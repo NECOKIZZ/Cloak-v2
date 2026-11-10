@@ -6,6 +6,9 @@ const env = import.meta.env;
 export const CHAIN_ID = Number(env.VITE_CHAIN_ID ?? 99801);
 const BASE = CHAIN_ID === elysium.id ? elysium : elysiumTestnet;
 export const RPC_URL: string = env.VITE_RPC_URL ?? BASE.rpcUrls.default.http[0];
+/** VITE_RPC_BACKUP: one or more backup RPCs (comma-separated, for example a QuickNode endpoint). Reads move to the next
+ *  one when an RPC fails or stops answering, and back when it recovers. */
+export const RPC_URLS: string[] = [RPC_URL, ...String(env.VITE_RPC_BACKUP ?? "").split(",").map((u: string) => u.trim()).filter(Boolean)];
 export const chain = { ...BASE, rpcUrls: { default: { http: [RPC_URL] } } };
 export const EXPLORER: string | undefined = (BASE as { blockExplorers?: { default: { url: string } } }).blockExplorers?.default.url;
 export const txLink = (h: string) => (EXPLORER ? `${EXPLORER}/tx/${h}` : undefined);

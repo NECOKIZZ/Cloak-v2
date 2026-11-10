@@ -191,6 +191,25 @@ export function Trade() {
     };
   }, [market, base, side, amountIn]);
 
+  // a big instant trade goes in parts that fit the private vault's per-deposit cap: show how many, in few words
+  const [plan, setPlan] = useState<{ parts: number; cap: string } | null>(null);
+  useEffect(() => {
+    setPlan(null);
+    if (!priv || !market || amountIn <= 0n) return;
+    let alive = true;
+    const tok = (m: Market | null) => (m ? m.token : priv.hypeMarket.token) as Address;
+    const t = setTimeout(async () => {
+      const parts = await priv.tradePlan(tok(from), tok(to), amountIn).catch(() => [amountIn]);
+      if (!alive || parts.length < 2) return;
+      const caps = await priv.depositCaps(tok(to)).catch(() => null);
+      if (alive) setPlan({ parts: parts.length, cap: caps?.perDeposit ? `${fmtOf(to, caps.perDeposit)} ${to ? to.symbol : "HYPE"}` : "" });
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [priv, market, base, side, amountIn]);
+
   // the same private balances as the Portfolio: last known at once, refreshed together in the background
   const { bals, loaded: balLoaded, refresh: refreshBal } = usePrivateBalances();
   const balOf = (m: Market | null) => (m ? bals[m.token] ?? 0n : bals.HYPE ?? 0n);
@@ -339,7 +358,8 @@ export function Trade() {
                 )}
               </div>
               <div className="fl" style={{ gridTemplateColumns: "1fr", marginTop: 6 }}>
-                <div className="row"><span className="mute">Time</span><span>{mode === "instant" ? "A few seconds" : "About 1 to 3 minutes"}</span></div>
+                {mode === "instant" && plan && <div className="row"><span className="mute">Parts</span><span>{plan.parts} trades{plan.cap ? ` · vault cap ${plan.cap}` : ""}</span></div>}
+                <div className="row"><span className="mute">Time</span><span>{mode === "instant" ? (plan ? `About ${plan.parts * 5} seconds` : "A few seconds") : "About 1 to 3 minutes"}</span></div>
                 <div className="row"><span className="mute">Risk</span><span className="warn-t" style={{ textAlign: "right" }}>{mode === "instant" ? "Price can slip up to 1%" : "Refunded if the price moves over 2%"}</span></div>
                 {mode === "batch" && crowd === 0 && <div className="row"><span className="mute">Cover</span><span className="warn-t" style={{ textAlign: "right" }}>Alone so far, so the round total is your trade</span></div>}
               </div>

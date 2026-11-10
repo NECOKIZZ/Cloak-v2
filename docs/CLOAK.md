@@ -79,9 +79,12 @@ Bob's idea (Nov 10). **GLOAK is an experiment, not $CLOAK and not an ecosystem t
 - **Why as an experiment.** It's contained, so if it struggles nothing else is affected, and if it works it's a first worth announcing (with Gloam).
 - **When.** After mainnet is live. It needs its own token contract and a review.
 
-## Still open
+## Still open (Bob's questions, moved here from the mainnet decisions file)
 
-- Where it launches, and who gets the first allocation.
-- Gloam's listing, after our audit (their answer so far is above).
-- If it launches on Cloak: the team share (0% to 20%) and its unlock period.
-- The `CloakBuyback` contract (after the above).
+None of these block mainnet. Answer whenever you're ready.
+
+1. **Where does $CLOAK launch?** On Cloak (sealed bids, one price, it lives in our launch vault), or on another launchpad (then Gloam's vault if they list it, else our ecosystem vault through that launchpad or vetted on its own). Gloam's vault is the goal either way.
+2. **Who gets the first allocation?** A Cloak launch means the sale is the distribution: no separate airdrop pot unless it comes out of the team's share. Another launchpad has its own rules.
+3. **If it launches on Cloak: the team's share and its unlock period.** 0% to 20% of the 500,000, unlocking a little every second over a period we pick (at least 30 days; 12 to 24 months is usual for a team).
+4. **When to ask Gloam to list it.** Their answer: after our audit and once it has a market. Hold off on our ecosystem vault until they answer, since our listings are permanent.
+5. **The `CloakBuyback` contract.** Built once 1 and 4 are settled, since it has to know where $CLOAK trades.

@@ -11,14 +11,14 @@
 //   5. sealed NFT drops too, when DROP_FACTORY is set (or the SDK's record has one).
 // Anyone can run one; several keepers racing is harmless (reveal, settle and claim are idempotent on chain).
 //
-//   KEEPER_PK=0x… FACTORY=0x… [START_BLOCK=…] GLOAM_VAULT=… GLOAM_LAUNCH_VAULT=… GLOAM_MEMO=… [RPC_URL=…] [PORT=3001]
+//   KEEPER_PK=0x… FACTORY=0x… [START_BLOCK=…] GLOAM_VAULT=… GLOAM_LAUNCH_VAULT=… GLOAM_MEMO=… [RPC_URL=…] [RPC_BACKUP=url,url] [PORT=3001]
 //   node services/keeper/index.mjs        (every setting: render.yaml)
 import { createServer } from "node:http";
 import { startLeaves } from "./leaves.mjs";
 import { startSchedule } from "./schedule.mjs";
 import { createGloamRelay } from "./gloam.mjs";
 import { createGloamLoop } from "./gloamLoop.mjs";
-import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256 } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, fallback, http, keccak256 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Cloak, CloakDrops, anvilLocal, deploymentFor, elysiumTestnet, drandRoundTime, cloakAuctionAbi, cloakDropFactoryAbi, cloakFactoryAbi } from "@cloakely/sdk";
 
@@ -43,7 +43,12 @@ if (!PK || !FACTORY) {
   console.error("set KEEPER_PK (and FACTORY on a chain the SDK doesn't know)");
   process.exit(1);
 }
-const transport = http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
+// RPC_BACKUP: one or more backup RPCs, comma-separated (for example a QuickNode Elysium endpoint). Reads and sends move
+// to the next one when an RPC fails or stops answering.
+const BACKUPS = (process.env.RPC_BACKUP ?? "").split(",").map((u) => u.trim()).filter(Boolean);
+const transport = BACKUPS.length
+  ? fallback([RPC, ...BACKUPS].map((u) => http(u, { retryCount: 2, retryDelay: 500, timeout: 20_000 })), { rank: false, retryCount: 2 })
+  : http(RPC, { retryCount: 5, retryDelay: 500, timeout: 20_000 });
 // Elysium's public RPC rate-limits busy callers, so reads made together go out as one multicall and receipts are polled
 // once a second: a relay must never fail because the keeper's own polling used up the limit.
 const publicClient = createPublicClient({ chain, transport, pollingInterval: 1000, batch: { multicall: { wait: 16 } } });
