@@ -27,21 +27,24 @@
   "ecosystem": {
     "_note": "Outside tokens (CloakEcosystemVault). Fixed at deploy: a token needs the Safe's proposal, a plain native-HYPE v4 pool (no hook) with at least minHypeLiquidity HYPE in range, a market cap of at least minMcapHype HYPE, caps at most maxPerDepositBps / maxTotalBps of its supply, and admitDelaySecs before admit() checks it all again.",
     "minHypeLiquidity": "250000000000000000000",
-    "minMcapHype": "100000000000000000000000",
+    "minMcapHype": "50000000000000000000000",
     "admitDelaySecs": 259200,
     "maxPerDepositBps": 10,
     "maxTotalBps": 100,
     "tokens": [
       {
         "symbol": "KNTQ",
-        "token": "0x000000000000780555bD0BCA3791f89f9542c2d6",
-        "_token": "KNTQ's HyperEVM address from Kinetiq's docs (kinetiq.xyz/docs/contracts-and-audits). CHECK it is KNTQ on Elysium too before deploying: the script skips a token with no code there.",
+        "token": "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0",
+        "_token": "KNTQ on Elysium mainnet (Kinetiq Governance Token, 18 decimals, not a proxy), found in the Nov 10 pool scan. Kinetiq's docs list 0x0000...c2d6, which is KNTQ on HyperEVM and has no code on Elysium.",
         "fee": 3000,
         "tickSpacing": 60,
-        "_pool": "FILL IN: the fee and tick spacing of KNTQ's native-HYPE v4 pool with no hook on Elysium. If KNTQ trades only on another DEX, it can't be admitted until such a pool exists (the router trades v4 pools only).",
+        "_pool": "KNTQ's deepest native-HYPE v4 pool with no hook: 0.3% fee, tick spacing 60, about 30,200 HYPE and 5.6M KNTQ in range on Nov 10. Others: 1% / 200 (about 28,000 HYPE), 0.8% / 120 (about 5,500 HYPE).",
         "perDepositBps": 5,
-        "totalBps": 50
+        "totalBps": 50,
+        "_caps": "5 and 50 bps of the Elysium supply: about 6,500 KNTQ per deposit and 65,000 KNTQ in total."
       }
-    ]
-  }
+    ],
+    "_minMcapHype": "The market cap counts the token's supply on Elysium only (a bridged token's Elysium supply, not its full supply): KNTQ, with about 13.0M KNTQ on Elysium at about 186 KNTQ per HYPE, is about 69,900 HYPE (scan of Nov 10). 50,000 HYPE is about $3.7M at HYPE near $73."
+  },
+  "_scan": "Elysium mainnet (99901), Nov 10: Uniswap v4 PoolManager 0xe2e105d3f7209a9da11f83ccf3e7398a753823f1 (81,107 pools). USDC 0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65 (6 decimals). WHYPE 0xbA876237B0F021A6c6D852d6c26E107997cC5E81. Deepest HYPE/USDC pool with no hook: native HYPE, 0.3% / 60, about 27,300 HYPE and 2.0M USDC in range; then 0.2% / 40 with about 14,400 HYPE and 1.06M USDC."
 }

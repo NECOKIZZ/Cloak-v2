@@ -87,7 +87,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | Who proposes a token | Only the approver, Cloak's Safe (partner approval) | Contract (fixed) |
 | The market | A plain native-HYPE Uniswap v4 pool with no hook, so the router can trade it | Contract (fixed) |
 | Liquidity | At least **250 HYPE** in the pool's current range (mainnet config) | Contract (fixed at deploy) |
-| Market cap | At least **100,000 HYPE**: the token's supply at the pool's price (mainnet config) | Contract (fixed at deploy) |
+| Market cap | At least **50,000 HYPE**: the token's supply on Elysium at the pool's price (mainnet config) | Contract (fixed at deploy) |
 | Caps | At most **0.1%** of the supply per deposit and **1%** in total (mainnet config) | Contract (fixed at deploy) |
 | Delay | **3 days** from proposal to admission, and every rule is checked again at admission. Anyone may admit once it's ready | Contract (fixed at deploy) |
 | Stopping one | The pauser cancels a proposal or pauses admissions; the Safe lowers or zeroes a listed token's caps at once. Withdrawals never close | Contract (fixed) |

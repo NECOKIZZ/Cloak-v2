@@ -63,7 +63,7 @@ function rehearsalConfig() {
     launchCaps: { perDeposit: String(10n ** 27n), total: String(10n ** 29n) },
     graduationRoundSecs: 3600,
     batch: { roundSecs: 60, maxSlippageBps: 200, refundAfter: 600 },
-    ecosystem: { minHypeLiquidity: String(250n * 10n ** 18n), minMcapHype: String(100_000n * 10n ** 18n), admitDelaySecs: 259200, maxPerDepositBps: 10, maxTotalBps: 100, tokens: [] },
+    ecosystem: { minHypeLiquidity: String(250n * 10n ** 18n), minMcapHype: String(50_000n * 10n ** 18n), admitDelaySecs: 259200, maxPerDepositBps: 10, maxTotalBps: 100, tokens: [] },
   };
 }
 
