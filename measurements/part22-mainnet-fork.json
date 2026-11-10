@@ -1,14 +1,14 @@
 {
   "deploy": {
-    "partnerCostHype": "0.029422655311325651",
-    "kntq": "KNTQ: 34452.598533752144859601 HYPE in range, market cap 71753.465774784091901108 HYPE: passes the rules"
+    "partnerCostHype": "0.029529890472870108",
+    "kntq": "KNTQ: 8551.393442120377995907 HYPE in range, market cap 72309.113809975881466709 HYPE: passes the rules"
   },
   "trades": {
-    "hypeToUsdc": "67.570281",
-    "usdcToKntq": "274.150095379239466495",
-    "kntqToUsdc": "47.582714",
-    "usdcToHype": "0.713477267535597586"
+    "hypeToUsdc": "68.667072",
+    "usdcToKntq": "280.508007229276512853",
+    "kntqToUsdc": "47.579414",
+    "usdcToHype": "0.702238642520206917"
   },
-  "forkBlock": 4154833,
+  "forkBlock": 4178034,
   "seconds": 45
 }

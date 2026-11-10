@@ -80,7 +80,7 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
     int256 constant LIQ = 1_000e18;
 
     function _rules(uint256 minLiq, uint256 minMcap) internal pure returns (CloakEcosystemVault.Rules memory) {
-        return CloakEcosystemVault.Rules({minHypeLiquidity: minLiq, minMcapHype: minMcap, maxPerDepositBps: 10, maxTotalBps: 200});
+        return CloakEcosystemVault.Rules({minHypeLiquidity: minLiq, minMcapHype: minMcap, liquidityFloor: minLiq, mcapFloor: minMcap, maxPerDepositBps: 10, maxTotalBps: 200});
     }
 
     function _vault(CloakEcosystemVault.Rules memory r) internal returns (CloakEcosystemVault v) {
@@ -245,6 +245,30 @@ contract CloakEcosystemVaultTest is CloakLaunchSwapV4Test {
         ev.pauseAdmissions(false);
         _list();
         assertTrue(ev.isEcosystemToken(address(kntq)));
+    }
+
+    function test_eco_marketRulesAdjustableAboveTheFloors() public {
+        _setUpEco();
+        CloakEcosystemVault.Rules memory r = _rules(500 ether, 50_000 ether);
+        r.liquidityFloor = 50 ether;
+        r.mcapFloor = 5_000 ether;
+        CloakEcosystemVault v = _vault(r);
+        vm.expectRevert(); // KNTQ's 100 HYPE and 10,000 HYPE market cap are under the starting rules
+        v.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(0));
+        vm.expectRevert(CloakEcosystemVault.BadRules.selector);
+        v.setMarketRules(49 ether, 5_000 ether); // under the liquidity floor
+        vm.expectRevert(CloakEcosystemVault.BadRules.selector);
+        v.setMarketRules(50 ether, 4_999 ether); // under the market-cap floor
+        vm.prank(address(0xBAD));
+        vm.expectRevert(CloakEcosystemVault.NotApprover.selector);
+        v.setMarketRules(50 ether, 5_000 ether);
+        v.setMarketRules(50 ether, 5_000 ether);
+        assertEq(v.minHypeLiquidity(), 50 ether);
+        assertEq(v.minMcapHype(), 5_000 ether);
+        v.list(address(kntq), _kntqKey(), 1_000e18, 20_000e18, address(0));
+        assertTrue(v.isEcosystemToken(address(kntq)));
+        v.setMarketRules(1_000 ether, 1_000_000 ether); // raising has no ceiling
+        assertEq(v.minMcapHype(), 1_000_000 ether);
     }
 
     function test_eco_listedOnceAndNotTwice() public {

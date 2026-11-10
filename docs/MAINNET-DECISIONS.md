@@ -144,9 +144,11 @@ The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a mon
 - Caps of at most 0.1% of supply per deposit and 1% in total.
 - 6 to 18 decimals.
 
-**Now.** As above. **Fixed per vault.**
+**Now.** The pool, caps and decimals rules are fixed per vault. **The 250 HYPE and 50,000 HYPE rules are adjustable** (added Nov 10): the owner wallet changes them any time with one call, `setMarketRules`. Raising has no limit. Lowering stops at floors fixed at deploy, drafted at 100 HYPE in range and a 10,000 HYPE market cap, so even a stolen owner key can't list a token with no real market. A change only affects future listings.
 
-**Recommendation.** Keep them.
+**Decide:** the two floors.
+
+**Recommendation.** Start at 250 and 50,000.
 - KNTQ passes: about 15,800 HYPE in range and a market cap of about 70,400 HYPE.
 - Lowering the market cap to 25,000 HYPE would let smaller Elysium tokens in. That's your call on taste.
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { parseEther, type Address } from "viem";
 import { Cloak, type Wallet } from "@cloakely/sdk";
 import { FACTORY, V4_HOOK } from "../config";
+import { Info } from "../info";
 import { hype, tokens } from "../format";
 import { friendly } from "../errors";
 import { useApp } from "../state";
@@ -40,9 +41,8 @@ const LAUNCH_FEE_BPS = 150n;
 function Field({ label, unit, help, value, onChange, mode, disabled }: { label: string; unit?: string; help: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; mode: "decimal" | "numeric"; disabled?: boolean }) {
   return (
     <div className="field">
-      <label><span>{label}</span>{unit && <span>{unit}</span>}</label>
+      <label><span>{label} <Info tip={help} /></span>{unit && <span>{unit}</span>}</label>
       <input className="input" value={value} onChange={onChange} inputMode={mode} disabled={disabled} />
-      <span className="field-help">{help}</span>
     </div>
   );
 }
@@ -187,7 +187,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
         <div className="card">
           <div className="card-head"><h3>1. The token</h3></div>
           <div className="field">
-            <label><span>Image</span><span>optional</span></label>
+            <label><span>Image <Info tip="The token's picture. It's cropped to a square and stored on chain with the launch, so it shows everywhere the token does." /></span><span>optional</span></label>
             <label className={`img-drop ${image ? "has" : ""}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickImage(e.dataTransfer.files[0]); }}>
               <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { pickImage(e.target.files?.[0]); e.target.value = ""; }} />
               {image ? <img src={image} alt="Token image preview" /> : <span className="img-ph">{(symbol || "?").slice(0, 2).toUpperCase()}</span>}
@@ -199,17 +199,17 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
             </label>
           </div>
           <div className="fl" style={{ gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-            <div className="field"><label>Name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Shade" maxLength={40} /></div>
-            <div className="field"><label>Symbol</label><input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="SHADE" maxLength={11} /></div>
+            <div className="field"><label><span>Name <Info tip="The token's full name, as wallets and the launch page show it. It can't be changed later." /></span></label><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Shade" maxLength={40} /></div>
+            <div className="field"><label><span>Symbol <Info tip="The short ticker, like SHADE. Up to 11 letters. It can't be changed later." /></span></label><input className="input" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="SHADE" maxLength={11} /></div>
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
-            <label><span>Description</span><span>{desc.length}/280</span></label>
+            <label><span>Description <Info tip="One or two lines about the project, shown on the launch page. Up to 280 characters." /></span><span>{desc.length}/280</span></label>
             <textarea className="input" rows={2} maxLength={280} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="One or two lines about the project" />
           </div>
         </div>
 
         <div className="card">
-          <div className="card-head"><h3>2. The sale</h3><span className="pill">{preset === "custom" ? "custom" : PRESETS.find((p) => p.id === preset)?.name}</span></div>
+          <div className="card-head"><h3 className="info-row">2. The sale <Info tip="How the sealed-bid sale runs. Pick a preset or set each value. Everyone who wins pays the same clearing price." /></h3><span className="pill">{preset === "custom" ? "custom" : PRESETS.find((p) => p.id === preset)?.name}</span></div>
           <div className="preset-grid">
             {PRESETS.map((p) => (
               <button key={p.id} type="button" className={`choice ${preset === p.id ? "on" : ""}`} onClick={() => pick(p.id)}>
@@ -246,7 +246,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
         </div>
 
         <div className="card">
-          <div className="card-head"><h3>3. Liquidity</h3></div>
+          <div className="card-head"><h3 className="info-row">3. Liquidity <Info tip="What happens to the trading pool your launch opens. Part of the HYPE raised and matching tokens go into it at the clearing price." /></h3></div>
           <div className="choice-list">
             <button type="button" className={`choice ${f.lp === "fees" ? "on" : ""}`} onClick={() => setF({ ...f, lp: "fees" })}>
               <b>Locked forever, you earn the trading fees <span className="pill ok" style={{ marginLeft: 6 }}>recommended</span></b>
@@ -266,7 +266,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
           {!timed && <p className="xs mute" style={{ marginTop: 10 }}>Your launch opens a Uniswap v4 pool at the clearing price. For the first 5 minutes after it opens, trades pay a higher fee (10%, falling to 0.3%) that goes to you, so sniping the listing costs the sniper.</p>}
           {timed && f.lp === "date" && (
             <div className="field" style={{ marginTop: 12, marginBottom: 0 }}>
-              <label><span>Lock for</span><span>days after the auction</span></label>
+              <label><span>Lock for <Info tip="How many days after the auction the pool stays locked. Bidders see the date before they bid." /></span><span>days after the auction</span></label>
               <input className="input" value={f.lockDays} onChange={set("lockDays")} inputMode="numeric" />
             </div>
           )}

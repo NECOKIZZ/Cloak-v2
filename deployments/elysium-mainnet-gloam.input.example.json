@@ -39,9 +39,12 @@
     }
   ],
   "ecosystem": {
-    "_note": "Outside tokens (CloakEcosystemVault). Cloak vets a launchpad's code once (launchpads below: the script deploys a CloakLaunchpadCheck for each and prints the owner wallet's approveLaunchpad call). The owner wallet then lists that launchpad's tokens at once, choosing by market cap and importance; KNTQ is vetted on its own (no launchpad). Fixed at deploy for every listing: a plain native-HYPE v4 pool (no hook) with at least minHypeLiquidity HYPE in range, a market cap of at least minMcapHype HYPE, caps at most maxPerDepositBps / maxTotalBps of its supply.",
+    "_note": "Outside tokens (CloakEcosystemVault). Cloak vets a launchpad's code once (launchpads below: the script deploys a CloakLaunchpadCheck for each and prints the owner wallet's approveLaunchpad call). The owner wallet then lists that launchpad's tokens at once, choosing by market cap and importance; KNTQ is vetted on its own (no launchpad). Checked at every listing: a plain native-HYPE v4 pool (no hook) with at least minHypeLiquidity HYPE in range and a market cap of at least minMcapHype HYPE (both adjustable by the owner, down to the floors), and caps at most maxPerDepositBps / maxTotalBps of its supply (fixed).",
     "minHypeLiquidity": "250000000000000000000",
     "minMcapHype": "50000000000000000000000",
+    "liquidityFloor": "100000000000000000000",
+    "mcapFloor": "10000000000000000000000",
+    "_floors": "minHypeLiquidity (250 HYPE) and minMcapHype (50,000 HYPE) are starting values: the owner wallet moves them any time with setMarketRules, up without limit and down to these floors (100 HYPE in range, a 10,000 HYPE market cap), fixed at deploy. DECIDE the floors.",
     "maxPerDepositBps": 10,
     "maxTotalBps": 100,
     "launchpads": [],

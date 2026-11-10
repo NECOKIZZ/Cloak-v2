@@ -35,11 +35,13 @@ interface ILaunchpadCheck {
  *    directly, as a token vetted on its own, like KNTQ) and passes the fixed rules below. The approver picks which
  *    tokens matter; the rules cut off the small ones.
  *
- * The rules are fixed at deploy, and nobody can change them:
+ * The rules, checked at every listing:
  *  1. A market Cloak can trade: the pool is native HYPE / the token with no hook (the router routes it), and initialized.
  *  2. Liquidity: the pool's in-range HYPE is at least `minHypeLiquidity`.
  *  3. Market cap: the token's total supply at the pool's price is at least `minMcapHype` (in HYPE).
  *  4. Caps: per deposit at most `maxPerDepositBps`, and in total at most `maxTotalBps`, of the token's supply.
+ * The approver can move 2 and 3 at any time (`setMarketRules`), up freely and down only as far as floors fixed at
+ * deploy, so even a stolen approver key can't list a token with no market. The rest is fixed at deploy.
  *  5. The token: real code, 6 to 18 decimals, a supply under 2^128, never a Cloak launch token, not listed already.
  *
  * Once listed a token is never un-listed here (isEcosystemToken stays true, so the router always knows its vault),
@@ -68,8 +70,12 @@ contract CloakEcosystemVault is ShieldPoolCore {
     address public immutable pauser;
     /// @notice Cloak's launch vault: its tokens never come here.
     ILaunchTokensE public immutable launchVault;
-    uint256 public immutable minHypeLiquidity;
-    uint256 public immutable minMcapHype;
+    /// @notice The HYPE a token's pool must hold in range, and its market cap in HYPE. The approver adjusts them.
+    uint256 public minHypeLiquidity;
+    uint256 public minMcapHype;
+    /// @notice The lowest the two can ever be set (fixed at deploy).
+    uint256 public immutable liquidityFloor;
+    uint256 public immutable mcapFloor;
     uint16 public immutable maxPerDepositBps;
     uint16 public immutable maxTotalBps;
 
@@ -87,6 +93,7 @@ contract CloakEcosystemVault is ShieldPoolCore {
     event LaunchpadRemoved(address indexed checker);
     event TokenListed(address indexed token, address indexed launchpad, uint128 perDeposit, uint128 total);
     event AdmissionsPaused(bool paused);
+    event MarketRulesSet(uint256 minHypeLiquidity, uint256 minMcapHype);
 
     error NotApprover();
     error NotPauser();
@@ -103,6 +110,8 @@ contract CloakEcosystemVault is ShieldPoolCore {
     struct Rules {
         uint256 minHypeLiquidity;
         uint256 minMcapHype;
+        uint256 liquidityFloor;
+        uint256 mcapFloor;
         uint16 maxPerDepositBps;
         uint16 maxTotalBps;
     }
@@ -117,7 +126,7 @@ contract CloakEcosystemVault is ShieldPoolCore {
         Rules memory r
     ) ShieldPoolCore(poseidon2_, verifier_) {
         if (poolManager_ == address(0) || approver_ == address(0) || pauser_ == address(0)) revert ZeroAddress();
-        if (r.minHypeLiquidity == 0 || r.minMcapHype == 0) revert BadRules();
+        if (r.liquidityFloor == 0 || r.mcapFloor == 0 || r.minHypeLiquidity < r.liquidityFloor || r.minMcapHype < r.mcapFloor) revert BadRules();
         if (r.maxPerDepositBps == 0 || r.maxPerDepositBps > r.maxTotalBps || r.maxTotalBps > 10_000) revert BadRules();
         poolManager = IPoolState(poolManager_);
         launchVault = ILaunchTokensE(launchVault_);
@@ -125,6 +134,8 @@ contract CloakEcosystemVault is ShieldPoolCore {
         pauser = pauser_;
         minHypeLiquidity = r.minHypeLiquidity;
         minMcapHype = r.minMcapHype;
+        liquidityFloor = r.liquidityFloor;
+        mcapFloor = r.mcapFloor;
         maxPerDepositBps = r.maxPerDepositBps;
         maxTotalBps = r.maxTotalBps;
     }
@@ -163,6 +174,16 @@ contract CloakEcosystemVault is ShieldPoolCore {
         launchpadOf[token] = launchpad;
         _setDepositLimit(token, perDeposit, total);
         emit TokenListed(token, launchpad, perDeposit, total);
+    }
+
+    /// @notice Move the liquidity and market-cap rules for future listings. Only the approver; never below the floors.
+    ///         Tokens already listed aren't affected.
+    function setMarketRules(uint256 minHypeLiquidity_, uint256 minMcapHype_) external {
+        if (msg.sender != approver) revert NotApprover();
+        if (minHypeLiquidity_ < liquidityFloor || minMcapHype_ < mcapFloor) revert BadRules();
+        minHypeLiquidity = minHypeLiquidity_;
+        minMcapHype = minMcapHype_;
+        emit MarketRulesSet(minHypeLiquidity_, minMcapHype_);
     }
 
     function pauseAdmissions(bool paused) external {

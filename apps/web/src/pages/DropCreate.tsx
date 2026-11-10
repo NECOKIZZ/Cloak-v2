@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Info } from "../info";
 import { getAddress, isAddress, parseEther, type Address } from "viem";
 import { DROP_LIST_MAX, DROP_MAX_SUPPLY, type GtdEntry } from "@cloakely/sdk";
 import { dropsClient, imageSrc, itemPreview, pct, spotsClient, type ItemMeta } from "../drops";
@@ -209,7 +210,7 @@ export function DropCreate() {
           {spots && (
             <>
               <div className="card-head"><h3>Partner</h3></div>
-              <div className="field"><label><span>Partner collection</span><span>who gave the spots</span></label><input className="input" value={partner} maxLength={200} onChange={(e) => {
+              <div className="field"><label><span>Partner collection <Info tip="The collection that gave the WL spots being sold. It's shown on the drop page so bidders know what they're bidding for." /></span><span>who gave the spots</span></label><input className="input" value={partner} maxLength={200} onChange={(e) => {
                 const v = e.target.value;
                 const sym = (t: string) => (t.replace(/[^A-Za-z0-9]/g, "").slice(0, 6).toUpperCase() + "WL").slice(0, 16);
                 setPartner(v);
@@ -220,13 +221,13 @@ export function DropCreate() {
                   symbol: !x.symbol || x.symbol === sym(partner) ? (v.trim() ? sym(v) : "") : x.symbol,
                 }));
               }} placeholder="Moonfoxes" /></div>
-              <div className="field"><label><span>Time for winners to name wallets</span><span>after the bids open</span></label><select className="input" value={walletDays} onChange={(e) => setWalletDays(Number(e.target.value))}>{WALLET_DAYS.map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></div>
+              <div className="field"><label><span>Time for winners to name wallets <Info tip="After bids open, winners have this long to say which wallet the partner should whitelist." /></span><span>after the bids open</span></label><select className="input" value={walletDays} onChange={(e) => setWalletDays(Number(e.target.value))}>{WALLET_DAYS.map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></div>
             </>
           )}
           <div className="card-head"><h3>{spots ? "Sale" : "Collection"}</h3></div>
           <div className="field-row">
-            <div className="field"><label><span>Name</span></label><input className="input" value={f.name} maxLength={64} onChange={(e) => set("name", e.target.value)} placeholder="Moonfoxes" /></div>
-            <div className="field"><label><span>Symbol</span></label><input className="input" value={f.symbol} maxLength={16} onChange={(e) => set("symbol", e.target.value.replace(/\s/g, ""))} placeholder="MOON" /></div>
+            <div className="field"><label><span>Name <Info tip="The collection's name, shown on the drop page and in wallets. Up to 64 characters." /></span></label><input className="input" value={f.name} maxLength={64} onChange={(e) => set("name", e.target.value)} placeholder="Moonfoxes" /></div>
+            <div className="field"><label><span>Symbol <Info tip="The collection's short ticker, like MOON. No spaces." /></span></label><input className="input" value={f.symbol} maxLength={16} onChange={(e) => set("symbol", e.target.value.replace(/\s/g, ""))} placeholder="MOON" /></div>
           </div>
           <label style={{ marginBottom: 14 }} className={`img-drop ${image ? "has" : ""}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pick(e.dataTransfer.files[0]); }}>
             <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
@@ -239,26 +240,26 @@ export function DropCreate() {
             {imageSrc(banner) ? <img src={imageSrc(banner)} alt="Banner preview" /> : <span className="img-ph banner-ph" />}
             <span className="small"><b>{banner ? "Change the banner" : "Upload a banner"}</b> <span className="xs mute">optional · wide 3:1, shown across the top of the drop page</span></span>
           </label>
-          <div className="field"><label><span>Or link a banner</span><span>https:// or ipfs://</span></label><input className="input mono" value={banner.startsWith("data:") ? "" : banner} onChange={(e) => setBanner(e.target.value.trim())} placeholder={banner.startsWith("data:") ? "uploaded" : "ipfs://… or https://…"} /></div>
-          <div className="field"><label><span>Description</span><span>optional</span></label><textarea className="input" rows={2} maxLength={1000} value={f.description} onChange={(e) => set("description", e.target.value)} placeholder={spots ? "What winners get, from the partner" : "What the collection is"} /></div>
+          <div className="field"><label><span>Or link a banner <Info tip="A wide image across the top of the drop page. Upload one above or paste an https or ipfs link." /></span><span>https:// or ipfs://</span></label><input className="input mono" value={banner.startsWith("data:") ? "" : banner} onChange={(e) => setBanner(e.target.value.trim())} placeholder={banner.startsWith("data:") ? "uploaded" : "ipfs://… or https://…"} /></div>
+          <div className="field"><label><span>Description <Info tip="A few lines shown on the drop page. Up to 1,000 characters." /></span><span>optional</span></label><textarea className="input" rows={2} maxLength={1000} value={f.description} onChange={(e) => set("description", e.target.value)} placeholder={spots ? "What winners get, from the partner" : "What the collection is"} /></div>
           <div className="field-row">
-            <div className="field"><label><span>{spots ? "WL spots" : "Supply"}</span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
-            <div className="field"><label><span>Your price (floor)</span><span>HYPE</span></label><input className="input" inputMode="decimal" value={f.price} onChange={(e) => set("price", e.target.value)} /></div>
+            <div className="field"><label><span>{spots ? "WL spots" : "Supply"} <Info tip={spots ? "How many WL spots are for sale." : "How many NFTs exist in total. Unsold ones are never minted."} /></span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
+            <div className="field"><label><span>Your price (floor) <Info tip="The lowest price anyone can bid, per item. Winners pay one clearing price, never below this." /></span><span>HYPE</span></label><input className="input" inputMode="decimal" value={f.price} onChange={(e) => set("price", e.target.value)} /></div>
           </div>
           <div className="field-row">
-            <div className="field"><label><span>{spots ? "Spots per bid" : "Max per bid"}</span></label><select className="input" value={f.maxPerBid} onChange={(e) => set("maxPerBid", e.target.value)}>{[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
-            {!spots && <div className="field"><label><span>Royalty</span><span>%</span></label><select className="input" value={f.royalty} onChange={(e) => set("royalty", e.target.value)}>{[0, 2.5, 5, 7.5, 10].map((n) => <option key={n} value={n}>{n}%</option>)}</select></div>}
+            <div className="field"><label><span>{spots ? "Spots per bid" : "Max per bid"} <Info tip="The most items one bid can ask for. Lower spreads the drop across more people." /></span></label><select className="input" value={f.maxPerBid} onChange={(e) => set("maxPerBid", e.target.value)}>{[1, 2, 3, 5, 10].map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
+            {!spots && <div className="field"><label><span>Royalty <Info tip="Your cut of resales on marketplaces that honor royalties. Shown to buyers." /></span><span>%</span></label><select className="input" value={f.royalty} onChange={(e) => set("royalty", e.target.value)}>{[0, 2.5, 5, 7.5, 10].map((n) => <option key={n} value={n}>{n}%</option>)}</select></div>}
           </div>
-          {!spots && <div className="field"><label><span>Category</span><span>optional</span></label><select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>{["", "Art", "PFP", "Gaming", "Music", "Photography", "Membership", "Utility"].map((c) => <option key={c} value={c}>{c || "None"}</option>)}</select></div>}
+          {!spots && <div className="field"><label><span>Category <Info tip="Where the drop is listed when people filter drops. Optional." /></span><span>optional</span></label><select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>{["", "Art", "PFP", "Gaming", "Music", "Photography", "Membership", "Utility"].map((c) => <option key={c} value={c}>{c || "None"}</option>)}</select></div>}
           <div className="field-row">
-            <div className="field"><label><span>Website</span><span>optional</span></label><input className="input" value={links.website} onChange={(e) => setLinks((l) => ({ ...l, website: e.target.value }))} placeholder="https://…" /></div>
-            <div className="field"><label><span>X</span><span>optional</span></label><input className="input" value={links.x} onChange={(e) => setLinks((l) => ({ ...l, x: e.target.value }))} placeholder="https://x.com/…" /></div>
+            <div className="field"><label><span>Website <Info tip="Linked from the drop page. Optional." /></span><span>optional</span></label><input className="input" value={links.website} onChange={(e) => setLinks((l) => ({ ...l, website: e.target.value }))} placeholder="https://…" /></div>
+            <div className="field"><label><span>X <Info tip="Your X profile, linked from the drop page. Optional." /></span><span>optional</span></label><input className="input" value={links.x} onChange={(e) => setLinks((l) => ({ ...l, x: e.target.value }))} placeholder="https://x.com/…" /></div>
           </div>
           <div className="field-row">
-            <div className="field"><label><span>Discord</span><span>optional</span></label><input className="input" value={links.discord} onChange={(e) => setLinks((l) => ({ ...l, discord: e.target.value }))} placeholder="https://discord.gg/…" /></div>
-            <div className="field"><label><span>Telegram</span><span>optional</span></label><input className="input" value={links.telegram} onChange={(e) => setLinks((l) => ({ ...l, telegram: e.target.value }))} placeholder="https://t.me/…" /></div>
+            <div className="field"><label><span>Discord <Info tip="An invite link, shown on the drop page. Optional." /></span><span>optional</span></label><input className="input" value={links.discord} onChange={(e) => setLinks((l) => ({ ...l, discord: e.target.value }))} placeholder="https://discord.gg/…" /></div>
+            <div className="field"><label><span>Telegram <Info tip="A group or channel link, shown on the drop page. Optional." /></span><span>optional</span></label><input className="input" value={links.telegram} onChange={(e) => setLinks((l) => ({ ...l, telegram: e.target.value }))} placeholder="https://t.me/…" /></div>
           </div>
-          {!spots && <div className="field"><label><span>Metadata folder</span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /><span className="xs mute">Your own ERC-721 metadata, with each item's image and traits. The drop page previews the first items from it. Leave empty and every NFT shows the collection image.</span>
+          {!spots && <div className="field"><label><span>Metadata folder <Info tip="Your own ERC-721 metadata folder, with each item's image and traits. Item n reads the folder plus n. Leave it empty and every NFT shows the collection image." /></span><span>optional</span></label><input className="input mono" value={f.baseURI} onChange={(e) => set("baseURI", e.target.value)} placeholder="ipfs://… (token n reads <folder>n)" /><span className="xs mute">Your own ERC-721 metadata, with each item's image and traits. The drop page previews the first items from it. Leave empty and every NFT shows the collection image.</span>
             {folder.state === "reading" && <span className="xs mute">Reading the first items…</span>}
             {folder.state === "none" && <span className="xs" style={{ color: "var(--seal)" }}>No items could be read from {f.baseURI.trim()}1. Check the folder: token n is read from the folder followed by n.</span>}
             {!!folder.items.length && (
@@ -272,34 +273,34 @@ export function DropCreate() {
           </div>}
 
           {!spots && <>
-          <div className="card-head" style={{ marginTop: 18 }}><h3>GTD</h3></div>
+          <div className="card-head" style={{ marginTop: 18 }}><h3 className="info-row">GTD <Info tip="Guaranteed spots. Wallets on this list mint at a fixed price before the auction, no bidding needed." /></h3></div>
           <label className="check"><input type="checkbox" checked={f.gtdOn} onChange={(e) => set("gtdOn", e.target.checked)} /> Guaranteed spots for a list of wallets, minted before the auction</label>
           {f.gtdOn && (
             <>
-              <div className="field"><label><span>GTD wallets</span><span>{plan.gtd.length} wallets · {plan.gtdSpots} spots</span></label><textarea className="input list-input" value={f.gtdList} onChange={(e) => set("gtdList", e.target.value)} placeholder={"0xabc…, 2\n0xdef…  (1 spot when no number)"} /></div>
+              <div className="field"><label><span>GTD wallets <Info tip="One wallet per line, optionally followed by how many spots it gets. One spot when there's no number." /></span><span>{plan.gtd.length} wallets · {plan.gtdSpots} spots</span></label><textarea className="input list-input" value={f.gtdList} onChange={(e) => set("gtdList", e.target.value)} placeholder={"0xabc…, 2\n0xdef…  (1 spot when no number)"} /></div>
               <div className="field-row">
-                <div className="field"><label><span>GTD price</span><span>HYPE</span></label><input className="input" inputMode="decimal" value={f.gtdPrice} onChange={(e) => set("gtdPrice", e.target.value)} /></div>
-                <div className="field"><label><span>GTD window</span></label><select className="input" value={f.gtdSecs} onChange={(e) => set("gtdSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select></div>
+                <div className="field"><label><span>GTD price <Info tip="What a guaranteed wallet pays per item." /></span><span>HYPE</span></label><input className="input" inputMode="decimal" value={f.gtdPrice} onChange={(e) => set("gtdPrice", e.target.value)} /></div>
+                <div className="field"><label><span>GTD window <Info tip="How long guaranteed wallets have to mint before the auction starts." /></span></label><select className="input" value={f.gtdSecs} onChange={(e) => set("gtdSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select></div>
               </div>
             </>
           )}
           </>}
 
-          <div className="card-head" style={{ marginTop: 18 }}><h3>WL</h3></div>
+          <div className="card-head" style={{ marginTop: 18 }}><h3 className="info-row">WL <Info tip="A list of wallets whose bids get a boost in the auction. They still bid like everyone else." /></h3></div>
           <label className="check"><input type="checkbox" checked={f.wlOn} onChange={(e) => set("wlOn", e.target.checked)} /> A WL whose bids get a boost</label>
           {f.wlOn && (
             <>
-              <div className="field"><label><span>WL wallets</span><span>{plan.wl.length} wallets</span></label><textarea className="input list-input" value={f.wlList} onChange={(e) => set("wlList", e.target.value)} placeholder={"0xabc…\n0xdef…"} /></div>
+              <div className="field"><label><span>WL wallets <Info tip="One wallet per line." /></span><span>{plan.wl.length} wallets</span></label><textarea className="input list-input" value={f.wlList} onChange={(e) => set("wlList", e.target.value)} placeholder={"0xabc…\n0xdef…"} /></div>
               <div className="field">
-                <label><span>WL bid boost</span><span className="mono">{f.boost}%</span></label>
+                <label><span>WL bid boost <Info tip="A WL bid ranks as if it were this much higher, and WL winners pay less than the clearing price, never under your floor." /></span><span className="mono">{f.boost}%</span></label>
                 <input type="range" min={0} max={30} step={1} value={f.boost} onChange={(e) => set("boost", Number(e.target.value))} style={{ width: "100%" }} />
                 <span className="xs mute">A WL bid ranks as if it were {f.boost}% higher, and WL winners pay the clearing price ÷ {(1 + f.boost / 100).toFixed(2)}, never under your price. Shown publicly on the drop page.</span>
               </div>
             </>
           )}
 
-          <div className="card-head" style={{ marginTop: 18 }}><h3>Bidding</h3></div>
-          <div className="field"><label><span>Sealed bidding window</span><span>{spots ? "opens about a minute after you create" : "opens when GTD closes"}</span></label><select className="input" value={f.biddingSecs} onChange={(e) => set("biddingSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select></div>
+          <div className="card-head" style={{ marginTop: 18 }}><h3 className="info-row">Bidding <Info tip="Bids are sealed, so nobody sees them until bidding closes. Then they open and everyone pays one price." /></h3></div>
+          <div className="field"><label><span>Sealed bidding window <Info tip="How long people can place sealed bids. Longer gives more people a chance to join." /></span><span>{spots ? "opens about a minute after you create" : "opens when GTD closes"}</span></label><select className="input" value={f.biddingSecs} onChange={(e) => set("biddingSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select></div>
         </div>
 
         <div className="card">

@@ -86,8 +86,8 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | Who holds what | Gloam's vault: HYPE and USDC. The launch vault: Cloak launch tokens. The ecosystem vault: listed outside tokens. The router picks the vault from the asset; nobody can point a swap elsewhere | Contract (fixed) |
 | Who lists a token | Only the approver, Cloak's owner wallet, at once. The token comes from a launchpad whose code Cloak vetted (an approved checker confirms the launchpad made it), or is vetted on its own (KNTQ). The owner picks tokens by market cap and importance | Contract (fixed) |
 | The market | A plain native-HYPE Uniswap v4 pool with no hook, so the router can trade it | Contract (fixed) |
-| Liquidity | At least **250 HYPE** in the pool's current range (mainnet config) | Contract (fixed at deploy) |
-| Market cap | At least **50,000 HYPE**: the token's supply on Elysium at the pool's price (mainnet config) | Contract (fixed at deploy) |
+| Liquidity | At least **250 HYPE** in the pool's current range to start. The owner moves it any time (`setMarketRules`), never below a floor of **100 HYPE** fixed at deploy | Contract (owner-adjustable above the floor) |
+| Market cap | At least **50,000 HYPE** to start: the token's supply on Elysium at the pool's price. The owner moves it any time, never below a floor of **10,000 HYPE** fixed at deploy | Contract (owner-adjustable above the floor) |
 | Caps | At most **0.1%** of the supply per deposit and **1%** in total (mainnet config) | Contract (fixed at deploy) |
 | Stopping one | The pauser pauses listings or removes a launchpad (its listed tokens stay); the owner lowers or zeroes a listed token's caps at once. Withdrawals never close | Contract (fixed) |
 

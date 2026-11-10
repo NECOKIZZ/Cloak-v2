@@ -60,7 +60,7 @@ try {
   await write(lp, lpArt.abi, "liquidity", [v4Key, parseEther("1000")]);
 
   // the ecosystem vault: approver and pauser the deploy wallet here (the Safe on mainnet)
-  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), maxPerDepositBps: 10, maxTotalBps: 200 };
+  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), liquidityFloor: parseEther("50"), mcapFloor: parseEther("5000"), maxPerDepositBps: 10, maxTotalBps: 200 };
   const ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [poseidon, stack.dual, D.poolManager, lv, addr, addr, rules]);
   for (const [f, a] of [["setShieldVerifier", [stack.shieldVerifier]], ["setWithdrawFee", [50, addr]], ["turnOnDepositLimits", []], ["endSetup", []]]) await write(ev, LV_ABI, f, a);
   const [liq, mcap] = await pub.readContract({ address: ev, abi: EV, functionName: "marketOf", args: [kntq, v4Key] });

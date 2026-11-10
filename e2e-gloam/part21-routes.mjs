@@ -66,7 +66,7 @@ try {
   await write(lp, lpArt.abi, "liquidity", [kntqKey, parseEther("1000")]);
 
   // KNTQ admitted to the ecosystem vault (part 20 checks the rules in full)
-  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), maxPerDepositBps: 10, maxTotalBps: 200 };
+  const rules = { minHypeLiquidity: parseEther("50"), minMcapHype: parseEther("5000"), liquidityFloor: parseEther("50"), mcapFloor: parseEther("5000"), maxPerDepositBps: 10, maxTotalBps: 200 };
   const ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [poseidon, stack.dual, D.poolManager, lv, addr, addr, rules]);
   for (const [f, a] of [["setShieldVerifier", [stack.shieldVerifier]], ["setWithdrawFee", [50, addr]], ["turnOnDepositLimits", []], ["endSetup", []]]) await write(ev, LV_ABI, f, a);
   await write(ev, EV, "list", [kntq, kntqKey, parseEther("1000"), parseEther("20000"), zeroAddress]);

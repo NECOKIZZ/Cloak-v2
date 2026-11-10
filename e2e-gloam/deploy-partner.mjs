@@ -152,7 +152,7 @@ try {
   const eco = cfg.ecosystem;
   let ev, evGuard;
   if (eco) {
-    const rules = { minHypeLiquidity: BigInt(eco.minHypeLiquidity), minMcapHype: BigInt(eco.minMcapHype), maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps };
+    const rules = { minHypeLiquidity: BigInt(eco.minHypeLiquidity), minMcapHype: BigInt(eco.minMcapHype), liquidityFloor: BigInt(eco.liquidityFloor ?? eco.minHypeLiquidity), mcapFloor: BigInt(eco.mcapFloor ?? eco.minMcapHype), maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps };
     ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [cfg.poseidon, cfg.verifier, cfg.poolManager, lv, cfg.safe, cfg.pauser, rules]);
     await write(ev, LV_ABI, "setShieldVerifier", [cfg.shieldVerifier]);
     await write(ev, LV_ABI, "setWithdrawFee", [FEE_BPS, ECO_FEE_TO]);
