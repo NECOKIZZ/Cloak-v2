@@ -24,7 +24,7 @@ contract CloakRouterV4Test is CloakLaunchSwapV4Test {
         gv.turnOnDepositLimits();
         gv.setDepositLimit(address(0), 1_000 ether, 100_000 ether);
         gv.endSetup();
-        rv = new CloakRouterV4(address(lv), address(gv), address(pm), address(whype), address(hook));
+        rv = new CloakRouterV4(address(lv), address(gv), address(0), address(pm), address(whype), address(hook));
         for (uint256 i = 0; i < 3; i++) gv.shieldBound{value: 1 ether}(address(0), 1 ether, bytes32(0xA0 + i), hex"00");
     }
 
@@ -151,9 +151,9 @@ contract CloakRouterV4Test is CloakLaunchSwapV4Test {
     function test_router_vaultsAreFixedAndDistinct() public {
         _setUpBoth();
         vm.expectRevert(CloakLaunchSwapBase.ZeroAddress.selector);
-        new CloakRouterV4(address(lv), address(0), address(pm), address(whype), address(hook));
+        new CloakRouterV4(address(lv), address(0), address(0), address(pm), address(whype), address(hook));
         vm.expectRevert(CloakLaunchSwapBase.ZeroAddress.selector);
-        new CloakRouterV4(address(lv), address(lv), address(pm), address(whype), address(hook));
+        new CloakRouterV4(address(lv), address(lv), address(0), address(pm), address(whype), address(hook));
         assertEq(address(rv.gloamVault()), address(gv));
         assertEq(address(rv.vault()), address(lv));
     }

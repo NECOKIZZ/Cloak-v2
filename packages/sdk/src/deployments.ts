@@ -53,6 +53,9 @@ export interface GloamDeployment {
    * it. Unset, HYPE stays in the launch vault and trades through launchSwapV4.
    */
   router?: Address;
+  /** CloakEcosystemVault: admitted outside tokens (KNTQ, ...), traded through `router`; and its deploy block. */
+  ecosystemVault?: Address;
+  ecosystemVaultBlock?: bigint;
   graduation?: Address;
   /** CloakGloamBatcher: batch rounds through Uniswap V2 pairs. */
   batcher?: Address;

@@ -175,6 +175,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
         launchSwap: g.launchSwap,
         launchSwapV4: g.launchSwapV4,
         router: g.router,
+        ecosystemVault: g.ecosystemVault ? { pool: g.ecosystemVault, poolBlock: g.ecosystemVaultBlock ?? g.block } : undefined,
         batcher: g.batcher,
         batcherV4: g.batcherV4,
         receive: g.receive,

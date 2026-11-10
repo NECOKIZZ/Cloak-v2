@@ -194,35 +194,49 @@ interface ILaunchTokens {
     function isLaunchToken(address token) external view returns (bool);
 }
 
+interface IEcosystemTokens {
+    function isEcosystemToken(address token) external view returns (bool);
+}
+
 /**
  * @title CloakRouterV4
- * @notice Private swaps between two fixed vaults: Cloak launch tokens live in Cloak's launch vault, HYPE and USDC in
- *         Gloam's vault. A buy spends a HYPE note in Gloam's vault and deposits the launch token as a note in the
- *         launch vault; a sell does the reverse. Same calls, escrows, refunds and exits as CloakLaunchSwapV4.
+ * @notice Private swaps between fixed vaults: Cloak launch tokens live in Cloak's launch vault, admitted outside
+ *         ecosystem tokens (KNTQ, ...) in Cloak's ecosystem vault, and HYPE, USDC and everything else in Gloam's vault.
+ *         A buy spends a HYPE note in Gloam's vault and deposits the token as a note in its vault; a sell does the
+ *         reverse. Same calls, escrows, refunds and exits as CloakLaunchSwapV4.
  *
  *         Which vault an asset uses is decided here, not by the caller: a token the launch vault admitted
- *         (isLaunchToken) uses the launch vault, anything else Gloam's vault. Both are fixed at deploy, with no owner, so
- *         nobody can point a swap at another vault. A vault only pays out a note with its owner's proof, to the escrow
- *         that proof names, so a bug here can cost at most a swap in flight, never what the vaults hold.
+ *         (isLaunchToken) uses the launch vault, one the ecosystem vault admitted (isEcosystemToken) the ecosystem
+ *         vault, anything else Gloam's vault. Neither flag is ever cleared, and the vaults are fixed at deploy with no
+ *         owner, so nobody can point a swap at another vault. A vault only pays out a note with its owner's proof, to the
+ *         escrow that proof names, so a bug here can cost at most a swap in flight, never what the vaults hold.
  */
 contract CloakRouterV4 is CloakLaunchSwapV4 {
-    /// @notice Gloam's vault: HYPE, USDC and every asset that isn't a Cloak launch token.
+    /// @notice Gloam's vault: HYPE, USDC and every asset that isn't a Cloak launch token or an admitted ecosystem token.
     IGloamVault public immutable gloamVault;
+    /// @notice Cloak's ecosystem vault (CloakEcosystemVault), or address(0) for none.
+    address public immutable ecosystemVault;
 
     /// @param launchVault_ Cloak's launch vault (CloakLaunchVault): Cloak launch tokens
-    constructor(address launchVault_, address gloamVault_, address poolManager_, address weth_, address allowedHook_)
+    /// @param ecosystemVault_ Cloak's ecosystem vault, or address(0)
+    constructor(address launchVault_, address gloamVault_, address ecosystemVault_, address poolManager_, address weth_, address allowedHook_)
         CloakLaunchSwapV4(launchVault_, poolManager_, weth_, allowedHook_)
     {
         if (gloamVault_ == address(0) || gloamVault_ == launchVault_) revert ZeroAddress();
+        if (ecosystemVault_ == launchVault_ || ecosystemVault_ == gloamVault_) revert ZeroAddress();
         gloamVault = IGloamVault(gloamVault_);
+        ecosystemVault = ecosystemVault_;
     }
 
     function vaultFor(address asset) public view override returns (IGloamVault) {
-        return asset != NATIVE && ILaunchTokens(address(vault)).isLaunchToken(asset) ? vault : gloamVault;
+        if (asset == NATIVE) return gloamVault;
+        if (ILaunchTokens(address(vault)).isLaunchToken(asset)) return vault;
+        if (ecosystemVault != address(0) && IEcosystemTokens(ecosystemVault).isEcosystemToken(asset)) return IGloamVault(ecosystemVault);
+        return gloamVault;
     }
 
-    /// @dev Neither vault holds anything for an exit's recipient.
+    /// @dev No vault holds anything for an exit's recipient.
     function _stopsHere(address to) internal view override returns (bool) {
-        return super._stopsHere(to) || to == address(gloamVault);
+        return super._stopsHere(to) || to == address(gloamVault) || (ecosystemVault != address(0) && to == ecosystemVault);
     }
 }

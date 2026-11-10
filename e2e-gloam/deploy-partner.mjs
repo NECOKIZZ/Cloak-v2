@@ -23,7 +23,7 @@
 // Key: DEPLOYER_PK, or GLOAM_TESTNET_PK from ../.env (a fresh key that holds nothing else). Never Cloak v1's keys.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { formatEther, parseAbi, zeroAddress } from "viem";
+import { encodeFunctionData, formatEther, parseAbi, zeroAddress } from "viem";
 import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
 import { LV_ABI, checkLaunchVault } from "./stack.mjs";
 import { ANVIL_KEYS, ELYSIUM_TESTNET_RPC, REPO, clients, gloamArtifact, ourArtifact, sendAndLog, startAnvil } from "./lib.mjs";
@@ -63,6 +63,7 @@ function rehearsalConfig() {
     launchCaps: { perDeposit: String(10n ** 27n), total: String(10n ** 29n) },
     graduationRoundSecs: 3600,
     batch: { roundSecs: 60, maxSlippageBps: 200, refundAfter: 600 },
+    ecosystem: { minHypeLiquidity: String(250n * 10n ** 18n), minMcapHype: String(100_000n * 10n ** 18n), admitDelaySecs: 259200, maxPerDepositBps: 10, maxTotalBps: 100, tokens: [] },
   };
 }
 
@@ -114,10 +115,56 @@ try {
   const checks = await checkLaunchVault(pub, lv, { guard, dual: cfg.verifier, shieldVerifier: cfg.shieldVerifier, factory: cfg.factory, feeRecipient: cfg.feeRecipient, pauser: cfg.pauser, caps });
   console.log(`  launch vault read back: ${checks} checks passed`);
 
+  // the ecosystem vault: outside tokens (KNTQ first), admitted only by the Safe's proposal under the preset rules
+  const eco = cfg.ecosystem;
+  let ev, evGuard;
+  if (eco) {
+    const rules = { minHypeLiquidity: BigInt(eco.minHypeLiquidity), minMcapHype: BigInt(eco.minMcapHype), admitDelay: BigInt(eco.admitDelaySecs), maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps };
+    ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [cfg.poseidon, cfg.verifier, cfg.poolManager, lv, cfg.safe, cfg.pauser, rules]);
+    await write(ev, LV_ABI, "setShieldVerifier", [cfg.shieldVerifier]);
+    await write(ev, LV_ABI, "setWithdrawFee", [50, cfg.feeRecipient]);
+    await write(ev, LV_ABI, "turnOnDepositLimits");
+    await write(ev, LV_ABI, "endSetup");
+    evGuard = await deploy("VaultOwnerGuard (ecosystem vault)", guardArt, [ev, addr]);
+    await write(ev, LV_ABI, "transferOwnership", [evGuard]);
+    await write(evGuard, guardArt.abi, "acceptVaultOwnership");
+    const EV = parseAbi([
+      "function approver() view returns (address)",
+      "function minHypeLiquidity() view returns (uint256)",
+      "function minMcapHype() view returns (uint256)",
+      "function setupMode() view returns (bool)",
+      "function owner() view returns (address)",
+      "function marketOf(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key) view returns (uint256 hypeLiquidity, uint256 mcapHype)",
+      "function propose(address token, (address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key, uint128 perDeposit, uint128 total)",
+    ]);
+    const [ap, ml, mm, setup, own] = await Promise.all(["approver", "minHypeLiquidity", "minMcapHype", "setupMode", "owner"].map((f) => pub.readContract({ address: ev, abi: EV, functionName: f })));
+    if (!same(ap, cfg.safe) || ml !== rules.minHypeLiquidity || mm !== rules.minMcapHype || setup || !same(own, evGuard)) throw new Error("the ecosystem vault didn't read back as configured");
+    console.log(`  ecosystem vault ${ev}: approver the Safe, min ${formatEther(ml)} HYPE in range, min market cap ${formatEther(mm)} HYPE, ${eco.admitDelaySecs} s delay`);
+    // the first tokens: checked against the rules now, proposed by the Safe (only it can), admitted by anyone after the delay
+    const ERC20 = parseAbi(["function totalSupply() view returns (uint256)", "function symbol() view returns (string)"]);
+    for (const t of eco.tokens ?? []) {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(t.token)) throw new Error(`ecosystem token ${t.symbol}: not an address (${t.token})`);
+      if (((await pub.getCode({ address: t.token })) ?? "0x") === "0x") {
+        console.log(`  ${t.symbol} (${t.token}) has no code on this chain: not proposed. Check its Elysium address.`);
+        continue;
+      }
+      const supply = await pub.readContract({ address: t.token, abi: ERC20, functionName: "totalSupply" });
+      const key = { currency0: zeroAddress, currency1: t.token, fee: t.fee, tickSpacing: t.tickSpacing, hooks: zeroAddress };
+      const per = (supply * BigInt(t.perDepositBps)) / 10_000n;
+      const total = (supply * BigInt(t.totalBps)) / 10_000n;
+      const [liq, mcap] = await pub.readContract({ address: ev, abi: EV, functionName: "marketOf", args: [t.token, key] });
+      const ok = liq >= ml && mcap >= mm;
+      console.log(`  ${t.symbol}: ${formatEther(liq)} HYPE in range, market cap ${formatEther(mcap)} HYPE: ${ok ? "passes the rules" : "does NOT pass the rules yet"}`);
+      const data = encodeFunctionData({ abi: EV, functionName: "propose", args: [t.token, key, per, total] });
+      console.log(`  From the Safe, to propose ${t.symbol}: a call to ${ev}, value 0, data ${data}`);
+      console.log(`  Then after the delay anyone calls admit(${t.token}) on ${ev}.`);
+    }
+  }
+
   const b = cfg.batch;
   const launchSwapV4 = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, cfg.poolManager, cfg.whype, cfg.v4Hook]);
   // buys and sells between HYPE in Gloam's vault and launch tokens in the launch vault (one private call either way)
-  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, cfg.gloamVault, cfg.poolManager, cfg.whype, cfg.v4Hook]);
+  const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, cfg.gloamVault, ev ?? zeroAddress, cfg.poolManager, cfg.whype, cfg.v4Hook]);
   const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.gloamVault, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter)]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [cfg.gloamVault, lv]);
   const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv, cfg.gloamVault]);
@@ -137,6 +184,10 @@ try {
 
   // control to the Safe: the deploy wallet keeps nothing
   await write(guard, GUARD, "transferController", [cfg.safe]);
+  if (evGuard) {
+    await write(evGuard, GUARD, "transferController", [cfg.safe]);
+    console.log(`  ecosystem vault guard control offered to the Safe too: from the Safe, a call to ${evGuard}, value 0, data 0x9bc21c0c`);
+  }
   const pending = await pub.readContract({ address: guard, abi: GUARD, functionName: "pendingController" }).catch(() => null);
   if (pending !== null && !same(pending, cfg.safe)) throw new Error("the guard's pending controller isn't the Safe");
   console.log(`  guard control offered to the Safe ${cfg.safe}. From the Safe: a call to ${guard}, value 0, data 0x9bc21c0c (acceptController())`);
@@ -159,6 +210,9 @@ try {
     launchFactory: cfg.factory,
     launchSwapV4,
     router,
+    ecosystemVault: ev,
+    ecosystemVaultGuard: evGuard,
+    ecosystemRules: eco ? { minHypeLiquidity: eco.minHypeLiquidity, minMcapHype: eco.minMcapHype, admitDelaySecs: eco.admitDelaySecs, maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps } : undefined,
     batcherV4,
     batcherV4Rounds: b,
     receive,

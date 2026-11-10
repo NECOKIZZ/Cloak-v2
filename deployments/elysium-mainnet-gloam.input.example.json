@@ -14,7 +14,34 @@
   "safe": "FILL IN: Cloak's Safe (guard controller)",
   "pauser": "FILL IN: Cloak's Safe (launch pauser)",
   "feeRecipient": "FILL IN: the relay's fee account (the launch vault's 0.5% pays relay gas)",
-  "launchCaps": { "perDeposit": "1000000000000000000000000000", "total": "100000000000000000000000000000" },
+  "launchCaps": {
+    "perDeposit": "1000000000000000000000000000",
+    "total": "100000000000000000000000000000"
+  },
   "graduationRoundSecs": 3600,
-  "batch": { "roundSecs": 60, "maxSlippageBps": 200, "refundAfter": 600 }
+  "batch": {
+    "roundSecs": 60,
+    "maxSlippageBps": 200,
+    "refundAfter": 600
+  },
+  "ecosystem": {
+    "_note": "Outside tokens (CloakEcosystemVault). Fixed at deploy: a token needs the Safe's proposal, a plain native-HYPE v4 pool (no hook) with at least minHypeLiquidity HYPE in range, a market cap of at least minMcapHype HYPE, caps at most maxPerDepositBps / maxTotalBps of its supply, and admitDelaySecs before admit() checks it all again.",
+    "minHypeLiquidity": "250000000000000000000",
+    "minMcapHype": "100000000000000000000000",
+    "admitDelaySecs": 259200,
+    "maxPerDepositBps": 10,
+    "maxTotalBps": 100,
+    "tokens": [
+      {
+        "symbol": "KNTQ",
+        "token": "0x000000000000780555bD0BCA3791f89f9542c2d6",
+        "_token": "KNTQ's HyperEVM address from Kinetiq's docs (kinetiq.xyz/docs/contracts-and-audits). CHECK it is KNTQ on Elysium too before deploying: the script skips a token with no code there.",
+        "fee": 3000,
+        "tickSpacing": 60,
+        "_pool": "FILL IN: the fee and tick spacing of KNTQ's native-HYPE v4 pool with no hook on Elysium. If KNTQ trades only on another DEX, it can't be admitted until such a pool exists (the router trades v4 pools only).",
+        "perDepositBps": 5,
+        "totalBps": 50
+      }
+    ]
+  }
 }

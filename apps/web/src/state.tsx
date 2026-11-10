@@ -197,6 +197,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         launchSwap: GLOAM.launchSwap,
         launchSwapV4: GLOAM.launchSwapV4,
         router: GLOAM.router,
+        ecosystemVault: GLOAM.ecosystemVault ? { pool: GLOAM.ecosystemVault, poolBlock: GLOAM.ecosystemVaultBlock ?? GLOAM.block } : undefined,
         batcher: GLOAM.batcher,
         batcherV4: GLOAM.batcherV4,
         receive: GLOAM.receive,

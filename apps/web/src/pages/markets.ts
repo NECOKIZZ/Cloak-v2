@@ -23,6 +23,41 @@ export interface Market {
   reserveToken: bigint;
   /** Registered for batch rounds (CloakGloamBatcherV4), which the keeper does once the launch settles. */
   batchable: boolean;
+  /** An outside token in the ecosystem vault (KNTQ, ...): its plain native-HYPE v4 pool. `pair` is the vault. */
+  eco?: { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
+}
+
+const ECO = parseAbi([
+  "function ecosystemTokensCount() view returns (uint256)",
+  "function ecosystemTokens(uint256) view returns (address)",
+  "function poolKeyOf(address) view returns ((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks))",
+  "function poolState((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key) view returns (uint160 sqrtPriceX96, uint128 liquidity)",
+]);
+
+/** A plain v4 pool's in-range reserves: L / sqrtP HYPE and L * sqrtP of the token. */
+async function ecoReserves(ev: Address, key: NonNullable<Market["eco"]>): Promise<[bigint, bigint]> {
+  const [sqrtP, liq] = await publicClient.readContract({ address: ev, abi: ECO, functionName: "poolState", args: [key] });
+  if (sqrtP === 0n) return [0n, 0n];
+  return [(liq << 96n) / sqrtP, (liq * sqrtP) >> 96n];
+}
+
+/** Outside tokens admitted to the ecosystem vault, traded through the router over their plain HYPE pool. */
+async function ecoMarkets(ev: Address): Promise<Market[]> {
+  const n = await publicClient.readContract({ address: ev, abi: ECO, functionName: "ecosystemTokensCount" });
+  const rows = await Promise.all(
+    Array.from({ length: Number(n) }, async (_, i): Promise<Market> => {
+      const token = await publicClient.readContract({ address: ev, abi: ECO, functionName: "ecosystemTokens", args: [BigInt(i)] });
+      const [symbol, name, eco] = await Promise.all([
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "symbol" }),
+        publicClient.readContract({ address: token, abi: cloakTokenAbi, functionName: "name" }),
+        publicClient.readContract({ address: ev, abi: ECO, functionName: "poolKeyOf", args: [token] }),
+      ]);
+      const [reserveHype, reserveToken] = await ecoReserves(ev, eco);
+      const price = reserveToken > 0n ? (reserveHype * 10n ** 18n) / reserveToken : 0n;
+      return { token, pool: token, pair: ev, symbol, name, price, reserveHype, reserveToken, batchable: false, eco };
+    }),
+  );
+  return rows;
 }
 
 let cache: { at: number; data: Market[] } | null = null;
@@ -74,7 +109,11 @@ async function gloamV4Markets(lv: Address): Promise<Market[]> {
 export async function loadMarkets(force = false): Promise<Market[]> {
   if (!GLOAM) return [];
   if (!force && cache && Date.now() - cache.at < 15_000) return cache.data;
-  const data = await gloamV4Markets(GLOAM.launchVault);
+  const [launch, eco] = await Promise.all([
+    gloamV4Markets(GLOAM.launchVault),
+    GLOAM.ecosystemVault && GLOAM.router ? ecoMarkets(GLOAM.ecosystemVault).catch(() => []) : Promise.resolve([]),
+  ]);
+  const data = [...launch, ...eco];
   cache = { at: Date.now(), data };
   save("markets", data);
   return data;
@@ -117,6 +156,13 @@ export function useFeePct(): string {
 export async function quote(m: Market, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
   if (amountIn <= 0n) return 0n;
   amountIn -= (amountIn * BigInt(await withdrawFeeBps())) / 10_000n; // what the router actually trades
+  if (m.eco) {
+    // the pool's fee, then a constant-product step on its in-range reserves (the swap's slippage allowance covers more)
+    const [rH, rT] = await ecoReserves(m.pair, m.eco);
+    const x = (amountIn * BigInt(1_000_000 - m.eco.fee)) / 1_000_000n;
+    const [rIn, rOut] = side === "buy" ? [rH, rT] : [rT, rH];
+    return rIn + x === 0n ? 0n : (x * rOut) / (rIn + x);
+  }
   // live reserves, so the quote reflects trades made since the markets were loaded
   const [rH, rT] = await Promise.all([
     publicClient.readContract({ address: m.pair, abi: cloakPairAbi, functionName: "reserveHype" }),

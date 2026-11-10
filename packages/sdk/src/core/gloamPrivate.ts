@@ -35,6 +35,8 @@ export interface GloamPrivateConfig {
   gloamVault?: { pool: Address; poolBlock: bigint };
   /** Cloak's launch vault. */
   launchVault?: { pool: Address; poolBlock: bigint };
+  /** Cloak's ecosystem vault (CloakEcosystemVault): admitted outside tokens such as KNTQ, traded through `router`. */
+  ecosystemVault?: { pool: Address; poolBlock: bigint };
   payMemo: Address;
   provers: GloamCoreConfig["provers"];
   submit: GloamCoreConfig["submit"];
@@ -83,7 +85,16 @@ export interface GloamMarket {
   decimals?: number;
   /** traded through its launch's Uniswap v4 pool (pair is the CloakV4Market) */
   v4?: boolean;
+  /** an outside token in the ecosystem vault, traded through this plain native-HYPE v4 pool (via the router) */
+  ecoKey?: { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
 }
+
+const ECO = parseAbi([
+  "function ecosystemTokensCount() view returns (uint256)",
+  "function ecosystemTokens(uint256) view returns (address)",
+  "function poolKeyOf(address) view returns ((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks))",
+  "function poolState((address currency0, address currency1, uint24 fee, int24 tickSpacing, address hooks) key) view returns (uint160 sqrtPriceX96, uint128 liquidity)",
+]);
 
 const ERC20 = parseAbi(["function symbol() view returns (string)", "function decimals() view returns (uint8)"]);
 const VAULT = parseAbi(["function withdrawFeeBps() view returns (uint16)", "function launchTokensCount() view returns (uint256)", "function launchTokens(uint256) view returns (address)"]);
@@ -176,7 +187,7 @@ export class GloamPrivate {
     const encPriv = toBytes(keccak256(encodeAbiParameters([{ type: "string" }, { type: "uint256" }], ["cloak-gloam-device-v1", keys.noteSeed])));
     this.keys = { encPriv, encPub: toBytes(keccak256(encPriv)) };
     const base = { publicClient: cfg.publicClient, chainId: cfg.chainId, payMemo: cfg.payMemo, provers: cfg.provers, submit: cfg.submit, logChunk: cfg.logChunk, spendReceived: cfg.spendReceived, autoSweep: cfg.autoSweep };
-    this.cores = [cfg.gloamVault, cfg.launchVault].filter((v): v is { pool: Address; poolBlock: bigint } => !!v).map((v) => new GloamCore({ ...base, pool: v.pool, poolBlock: v.poolBlock, pendingStore: cfg.pendingStore?.(v.pool) }, keys));
+    this.cores = [cfg.gloamVault, cfg.launchVault, cfg.ecosystemVault].filter((v): v is { pool: Address; poolBlock: bigint } => !!v).map((v) => new GloamCore({ ...base, pool: v.pool, poolBlock: v.poolBlock, pendingStore: cfg.pendingStore?.(v.pool) }, keys));
     if (!this.cores.length) throw new Error("No vault configured.");
   }
 
@@ -214,6 +225,20 @@ export class GloamPrivate {
         const v4 = v4Markets.get(lc(token));
         const pair = v4 ?? (factory ? await pub.readContract({ address: factory, abi: V2, functionName: "getPair", args: [this.cfg.whype, token] }).catch(() => null) : null);
         out.push({ token, pool: token, pair: pair && pair !== zeroAddress ? pair : null, symbol, decimals: Number(decimals), v4: !!v4 });
+      }
+    }
+    // outside tokens admitted to the ecosystem vault, each with its plain HYPE pool
+    const ev = this.cfg.ecosystemVault?.pool;
+    if (ev && this.cfg.router) {
+      const n = await pub.readContract({ address: ev, abi: ECO, functionName: "ecosystemTokensCount" }).catch(() => 0n);
+      for (let i = 0n; i < n; i++) {
+        const token = await pub.readContract({ address: ev, abi: ECO, functionName: "ecosystemTokens", args: [i] });
+        const [symbol, decimals, ecoKey] = await Promise.all([
+          pub.readContract({ address: token, abi: ERC20, functionName: "symbol" }).catch(() => "token"),
+          pub.readContract({ address: token, abi: ERC20, functionName: "decimals" }).catch(() => 18),
+          pub.readContract({ address: ev, abi: ECO, functionName: "poolKeyOf", args: [token] }),
+        ]);
+        out.push({ token, pool: token, pair: null, symbol, decimals: Number(decimals), v4: true, ecoKey });
       }
     }
     for (const m of this.markets) if (!out.some((x) => lc(x.token) === lc(m.token))) out.push(m);
@@ -486,9 +511,20 @@ export class GloamPrivate {
 
   private async v2Quote(token: Address, side: "buy" | "sell", amountIn: bigint): Promise<bigint> {
     const m = this.market(token);
+    const pub = this.cfg.publicClient;
+    if (m.ecoKey && this.cfg.ecosystemVault) {
+      // a plain v4 pool: its in-range reserves (L / sqrtP HYPE, L * sqrtP token) and its fee; exact for a trade that
+      // stays in the current range, and the swap's slippage allowance covers the rest (a short output reverts whole)
+      const [sqrtP, liq] = await pub.readContract({ address: this.cfg.ecosystemVault.pool, abi: ECO, functionName: "poolState", args: [m.ecoKey] });
+      if (sqrtP === 0n || liq === 0n) throw new Error("This token's pool has no liquidity right now.");
+      const rH = (liq << 96n) / sqrtP;
+      const rT = (liq * sqrtP) >> 96n;
+      const x = (amountIn * BigInt(1_000_000 - m.ecoKey.fee)) / 1_000_000n;
+      const [rIn, rOut] = side === "buy" ? [rH, rT] : [rT, rH];
+      return (x * rOut) / (rIn + x);
+    }
     const pair = m.pair;
     if (!pair) throw new Error("This token has no pool to trade privately against yet.");
-    const pub = this.cfg.publicClient;
     if (m.v4) {
       // the launch's CloakV4Market quotes its pool at its current fee
       const [rH, rT] = await Promise.all([pub.readContract({ address: pair, abi: V4MARKET, functionName: "reserveHype" }), pub.readContract({ address: pair, abi: V4MARKET, functionName: "reserveToken" })]);
@@ -519,11 +555,14 @@ export class GloamPrivate {
    * releases, less the slippage allowance, and whatever the swap didn't need comes back as a note (finishPending).
    */
   private async swap(token: Address, side: "buy" | "sell", amountIn: bigint, opts: { slippageBps?: number; onStatus?: Status }) {
-    const core = this.launchCore;
     const m = this.market(token);
-    // with the router, HYPE is in Gloam's vault and the token in the launch vault; otherwise both in the launch vault
+    // the token's vault: the ecosystem vault for an outside token, else the launch vault
+    const ecoCore = this.cfg.ecosystemVault ? this.cores.find((c) => lc(c.config.pool) === lc(this.cfg.ecosystemVault!.pool)) : undefined;
+    const core = m.ecoKey ? ecoCore : this.launchCore;
+    // with the router, HYPE is in Gloam's vault and the token in its own vault; otherwise both in the launch vault
     const gloamCore = this.cfg.gloamVault ? this.cores.find((c) => lc(c.config.pool) === lc(this.cfg.gloamVault!.pool)) : undefined;
     const viaRouter = !!(this.cfg.router && m.v4 && gloamCore);
+    if (m.ecoKey && !viaRouter) throw new Error("Outside tokens trade through the router, which isn't set up here.");
     const router = viaRouter ? this.cfg.router : m.v4 ? this.cfg.launchSwapV4 : this.cfg.launchSwap;
     if (!core || !router) throw new Error("Private trading isn't set up on this deployment yet.");
     const onStatus = opts.onStatus ?? (() => {});
@@ -539,7 +578,9 @@ export class GloamPrivate {
     const amountOut = (expected * BigInt(10_000 - (opts.slippageBps ?? 100))) / 10_000n;
     if (amountOut === 0n) throw new Error("amount too small to trade");
     // V2: the path through WHYPE. v4: the launch's own pool key (native HYPE, behind Cloak's hook)
-    const route = m.v4
+    const route = m.ecoKey
+      ? launchRouteV4([m.ecoKey])
+      : m.v4
       ? launchRouteV4([await this.cfg.publicClient.readContract({ address: m.pair!, abi: V4MARKET, functionName: "key" })])
       : launchRoute(side === "buy" ? [this.cfg.whype, token] : [token, this.cfg.whype]);
     // the chain's clock, not this device's: the contract checks the deadline against block time

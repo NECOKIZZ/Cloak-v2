@@ -41,7 +41,7 @@ interface DeploymentFile extends Omit<CloakDeployment, "factoryBlock" | "dropFac
   factoryBlock?: string | number;
   dropFactoryBlock?: string | number;
   launchesFromBlock?: string | number;
-  gloam: Omit<GloamDeployment, "block" | "launchVaultBlock"> & { block: string | number; launchVaultBlock?: string | number };
+  gloam: Omit<GloamDeployment, "block" | "launchVaultBlock" | "ecosystemVaultBlock"> & { block: string | number; launchVaultBlock?: string | number; ecosystemVaultBlock?: string | number };
 }
 
 export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
@@ -63,7 +63,7 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
       ...f,
       factoryBlock: launchesFromBlock,
       dropFactoryBlock: f.dropFactoryBlock === undefined ? undefined : BigInt(f.dropFactoryBlock),
-      gloam: { ...f.gloam, block: BigInt(f.gloam.block), launchVaultBlock: f.gloam.launchVaultBlock === undefined ? undefined : BigInt(f.gloam.launchVaultBlock) },
+      gloam: { ...f.gloam, block: BigInt(f.gloam.block), launchVaultBlock: f.gloam.launchVaultBlock === undefined ? undefined : BigInt(f.gloam.launchVaultBlock), ecosystemVaultBlock: f.gloam.ecosystemVaultBlock === undefined ? undefined : BigInt(f.gloam.ecosystemVaultBlock) },
     };
   } else {
     const n = NETWORKS[network];

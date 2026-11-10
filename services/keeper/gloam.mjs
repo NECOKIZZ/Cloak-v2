@@ -91,6 +91,8 @@ export function createGloamRelay({
   walletClient,
   vault,
   launchVault,
+  /** Cloak's ecosystem vault (CloakEcosystemVault): outside tokens, Cloak's like the launch vault */
+  ecosystemVault,
   memoBoard,
   escrows = [],
   gloamEscrows = [],
@@ -106,6 +108,7 @@ export function createGloamRelay({
   const targets = new Map();
   if (vault) targets.set(lc(vault), { role: "vault", cloak: false, address: vault });
   if (launchVault) targets.set(lc(launchVault), { role: "vault", cloak: true, address: launchVault });
+  if (ecosystemVault) targets.set(lc(ecosystemVault), { role: "vault", cloak: true, address: ecosystemVault });
   if (memoBoard) targets.set(lc(memoBoard), { role: "memo", cloak: false, address: memoBoard });
   for (const e of escrows) targets.set(lc(e), { role: "escrow", cloak: true, address: e });
   for (const e of gloamEscrows) targets.set(lc(e), { role: "escrow", cloak: false, address: e });

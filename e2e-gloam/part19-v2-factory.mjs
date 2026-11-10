@@ -99,7 +99,7 @@ try {
   await write(guard, guardArt.abi, "acceptVaultOwnership");
   const router = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, D.poolManager, D.whype, f.hook]);
   // the cross-vault router: the launch vault (home) and Gloam's vault
-  const crossRouter = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, D.poolManager, D.whype, f.hook]);
+  const crossRouter = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, zeroAddress, D.poolManager, D.whype, f.hook]);
   // and batch rounds with HYPE in Gloam's vault (mainnet's model)
   const batcherG = await deploy("CloakGloamBatcherV4 (HYPE in Gloam's vault)", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, stack.pool, f.factory, 60n, 200n, 600n]);
   const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, zeroAddress, f.factory, 60n, 200n, 600n]);

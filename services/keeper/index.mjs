@@ -55,6 +55,7 @@ const unopenable = new Map();
 const leafVaults = [
   [process.env.GLOAM_VAULT, process.env.GLOAM_VAULT_BLOCK],
   [process.env.GLOAM_LAUNCH_VAULT, process.env.GLOAM_LAUNCH_VAULT_BLOCK ?? process.env.GLOAM_VAULT_BLOCK],
+  [process.env.GLOAM_ECOSYSTEM_VAULT, process.env.GLOAM_ECOSYSTEM_VAULT_BLOCK],
 ].filter(([a, b]) => a && b).map(([address, block]) => ({ address, block }));
 const leaves = leafVaults.length ? startLeaves(publicClient, { vaults: leafVaults }) : null;
 
@@ -70,6 +71,7 @@ const gloamRelay = process.env.GLOAM_MEMO && (process.env.GLOAM_VAULT || process
       walletClient,
       vault: process.env.GLOAM_VAULT,
       launchVault: process.env.GLOAM_LAUNCH_VAULT,
+      ecosystemVault: process.env.GLOAM_ECOSYSTEM_VAULT,
       memoBoard: process.env.GLOAM_MEMO,
       escrows: list(process.env.GLOAM_ESCROWS),
       gloamEscrows: list(process.env.GLOAM_ROUTERS),
