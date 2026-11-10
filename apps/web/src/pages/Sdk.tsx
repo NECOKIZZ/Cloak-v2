@@ -60,7 +60,7 @@ CloakAuction.Params memory p = CloakAuction.Params({
   creator: project, saleSupply: 1_000_000e18, lpReserve: 1_000_000e18,
   minPrice: 1e12, tickSize: 1e12, numTicks: 100,
   commitEnd: uint64(block.timestamp + 1 days), revealEnd: uint64(block.timestamp + 1 days + 1 hours),
-  lpBps: 5000, noRevealPenaltyBps: 1000, lpLockUntil: 0, tlockRound: round
+  lpBps: 5000, noRevealPenaltyBps: 2000, lpLockUntil: 0, tlockRound: round
 });
 // creator share: up to 20% of the supply, vesting over at least 30 days (here: none)
 (address auction, address token) = CloakFactory(FACTORY).createLaunch("Shade", "SHADE", 0, 0, p, uri);`,
@@ -76,11 +76,14 @@ const API: [string, [string, string][]][] = [
     ["getAuction · demandCurve · bidsOf · listLaunches", "Read state: phase, clearing price, the revealed demand per price level, a bidder's bids."],
   ]],
   ["GloamPrivate · private balances", [
-    ["GloamPrivate.unlock(wallet, config)", "Open the private account from one EIP-712 signature bound to this chain only, on both vaults: Gloam's and Cloak's launch vault. The same wallet always restores it."],
+    ["GloamPrivate.unlock(wallet, config)", "Open the private account from one EIP-712 signature bound to this chain only, on every vault: Gloam's main vault and Cloak's own. The same wallet always restores it."],
     ["claimPrivately(wallet, auction, bidId)", "Claim a won sealed bid to the wallet and shield it, so what you do with the tokens next can't be linked to the bid."],
     ["bidPrivately(auction, …) · finishPrivateBids(auction)", "A sealed bid paid from the private balance, and its tokens and refund back into it once the launch settles."],
     ["shieldHype · shieldToken(wallet, …, amount)", "Public HYPE or a token → a private note."],
     ["buy · sell(token, amount)", "Instant private swap through the launch's Uniswap v4 pool, submitted by the relayer."],
+    ["trade(tokenIn, tokenOut, amount) · tradePlan(…)", "Any two markets in one private swap, through HYPE (USDC to a launch token, say). Bigger than a vault's per-deposit cap, it goes in parts; tradePlan shows how many first."],
+    ["depositCaps(token)", "A vault's caps right now: the most one deposit can be, and the room left. Shields, trades and bids split to fit them automatically."],
+    ["receiveAddress(n) · collectReceived()", "A normal address anyone can pay (a wallet, an exchange, a bridge), and moving what arrived into the private balance."],
     ["batch(token, side, amount)", "Split into standard sizes and place sealed orders in the current round."],
     ["send(token, cloakAddress, amount)", "Private transfer inside the vault. No sender, recipient or amount on-chain."],
     ["unshieldHype · unshieldToken(…, to, amount) · planSplitWithdraw", "Withdraw to any address, at once or in pieces over time."],
@@ -96,6 +99,7 @@ const API: [string, [string, string][]][] = [
     ["gloamProvers() · gloamHolderProver(\"funds\")", "Provers for Gloam's circuits (final keys, from jsDelivr at Gloam's pinned commit, hash-checked), running on the user's device."],
     ["gloamRelaySubmitter(url) · walletCoreSubmitter(…)", "How private calls are submitted: via Cloak's relay (private) or a wallet (for tests)."],
     ["sealBid · unsealBid · drandRoundAt", "drand timelock primitives used by sealed bids."],
+    ["relayQuote · relayStatus", "Bridge into Elysium through Relay, from 20 chains or an exchange, to a receive address."],
     ["standardSizesFor(amount, notes, max) · budgetBuckets(cost)", "Standard sizes for batches, and deposit buckets for bids."],
   ]],
 ];

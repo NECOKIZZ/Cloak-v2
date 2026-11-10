@@ -166,6 +166,8 @@ Test with a team wallet and 1 to 5 HYPE. For each step, check the result on chai
 - [ ] Every box above is ticked, and the private tests ran clean for at least a few days.
 - [ ] **Bob with Gloam:** the announcement, drafted together and sent to them first.
 - [ ] Remove the password from the site, and point the main domain at it.
+- [ ] **The domain.** v2's site files (`agent.md`, `llms.txt`) say gloak.boblabs.tech. The SDK and MCP READMEs, the site's share tags and the MCP server's built-in URL say cloak.boblabs.tech, which still serves v1. Pick the public domain, and Claude makes every reference match.
+- [ ] **The source link.** Set `VITE_GITHUB_URL` to v2's public repository (or the official Cloak repo, if the code moves there). Until then the site links to v1's repository. Republish `@cloakely/sdk` and `@cloakely/mcp` with v2's READMEs (Bob).
 - [ ] Update the docs, roadmap, pitch and SDK README to "live on mainnet, with caps". Never say "audited" for Cloak's own contracts until the audit is done.
 - [ ] Credit the reviewers on X (Haider Ali, Ghost), as promised.
 - [ ] Gloam lists Cloak as a live partner on Elysium.

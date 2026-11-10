@@ -130,4 +130,4 @@ Amounts are in whole units (`"0.5"` HYPE). `private_send`, `withdraw` and a `pri
 | `CLOAK_RELAYER_URL` | Cloak's hosted relayer | |
 | `GLOAM_CIRCUITS_DIR` | download | Folder with Gloam's circuit files (shield, transfer, unshield), instead of downloading them |
 
-Built on [`@cloakely/sdk`](https://www.npmjs.com/package/@cloakely/sdk). Source: [NECOKIZZ/Cloak](https://github.com/NECOKIZZ/Cloak/tree/main/packages/mcp). MIT.
+Built on [`@cloakely/sdk`](https://www.npmjs.com/package/@cloakely/sdk). Docs: [cloak.boblabs.tech/docs](https://cloak.boblabs.tech/docs). MIT.

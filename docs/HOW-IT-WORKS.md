@@ -52,8 +52,9 @@ On a normal exchange, every trade is stamped with your wallet address forever. A
 |---|---|
 | `CloakAuction` + `CloakFactory` | the sealed-bid launch, the clearing price and the locked liquidity |
 | `CloakV4Hook` | at settlement, opens a Uniswap v4 pool (token / HYPE) at the clearing price |
-| Gloam's vault + `CloakLaunchVault` | the private vaults: Gloam's for USDC, the launch vault for HYPE and launch tokens |
-| `CloakLaunchSwapV4` | private buys and sells, through the launch's v4 pool |
+| Gloam's vault, `CloakLaunchVault`, `CloakEcosystemVault` | the private vaults. On mainnet, Gloam's (run by Gloam) holds HYPE, USDC and what Gloam lists; Cloak's launch vault holds launch tokens; Cloak's ecosystem vault holds other projects' tokens Cloak lists. On testnet, HYPE sits in the launch vault |
+| `CloakRouterV4` | private swaps between the vaults, through one to three pools, taking Cloak's 0.25% on sales out of Cloak's vaults |
+| `CloakLaunchSwapV4` | private buys and sells through the launch's v4 pool (testnet) |
 | `CloakGloamBatcherV4` | batch rounds: standard-size orders, buys and sells crossed at the round's time-weighted average price, only the net hits the pool |
 | `@cloakely/sdk` | what the page (or any launchpad) uses for all of the above |
 | keeper / relayer | opens sealed bids, settles launches, and submits private trades |

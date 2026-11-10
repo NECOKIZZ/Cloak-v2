@@ -69,7 +69,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | Gloam's vault (Cloak's testnet instance) | USDC only, **500** per deposit, **25,000** in total | Vault owner |
 | Launch vault | HYPE **10** per deposit, **1,000** in total. Each launch token is admitted once its launch settles, with fixed caps | Vault owner |
 | Who controls it | Gloam's `VaultOwnerGuard`. The launch pauser can only stop admissions, never touch funds | Contract (fixed) |
-| Graduation | `CloakGraduation` moves balances from the launch vault into Gloam's vault in **1-hour** rounds | Contract (fixed) |
+| Graduation | Testnet only: `CloakGraduation` moves balances from the launch vault into Gloam's vault in **1-hour** rounds. Not deployed on mainnet, where each asset has one home | Contract (fixed) |
 
 ## Private swaps and batch rounds
 
@@ -98,7 +98,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 |---|---|---|
 | What it does | Reveals bids once the drand round passes, settles launches, admits them to the launch vault, settles batch rounds, collects the launch fee, relays private actions | Keeper |
 | What it can't do | Change, steal or redirect anything: every field is bound by the proof. It can delay or refuse, and it sees your IP | Contract (fixed) |
-| Relay budget | Follows Gloam's relay rules (per-sender shares, an exit share, a revert cap), paid from the launch vault's fee | Keeper |
+| Relay budget | Follows Gloam's relay rules (per-sender shares, an exit share, a revert cap), paid by Cloak from fee income | Keeper |
 | Rate limit | **20** relay requests per IP per minute | Keeper |
 | Running your own | `node services/keeper/index.mjs`, every setting in `render.yaml` | Keeper |
 

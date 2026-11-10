@@ -81,14 +81,15 @@ export function Docs() {
             <li><b>Bid</b> in a launch: pick a max price and quantity, then click <i>Seal bid</i>. You can close the tab, because the bid reveals itself.</li>
             <li><b>Trade privately</b>: go to <Link to="/app/portfolio">Portfolio</Link>, unlock your private account (one free signature) and shield some HYPE. Then use <Link to="/app/trade">Trade</Link>.</li>
           </ol>
-          <div className="callout">Everything here is <b>testnet</b> with play money, and the ZK keys are development keys. Don't use real funds.</div>
+          <div className="callout">Everything here is <b>testnet</b> with play money. Proofs already use Gloam's final ceremony keys, the same as mainnet. Don't use real funds.</div>
 
           <h2 id="what-works">What works today</h2>
           <ul>
             <li>Sealed-bid launches with auto-reveal, a uniform clearing price, and liquidity locked at that price.</li>
-            <li>Every new launch opens a standard <b>Uniswap V2 pool</b>, so the token trades on Uniswap and anywhere else, while private trades use the same pool.</li>
-            <li>Private balances for HYPE and every settled launch token.</li>
-            <li>Private instant swaps, private batch swaps (hidden size), private sends, and withdrawals.</li>
+            <li>Every launch opens a <b>Uniswap v4 pool</b>, so the token trades on Uniswap and anywhere else, while private trades use the same pool.</li>
+            <li>Private balances for HYPE, USDC and every settled launch token.</li>
+            <li>Private instant swaps (between any two markets, through HYPE), private batch swaps (hidden size), private sends, sealed bids from a private balance, and withdrawals.</li>
+            <li>Receive addresses anyone can pay, and bridging in from 20 chains or an exchange (Bridge, on mainnet).</li>
             <li>A hosted keeper that reveals bids, settles launches and batch rounds, and relays private transactions.</li>
             <li>The <Link to="/sdk">SDK</Link> for launchpads, with all of the above.</li>
           </ul>
@@ -112,7 +113,7 @@ export function Docs() {
           <p>Because the price doesn't depend on order, bidding early, fast or with more gas earns nothing. That's the whole point on a fee-ordered chain.</p>
 
           <h2 id="liquidity">Locked liquidity</h2>
-          <p>A share of the raise (default 50%) plus matching tokens opens the token's pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The creator picks what happens to the LP: <b>locked forever with the trading fees going to the creator</b> (the default), burned, or locked until a date. On Cloak v2's own pools, Cloak keeps 20% of the trading fee and the creator gets the rest. Unsold tokens, and any tokens the pool didn't need, are burned. Whatever HYPE the pool didn't need goes to the creator.</p>
+          <p>A share of the raise (default 50%) plus matching tokens opens the token's pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The creator picks what happens to the LP: <b>locked forever, with the creator earning the trading fees</b> (the default), or burned. Cloak keeps 20% of the trading fee and the creator gets 80%. Unsold tokens, and any tokens the pool didn't need, are burned. Whatever HYPE the pool didn't need goes to the creator.</p>
           <p>A pool's address is known before it exists, so someone could try to send it tokens or WHYPE early and make the launch open at a silly price. Settlement handles every case:</p>
           <ul>
             <li>Anything sent to the pool's address before it has reserves is swept to the burn address.</li>
@@ -122,20 +123,17 @@ export function Docs() {
           </ul>
 
           <h3>Creator fees</h3>
-          <p>With "locked forever", the pool's LP goes into <code>CloakFeeLocker</code> at settlement and never comes out. Every trade on the pool, public or private, pays Uniswap's 0.3% fee into the pool. The locker remembers what the liquidity was worth when it was locked and lets the creator collect only the growth since, so the creator earns from trading but can never take the liquidity itself. Anyone can trigger a collection; the fees always go to the creator. Fees come from trading only: bidding pays the creator through the raise.</p>
+          <p>Every trade on a launch's pool, public or private, pays the pool's fee: 0.3%, or more in the first 5 minutes after listing. With "locked forever", the creator earns <b>80%</b> of it and Cloak <b>20%</b>, paid out by the hook whenever anyone triggers it. The creator earns from trading but can never take the liquidity itself. With "burned", the creator's 80% goes to the burn address. Bidding pays the creator through the raise.</p>
 
           <h2 id="uniswap">Trading on Uniswap</h2>
-          <p><b>Since Nov 3, launches open a Uniswap v4 pool</b> (native HYPE / token) at the clearing price, through Cloak's hook (<code>CloakV4Hook</code>). The hook:</p>
+          <p><b>Every launch opens a Uniswap v4 pool</b> (native HYPE / token) at the clearing price, through Cloak's hook (<code>CloakV4Hook</code>). The hook:</p>
           <ul>
             <li><b>Keeps the liquidity forever.</b> It owns the pool's only position and never removes it, and nobody else can add or remove liquidity, so nobody can pull depth out from under traders.</li>
-            <li><b>Pays the trading fees to the creator</b> (0.3% per trade), or to 0x…dEaD for a launch that burns its LP. Anyone can trigger a payout; it always goes to the creator.</li>
-            <li><b>Charges an anti-snipe fee.</b> The fee starts at 10% when the pool opens and falls in a straight line to 0.3% over 5 minutes, so racing the listing costs the racer, and what they pay goes to the creator.</li>
+            <li><b>Pays the trading fees</b> (0.3% per trade): 80% to the creator, or to 0x…dEaD for a launch that burns its LP, and 20% to Cloak. Anyone can trigger a payout, and where it goes is fixed.</li>
+            <li><b>Charges an anti-snipe fee.</b> The fee starts at 10% when the pool opens and falls in a straight line to 0.3% over 5 minutes, so racing the listing costs the racer, and what they pay is split the same way.</li>
             <li><b>Keeps a time-weighted price</b> for batch rounds, updated before every swap.</li>
           </ul>
           <p>The pool lives in Uniswap's own PoolManager, so the token trades on the Universal Router, aggregators and wallets like any v4 token, and private trades use the same pool through <code>CloakV4Market</code>. On testnet Cloak deploys Uniswap's PoolManager itself, built from Uniswap's source byte for byte like the one on Elysium mainnet; on mainnet it uses Uniswap's own. v4 liquidity is a position, not a token, so a v4 launch's LP is either locked forever (fees to the creator) or burned, never locked until a date.</p>
-          <p>From Nov 2 to Nov 3, every launch's pool is a standard <b>Uniswap V2 pool</b> (token / WHYPE, 0.3% fee) from Elysium's Uniswap V2 factory. That means the token is a normal token everywhere: anyone can trade it on Uniswap, aggregators can route to it, wallets can price it, and trackers like DexScreener can chart it once they support Elysium. The launch page links to the pool.</p>
-          <p>Private trades use <b>the same pool</b>. A small adapter (<code>CloakV2Market</code>) lets Cloak's private router and batch rounds trade it, so liquidity is never split between a "public" and a "private" market. Batch rounds price against the pool's own time-weighted price. Launches from before Nov 2 keep their Cloak pool, which works the same way.</p>
-
           <h2 id="nft-drops">NFT drops</h2>
           <p>A drop sells an NFT collection the same way a launch sells a token: sealed, with one price for every winner. There is no race, so bots and gas wars gain nothing. <Link to="/app/drops" className="link">See the drops</Link> or <Link to="/app/drops/create" className="link">create one</Link>.</p>
           <ol>
@@ -313,12 +311,12 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
               <tr><td>Creator's own share</td><td>At most 20% of supply, vesting over at least 30 days</td><td>Contract</td></tr>
               <tr><td>Launch token</td><td>Fixed supply, no owner, no mint, no tax, no blacklist</td><td>Contract</td></tr>
               <tr><td>Pool opening price</td><td>Exactly the clearing price, in a Uniswap v4 pool behind Cloak's hook</td><td>Contract</td></tr>
-              <tr><td>LP</td><td>Locked forever with trading fees to the creator, burned, or locked until a date</td><td>Contract</td></tr>
-              <tr><td>Creator fees</td><td>Uniswap's 0.3% on every trade; the locked liquidity can never be taken</td><td>Contract</td></tr>
+              <tr><td>LP</td><td>Locked forever with trading fees to the creator, or burned</td><td>Contract</td></tr>
+              <tr><td>Creator fees</td><td>80% of the pool's 0.3% on every trade (20% to Cloak); the locked liquidity can never be taken</td><td>Contract</td></tr>
               <tr><td>Claiming</td><td>Bidders claim tokens and refunds, and creators withdraw their raise, whenever they like. Nothing expires, and the bell in the app shows what's waiting</td><td>App</td></tr>
               <tr><td>Private swap slippage and deadline</td><td>1% and 10 minutes by default</td><td>App</td></tr>
               <tr><td>Batch round</td><td>60 s, priced at the average over at least a round, 4% of the pool per side, 2% price guard, 5% impact guard, refunds after 10 min</td><td>Contract</td></tr>
-              <tr><td>Fees</td><td>0.5% on what leaves a vault, 1.5% of a successful raise (cap 3%), deposits and sends free</td><td>Vault, behind a 3-day wait</td></tr>
+              <tr><td>Fees</td><td>0.5% on what leaves Gloam's vault (Gloam's), 0.25% on private sales out of Cloak's vaults (cap 1%), 1.5% of a successful raise (cap 3%), deposits and sends free</td><td>Owner, raising waits 3 days</td></tr>
               <tr><td>Beta caps</td><td>See Fees & caps. Withdrawals never capped</td><td>Config</td></tr>
               <tr><td>Relay fee</td><td>None, Cloak pays the gas</td><td>Keeper</td></tr>
             </tbody>
@@ -328,7 +326,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
           <ul>
             <li><b>Nobody can move your money.</b> No function in any Cloak contract does it, for us or anyone else.</li>
             <li><b>Rules in the code</b> (the auction, the pool opening, batch guards, fee ceilings, vaults that are never replaced) can't be changed by anyone. A new version can only be added next to the old one, and the old one keeps working.</li>
-            <li><b>Rules in <code>CloakConfig</code></b> (fees under their ceilings, caps, the verifier, which assets and factories are allowed): <b>today, on testnet, Cloak is still in setup</b>, so the owner (one wallet) can change them at once. Before mainnet, ownership moves to a multisig and setup ends for good. From then on, tightening a rule is instant, and loosening one is queued on-chain, waits a public <b>3 days</b>, and lapses if it isn't carried out within 14 days after that. Anyone who disagrees has 3 days to leave.</li>
+            <li><b>Rules in <code>CloakConfig</code></b> (fees under their ceilings, caps, the verifier, which assets and factories are allowed): <b>today, on testnet, Cloak is still in setup</b>, so the owner (one wallet) can change them at once. On mainnet, setup ends for good at deploy, and the owner is one wallet (a multisig once Cloak has more than one person). From then on, tightening a rule is instant, and loosening one is queued on-chain, waits a public <b>3 days</b>, and lapses if it isn't carried out within 14 days after that. Anyone who disagrees has 3 days to leave.</li>
             <li><b>Keeper and app settings</b> (the claim window, relay fee, default slippage) are how our hosted services behave. Anyone can run their own.</li>
           </ul>
 
