@@ -66,17 +66,11 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Recommendation.** Keep it. It's tested and it suits the brand. If A2 goes ahead, the split applies to this fee too.
 
-### A5. What happens to a bid that's never opened?
+### A5. What happens to a bid that's never opened? (decided Nov 10: floor 20%)
 
-**Plain words.** Bids are sealed. A bidder who never lets their bid be opened loses part of their deposit. That stops people placing bids to scare others off and then walking away. Today the lost part is burned, so nobody gets it.
+**Plain words.** Bids are encrypted and unlock by themselves when bidding closes, and the keeper reveals them, so honest bidders never pay anything. A cheater can instead post a fake encrypted bid that never unlocks and keep the real one to themselves: their deposit makes demand look bigger, and when bidding closes they choose whether to reveal (if the sale looks good) or walk away (if it doesn't). The penalty is what walking away costs: part of the deposit, burned.
 
-**Technical.** `noRevealPenaltyBps`: the creator picks 10% to 50%, with a floor of `MIN_NO_REVEAL_PENALTY_BPS = 1_000`. The penalty goes to 0x…dEaD (`_settleRest`).
-
-**Now.** Floor 10%, burned. **Fixed per factory.**
-
-**Recommendation.**
-- Raise the floor to 20% (stress item W-03). This is a one-line change.
-- Keep burning it. Sending it to the treasury would make Cloak earn when users make mistakes, which looks bad and isn't worth the money.
+**Technical. Done.** `MIN_NO_REVEAL_PENALTY_BPS = 2_000` in CloakAuction (stress item W-03); the creator picks 20% to 50%. The create form, the SDK default and the docs follow. Earlier factories keep their 10% floor. The penalty stays burned.
 
 ### A6. Can one wallet fill a whole launch?
 
@@ -96,14 +90,16 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 ## Part B. Our vaults
 
-### B1. What do our vaults charge on the way out? (decided Nov 10: 0.25%)
+### B1. What do our vaults charge on the way out? (WAITING on Gloam's fee answer)
 
-**Plain words.** Selling a launch token or KNTQ takes it out of our vault, and the vault keeps 0.25%. Buying already costs Gloam's 0.5% on the HYPE side.
+**Plain words.** Selling a launch token or KNTQ privately takes it out of our vault, and the vault keeps a cut. Buying isn't charged by us (the HYPE comes from Gloam's vault, which charges its own 0.5%). Each vault has one rate for every token in it, and the two vaults can have different rates. The cut is paid in the token being sold, not HYPE.
 
-**Technical. Done in the mainnet config.**
-- `withdrawFeeBps: 25` on both of our vaults.
-- The launch vault's fee is paid in launch tokens, so its `feeRecipient` is 0x…dEaD: anyone calling `collectFees(token)` burns it. Cloak never sells into its creators' pools.
-- The ecosystem vault's fee (KNTQ and other outside tokens) goes to the treasury (`ecosystemFeeRecipient`). Those are liquid tokens from other projects, so selling them hurts nobody of ours.
+**Options.**
+- 0.5% (today's code default), the same on launch tokens and outside tokens.
+- 0.25% (v1's rate), so a buy and a sell cost about 0.75% plus pool fees.
+- Either way: burn launch-token fees (never sell into our creators' pools), and send outside-token fees (KNTQ) to the treasury.
+
+**Status.** Waiting to hear Gloam's fee terms. The mainnet config currently holds 0.25% with launch-token fees burned as a draft. After deploy the owner can lower the rate at once; raising it waits 3 days.
 
 ### B2. Who pays the relay's gas?
 
@@ -181,7 +177,7 @@ Not revenue:
 - The unrevealed-bid penalty is burned (A5).
 - The router, batch rounds, bids and receive addresses take no fee. Keep it that way: every hidden fee is a reason not to trust the escrows.
 
-### D2. Where revenue goes (decided Nov 10: approved)
+### D2. Where revenue goes (WAITING on Gloam, with B1)
 
 Copy Gloam's split, automated in a contract:
 - `CloakBuyback` is the fee recipient. It has no owner and fixed splits:
@@ -196,27 +192,16 @@ Copy Gloam's split, automated in a contract:
 
 ## Part E. $CLOAK
 
-### E1. Where does $CLOAK launch? (open: not promised)
+### E1. Where does $CLOAK go? (decided Nov 10)
 
-**Decided so far.**
-- No promise to launch on Cloak. It launches wherever it gets the most demand.
-- It launches after the audit.
-- The goal is Gloam's main vault, as fast as possible.
-
-**Wherever it launches, it has a place in Cloak:**
-- **On Cloak:** the launch vault, automatically.
-- **On another launchpad:** that launchpad gets vetted and $CLOAK is listed in the ecosystem vault, or it's listed on its own like KNTQ.
-
-**Getting into Gloam's vault fastest. Two facts matter:**
-1. **A token launched elsewhere goes to Gloam's vault with no work from us.** The router sends any token that isn't a Cloak launch token or listed in our ecosystem vault to Gloam's vault. So once Gloam lists $CLOAK, private trading just works, through today's router.
-2. **Listing in our vaults is permanent.** A Cloak launch token always routes to the launch vault, and an ecosystem listing is never cleared. If $CLOAK goes into one of our vaults first, moving it to Gloam's later needs a new router version (easy, it holds no funds) and holders moving their balance across (one click in the app).
-
-**So, if Gloam's vault is the goal, the cleanest path is:**
-- launch elsewhere (or on Cloak, accepting the router change later);
-- do **not** list it in our ecosystem vault if Gloam can list it soon;
-- give it a plain HYPE Uniswap v4 pool with no hook. The router can only trade plain pools and Cloak's own hook pools. A launchpad whose pools use its own hook can't be routed.
-
-**Ask Gloam:** whether they'd list $CLOAK at launch, and what they need (their 3-day timelock, and caps).
+- **Supply:** 500,000 $CLOAK.
+- **Timing:** after the audit.
+- **Where it launches:** not promised. It launches wherever demand is best.
+- **Where it's listed, in order:**
+  1. **Gloam's vault, if Gloam agrees.** We wait their 3-day timelock. Our router already sends it there by itself, since it isn't in our vaults, so nothing to build.
+  2. **If Gloam says no:** our ecosystem vault, through the launchpad it launched on (vetted), or on its own like KNTQ.
+  3. **If it launches on Cloak:** the launch vault, straight away.
+- **Keep in mind:** listing in our vaults is permanent (the router always routes it there), so wait for Gloam's answer before listing it in the ecosystem vault. And its pool must be a plain HYPE Uniswap v4 pool (no hook), or our router can't trade it.
 
 ### E2. The 20% to Cloak with vesting (plain words)
 
@@ -226,7 +211,7 @@ For $CLOAK on Cloak, Cloak is the creator. So Cloak keeps up to 20% (team and tr
 
 If $CLOAK launches elsewhere, that launchpad's rules apply instead.
 
-**Supply.** You said 500k. Please confirm: 500,000 tokens, or 500,000,000?
+**Supply.** 500,000 $CLOAK.
 
 ### E3. What does $CLOAK do?
 
@@ -270,11 +255,8 @@ No hardware wallet: software wallets, with the seed phrases stored offline. Four
 
 ## Done and still open
 
-**Done (Nov 10):** C1 instant listing from vetted launchpads; A2 the 20% trading share in the hook; B1 0.25% with launch-token fees burned; D2 approved; F software wallets. Rehearsed again on the mainnet fork (part 22).
+**Done (Nov 10):** C1 instant listing from vetted launchpads (or a token vetted on its own); A2 the 20% trading share in the hook; A5 the 20% penalty floor; F software wallets; E1 the $CLOAK plan.
 
-**Still open:**
-1. A5: raise the unopened-bid penalty floor from 10% to 20%? One line, before the factory.
-2. E2: $CLOAK's supply (500,000 or 500,000,000).
-3. E1: where $CLOAK launches, and Gloam's answer on listing it.
-4. D2: `CloakBuyback`, built once we know where $CLOAK trades.
-5. D1.5: a Relay app fee on bridging, if wanted (off for now).
+**Waiting on Gloam's fee answer:** B1 (our vault fee) and D2 (revenue split and buyback).
+
+**Later:** `CloakBuyback` once $CLOAK trades; a Relay app fee on bridging, if wanted (off for now).

@@ -14,10 +14,10 @@
   "safe": "FILL IN: the owner wallet (a software wallet, its own seed): guard controller, ecosystem approver. The treasury is a separate wallet. Called safe for history; a multisig later via transferController",
   "pauser": "FILL IN: the owner wallet (launch pauser: can only stop new admissions)",
   "feeRecipient": "0x000000000000000000000000000000000000dEaD",
-  "_feeRecipient": "The launch vault's fee is paid in launch tokens; it's burned (decided Nov 10), so Cloak never sells into its creators' pools. Anyone can call collectFees(token) to burn what's collected. The relay's gas is topped up from the treasury in HYPE.",
+  "_feeRecipient": "The launch vault's fee is paid in launch tokens; it's burned (draft, B1), so Cloak never sells into its creators' pools. Anyone can call collectFees(token) to burn what's collected. The relay's gas is topped up from the treasury in HYPE.",
   "ecosystemFeeRecipient": "FILL IN: the treasury wallet (KNTQ and other outside tokens' fees)",
   "withdrawFeeBps": 25,
-  "_withdrawFeeBps": "Our launch and ecosystem vaults' withdrawal fee (a swap out of them is a withdrawal), at most 100 (1%). 25 = 0.25% (decided Nov 10, as v1).",
+  "_withdrawFeeBps": "Our launch and ecosystem vaults' withdrawal fee (a swap out of them is a withdrawal), at most 100 (1%). 25 = 0.25% (v1's rate). DRAFT, waiting on Gloam's fee answer (docs/MAINNET-DECISIONS.md, B1).",
   "launchCaps": {
     "perDeposit": "1000000000000000000000000000",
     "total": "100000000000000000000000000000"

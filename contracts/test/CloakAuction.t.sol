@@ -41,7 +41,7 @@ contract CloakAuctionTest is Test {
         for (uint256 i; i < 3; ++i) {
             vm.deal([alice, bob, carol][i], 10_000 ether);
         }
-        _launch(5_000, 0, 1_000);
+        _launch(5_000, 0, 2_000);
     }
 
     function _launch(uint16 lpBps, uint64 lpLockUntil, uint16 penaltyBps) internal {
@@ -155,7 +155,7 @@ contract CloakAuctionTest is Test {
     }
 
     function test_lpLockedThenReleased() public {
-        _launch(5_000, uint64(block.timestamp + 30 days), 1_000);
+        _launch(5_000, uint64(block.timestamp + 30 days), 2_000);
         (uint256 a, bytes32 s) = _commit(alice, 10, 1_000_000e18, 10_000 ether);
         _toReveal();
         auction.reveal(a, 10, 1_000_000e18, s);
@@ -232,8 +232,8 @@ contract CloakAuctionTest is Test {
         auction.settle();
         uint256 bobBefore = bob.balance;
         auction.claim(b);
-        assertEq(bob.balance - bobBefore, 180 ether);
-        assertEq(DEAD.balance, 20 ether);
+        assertEq(bob.balance - bobBefore, 160 ether); // 20% of 200 burned
+        assertEq(DEAD.balance, 40 ether);
     }
 
     function test_noDemand_fails_tokensReturned() public {
@@ -324,7 +324,7 @@ contract CloakAuctionTest is Test {
             commitEnd: uint64(block.timestamp + 1 hours),
             revealEnd: uint64(block.timestamp + 1 hours + 5 minutes - 1),
             lpBps: 5_000,
-            noRevealPenaltyBps: 1_000,
+            noRevealPenaltyBps: 2_000,
             lpLockUntil: 0,
             tlockRound: 0
         });
@@ -345,7 +345,7 @@ contract CloakAuctionTest is Test {
             commitEnd: uint64(block.timestamp + 1 hours),
             revealEnd: uint64(block.timestamp + 1 hours + 7 days + 1),
             lpBps: 5_000,
-            noRevealPenaltyBps: 1_000,
+            noRevealPenaltyBps: 2_000,
             lpLockUntil: 0,
             tlockRound: 0
         });

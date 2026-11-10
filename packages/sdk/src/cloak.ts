@@ -235,7 +235,7 @@ export class Cloak {
       commitEnd: BigInt(p.commitEnd),
       revealEnd: BigInt(p.revealEnd),
       lpBps: p.lpBps ?? 5000,
-      noRevealPenaltyBps: p.noRevealPenaltyBps ?? 1000,
+      noRevealPenaltyBps: p.noRevealPenaltyBps ?? 2000,
       lpLockUntil: lock,
       tlockRound: BigInt(drandRoundAt(p.commitEnd)),
     };

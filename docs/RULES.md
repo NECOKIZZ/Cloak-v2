@@ -37,7 +37,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | Opening bids | Anyone with the bid's preimage can reveal it, only during the reveal window. A reveal can't change a bid | Contract (fixed) |
 | Timelock round | Must open after bidding closes and at least **30 s** before the reveal window ends | Contract (fixed) |
 | A valid bid | Its deposit must cover price × quantity at its tick. One that doesn't fails to reveal and counts as unrevealed | Contract (fixed) |
-| Unrevealed bids | Lose the creator's penalty, at least **10%** and at most **50%** of the deposit, **burned**. No penalty if the launch fails | Contract (fixed) |
+| Unrevealed bids | Lose the creator's penalty, at least **20%** (10% on factories before the mainnet one) and at most **50%** of the deposit, **burned**. No penalty if the launch fails | Contract (fixed) |
 | Clearing price | Walk from the highest tick down until demand covers the sale. Every winner pays that one price; the clearing tick fills pro rata; lower bids get everything back. If demand never covers the sale, everyone fills at the lowest revealed tick, so one bid at the minimum price sets the price for everyone (standard for uniform-price sales). Creators: set a minimum you are happy to sell at | Contract (fixed) |
 | A failed launch | Only when no bid was revealed. Every deposit is refunded in full and every token goes back to the creator | Contract (fixed) |
 | Launch fee | **1.5%** of a successful raise, fixed when the launch is created. Nothing if it fails | Config (ceiling 3%) |

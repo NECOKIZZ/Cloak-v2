@@ -304,7 +304,7 @@ await priv.batch(token, "buy", parseEther("0.37"));`}</pre>
             <thead><tr><th>Rule</th><th>Value</th><th>Set by</th></tr></thead>
             <tbody>
               <tr><td>Price levels per launch</td><td>Up to 256</td><td>Contract</td></tr>
-              <tr><td>Penalty for a bid that's never revealed</td><td>10% to 50% of the deposit (the creator picks), burned</td><td>Contract</td></tr>
+              <tr><td>Penalty for a bid that's never revealed</td><td>20% to 50% of the deposit (the creator picks, 10% on earlier launches), burned</td><td>Contract</td></tr>
               <tr><td>When a launch fails</td><td>Only if no bid was revealed: full refunds, tokens back to the creator</td><td>Contract</td></tr>
               <tr><td>Creator's own share</td><td>At most 20% of supply, vesting over at least 30 days</td><td>Contract</td></tr>
               <tr><td>Launch token</td><td>Fixed supply, no owner, no mint, no tax, no blacklist</td><td>Contract</td></tr>

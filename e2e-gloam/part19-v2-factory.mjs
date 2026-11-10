@@ -44,7 +44,7 @@ try {
   // 2. the fixed auction: a reveal window under five minutes is refused on chain, not only by the SDK
   const now0 = Number((await pub.getBlock()).timestamp);
   const unit = 10n ** 11n; // a 1,000,000-token sale raises about 1 HYPE at 10 units
-  const base = { creator: addr, saleSupply: 1_000_000n * 10n ** 18n, lpReserve: 1_000_000n * 10n ** 18n, minPrice: unit, tickSize: unit, numTicks: 50n, lpBps: 8000, noRevealPenaltyBps: 1000, lpLockUntil: 0n };
+  const base = { creator: addr, saleSupply: 1_000_000n * 10n ** 18n, lpReserve: 1_000_000n * 10n ** 18n, minPrice: unit, tickSize: unit, numTicks: 50n, lpBps: 8000, noRevealPenaltyBps: 2000, lpLockUntil: 0n };
   const short = { ...base, commitEnd: BigInt(now0 + 90), revealEnd: BigInt(now0 + 150), tlockRound: 0n };
   const shortCall = pub.simulateContract({ account: dep.account, address: f.factory, abi: cloakFactoryAbi, functionName: "createLaunch", args: ["Short", "SHRT", 0n, 0n, short, ""] });
   assert(await shortCall.then(() => false, () => true), "the new factory's auctions refuse a 60-second reveal window on chain (the fixed auction)");

@@ -24,7 +24,7 @@ interface Form {
   lpPct: string; // share of the net raise that seeds the pool
   lp: LpMode;
   lockDays: string;
-  penaltyPct: string; // burned from bids never revealed (10 to 50)
+  penaltyPct: string; // burned from bids never revealed (20 to 50)
   creatorPct: string; // creator's share of the total supply (0 to 20)
   vestDays: string;
 }
@@ -34,7 +34,7 @@ const PRESETS: { id: string; name: string; blurb: string; f: Partial<Form> }[] =
   { id: "standard", name: "Standard", blurb: "6 hours of bidding, so people in every time zone can take part.", f: { sale: "10000000", start: "0.0000001", ceiling: "0.00001", levels: "100", commitMin: "360", revealMin: "10" } },
   { id: "extended", name: "Extended", blurb: "24 hours of bidding for a larger sale with a wide price range.", f: { sale: "100000000", start: "0.00000001", ceiling: "0.000002", levels: "200", commitMin: "1440", revealMin: "15" } },
 ];
-const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "10", creatorPct: "0", vestDays: "90" };
+const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "20", creatorPct: "0", vestDays: "90" };
 const LAUNCH_FEE_BPS = 150n;
 
 function Field({ label, unit, help, value, onChange, mode, disabled }: { label: string; unit?: string; help: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; mode: "decimal" | "numeric"; disabled?: boolean }) {
@@ -122,7 +122,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
       if (Number(f.revealMin) > 7 * 24 * 60) return "The reveal window can be at most 7 days, since bidders' money waits through it.";
       if (!num(f.lpPct) || Number(f.lpPct) > 100) return "The pool's share of the raise must be between 0 and 100%.";
       if (f.lp === "date" && (!/^\d+$/.test(f.lockDays.trim()) || Number(f.lockDays) < 1)) return "Lock the pool for at least 1 day.";
-      if (!num(f.penaltyPct) || Number(f.penaltyPct) < 10 || Number(f.penaltyPct) > 50) return "The penalty for unrevealed bids must be between 10% and 50%.";
+      if (!num(f.penaltyPct) || Number(f.penaltyPct) < 20 || Number(f.penaltyPct) > 50) return "The penalty for unrevealed bids must be between 20% and 50%.";
       if (!num(f.creatorPct) || Number(f.creatorPct) > 20) return "Your own share can be at most 20% of the supply.";
       if (Number(f.creatorPct) > 0 && (!/^\d+$/.test(f.vestDays.trim()) || Number(f.vestDays) < 30)) return "Your share has to vest over at least 30 days.";
       return "";
@@ -234,7 +234,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
                 <Field label="Bidding" unit="minutes" help="How long people can place sealed bids. Longer gives more people a chance to join." value={f.commitMin} onChange={set("commitMin")} mode="numeric" />
                 <Field label="Reveal window" unit="minutes" help="The pause after bidding while sealed bids open themselves. A few minutes is plenty." value={f.revealMin} onChange={set("revealMin")} mode="numeric" />
                 <Field label="Pool's share of the raise" unit="%" help="How much of the HYPE raised goes into the trading pool. More means a deeper pool and steadier price, less means more for you." value={f.lpPct} onChange={set("lpPct")} mode="decimal" />
-                <Field label="Penalty for unrevealed bids" unit="10 to 50%" help="Taken from a bid that never opens, so nobody can place fake bids to make demand look bigger." value={f.penaltyPct} onChange={set("penaltyPct")} mode="decimal" />
+                <Field label="Penalty for unrevealed bids" unit="20 to 50%" help="Taken from a bid that never opens, so nobody can place fake bids to make demand look bigger." value={f.penaltyPct} onChange={set("penaltyPct")} mode="decimal" />
                 <Field label="Your own share" unit="0 to 20% of supply" help="Tokens kept for you on top of the sale. Bidders see this before they bid." value={f.creatorPct} onChange={set("creatorPct")} mode="decimal" />
                 <Field label="Your share unlocks over" unit="days, at least 30" help="Your tokens unlock a little each day, so you can't dump them all at once." value={f.vestDays} onChange={set("vestDays")} mode="numeric" disabled={!Number(f.creatorPct)} />
               </div>

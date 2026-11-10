@@ -54,7 +54,7 @@ interface IERC20Approve is IERC20Min {
 contract CloakAuction {
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
     uint256 public constant MAX_TICKS = 256;
-    uint16 public constant MIN_NO_REVEAL_PENALTY_BPS = 1_000; // withholding a sealed bid always costs 10%
+    uint16 public constant MIN_NO_REVEAL_PENALTY_BPS = 2_000; // withholding a sealed bid always costs 20% (W-03)
     // drand quicknet (the network sealed bids are encrypted to)
     uint256 public constant DRAND_GENESIS = 1692803367;
     uint256 public constant DRAND_PERIOD = 3;

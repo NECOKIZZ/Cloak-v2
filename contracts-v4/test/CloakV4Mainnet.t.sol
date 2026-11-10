@@ -115,7 +115,7 @@ contract CloakV4MainnetTest is Test {
             commitEnd: uint64(block.timestamp + 1 hours),
             revealEnd: uint64(block.timestamp + 2 hours),
             lpBps: 5_000,
-            noRevealPenaltyBps: 1_000,
+            noRevealPenaltyBps: 2_000,
             lpLockUntil: type(uint64).max,
             tlockRound: 0
         });
