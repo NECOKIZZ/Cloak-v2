@@ -357,7 +357,7 @@ What a user pays, and what Cloak earns:
 
 ## Part I. Ideas for later (moved)
 
-GLOAK, the fully private token experiment, is in `docs/CLOAK.md`. The roadmap items ($CLOAK buyback, xStocks, and privately Spicenet) are in `apps/web/public/roadmap.html` and `docs/ROADMAP-PRIVATE.md`.
+GLOAK, the fully private token experiment, is in `docs/CLOAK.md`. The roadmap items ($CLOAK buyback, xStocks, Spicenet, GLOAK) are in the public roadmap, `apps/web/public/roadmap.html`.
 
 ## Closing (Nov 10)
 
@@ -371,4 +371,4 @@ What's left are a few facts and setup steps, not decisions:
 5. **Waiting on others, not blocking launch:**
    - Gloam: the fee share in writing, the escrow review for their relay, the audit quote, and the change-note seed in their SDK.
    - Kinetiq: the explorer's verification API.
-   - Spicenet: answers (`docs/ROADMAP-PRIVATE.md`).
+   - Spicenet: answers to our questions (on the public roadmap meanwhile).
