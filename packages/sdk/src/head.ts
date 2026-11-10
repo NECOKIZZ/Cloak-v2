@@ -44,16 +44,40 @@ export async function logsToHead<T>(
   o: { step: bigint; quiet?: boolean; firstOnly?: boolean },
 ): Promise<T[]> {
   try {
-    return (await readToHead(client, (to) => get(from, to))).value;
+    return (await readToHead(client, (to) => logsSplitting(get, from, to))).value;
   } catch {
     const head = await client.getBlockNumber({ cacheTime: 0 });
     const last = head > HEAD_LAG ? head - HEAD_LAG : head;
     const out: T[] = [];
     for (let a = from; a <= last; a += o.step) {
       const b = a + o.step - 1n < last ? a + o.step - 1n : last;
-      out.push(...(o.quiet ? await get(a, b).catch(() => [] as T[]) : await get(a, b)));
+      out.push(...(o.quiet ? await logsSplitting(get, a, b).catch(() => [] as T[]) : await logsSplitting(get, a, b)));
       if (o.firstOnly && out.length) break;
     }
     return out;
+  }
+}
+
+const TOO_MANY = /count limit exceeded|logs? limit exceeded|too many (logs|results)|more than \d+ (logs|results)|query returned more than|response size/i;
+
+/** The RPC refused because the answer would hold too many logs (Elysium mainnet's public RPC: 10,000 per call). */
+export function isTooManyLogs(e: unknown): boolean {
+  const x = e as { shortMessage?: string; message?: string; details?: string } | undefined;
+  return TOO_MANY.test(`${x?.shortMessage ?? ""} ${x?.details ?? ""} ${x?.message ?? ""}`);
+}
+
+/**
+ * Logs from `from` to `to`, splitting the range in half (and again) whenever the RPC says the answer has too many logs.
+ * Measured Nov 10: Elysium mainnet's public RPC caps an eth_getLogs answer at 10,000 logs, whatever the range, and
+ * Uniswap's PoolManager alone passes that in under 10,000 blocks. Results stay in block order.
+ */
+export async function logsSplitting<T>(get: (from: bigint, to: bigint) => Promise<T[]>, from: bigint, to: bigint): Promise<T[]> {
+  if (from > to) return [];
+  try {
+    return await get(from, to);
+  } catch (e) {
+    if (!isTooManyLogs(e) || from === to) throw e;
+    const mid = from + (to - from) / 2n;
+    return [...(await logsSplitting(get, from, mid)), ...(await logsSplitting(get, mid + 1n, to))];
   }
 }

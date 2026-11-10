@@ -63,6 +63,9 @@ contract CloakAuction {
     /// @dev The shortest reveal window: a bid that isn't revealed loses its penalty, so an honest bidder must always have
     ///      time to be revealed, by the keeper or by themselves (review, Haider Ali, Nov 8).
     uint256 public constant MIN_REVEAL_WINDOW = 5 minutes;
+    /// @dev The longest reveal window: bidders' money waits through it, so a launch can't hold it for years (stress
+    ///      test W-08, Nov 9: the form used to allow 190 years).
+    uint256 public constant MAX_REVEAL_WINDOW = 7 days;
 
     struct Params {
         address creator; // receives the raise (minus LP) and, after the lock, the LP shares
@@ -177,7 +180,7 @@ contract CloakAuction {
         require(p.saleSupply > 0 && p.minPrice > 0, "supply/price");
         require(p.numTicks > 0 && p.numTicks <= MAX_TICKS, "ticks");
         require(p.numTicks == 1 || p.tickSize > 0, "tickSize");
-        require(p.commitEnd > block.timestamp && p.revealEnd >= p.commitEnd + MIN_REVEAL_WINDOW, "times");
+        require(p.commitEnd > block.timestamp && p.revealEnd >= p.commitEnd + MIN_REVEAL_WINDOW && p.revealEnd <= p.commitEnd + MAX_REVEAL_WINDOW, "times");
         require(p.lpBps <= 10_000 && p.noRevealPenaltyBps <= 5_000, "bps");
         require(p.noRevealPenaltyBps >= MIN_NO_REVEAL_PENALTY_BPS, "penalty");
         require(p.lpLockUntil == 0 || p.lpLockUntil >= p.revealEnd, "lock");

@@ -63,8 +63,8 @@ export function clients(rpcUrl, pk, id) {
 }
 
 /** Starts anvil as Elysium testnet (chain id 99801). Returns { rpcUrl, stop }. */
-export async function startAnvil({ port = 8547, blockTime, forkUrl } = {}) {
-  const args = ["--chain-id", String(ELYSIUM_TESTNET_ID), "--port", String(port), "--balance", "1000000", "--silent"];
+export async function startAnvil({ port = 8547, blockTime, forkUrl, chainId = ELYSIUM_TESTNET_ID } = {}) {
+  const args = ["--chain-id", String(chainId), "--port", String(port), "--balance", "1000000", "--silent"];
   if (blockTime) args.push("--block-time", String(blockTime));
   if (forkUrl) args.push("--fork-url", forkUrl);
   const proc = spawn("anvil", args, { env: toolEnv(), stdio: "ignore" });
@@ -84,9 +84,11 @@ export async function startAnvil({ port = 8547, blockTime, forkUrl } = {}) {
 export async function forkFund(rpcUrl, token, holder, to, amount) {
   const call = (method, params) => fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }).then((r) => r.json());
   await call("anvil_impersonateAccount", [holder]);
-  await call("anvil_setBalance", [holder, "0x3635c9adc5dea00000"]);
+  // gas money only if it has none (a contract holder like a PoolManager keeps its own HYPE as it is)
+  const bal = BigInt((await call("eth_getBalance", [holder, "latest"])).result ?? "0x0");
+  if (bal < 10n ** 18n) await call("anvil_setBalance", [holder, "0x3635c9adc5dea00000"]);
   const data = "0xa9059cbb" + to.slice(2).toLowerCase().padStart(64, "0") + amount.toString(16).padStart(64, "0");
-  const sent = await call("eth_sendTransaction", [{ from: holder, to: token, data, gas: "0x30d40" }]);
+  const sent = await call("eth_sendTransaction", [{ from: holder, to: token, data }]); // gas estimated: on Arbitrum-based chains it includes the L1 data cost
   if (sent.error) throw new Error("fork fund: " + sent.error.message);
   const rc = await call("eth_getTransactionReceipt", [sent.result]);
   if (rc.result?.status !== "0x1") throw new Error("fork fund: transfer reverted (holder short of tokens?)");
@@ -170,7 +172,7 @@ export function ourArtifact(file, name) {
  * Gloam's guarded vault (DeployCloakGloam -> MainnetDeploy._deployMainnetGuarded), then the payment-memo board.
  * `assets` is [{ address, perDeposit, total }], address 0 for native HYPE.
  */
-export async function deployGloamStack({ rpcUrl, pk, poseidon, assets, feeBps = 50, feeRecipient, controller }) {
+export async function deployGloamStack({ rpcUrl, pk, poseidon, assets, feeBps = 50, feeRecipient, controller, standinOnMainnetFork = false }) {
   const env = {
     DEPLOYER_PK: pk,
     POSEIDON2: poseidon,
@@ -181,6 +183,7 @@ export async function deployGloamStack({ rpcUrl, pk, poseidon, assets, feeBps = 
     FEE_RECIPIENT: feeRecipient,
     GUARD_CONTROLLER: controller,
     GUARD_CONTROLLER_EOA: "1",
+    ...(standinOnMainnetFork ? { STANDIN_ON_MAINNET_FORK: "1" } : {}),
   };
   const t = performance.now();
   const out = forgeGloam(join(OUR_CONTRACTS, "gloam-root/DeployCloakGloam.s.sol"), "DeployCloakGloam", rpcUrl, env);

@@ -17,7 +17,7 @@
  * Every transaction goes through the injected submitter: a relayer by default, so the user's address never appears
  * next to a private action.
  */
-import { readToHead } from "../head.js";
+import { logsSplitting, readToHead } from "../head.js";
 import { p256 } from "@noble/curves/p256";
 import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha256";
@@ -363,7 +363,9 @@ export class GloamCore implements PrivateCore {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await this.tree.update(pub as any);
     onStatus("Reading sealed notes");
-    const { to: head, value: logs } = await readToHead(pub, (to) => this.memoLogs(this.memoFrom, to));
+    // up to the block the tree just read (one head lookup per sync), a few back if a lagging node refuses the range
+    const treeHead = this.tree.scannedTo - 1n;
+    const { to: head, value: logs } = await readToHead({ getBlockNumber: async () => treeHead }, (to) => this.memoLogs(this.memoFrom, to));
     for (const log of logs) {
       const key = `${log.transactionHash}:${log.logIndex}`;
       if (this.seenMemo.has(key)) continue;
@@ -452,7 +454,8 @@ export class GloamCore implements PrivateCore {
     const out = [];
     for (let a = from; a <= to; a += step) {
       const b = a + step - 1n < to ? a + step - 1n : to;
-      out.push(...(await this.cfg.publicClient.getContractEvents({ address: this.cfg.payMemo, abi: GLOAM_MEMO_ABI, eventName: "PaymentMemo", fromBlock: a, toBlock: b })));
+      // split in halves when the RPC caps the answer (head.ts)
+      out.push(...(await logsSplitting((x, y) => this.cfg.publicClient.getContractEvents({ address: this.cfg.payMemo, abi: GLOAM_MEMO_ABI, eventName: "PaymentMemo", fromBlock: x, toBlock: y }), a, b)));
     }
     return out;
   }

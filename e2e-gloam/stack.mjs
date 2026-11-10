@@ -47,7 +47,7 @@ export async function checkLaunchVault(pub, lv, want) {
     ["Gloam's final-key shield verifier", same(await r(lv, "shieldVerifier"), want.shieldVerifier)],
     ["no sealed swap", same(await r(lv, "sealedSwapVerifier"), zeroAddress)],
     ["deposit limits on", (await r(lv, "depositLimitsOn")) === true],
-    ["0.5% fee", Number(await r(lv, "withdrawFeeBps")) === 50],
+    [`${(want.feeBps ?? 50) / 100}% fee`, Number(await r(lv, "withdrawFeeBps")) === (want.feeBps ?? 50)],
     ["fee to Cloak", same(await r(lv, "feeRecipient"), want.feeRecipient)],
     ["Cloak's factory", same(await r(lv, "factory"), want.factory)],
     ["the launch pauser", same(await r(lv, "launchPauser"), want.pauser)],

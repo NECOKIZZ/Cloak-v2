@@ -262,8 +262,10 @@ async function tick() {
 
 // ───────────── sealed NFT drops: open the bids, settle, number ties, deliver and pay out, as for launches ─────────────
 const knownDeployment = KNOWN;
-const DROP_FACTORY = process.env.DROP_FACTORY || knownDeployment?.dropFactory;
-const ESCROW_DROP_FACTORY = process.env.ESCROW_DROP_FACTORY || knownDeployment?.escrowDropFactory;
+// DROPS=0: this keeper leaves NFT drops alone (the drop factories are shared with Cloak v1, whose keeper may run them)
+const DROPS_ON = process.env.DROPS !== "0";
+const DROP_FACTORY = DROPS_ON ? process.env.DROP_FACTORY || knownDeployment?.dropFactory : undefined;
+const ESCROW_DROP_FACTORY = DROPS_ON ? process.env.ESCROW_DROP_FACTORY || knownDeployment?.escrowDropFactory : undefined;
 const drops = DROP_FACTORY ? new CloakDrops(publicClient, walletClient, DROP_FACTORY, BigInt(process.env.DROP_FACTORY_BLOCK ?? knownDeployment?.dropFactoryBlock ?? 0), ESCROW_DROP_FACTORY) : null;
 const dropsDone = new Set();
 const dropWait = new Map();

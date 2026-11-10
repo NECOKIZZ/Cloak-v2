@@ -115,6 +115,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
       if (levels > 1 && (!pos(f.ceiling) || ceiling <= start)) return "The top price must be above the starting price.";
       if (!pos(f.commitMin) || Number(f.commitMin) < 1) return "Bidding must last at least 1 minute.";
       if (!pos(f.revealMin) || Number(f.revealMin) < 5) return "The reveal window must be at least 5 minutes, so every sealed bid can open in time.";
+      if (Number(f.revealMin) > 7 * 24 * 60) return "The reveal window can be at most 7 days, since bidders' money waits through it.";
       if (!num(f.lpPct) || Number(f.lpPct) > 100) return "The pool's share of the raise must be between 0 and 100%.";
       if (f.lp === "date" && (!/^\d+$/.test(f.lockDays.trim()) || Number(f.lockDays) < 1)) return "Lock the pool for at least 1 day.";
       if (!num(f.penaltyPct) || Number(f.penaltyPct) < 10 || Number(f.penaltyPct) > 50) return "The penalty for unrevealed bids must be between 10% and 50%.";

@@ -40,3 +40,21 @@ test("logsToHead: one call; pieces only when the RPC caps ranges, ending 3 back"
   assert.deepEqual(seen.slice(0, 1), [[0n, 100n]]);
   assert.deepEqual(out, [49n, 97n]);
 });
+
+test("logsSplitting: an answer over the RPC's log cap is split in halves, in block order", async () => {
+  const { logsSplitting, isTooManyLogs } = await import("../dist/index.js");
+  const calls = [];
+  // a fake RPC that holds one log per block and answers at most 25 logs a call
+  const get = async (a, b) => {
+    calls.push([a, b]);
+    if (b - a + 1n > 25n) throw Object.assign(new Error("RPC error"), { details: "logs count limit exceeded (10000) consider refine/narrow down your query" });
+    const out = [];
+    for (let x = a; x <= b; x++) out.push(x);
+    return out;
+  };
+  const out = await logsSplitting(get, 0n, 99n);
+  assert.equal(out.length, 100);
+  assert.deepEqual(out, [...out].sort((x, y) => (x < y ? -1 : 1)));
+  assert.equal(isTooManyLogs(new Error("execution reverted")), false);
+  await assert.rejects(logsSplitting(async () => { throw new Error("execution reverted"); }, 0n, 10n), /reverted/);
+});

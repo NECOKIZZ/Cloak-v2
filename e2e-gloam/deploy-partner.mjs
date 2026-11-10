@@ -32,6 +32,8 @@ import { ANVIL_KEYS, ELYSIUM_TESTNET_RPC, REPO, clients, gloamArtifact, ourArtif
 
 const REHEARSE = process.argv.includes("--rehearse");
 const cfgPath = process.argv[process.argv.indexOf("--config") + 1];
+// where the deployment record goes (default deployments/<name>.json): a rehearsal on a fork writes it elsewhere
+const OUT = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : null;
 const VAULT = parseAbi(["function verifier() view returns (address)", "function shieldVerifier() view returns (address)", "function poseidon2() view returns (address)", "function setupMode() view returns (bool)"]);
 const GUARD = parseAbi(["function transferController(address)", "function controller() view returns (address)", "function pendingController() view returns (address)"]);
 
@@ -70,7 +72,12 @@ function rehearsalConfig() {
 }
 
 const cfg = REHEARSE ? rehearsalConfig() : JSON.parse(readFileSync(cfgPath, "utf8"));
-for (const k of ["gloamVault", "memoBoard", "poseidon", "verifier", "shieldVerifier", "factory", "poolManager", "v4Hook", "whype", "safe", "pauser", "feeRecipient"]) {
+// our vaults' withdrawal fee in bps (a swap out of them is a withdrawal): "withdrawFeeBps" in the config, 50 (0.5%) if unset
+const FEE_BPS = Number(cfg.withdrawFeeBps ?? 50);
+if (!Number.isInteger(FEE_BPS) || FEE_BPS < 0 || FEE_BPS > 100) throw new Error("config: withdrawFeeBps must be 0 to 100 (at most 1%)");
+// "whype": "deploy" deploys Cloak's own fixed WHYPE (CloakWHYPE): Elysium's 0xbA87…5E81 is an upgradeable proxy
+const DEPLOY_WHYPE = cfg.whype === "deploy";
+for (const k of ["gloamVault", "memoBoard", "poseidon", "verifier", "shieldVerifier", "factory", "poolManager", "v4Hook", ...(DEPLOY_WHYPE ? [] : ["whype"]), "safe", "pauser", "feeRecipient"]) {
   if (!/^0x[0-9a-fA-F]{40}$/.test(cfg[k] ?? "")) throw new Error(`config: ${k} must be an address`);
 }
 let anvil;
@@ -100,7 +107,7 @@ async function plainPool(pub, poolManager, key) {
 try {
   // checks before anything is sent
   if ((await pub.getChainId()) !== cfg.chainId) throw new Error(`the RPC is chain ${await pub.getChainId()}, the config says ${cfg.chainId}`);
-  for (const k of ["gloamVault", "memoBoard", "poseidon", "verifier", "shieldVerifier", "factory", "poolManager", "v4Hook", "whype"]) {
+  for (const k of ["gloamVault", "memoBoard", "poseidon", "verifier", "shieldVerifier", "factory", "poolManager", "v4Hook", ...(DEPLOY_WHYPE ? [] : ["whype"])]) {
     if (((await pub.getCode({ address: cfg[k] })) ?? "0x") === "0x") throw new Error(`config: ${k} (${cfg[k]}) has no code on this chain`);
   }
   const [gv, gsv, gp, gSetup] = await Promise.all(["verifier", "shieldVerifier", "poseidon2", "setupMode"].map((f) => pub.readContract({ address: cfg.gloamVault, abi: VAULT, functionName: f })));
@@ -126,7 +133,7 @@ try {
   const caps = [BigInt(cfg.launchCaps.perDeposit), BigInt(cfg.launchCaps.total)];
   const lv = await deploy("CloakLaunchVault", ourArtifact("CloakLaunchVault.sol", "CloakLaunchVault"), [cfg.poseidon, cfg.verifier, cfg.factory, ...caps, cfg.pauser]);
   await write(lv, LV_ABI, "setShieldVerifier", [cfg.shieldVerifier]);
-  await write(lv, LV_ABI, "setWithdrawFee", [50, cfg.feeRecipient]);
+  await write(lv, LV_ABI, "setWithdrawFee", [FEE_BPS, cfg.feeRecipient]);
   await write(lv, LV_ABI, "turnOnDepositLimits");
   // HYPE lives in Gloam's vault: the launch vault takes it only if the config gives it caps ("hype")
   if (cfg.hype) await write(lv, LV_ABI, "setDepositLimit", [zeroAddress, BigInt(cfg.hype.perDeposit), BigInt(cfg.hype.total)]);
@@ -135,7 +142,7 @@ try {
   const guard = await deploy("VaultOwnerGuard (launch vault)", guardArt, [lv, addr]);
   await write(lv, LV_ABI, "transferOwnership", [guard]);
   await write(guard, guardArt.abi, "acceptVaultOwnership");
-  const checks = await checkLaunchVault(pub, lv, { guard, dual: cfg.verifier, shieldVerifier: cfg.shieldVerifier, factory: cfg.factory, feeRecipient: cfg.feeRecipient, pauser: cfg.pauser, caps });
+  const checks = await checkLaunchVault(pub, lv, { guard, dual: cfg.verifier, shieldVerifier: cfg.shieldVerifier, factory: cfg.factory, feeRecipient: cfg.feeRecipient, pauser: cfg.pauser, caps, feeBps: FEE_BPS });
   console.log(`  launch vault read back: ${checks} checks passed`);
 
   // the ecosystem vault: outside tokens (KNTQ first), admitted only by the Safe's proposal under the preset rules
@@ -145,7 +152,7 @@ try {
     const rules = { minHypeLiquidity: BigInt(eco.minHypeLiquidity), minMcapHype: BigInt(eco.minMcapHype), admitDelay: BigInt(eco.admitDelaySecs), maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps };
     ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [cfg.poseidon, cfg.verifier, cfg.poolManager, lv, cfg.safe, cfg.pauser, rules]);
     await write(ev, LV_ABI, "setShieldVerifier", [cfg.shieldVerifier]);
-    await write(ev, LV_ABI, "setWithdrawFee", [50, cfg.feeRecipient]);
+    await write(ev, LV_ABI, "setWithdrawFee", [FEE_BPS, cfg.feeRecipient]);
     await write(ev, LV_ABI, "turnOnDepositLimits");
     await write(ev, LV_ABI, "endSetup");
     evGuard = await deploy("VaultOwnerGuard (ecosystem vault)", guardArt, [ev, addr]);
@@ -185,6 +192,7 @@ try {
   }
 
   const b = cfg.batch;
+  if (DEPLOY_WHYPE) cfg.whype = await deploy("CloakWHYPE", ourArtifact("CloakWHYPE.sol", "CloakWHYPE"));
   const launchSwapV4 = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, cfg.poolManager, cfg.whype, cfg.v4Hook]);
   // buys and sells between HYPE in Gloam's vault and launch tokens in the launch vault (one private call either way)
   const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, cfg.gloamVault, ev ?? zeroAddress, cfg.poolManager, cfg.whype, cfg.v4Hook]);
@@ -253,7 +261,7 @@ try {
     costHype: formatEther(start - end),
   };
   console.log(JSON.stringify(rec, null, 1));
-  if (!REHEARSE) writeFileSync(join(REPO, `deployments/${cfg.name}.json`), JSON.stringify(rec, null, 2) + "\n");
+  if (!REHEARSE || OUT) writeFileSync(OUT ?? join(REPO, `deployments/${cfg.name}.json`), JSON.stringify(rec, null, 2) + "\n");
   console.log(`\ndeployed for ${formatEther(start - end)} HYPE${REHEARSE ? " (rehearsal on a fork, nothing written)" : ""}`);
 } finally {
   anvil?.stop();

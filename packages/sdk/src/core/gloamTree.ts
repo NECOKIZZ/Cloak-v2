@@ -12,7 +12,7 @@
  * The state can be exported (commitments only, all public) and imported, so a reload reads only new blocks, and
  * seeded from the keeper's public list (`GET /leaves`), checked against a root the vault knows.
  */
-import { readToHead } from "../head.js";
+import { logsSplitting, readToHead } from "../head.js";
 import * as gloam from "@gloamtrade/sdk";
 import type { Address, Hex, PublicClient } from "viem";
 
@@ -124,10 +124,11 @@ export class GloamTree implements GloamTreeView {
     const ins: Insert[] = [];
     for (let a = this.next; a <= latest; a += this.chunk) {
       const b = a + this.chunk - 1n < latest ? a + this.chunk - 1n : latest;
+      // each split in halves when the RPC caps the answer (head.ts: 10,000 logs a call on Elysium mainnet)
       const [sh, tr, ss] = await Promise.all([
-        client.getLogs({ address: this.pool, event: SHIELDED, fromBlock: a, toBlock: b }) as Promise<Log[]>,
-        client.getLogs({ address: this.pool, event: TRANSFERRED, fromBlock: a, toBlock: b }) as Promise<Log[]>,
-        (client.getLogs({ address: this.pool, event: SEALED_SWAPPED, fromBlock: a, toBlock: b }) as Promise<Log[]>).catch(() => [] as Log[]),
+        logsSplitting((x, y) => client.getLogs({ address: this.pool, event: SHIELDED, fromBlock: x, toBlock: y }) as Promise<Log[]>, a, b),
+        logsSplitting((x, y) => client.getLogs({ address: this.pool, event: TRANSFERRED, fromBlock: x, toBlock: y }) as Promise<Log[]>, a, b),
+        logsSplitting((x, y) => client.getLogs({ address: this.pool, event: SEALED_SWAPPED, fromBlock: x, toBlock: y }) as Promise<Log[]>, a, b).catch(() => [] as Log[]),
       ]);
       const at = (l: Log) => ({ block: l.blockNumber ?? 0n, logIndex: l.logIndex ?? 0 });
       for (const l of sh) if (l.args?.commitment) ins.push({ commitment: l.args.commitment as Hex, ...at(l), sub: 0 });

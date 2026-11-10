@@ -16,7 +16,7 @@
 // Every call is simulated first and only sent if it would succeed, so a round that can't settle yet (price moved,
 // too much impact) costs nothing and is tried again next time.
 import { parseAbi, parseAbiItem } from "viem";
-import { readToHead } from "@cloakely/sdk";
+import { logsSplitting, readToHead } from "@cloakely/sdk";
 
 const LV_ABI = parseAbi([
   "function admitLaunch(uint256 launchIndex) returns (address)",
@@ -126,7 +126,7 @@ export function createGloamLoop({ publicClient, account, send, launchVault, laun
     // up to a fresh head (a cached one would skip new orders for a tick), a few blocks back if a lagging node of the RPC
     // refuses the range (readToHead); the cursor moves only past what was read
     for (const b of batchers) {
-      const { to, value: logs } = await readToHead(publicClient, async (to) => (b.from > to ? [] : publicClient.getLogs({ address: b.address, event: ORDER_PLACED, fromBlock: b.from, toBlock: to })));
+      const { to, value: logs } = await readToHead(publicClient, async (to) => (b.from > to ? [] : logsSplitting((x, y) => publicClient.getLogs({ address: b.address, event: ORDER_PLACED, fromBlock: x, toBlock: y }), b.from, to)));
       for (const l of logs) open.set(`${b.address.toLowerCase()}:${l.args.token.toLowerCase()}:${l.args.round}`, { batcher: b.address, token: l.args.token, round: l.args.round });
       if (to + 1n > b.from) b.from = to + 1n;
     }

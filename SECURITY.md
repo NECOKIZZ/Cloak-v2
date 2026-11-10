@@ -60,9 +60,9 @@ Cloak's code only (Gloam's vault and circuits are audited separately). Counted w
 |---|---|---|
 | Launches | CloakConfig, CloakFactory, CloakAuction, CloakToken, CloakVesting | about 950 |
 | Uniswap v4 | CloakV4Hook, CloakV4Market | about 420 |
-| On Gloam's vault | CloakLaunchVault (our one addition to Gloam's vault code), CloakEcosystemVault (outside tokens: Gloam's vault code plus a rule-checked admission), CloakLaunchSwap base and V4, CloakRouterV4 (buys and sells across the three vaults), CloakGloamBatcher base and V4, CloakGloamBids, CloakGloamReceive, CloakFundsGate, CloakReceiptCheck | about 1,850 |
+| On Gloam's vault | CloakLaunchVault (our one addition to Gloam's vault code), CloakEcosystemVault (outside tokens: Gloam's vault code plus a rule-checked admission), CloakLaunchSwap base and V4, CloakRouterV4 (buys and sells across the three vaults), CloakGloamBatcher base and V4, CloakGloamBids, CloakGloamReceive, CloakFundsGate, CloakReceiptCheck, CloakWHYPE (the routers' fixed WHYPE, a WETH9 port) | about 1,900 |
 | Deployment and roles | `deploy-v2-factory.mjs`, `deploy-partner.mjs`, the guard, pauser and Safe handover | included |
-| **Total** | | **about 3,220** |
+| **Total** | | **about 3,270** |
 
 Not shipped to mainnet, so not in scope: the Uniswap V2 path (`CloakPair`, `CloakSeeder`, `CloakV2Market`,
 `CloakFeeLocker`, `CloakV2PairSwap`), `CloakGraduation` (launch tokens stay in the launch vault), NFT drops, and

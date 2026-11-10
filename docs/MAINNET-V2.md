@@ -67,6 +67,18 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 - [ ] The mainnet vault, guard, memo board, block, verifiers and the USDC it lists. **Claude** fills in the deploy config from these.
 - [ ] Answers to the open questions in `docs/FOR-GLOAM.md`: the fee share, the Safe on their guard, the relay from day one, our swap venue on their vault, and bridging.
 
+**Done ahead (Nov 10):**
+- [x] **Uniswap on Elysium:** Uniswap's deployment page lists v4 (PoolManager `0xE2e1…23F1`, the one we use), v3, v2 and Permit2 on Elysium. Our scan and configs already match.
+- [x] **The whole mainnet deploy rehearsed on a fork of Elysium mainnet** (`e2e-gloam/part22-mainnet-fork.mjs`, 45 s, real proofs):
+  - the launch factory from the mainnet factory config, with explicit values and nothing copied from v1, on Uniswap's official PoolManager; the owner wallet takes the config's ownership;
+  - the real `deploy-partner.mjs` on the mainnet config, with Cloak's own fixed WHYPE (`CloakWHYPE`; Elysium's WHYPE is an upgradeable proxy);
+  - USDC's real pool and real KNTQ checked against the rules, the owner taking both guards, and KNTQ proposed and admitted;
+  - private trades on real Uniswap pools: 1 HYPE to 69.77 USDC, and 100 USDC to 262.3 KNTQ through two pools.
+  - About 0.045 HYPE for both deploys.
+- [x] **The mainnet public RPC, measured:** no rate limit hit (120 parallel requests all answered), but **at most 10,000 logs per `eth_getLogs` answer**. Every log read now splits its range in halves when the answer would be too big (`logsSplitting`, head.ts), so a busy vault or memo board can't stall syncs.
+- [x] **W-08:** the reveal window is capped at 7 days, in the contract (for the mainnet factory) and in the form.
+- [x] **The decisions left for Bob** are listed with recommendations in `docs/MAINNET-DECISIONS.md`: fees, caps, the pool-fee share and $CLOAK.
+
 **From Kinetiq:**
 - [ ] A public mainnet RPC that serves `eth_getLogs` at volume, the explorer and its verification API, and USDC's address.
 - [ ] Who owns the v4 PoolManager (`0xe2e1…23f1`), and whether it moves to governance.
