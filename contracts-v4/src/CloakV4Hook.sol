@@ -26,6 +26,12 @@ interface IERC20V4 {
 /// The launch factory, as far as the hook needs it: which addresses are its auctions.
 interface ICloakLaunchFactory {
     function isAuction(address a) external view returns (bool);
+    function config() external view returns (address);
+}
+
+/// CloakConfig's treasury: where the launch fee goes, and Cloak's share of the trading fees.
+interface ICloakTreasury {
+    function feeRecipient() external view returns (address);
 }
 
 /// A Cloak auction's parameters (CloakAuction.params()), as far as the hook needs them.
@@ -56,8 +62,8 @@ interface ICloakAuctionParams {
 ///         - **The liquidity is permanent.** The hook owns the only position and never removes it; nobody else can add
 ///           or remove liquidity in a Cloak pool, so its depth is exactly the launch's (the market adapter's reserves are
 ///           then exact, and no one can pull liquidity out from under traders).
-///         - **Trading fees go to the creator** (or, for a launch that chose to burn its LP, to 0x…dEaD). Anyone can
-///           call `collectFees` to pay them out.
+///         - **Trading fees:** `PROTOCOL_SHARE_BPS` (20%) to Cloak's treasury (CloakConfig's `feeRecipient`), the rest
+///           to the creator (or, for a launch that chose to burn its LP, to 0x…dEaD). Anyone can call `collectFees`.
 ///         - **Anti-snipe fee.** The pool's fee starts at `startFee` when it opens and falls in a straight line to
 ///           `baseFee` over `decaySecs`, so racing the listing costs the racer, and what they pay goes to the creator.
 ///         - **A time-weighted price** for batch rounds, updated before every swap (like Uniswap V2's accumulator).
@@ -73,6 +79,8 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
     int24 public constant MIN_TICK = -887220; // TickMath.minUsableTick(60)
     int24 public constant MAX_TICK = 887220;
     uint256 internal constant Q96 = 1 << 96;
+    /// @notice Cloak's share of every launch pool's trading fees (anti-snipe fee included), in basis points. Fixed.
+    uint256 public constant PROTOCOL_SHARE_BPS = 2_000;
 
     IPoolManager public immutable poolManager;
     address public immutable deployer;
@@ -95,6 +103,7 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
 
     event Listed(address indexed token, PoolId indexed id, address market, address feeTo, uint160 sqrtPriceX96, uint128 liquidity, uint256 hype, uint256 tokens);
     event FeesCollected(address indexed token, address indexed to, uint256 hype, uint256 tokens);
+    event ProtocolFeesCollected(address indexed token, address indexed treasury, uint256 hype, uint256 tokens);
 
     error NotPoolManager();
     error OnlyHook();
@@ -185,7 +194,7 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
             sqrtP, TickMath.getSqrtPriceAtTick(MIN_TICK), TickMath.getSqrtPriceAtTick(MAX_TICK), msg.value, tokenAmount
         );
         require(liquidity > 0, "liquidity");
-        (hypeUsed, tokensUsed) = abi.decode(poolManager.unlock(abi.encode(uint8(0), key, uint256(liquidity), address(0))), (uint256, uint256));
+        (hypeUsed, tokensUsed) = abi.decode(poolManager.unlock(abi.encode(uint8(0), key, uint256(liquidity), address(0), address(0))), (uint256, uint256));
 
         address feeTo = lpTo == DEAD ? DEAD : _creatorOf(msg.sender);
         CloakV4Market m = new CloakV4Market(poolManager, IHookView(address(this)), token);
@@ -213,17 +222,33 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
         return uint160(s);
     }
 
-    /// @notice Pay a launch's trading fees so far to its creator (or 0x…dEaD). Anyone can call it.
+    /// @notice Pay a launch's trading fees so far: `PROTOCOL_SHARE_BPS` to Cloak's treasury, the rest to its creator
+    ///         (or 0x…dEaD). Anyone can call it. Returns the creator's part.
     function collectFees(address token) external returns (uint256 hype, uint256 tokens) {
         PoolId id = _poolOf[token];
         Launch storage l = _launches[id];
         require(address(l.market) != address(0), "not listed");
-        (hype, tokens) = abi.decode(poolManager.unlock(abi.encode(uint8(1), keyFor(token), uint256(0), l.feeTo)), (uint256, uint256));
+        address treasury = treasuryOf();
+        uint256 ph;
+        uint256 pt;
+        (hype, tokens, ph, pt) = abi.decode(poolManager.unlock(abi.encode(uint8(1), keyFor(token), uint256(0), l.feeTo, treasury)), (uint256, uint256, uint256, uint256));
         emit FeesCollected(token, l.feeTo, hype, tokens);
+        if (ph > 0 || pt > 0) emit ProtocolFeesCollected(token, treasury, ph, pt);
+    }
+
+    /// @notice Where Cloak's share goes: the launch factory's CloakConfig treasury (address(0) if it can't be read,
+    ///         and then the creator gets it all, so collecting never gets stuck).
+    function treasuryOf() public view returns (address t) {
+        if (address(factory) == address(0)) return address(0);
+        try factory.config() returns (address c) {
+            try ICloakTreasury(c).feeRecipient() returns (address r) {
+                t = r;
+            } catch {}
+        } catch {}
     }
 
     function unlockCallback(bytes calldata data) external onlyPoolManager returns (bytes memory) {
-        (uint8 action, PoolKey memory key, uint256 liquidity, address to) = abi.decode(data, (uint8, PoolKey, uint256, address));
+        (uint8 action, PoolKey memory key, uint256 liquidity, address to, address treasury) = abi.decode(data, (uint8, PoolKey, uint256, address, address));
         ModifyLiquidityParams memory mp = ModifyLiquidityParams(MIN_TICK, MAX_TICK, int256(liquidity), 0);
         (BalanceDelta delta,) = poolManager.modifyLiquidity(key, mp, "");
         int128 a0 = delta.amount0();
@@ -238,12 +263,16 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
             poolManager.settle();
             return abi.encode(h, t);
         }
-        // collecting: a zero change pays out the fees the position has earned
+        // collecting: a zero change pays out the fees the position has earned, Cloak's share first
         uint256 fh = a0 > 0 ? uint256(uint128(a0)) : 0;
         uint256 ft = a1 > 0 ? uint256(uint128(a1)) : 0;
-        if (fh > 0) poolManager.take(key.currency0, to, fh);
-        if (ft > 0) poolManager.take(key.currency1, to, ft);
-        return abi.encode(fh, ft);
+        uint256 ph = treasury == address(0) ? 0 : (fh * PROTOCOL_SHARE_BPS) / 10_000;
+        uint256 pt = treasury == address(0) ? 0 : (ft * PROTOCOL_SHARE_BPS) / 10_000;
+        if (ph > 0) poolManager.take(key.currency0, treasury, ph);
+        if (pt > 0) poolManager.take(key.currency1, treasury, pt);
+        if (fh > ph) poolManager.take(key.currency0, to, fh - ph);
+        if (ft > pt) poolManager.take(key.currency1, to, ft - pt);
+        return abi.encode(fh - ph, ft - pt, ph, pt);
     }
 
     // ───────────────────────────── reads for the market adapter ─────────────────────────────

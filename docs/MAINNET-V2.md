@@ -86,7 +86,7 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
 
 **From Bob:**
 - [ ] Cloak v2's own launch factory and hook on mainnet: `e2e-gloam/deploy-v2-factory.mjs` (done this way on testnet, Nov 9), then `deploy-partner.mjs` on it.
-- [ ] **One owner wallet** (a hardware wallet, seed phrase backed up in two places) as guard controller, pauser, ecosystem approver and treasury, as Gloam runs theirs (one wallet, `GUARD_CONTROLLER_EOA=1` in their Elysium runbook, a multisig planned). Decided Nov 10: no Safe while Cloak is one person; moving to a multisig later is `transferController` plus `acceptController`, nothing redeployed. Plus a fresh deployer key used once, a separate keeper/relayer key, and a treasury.
+- [ ] **One owner wallet** (a software wallet in its own browser profile, seed phrase offline in two places) as guard controller, pauser and ecosystem approver, as Gloam runs theirs (one wallet, `GUARD_CONTROLLER_EOA=1` in their Elysium runbook, a multisig planned). Decided Nov 10: no Safe while Cloak is one person; moving to a multisig later is `transferController` plus `acceptController`, nothing redeployed. Plus a separate treasury wallet (its own seed), a fresh deployer key used once, and a keeper/relayer key (docs/MAINNET-DECISIONS.md, part F).
 - [ ] Mainnet caps for the launch vault: HYPE per deposit and total, and launch tokens.
 - [ ] Whether Cloak takes an interface fee inside its escrows (Gloam's partner fee can't be paid privately yet).
 

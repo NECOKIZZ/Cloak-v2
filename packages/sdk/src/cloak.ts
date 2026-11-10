@@ -379,6 +379,16 @@ export class Cloak {
    * The creator's trading fees for a launch whose LP is locked forever: what can be claimed now (in tokens and WHYPE),
    * who receives it, and the locker position. `null` for launches without creator fees.
    */
+  /**
+   * Cloak's share of a launch pool's trading fees, in basis points: 2000 (20%) on hooks that take it, 0 on earlier
+   * hooks that pay the creator everything. The creator gets the rest.
+   */
+  async protocolShareBps(hook: Address): Promise<number> {
+    const abi = [{ type: "function", name: "PROTOCOL_SHARE_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }] as const;
+    const bps = await this.publicClient.readContract({ address: hook, abi, functionName: "PROTOCOL_SHARE_BPS" }).catch(() => 0n);
+    return Number(bps);
+  }
+
   async creatorFees(auction: Address): Promise<{ locker: Address; position: bigint; beneficiary: Address; claimableLp: bigint; tokens: bigint; whype: bigint } | null> {
     const c = { address: auction, abi: cloakAuctionAbi } as const;
     const s = await this.getAuction(auction);

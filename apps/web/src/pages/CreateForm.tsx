@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { parseEther, type Address } from "viem";
 import { Cloak, type Wallet } from "@cloakely/sdk";
-import { FACTORY } from "../config";
+import { FACTORY, V4_HOOK } from "../config";
 import { hype, tokens } from "../format";
 import { friendly } from "../errors";
 import { useApp } from "../state";
@@ -61,6 +61,10 @@ const mins = (m: number) => (m >= 1440 && m % 1440 === 0 ? `${m / 1440} day${m =
 
 export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCreated: (a: Address) => void }) {
   const { connect } = useApp();
+  const [share, setShare] = useState(0);
+  useEffect(() => {
+    if (V4_HOOK) readCloak.protocolShareBps(V4_HOOK).then(setShare).catch(() => {});
+  }, []);
   const [name, setName] = useState("");
   // Uniswap v4 launches keep their liquidity with Cloak's hook, so they can't be "locked until a date"
   const [timed, setTimed] = useState(true);
@@ -246,11 +250,11 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
           <div className="choice-list">
             <button type="button" className={`choice ${f.lp === "fees" ? "on" : ""}`} onClick={() => setF({ ...f, lp: "fees" })}>
               <b>Locked forever, you earn the trading fees <span className="pill ok" style={{ marginLeft: 6 }}>recommended</span></b>
-              <span className="xs mute">The pool can never be emptied. Every trade on it pays a 0.3% fee into the pool, and you can collect that share any time.</span>
+              <span className="xs mute">{share > 0 ? `The pool can never be emptied. Every trade on it pays a 0.3% fee. You collect ${100 - share / 100}% of it any time, and Cloak keeps ${share / 100}%.` : "The pool can never be emptied. Every trade on it pays a 0.3% fee into the pool, and you can collect that share any time."}</span>
             </button>
             <button type="button" className={`choice ${f.lp === "burn" ? "on" : ""}`} onClick={() => setF({ ...f, lp: "burn" })}>
               <b>Burned forever</b>
-              <span className="xs mute">The pool can never be emptied and nobody collects its fees. They stay in the pool and deepen it.</span>
+              <span className="xs mute">{share > 0 ? `The pool can never be emptied. Cloak keeps ${share / 100}% of its trading fee and the rest is burned.` : "The pool can never be emptied and nobody collects its fees. They stay in the pool and deepen it."}</span>
             </button>
             {timed && (
               <button type="button" className={`choice ${f.lp === "date" ? "on" : ""}`} onClick={() => setF({ ...f, lp: "date" })}>

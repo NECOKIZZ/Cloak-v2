@@ -62,7 +62,7 @@ try {
 
   // 3. the real partner deploy script, from the mainnet config with the stand-in's addresses filled in
   const mc = JSON.parse(readFileSync(join(REPO, "deployments/elysium-mainnet-gloam.input.example.json"), "utf8"));
-  const cfg = { ...mc, name: "rehearsal-mainnet-fork", rpcUrl, gloamVault: gloam.pool, memoBoard: gloam.payMemo, poseidon, verifier: gloam.dual, shieldVerifier: gloam.shieldVerifier, factory: f.factory, v4Hook: f.hook, safe: owner.account.address, pauser: owner.account.address, feeRecipient: keeper.account.address };
+  const cfg = { ...mc, name: "rehearsal-mainnet-fork", rpcUrl, gloamVault: gloam.pool, memoBoard: gloam.payMemo, poseidon, verifier: gloam.dual, shieldVerifier: gloam.shieldVerifier, factory: f.factory, v4Hook: f.hook, safe: owner.account.address, pauser: owner.account.address, ecosystemFeeRecipient: owner.account.address };
   const cfgPath = join(tmp, "partner.json");
   const recPath = join(tmp, "record.json");
   writeFileSync(cfgPath, JSON.stringify(cfg));

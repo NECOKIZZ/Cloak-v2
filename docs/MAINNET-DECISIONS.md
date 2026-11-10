@@ -33,17 +33,16 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Recommendation.** Keep 1.5%. Pump-style launchpads take about 1% plus trading fees; we give a fair, snipe-free price, which is worth a little more.
 
-### A2. Should Cloak earn from trading in launch pools?
+### A2. Should Cloak earn from trading in launch pools? (decided Nov 10: yes, 20%)
 
-**Plain words.** Every trade in a launch's pool pays 0.3%. Today all of it goes to the token's creator, so Cloak earns nothing from trading, however busy a token gets. This is the one choice that can't be fixed later.
+**Plain words.** Every trade in a launch's pool pays 0.3% (more in the first 5 minutes). Cloak now keeps 20% of that, and the creator gets 80%. Cloak earns more as trading grows, not only when new launches happen.
 
-**Technical.** `CloakV4Hook.collectFees` pays the whole LP fee to `feeTo` (the creator, or 0x…dEaD for burned LP). A split, for example 20% to the treasury, is a change of about 15 lines in the hook. The hook is immutable, and the mainnet factory is tied to it.
-
-**Now.** 100% to the creator. **Fixed.**
-
-**Gloam.** Gloam takes 0.5% on every private swap, so they do earn from trading.
-
-**Recommendation.** Take 20% of the pool fee to the treasury. The creator keeps 80%, still the best deal of any launchpad, and Cloak gets income that grows with volume rather than only with new launches. **This has to be decided before the mainnet factory.**
+**Technical. Done.**
+- `CloakV4Hook.collectFees` sends `PROTOCOL_SHARE_BPS = 2_000` of both the HYPE and token fees to the treasury, and the rest to `feeTo` (the creator, or 0x…dEaD for burned LP).
+- The treasury is read live from the factory's CloakConfig (`feeRecipient`), so moving the treasury never needs a new hook. If it can't be read, the creator gets everything, so collecting never gets stuck.
+- The 20% is a constant: fixed for the life of the mainnet hook.
+- Forge test `test_treasuryTakesTwentyPercentOfTradingFees`, including the anti-snipe fee. The mainnet fork rehearsal passes.
+- The create form, the creator fees card and the docs page show the split, read from the hook (earlier testnet hooks show 100% to the creator, which is true for them).
 
 ### A3. How big can a bid and a launch be?
 
@@ -97,30 +96,18 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 ## Part B. Our vaults
 
-### B1. What do our vaults charge on the way out?
+### B1. What do our vaults charge on the way out? (decided Nov 10: 0.25%)
 
-**Plain words.** Selling a launch token or KNTQ takes it out of our vault, and the vault keeps a small cut. Buying already costs Gloam's 0.5% on the HYPE side, so a round trip costs both fees plus pool fees.
+**Plain words.** Selling a launch token or KNTQ takes it out of our vault, and the vault keeps 0.25%. Buying already costs Gloam's 0.5% on the HYPE side.
 
-**Technical.** `withdrawFeeBps` on CloakLaunchVault and CloakEcosystemVault, at most 1%. The fee collects in the vault and `collectFees(asset)` sends it to `feeRecipient`.
-
-**The catch.** The fee is paid in the token being withdrawn, not in HYPE. The launch vault's fees pile up as dozens of small launch tokens. Turning them into HYPE means selling into our own creators' pools, which looks bad at any size.
-
-**Now.** 0.5%. Owner-changeable: lowering it is instant, raising it waits 3 days.
-
-**Gloam.** 0.5% on every cash out and swap, paid in the asset, which for them is a stablecoin, so it's clean money.
-
-**Recommendation.**
-- 0.25%, which is what v1 charged. A buy and a sell then cost about 0.75% plus pool fees.
-- Collect the tokens into the treasury and **burn them** (send them to 0x…dEaD) instead of selling. It's honest marketing ("Cloak's fee burns your token's supply"), it never dumps on creators, and the real income comes from A1, A2 and C1 in HYPE.
-- The alternative is to sell them slowly through the buyback contract (D2). It earns more and looks worse.
+**Technical. Done in the mainnet config.**
+- `withdrawFeeBps: 25` on both of our vaults.
+- The launch vault's fee is paid in launch tokens, so its `feeRecipient` is 0x…dEaD: anyone calling `collectFees(token)` burns it. Cloak never sells into its creators' pools.
+- The ecosystem vault's fee (KNTQ and other outside tokens) goes to the treasury (`ecosystemFeeRecipient`). Those are liquid tokens from other projects, so selling them hurts nobody of ours.
 
 ### B2. Who pays the relay's gas?
 
-**Plain words.** Private actions are sent by Cloak's relay, which pays the network fee. Elysium's gas is very cheap: the whole 25-contract deploy cost about 0.03 HYPE.
-
-**Technical.** Today the plan says "the vault fee pays relay gas", but B1 shows that fee arrives in tokens. So the relay key should be topped up in HYPE from the treasury.
-
-**Recommendation.** The treasury tops up the relay key once a month. Expect a few HYPE a month at beta volume.
+The treasury tops up the relay key in HYPE once a month. Expect a few HYPE a month at beta volume. (The vault fee no longer pays it, see B1.)
 
 ### B3. Launch-token caps in the launch vault
 
@@ -194,96 +181,82 @@ Not revenue:
 - The unrevealed-bid penalty is burned (A5).
 - The router, batch rounds, bids and receive addresses take no fee. Keep it that way: every hidden fee is a reason not to trust the escrows.
 
-### D2. Where revenue goes: copy Gloam's split?
+### D2. Where revenue goes (decided Nov 10: approved)
 
-**Gloam.** All fees go to a dedicated treasury wallet. Half of them buy back $GLOAM; half of what's bought is burned and half is kept.
-
-**Recommendation.** Copy it, with one change: **automate it in a contract** so nobody has to remember, and anyone can check it on chain.
-- A `CloakBuyback` contract is the fee recipient. It has no owner and fixed splits:
+Copy Gloam's split, automated in a contract:
+- `CloakBuyback` is the fee recipient. It has no owner and fixed splits:
   - 50% to the treasury wallet;
   - 50% buys $CLOAK in its pool, and of that, half is burned and half is sent to the treasury.
 - Anyone can trigger it, and the keeper does so daily.
-- Each buy is small, and it refuses to buy when the pool's price is more than 1% off its 30-minute average. That stops sandwich bots from skimming it.
-- It's about 120 lines, and it waits for $CLOAK to exist. Until then the fee recipient is the treasury wallet, which can be pointed at the contract later (Gloam's 3-day change).
+- Each buy is small, and it refuses to buy when the pool's price is more than 1% off its 30-minute average, so sandwich bots can't skim it.
+- It waits for $CLOAK to exist. Until then the launch fee and the 20% trading share go to the treasury wallet, which is pointed at the contract later (CloakConfig's 3-day change).
+- If $CLOAK's pool is somewhere the contract can't trade, it buys through Uniswap's router instead. That's decided once we know where $CLOAK launches.
 
 ---
 
 ## Part E. $CLOAK
 
-### E1. Where does $CLOAK live?
+### E1. Where does $CLOAK launch? (open: not promised)
 
-**Your plan.** Launched on Cloak, it sits in Cloak's launch vault. Launched elsewhere, it goes in the ecosystem vault. It might graduate to Gloam's vault later.
+**Decided so far.**
+- No promise to launch on Cloak. It launches wherever it gets the most demand.
+- It launches after the audit.
+- The goal is Gloam's main vault, as fast as possible.
 
-**Recommendation.** Launch it on Cloak. It's the strongest story: the first launch on the platform, with a sealed-bid uniform price and no snipers. Cloak is then its creator, so its pool fees come to us (D1.4).
+**Wherever it launches, it has a place in Cloak:**
+- **On Cloak:** the launch vault, automatically.
+- **On another launchpad:** that launchpad gets vetted and $CLOAK is listed in the ecosystem vault, or it's listed on its own like KNTQ.
 
-**Moving it to Gloam's vault later works, with one condition.** The router decides each token's vault itself, and a Cloak launch token always routes to the launch vault (`vaultFor` checks `isLaunchToken`, which is never cleared). Graduating needs:
-1. Gloam to list $CLOAK, which is their call and their 3-day timelock;
-2. a new router version, which holds no funds and so is easy to replace;
-3. holders to move their balance across (cash out of one, shield into the other), which the app can do in one click.
+**Getting into Gloam's vault fastest. Two facts matter:**
+1. **A token launched elsewhere goes to Gloam's vault with no work from us.** The router sends any token that isn't a Cloak launch token or listed in our ecosystem vault to Gloam's vault. So once Gloam lists $CLOAK, private trading just works, through today's router.
+2. **Listing in our vaults is permanent.** A Cloak launch token always routes to the launch vault, and an ecosystem listing is never cleared. If $CLOAK goes into one of our vaults first, moving it to Gloam's later needs a new router version (easy, it holds no funds) and holders moving their balance across (one click in the app).
 
-So it's doable later, and nothing has to be built for it now.
+**So, if Gloam's vault is the goal, the cleanest path is:**
+- launch elsewhere (or on Cloak, accepting the router change later);
+- do **not** list it in our ecosystem vault if Gloam can list it soon;
+- give it a plain HYPE Uniswap v4 pool with no hook. The router can only trade plain pools and Cloak's own hook pools. A launchpad whose pools use its own hook can't be routed.
 
-### E2. What a Cloak launch forces on $CLOAK's supply
+**Ask Gloam:** whether they'd list $CLOAK at launch, and what they need (their 3-day timelock, and caps).
 
-The factory's rules apply to us too:
-- the creator's share (team plus treasury) is **at most 20%** of the supply, and it vests linearly from the sale's end (at least 30 days, and we can pick 12 to 24 months);
-- the other **80% or more** is sold in the auction or goes into the pool.
+### E2. The 20% to Cloak with vesting (plain words)
 
-So:
-- there's no separate airdrop or community pot unless it comes out of the 20%;
-- the sale is the distribution, which is a clean story.
+This only applies **if $CLOAK launches on Cloak.** When anyone launches a token on Cloak, the creator can keep up to 20% of the supply for themselves. Everything else is sold in the auction or goes into the pool. The creator's 20% isn't handed over at once: it unlocks a little every second, over a period the creator picks (at least 30 days). That stops a creator dumping on buyers on day one.
 
-**Sale size.** With the bid caps on, the raise is at most 10,000 HYPE. Raising the caps for this one launch waits 3 days in public, which works as an announcement.
+For $CLOAK on Cloak, Cloak is the creator. So Cloak keeps up to 20% (team and treasury), and it unlocks gradually, say over 18 months. Buyers see on chain that the team can't dump.
 
-**Proposal for you to react to:**
-- 1,000,000,000 supply;
-- 20% to Cloak as the creator, vesting over 18 months;
-- the rest split between the sale and the pool by the launch form's usual LP share;
-- LP locked forever, with the fees to Cloak.
+If $CLOAK launches elsewhere, that launchpad's rules apply instead.
+
+**Supply.** You said 500k. Please confirm: 500,000 tokens, or 500,000,000?
 
 ### E3. What does $CLOAK do?
 
-**Gloam.** $GLOAM's only stated utility is the buyback: half of fees buy it back. Their own rules say "facts only" when talking about it.
+**Gloam.** $GLOAM's only stated utility is the buyback: half of fees buy it back.
 
-**Recommendation.** Copy that and keep it honest:
-- **Buyback and burn from all revenue** (D2). This is the main utility.
-- **A $CLOAK pay-with option** in the trade picker. It already works through the HYPE route, so it costs nothing.
-- **Governance later**, when the owner wallet moves to a multisig.
+**Decided.** Buyback and burn from all revenue (D2) is the main utility, and we copy Gloam's honest "facts only" tone. Also:
+- a $CLOAK pay-with option in the trade picker (works through the HYPE route once it's tradeable);
+- governance later, when the owner wallet moves to a multisig.
 
-I'd push back on the usual extras:
-- **Holder fee discounts and launch priority.** Proving you hold $CLOAK ties your wallet to your private trades, which breaks the product's whole point. Doing it privately (proving a balance in zero knowledge) means a new circuit, which is a big lift for little gain.
-- **Staking.** Staking yield from the buyback is a securities-shaped promise. Burning does the same job without it.
-
-### E4. When?
-
-After the audit and the cap raise, so $CLOAK isn't capped at 10,000 HYPE and doesn't launch on unaudited contracts. The mainnet beta can open without it.
+**Not doing:** holder fee discounts or launch priority (proving you hold $CLOAK ties your wallet to your private trades), and staking (a securities-shaped promise).
 
 ---
 
-## Part F. Wallets and keys
+## Part F. Wallets and keys (decided Nov 10: software wallets)
 
-Gloam runs one owner wallet, a separate treasury wallet and its own relay. Copy that, with four keys in total:
+No hardware wallet: software wallets, with the seed phrases stored offline. Four keys:
 
-1. **Owner wallet.** A hardware wallet, account 1. The seed phrase is written down and kept in two places.
-   - It's the guard controller, launch pauser, ecosystem approver and config owner.
-   - It holds no money.
-   - It's used maybe once a week.
-2. **Treasury wallet.** The same hardware wallet, account 2. It's a different address from the same seed, so there's nothing extra to back up.
-   - It receives the launch fee and the vault fees, and later the buyback contract's treasury half.
+1. **Owner wallet.** Its own seed phrase.
+   - It's the guard controller, launch pauser, ecosystem approver (it lists tokens instantly, see C1) and config owner.
+   - It holds no money beyond gas.
+   - Keep it in a browser profile (or device) used for nothing else, and never connect it to other sites. With instant listing and no multisig, this key is the main protection.
+2. **Treasury wallet.** A separate seed phrase, so one leaked seed never exposes both controls and money.
+   - It receives the launch fee, the 20% trading share and the ecosystem vault's fees, and later the buyback contract's treasury half.
    - It tops up the relay key.
-   - Keeping it apart from the owner wallet means the money and the controls never share an address.
-3. **Deployer key.** A fresh hot key, used once to deploy the contracts, then emptied and retired.
-   - It never gets any role: every role goes to the owner wallet in the deploy.
-4. **Keeper and relay key.** A hot key on Render.
-   - It sends users' private actions and pays their gas.
-   - It holds a few HYPE at most, topped up monthly from the treasury.
-   - If it leaks, the loss is that gas money: it can't move users' funds or change anything.
+3. **Deployer key.** A fresh key, used once to deploy, then emptied and retired. It never gets any role.
+4. **Keeper and relay key.** A hot key on Render, holding a few HYPE at most. If it leaks, the loss is that gas money: it can't move users' funds or change anything.
 
 **Later.** `CloakBuyback` needs no key. Moving to a multisig is one `transferController` call, when there's a second person.
 
-**Never.**
-- No v1 key is reused.
-- No key in the repo, in chat or in an `.env` that's committed.
+**Never.** No v1 key reused. No key in the repo, in chat, or in a committed `.env`.
 
 ---
 
@@ -295,11 +268,13 @@ Gloam runs one owner wallet, a separate treasury wallet and its own relay. Copy 
 - **Hosting.** Vercel and Render, by Bob. Also decide whether v2's keeper runs the NFT drops; the `DROPS` switch is ready.
 - **The audit**, then lifting the caps, then $CLOAK.
 
-## What Claude builds once you answer
+## Done and still open
 
-1. A2: the pool-fee split in CloakV4Hook, with tests. Before the factory.
-2. A5: the 20% penalty floor. One line.
-3. B1: the vault fee in the config. (C1 is done: instant listing from vetted launchpads.)
-4. D2: `CloakBuyback`, with tests, once $CLOAK's supply is set.
-5. D1.5: the Relay app fee switch, if wanted.
-6. Re-run the mainnet fork rehearsal (part 22) with the final values.
+**Done (Nov 10):** C1 instant listing from vetted launchpads; A2 the 20% trading share in the hook; B1 0.25% with launch-token fees burned; D2 approved; F software wallets. Rehearsed again on the mainnet fork (part 22).
+
+**Still open:**
+1. A5: raise the unopened-bid penalty floor from 10% to 20%? One line, before the factory.
+2. E2: $CLOAK's supply (500,000 or 500,000,000).
+3. E1: where $CLOAK launches, and Gloam's answer on listing it.
+4. D2: `CloakBuyback`, built once we know where $CLOAK trades.
+5. D1.5: a Relay app fee on bridging, if wanted (off for now).

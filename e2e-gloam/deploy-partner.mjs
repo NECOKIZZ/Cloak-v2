@@ -74,6 +74,8 @@ function rehearsalConfig() {
 const cfg = REHEARSE ? rehearsalConfig() : JSON.parse(readFileSync(cfgPath, "utf8"));
 // our vaults' withdrawal fee in bps (a swap out of them is a withdrawal): "withdrawFeeBps" in the config, 50 (0.5%) if unset
 const FEE_BPS = Number(cfg.withdrawFeeBps ?? 50);
+// the ecosystem vault's fee (paid in KNTQ and other outside tokens) can go elsewhere than the launch vault's (burned)
+const ECO_FEE_TO = /^0x[0-9a-fA-F]{40}$/.test(cfg.ecosystemFeeRecipient ?? "") ? cfg.ecosystemFeeRecipient : cfg.feeRecipient;
 if (!Number.isInteger(FEE_BPS) || FEE_BPS < 0 || FEE_BPS > 100) throw new Error("config: withdrawFeeBps must be 0 to 100 (at most 1%)");
 // "whype": "deploy" deploys Cloak's own fixed WHYPE (CloakWHYPE): Elysium's 0xbA87…5E81 is an upgradeable proxy
 const DEPLOY_WHYPE = cfg.whype === "deploy";
@@ -153,7 +155,7 @@ try {
     const rules = { minHypeLiquidity: BigInt(eco.minHypeLiquidity), minMcapHype: BigInt(eco.minMcapHype), maxPerDepositBps: eco.maxPerDepositBps, maxTotalBps: eco.maxTotalBps };
     ev = await deploy("CloakEcosystemVault", ourArtifact("CloakEcosystemVault.sol", "CloakEcosystemVault"), [cfg.poseidon, cfg.verifier, cfg.poolManager, lv, cfg.safe, cfg.pauser, rules]);
     await write(ev, LV_ABI, "setShieldVerifier", [cfg.shieldVerifier]);
-    await write(ev, LV_ABI, "setWithdrawFee", [FEE_BPS, cfg.feeRecipient]);
+    await write(ev, LV_ABI, "setWithdrawFee", [FEE_BPS, ECO_FEE_TO]);
     await write(ev, LV_ABI, "turnOnDepositLimits");
     await write(ev, LV_ABI, "endSetup");
     evGuard = await deploy("VaultOwnerGuard (ecosystem vault)", guardArt, [ev, addr]);
@@ -249,6 +251,7 @@ try {
     guardController: { now: addr, pending: cfg.safe },
     pauser: cfg.pauser,
     feeRecipient: cfg.feeRecipient,
+    ecosystemFeeRecipient: ECO_FEE_TO,
     launchFactory: cfg.factory,
     launchSwapV4,
     router,

@@ -5,8 +5,8 @@
   "_rpc": "Kinetiq's public mainnet RPC. Fine for the deploy; the keeper and site may need a heavier one (docs/MAINNET-V2.md).",
   "poolManager": "0xe2e105d3f7209a9da11f83ccf3e7398a753823f1",
   "_poolManager": "Uniswap's official v4 PoolManager on Elysium (developers.uniswap.org/deployments?chain=Elysium).",
-  "owner": "FILL IN: the owner wallet (a hardware wallet). Owns the rules; tightening is instant, loosening waits 3 days in public.",
-  "treasury": "FILL IN: where the launch fee goes (the owner wallet, or a separate treasury wallet).",
+  "owner": "FILL IN: the owner wallet (a software wallet, its own seed). Owns the rules; tightening is instant, loosening waits 3 days in public.",
+  "treasury": "FILL IN: the treasury wallet (its own seed): the launch fee and the hook's 20% trading share go here.",
   "vaultVerifier": "FILL IN: Gloam's verifier on mainnet (unused by v2; CloakConfig needs a non-zero address).",
   "launchFeeBps": 150,
   "_launchFeeBps": "1.5% of a successful raise, taken at settlement. At most 300 (3%). DECIDE (docs/MAINNET-DECISIONS.md).",
@@ -15,5 +15,5 @@
   "capsOn": true,
   "_caps": "Beta bid caps: 100 HYPE per bid, 10,000 HYPE per launch. DECIDE.",
   "hook": { "baseFee": 3000, "startFee": 100000, "decaySecs": 300 },
-  "_hook": "Pool fee in pips (1e6 = 100%): 0.3% base, 10% at listing falling to 0.3% over 5 minutes, all to the creator. Fixed in the hook for good. DECIDE."
+  "_hook": "Pool fee in pips (1e6 = 100%): 0.3% base, 10% at listing falling to 0.3% over 5 minutes. 20% of all of it to the treasury (CloakConfig feeRecipient), 80% to the creator: PROTOCOL_SHARE_BPS in the hook (decided Nov 10). Fixed in the hook for good."
 }

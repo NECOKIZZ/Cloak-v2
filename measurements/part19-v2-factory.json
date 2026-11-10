@@ -4,7 +4,7 @@
     "auction": "0x39BCdBA88E60382F3d807AE5b3d426D8b47ca157",
     "token": "0xd43F5E24C6b2edc1dFDE8548cDdaBeFFA6eCc822",
     "phase": "settled",
-    "pair": "0x2214F5A528FE446752357d969F261C500dB9949A"
+    "pair": "0x46eCF9eD7fC308E4dbAacfFDE2183ea1985A51E7"
   },
   "buy": {
     "hypeIn": "0.02",
@@ -12,8 +12,8 @@
   },
   "router": {
     "buyHype": "0.01",
-    "tokensOut": "8623.417439864517013491",
-    "sellHypeOut": "0.008006195971207335"
+    "tokensOut": "8626.523083716750402715",
+    "sellHypeOut": "0.008011885224837413"
   },
   "seconds": 58
 }

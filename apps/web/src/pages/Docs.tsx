@@ -112,7 +112,7 @@ export function Docs() {
           <p>Because the price doesn't depend on order, bidding early, fast or with more gas earns nothing. That's the whole point on a fee-ordered chain.</p>
 
           <h2 id="liquidity">Locked liquidity</h2>
-          <p>A share of the raise (default 50%) plus matching tokens opens the token's pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The creator picks what happens to the LP: <b>locked forever with the trading fees going to the creator</b> (the default), burned, or locked until a date. Unsold tokens, and any tokens the pool didn't need, are burned. Whatever HYPE the pool didn't need goes to the creator.</p>
+          <p>A share of the raise (default 50%) plus matching tokens opens the token's pool <b>at exactly the clearing price</b>, so trading opens at the fair price with no first-block arbitrage. The creator picks what happens to the LP: <b>locked forever with the trading fees going to the creator</b> (the default), burned, or locked until a date. On Cloak v2's own pools, Cloak keeps 20% of the trading fee and the creator gets the rest. Unsold tokens, and any tokens the pool didn't need, are burned. Whatever HYPE the pool didn't need goes to the creator.</p>
           <p>A pool's address is known before it exists, so someone could try to send it tokens or WHYPE early and make the launch open at a silly price. Settlement handles every case:</p>
           <ul>
             <li>Anything sent to the pool's address before it has reserves is swept to the burn address.</li>

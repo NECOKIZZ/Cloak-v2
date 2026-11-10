@@ -21,6 +21,8 @@ export const DEPLOYMENT = D;
 /** Cloak v2's launch factory. */
 export const FACTORY = (D?.factory || undefined) as Address | undefined;
 export const FACTORY_BLOCK = D?.factoryBlock ?? 0n;
+/** The v4 hook new launches open their pools with. */
+export const V4_HOOK = (D?.v4Hook || undefined) as Address | undefined;
 /** The Cloak keeper (status, relay, leaves): VITE_KEEPER_URL from the host's settings, else the SDK's record. */
 export const KEEPER_URL: string | undefined = env.VITE_KEEPER_URL || D?.relayerUrl || undefined;
 /** Cloak's relay (POST /gloam/relay, /schedule): submits private actions so the user's wallet never appears. */

@@ -251,6 +251,35 @@ contract CloakV4Test is Test {
         assertEq(fh + ft, 0, "nothing twice");
     }
 
+    function test_treasuryTakesTwentyPercentOfTradingFees() public {
+        address treasury = address(0x7EA5);
+        config.setFees(config.withdrawFeeBps(), config.launchFeeBps(), treasury);
+        assertEq(hook.treasuryOf(), treasury, "the hook reads the treasury from the factory's config");
+        _launch(type(uint64).max);
+        _bidAndSettle();
+        vm.prank(trader);
+        market.swapExactHypeForTokens{value: 10 ether}(0, trader); // at listing: the 10% anti-snipe fee
+        vm.warp(block.timestamp + 300);
+        vm.startPrank(trader);
+        uint256 got = market.swapExactHypeForTokens{value: 10 ether}(0, trader);
+        token.approve(address(market), got);
+        market.swapExactTokensForHype(got, 0, trader);
+        vm.stopPrank();
+        uint256 c0 = creator.balance;
+        uint256 ct0 = token.balanceOf(creator);
+        (uint256 fh, uint256 ft) = hook.collectFees(address(token));
+        uint256 th = treasury.balance;
+        uint256 tt = token.balanceOf(treasury);
+        assertApproxEqRel(fh + th, 1.03 ether, 0.01e18, "10% of the listing buy plus 0.3% of the later buy");
+        assertApproxEqAbs(th, (fh + th) * 2_000 / 10_000, 1, "20% of the HYPE fees to the treasury");
+        assertApproxEqAbs(tt, (ft + tt) * 2_000 / 10_000, 1, "20% of the token fees to the treasury");
+        assertGt(tt, 0);
+        assertEq(creator.balance - c0, fh, "the other 80% to the creator");
+        assertEq(token.balanceOf(creator) - ct0, ft);
+        (fh, ft) = hook.collectFees(address(token));
+        assertEq(fh + ft, 0, "nothing twice");
+    }
+
     // ───────────── trading through the adapter ─────────────
 
     function test_swapsMatchTheQuotes() public {
