@@ -7,7 +7,7 @@
 //   NODE_USE_ENV_PROXY=1 node e2e-gloam/deploy-escrows-update.mjs
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { formatEther } from "viem";
+import { formatEther, zeroAddress } from "viem";
 import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
 import { ANVIL_KEYS, ELYSIUM_TESTNET_ID, ELYSIUM_TESTNET_RPC, REPO, clients, ourArtifact, sendAndLog, startAnvil } from "./lib.mjs";
 
@@ -36,8 +36,8 @@ try {
   const start = await pub.getBalance({ address: me.account.address });
   console.log(`Updating Cloak v2's escrows on ${FORK ? "a fork of " : ""}Elysium testnet from ${me.account.address} (${formatEther(start)} HYPE)`);
   const r = rec.batcherV4Rounds ?? { roundSecs: 60, maxSlippageBps: 200, refundAfter: 600 };
-  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [rec.launchVault, rec.launchFactory, BigInt(r.roundSecs), BigInt(r.maxSlippageBps), BigInt(r.refundAfter)]);
-  const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [rec.launchVault]);
+  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [rec.launchVault, zeroAddress, rec.launchFactory, BigInt(r.roundSecs), BigInt(r.maxSlippageBps), BigInt(r.refundAfter)]);
+  const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [rec.launchVault, zeroAddress]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [rec.gloamVault, rec.launchVault]);
   const graduation = await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [rec.launchVault, rec.gloamVault, 3600n]);
   const block = await pub.getBlockNumber();

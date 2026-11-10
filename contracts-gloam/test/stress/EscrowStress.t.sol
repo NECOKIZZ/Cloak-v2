@@ -241,7 +241,7 @@ contract BidsStressTest is StressBase {
         pool.setWithdrawFee(50, address(0xFEE));
         pool.turnOnDepositLimits();
         pool.setDepositLimit(address(0), 1000e18, 100_000e18);
-        bids = new CloakGloamBids(address(pool));
+        bids = new CloakGloamBids(address(pool), address(0));
         // the app bids exactly the cap: the note is the deposit plus the vault's fee
         auction = new CappedAuction(ARRIVES, block.timestamp + 1 hours);
         vm.deal(address(this), 100e18);

@@ -100,7 +100,9 @@ try {
   const router = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, D.poolManager, D.whype, f.hook]);
   // the cross-vault router: the launch vault (home) and Gloam's vault
   const crossRouter = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, stack.pool, D.poolManager, D.whype, f.hook]);
-  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, f.factory, 60n, 200n, 600n]);
+  // and batch rounds with HYPE in Gloam's vault (mainnet's model)
+  const batcherG = await deploy("CloakGloamBatcherV4 (HYPE in Gloam's vault)", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, stack.pool, f.factory, 60n, 200n, 600n]);
+  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, zeroAddress, f.factory, 60n, 200n, 600n]);
   const block = await pub.getBlockNumber();
   const loop = createGloamLoop({ publicClient: pub, account: keeper.account, send: async (x) => (await sendAndLog(pub, x.functionName, keeper.wallet.writeContract(x))).transactionHash, launchVault: lv, batcherV4, batcherV4Block: block });
   const t = await loop.tick();
@@ -109,7 +111,7 @@ try {
   if (v1Token) assert(!(await pub.readContract({ address: lv, abi: parseAbi(["function isLaunchToken(address) view returns (bool)"]), functionName: "isLaunchToken", args: [v1Token] })), "a Cloak v1 launch token isn't admitted to the v2 launch vault");
 
   // 5. a private buy and sell of the new token through its v4 pool
-  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, batcherV4, crossRouter], hourlySpendWei: parseEther("5") });
+  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [router, batcherV4, crossRouter, batcherG], hourlySpendWei: parseEther("5") });
   let saved = [];
   let savedB = [];
   const provers = { shield: await finalProver("shield"), transfer: await finalProver("transfer"), unshield: await finalProver("unshield") };
@@ -127,7 +129,7 @@ try {
   assert(s.amountOut > 0n, `sold half back for ${formatEther(s.amountOut)} HYPE as a note`);
 
   // 6. the router (CloakRouterV4): HYPE in Gloam's vault, the token in the launch vault. Bob's account trades that way
-  const B = await GloamPrivate.unlock(bidB.wallet, { publicClient: pub, chainId: ELYSIUM_TESTNET_ID, gloamVault: { pool: stack.pool, poolBlock: block }, launchVault: { pool: lv, poolBlock: block }, payMemo: stack.payMemo, provers, submit: (call) => relay({ kind: call.kind, to: call.to, data: call.data }), whype: D.whype, launchSwapV4: router, router: crossRouter, batcherV4, records: { load: () => savedB, save: (x) => (savedB = x) } });
+  const B = await GloamPrivate.unlock(bidB.wallet, { publicClient: pub, chainId: ELYSIUM_TESTNET_ID, gloamVault: { pool: stack.pool, poolBlock: block }, launchVault: { pool: lv, poolBlock: block }, payMemo: stack.payMemo, provers, submit: (call) => relay({ kind: call.kind, to: call.to, data: call.data }), whype: D.whype, launchSwapV4: router, router: crossRouter, batcherV4: batcherG, records: { load: () => savedB, save: (x) => (savedB = x) } });
   await B.loadMarkets();
   const gCore = B.cores.find((c) => c.config.pool.toLowerCase() === stack.pool.toLowerCase());
   const lCore = B.cores.find((c) => c.config.pool.toLowerCase() === lv.toLowerCase());
@@ -149,6 +151,30 @@ try {
   const tokLeft = await held(lCore, l.token);
   assert(tokLeft < tokB / 50n && (await held(gCore, zeroAddress)) === gAfterBuy + sb.amountOut, `a sell spent the GLOAK in the launch vault and ${formatEther(sb.amountOut)} HYPE landed in Gloam's vault (its unused ${formatEther(tokLeft)} GLOAK back in the launch vault), ${Math.round(performance.now() - t3)} ms`);
   assert((await held(lCore, zeroAddress)) === 0n, "and the launch vault never held Bob's HYPE");
+  // 7. a batch round with HYPE in Gloam's vault: buy orders spend HYPE there, the tokens come back into the launch vault
+  const loopG = createGloamLoop({ publicClient: pub, account: keeper.account, send: async (x) => (await sendAndLog(pub, x.functionName, keeper.wallet.writeContract(x))).transactionHash, launchVault: lv, batcherV4: batcherG, batcherV4Block: block });
+  await loopG.tick(); // registers the launch's market
+  const room = await B.batchRoom(l.token, "buy");
+  const g0 = await held(gCore, zeroAddress);
+  const t0b = await held(lCore, l.token);
+  const placedB = await B.batch(l.token, "buy", room);
+  const ordered = placedB.orders.reduce((a, o) => a + o.size, 0n);
+  assert(placedB.orders.length > 0 && g0 - (await held(gCore, zeroAddress)) === ordered, `${placedB.orders.length} batch buy orders (${formatEther(ordered)} HYPE) were spent from Gloam's vault`);
+  const OPENS = parseAbi(["function settleOpens(address token, uint64 round) view returns (uint256)"]);
+  const lastRound = placedB.orders.reduce((m, o) => (o.round > m ? o.round : m), 0n);
+  await warpTo(Number(await pub.readContract({ address: batcherG, abi: OPENS, functionName: "settleOpens", args: [l.token, lastRound] })) + 1);
+  let finB;
+  for (let i = 0; i < 12; i++) {
+    await loopG.tick();
+    finB = await B.finishPending();
+    assert(finB.errors.length === 0, `batch payouts came back cleanly${finB.errors.length ? `: ${finB.errors.map((e) => e.error).join("; ")}` : ""}`);
+    if (finB.waiting.length === 0) break;
+    await warpTo(Number((await pub.getBlock()).timestamp) + 30);
+  }
+  const tokFromBatch = (await held(lCore, l.token)) - t0b;
+  assert(finB.waiting.length === 0 && tokFromBatch > 0n, `the round settled and ${formatEther(tokFromBatch)} GLOAK came back into the launch vault`);
+  assert((await held(lCore, zeroAddress)) === 0n, "and the launch vault still holds none of Bob's HYPE");
+
   out.router = { buyHype: formatEther(buyB), tokensOut: formatEther(tokB), sellHypeOut: formatEther(sb.amountOut) };
 
   writeMeasurements("part19-v2-factory", { ...out, seconds: Math.round((performance.now() - t0) / 1000) });

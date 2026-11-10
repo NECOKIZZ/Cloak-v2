@@ -48,6 +48,11 @@ export interface GloamDeployment {
   launchSwap?: Address;
   /** CloakLaunchSwapV4: private swaps through Cloak launches' own Uniswap v4 pools. */
   launchSwapV4?: Address;
+  /**
+   * CloakRouterV4. When set, HYPE lives in Gloam's vault and launch tokens in the launch vault: buys and sells go through
+   * it. Unset, HYPE stays in the launch vault and trades through launchSwapV4.
+   */
+  router?: Address;
   graduation?: Address;
   /** CloakGloamBatcher: batch rounds through Uniswap V2 pairs. */
   batcher?: Address;

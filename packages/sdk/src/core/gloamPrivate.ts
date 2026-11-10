@@ -24,7 +24,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { ACCOUNT_TYPED_DATA } from "../private/crypto.js";
 import { splitAmount, type ScheduledPiece, type Status } from "../private/common.js";
 import { GloamCore, gloamKeysFromSignature, type GloamAccountKeys, type GloamCoreConfig, type OwnedGloamNote } from "./gloam.js";
-import { announce, finishPending, launchRoute, launchRouteV4, launchSwap, type LaunchRecord } from "./launchVault.js";
+import { announce, finishPending, hypeCoreOf, launchRoute, launchRouteV4, launchSwap, type LaunchRecord } from "./launchVault.js";
 import { notesFor, type HolderProver } from "./gloamProofs.js";
 import { gloamFundsContext, type FundsProof } from "../private/funds.js";
 
@@ -598,9 +598,11 @@ export class GloamPrivate {
    * as a note on a later open (finishPending), once the round settles.
    */
   async batch(token: Address, side: "buy" | "sell", amount: bigint, opts: { maxOrders?: number; onStatus?: Status } = {}) {
-    const core = this.launchCore;
-    if (!core) throw new Error("no batcher configured");
+    const launch = this.launchCore;
+    if (!launch) throw new Error("no batcher configured");
     const batcher = await this.batcherFor(token);
+    // a buy spends HYPE from the batcher's HYPE vault (Gloam's, on a batcher built for it); a sell, tokens from the launch vault
+    const core = side === "buy" ? await hypeCoreOf(batcher, launch, this.cores) : launch;
     const onStatus = opts.onStatus ?? (() => {});
     const asset = side === "buy" ? zeroAddress : token;
     await core.sync(onStatus);
@@ -704,8 +706,10 @@ export class GloamPrivate {
    * timeout exit goes to this account's receive address, which moves back in on the next open.
    */
   async bidPrivately(auction: Address, opts: { maxPrice: bigint; quantity: bigint; deposit?: bigint }, onStatus: Status = () => {}) {
-    const core = this.launchCore;
-    if (!core || !this.cfg.bids) throw new Error(NOT_YET);
+    const launch = this.launchCore;
+    if (!launch || !this.cfg.bids) throw new Error(NOT_YET);
+    // the bid's HYPE comes from the bids contract's HYPE vault (Gloam's, on one built for it)
+    const core = await hypeCoreOf(this.cfg.bids, launch, this.cores);
     const { Cloak } = await import("../cloak.js");
     const reader = new Cloak(this.cfg.publicClient as never);
     const s = await reader.getAuction(auction);
@@ -736,7 +740,7 @@ export class GloamPrivate {
     if (!core || !this.cfg.records) return { claimed: 0, movedHype: 0n, movedTokens: 0n };
     const all = this.cfg.records.load();
     const mine = all.filter((r) => r.kind === "bid" && lc(r.key.auction) === lc(auction));
-    const res = await finishPending(core, mine, {}, onStatus);
+    const res = await finishPending(core, mine, { cores: this.cores }, onStatus);
     this.cfg.records.save([...all.filter((r) => !mine.includes(r)), ...res.waiting]);
     return { claimed: res.done.length, movedHype: 0n, movedTokens: 0n };
   }

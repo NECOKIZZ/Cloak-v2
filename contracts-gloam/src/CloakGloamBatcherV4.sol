@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {CloakGloamBatcherBase} from "./CloakGloamBatcher.sol";
+import {IGloamVault} from "gloam/GloamVaultSwap.sol";
 
 interface ILaunchFactoryB {
     function launches(uint256 i)
@@ -47,11 +48,20 @@ contract CloakGloamBatcherV4 is CloakGloamBatcherBase {
 
     error NotSettled();
 
-    constructor(address vault_, address launchFactory_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_)
+    /// @notice The vault HYPE orders are spent from and HYPE payouts go into: Gloam's vault, or `vault` when built
+    ///         with none. Launch tokens always use `vault` (Cloak's launch vault).
+    IGloamVault public immutable hypeVault;
+
+    constructor(address vault_, address hypeVault_, address launchFactory_, uint256 roundSecs_, uint256 maxSlippageBps_, uint256 refundAfter_)
         CloakGloamBatcherBase(vault_, roundSecs_, maxSlippageBps_, refundAfter_)
     {
         require(launchFactory_ != address(0), "factory");
         launchFactory = ILaunchFactoryB(launchFactory_);
+        hypeVault = IGloamVault(hypeVault_ == address(0) ? vault_ : hypeVault_);
+    }
+
+    function vaultFor(address asset) public view override returns (IGloamVault) {
+        return asset == NATIVE ? hypeVault : vault;
     }
 
     /// @notice Record a settled launch's market. Anyone may call it; a second call changes nothing.

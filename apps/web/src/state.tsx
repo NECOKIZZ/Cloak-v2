@@ -196,6 +196,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         whype: GLOAM.whype,
         launchSwap: GLOAM.launchSwap,
         launchSwapV4: GLOAM.launchSwapV4,
+        router: GLOAM.router,
         batcher: GLOAM.batcher,
         batcherV4: GLOAM.batcherV4,
         receive: GLOAM.receive,

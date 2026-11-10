@@ -96,7 +96,10 @@ contract CloakGloamBids {
         uint256 exitAfter;
     }
 
+    /// @notice The vault won tokens go into (Cloak's launch vault).
     IGloamVault public immutable vault;
+    /// @notice The vault HYPE comes from and goes back into: Gloam's vault, or the launch vault when built with none.
+    IGloamVault public immutable hypeVault;
     bytes32 private constant PLACE_DOMAIN = keccak256("cloak.gloam.bid.place.v1");
     bytes32 private constant CALL_DOMAIN = keccak256("cloak.gloam.bid.call.v1");
     bytes32 private constant FINISH_DOMAIN = keccak256("cloak.gloam.bid.finish.v1");
@@ -134,8 +137,10 @@ contract CloakGloamBids {
         _entered = 0;
     }
 
-    constructor(address vault_) {
+    /// @param hypeVault_ Gloam's vault, where HYPE lives; address(0) keeps HYPE in `vault_`
+    constructor(address vault_, address hypeVault_) {
         vault = IGloamVault(vault_);
+        hypeVault = IGloamVault(hypeVault_ == address(0) ? vault_ : hypeVault_);
     }
 
     /// @notice The address a bid's unshield proof must name as `to` (and the bidder the auction will see).
@@ -164,8 +169,8 @@ contract CloakGloamBids {
         address account = accountFor(k);
         _checkSigned(placeDigest(account, bidCall), signature, k.ownerKey);
         if (closed[account] || bidIdPlus1[account] != 0) revert Closed();
-        if (!vault.isSpent(s.nullifier)) {
-            vault.unshield(s.proof, s.root, s.nullifier, s.asset, account, s.amount);
+        if (!hypeVault.isSpent(s.nullifier)) {
+            hypeVault.unshield(s.proof, s.root, s.nullifier, s.asset, account, s.amount);
         }
         bidId = _bid(k, account, bidCall);
     }
@@ -184,7 +189,7 @@ contract CloakGloamBids {
 
     /// @dev What a note of `amount` brings out of the vault: the amount less the vault's cash-out fee (its rounding).
     function _arrived(uint256 amount) private view returns (uint256) {
-        uint256 bps = IFeeBps(address(vault)).withdrawFeeBps();
+        uint256 bps = IFeeBps(address(hypeVault)).withdrawFeeBps();
         return amount - ((amount / 10_000) * bps + ((amount % 10_000) * bps) / 10_000);
     }
 
@@ -210,8 +215,8 @@ contract CloakGloamBids {
     {
         address account = accountFor(k);
         _checkSigned(callDigest(account, target, value, data, callNonce[account]), signature, k.ownerKey);
-        if (target == address(vault) || target == address(this)) revert BadKey();
-        if (!vault.isSpent(k.nullifier)) revert NotSpent();
+        if (target == address(vault) || target == address(hypeVault) || target == address(this)) revert BadKey();
+        if (!hypeVault.isSpent(k.nullifier)) revert NotSpent();
         callNonce[account]++;
         return _open(k, account).run(target, value, data);
     }
@@ -239,7 +244,7 @@ contract CloakGloamBids {
         address account = accountFor(k);
         if (closed[account]) revert Closed();
         if (_recover(finishDigest(account, ds), signature) != k.ownerKey || k.ownerKey == address(0)) revert BadSignature();
-        if (!vault.isSpent(k.nullifier)) revert NotSpent();
+        if (!hypeVault.isSpent(k.nullifier)) revert NotSpent();
         BidAccount a = _open(k, account);
         _tryClaim(k.auction, account);
         closed[account] = true;
@@ -249,7 +254,7 @@ contract CloakGloamBids {
             if (d.asset == address(0)) {
                 if (account.balance < d.amount) revert ShortFunds(account.balance, d.amount);
                 a.run(address(this), d.amount, "");
-                vault.shieldBound{value: d.amount}(address(0), d.amount, d.commitment, d.proof);
+                hypeVault.shieldBound{value: d.amount}(address(0), d.amount, d.commitment, d.proof);
             } else {
                 uint256 have = IERC20Bal(d.asset).balanceOf(account);
                 if (have < d.amount) revert ShortFunds(have, d.amount);
@@ -287,8 +292,8 @@ contract CloakGloamBids {
     }
 
     function _exit(BidKey calldata k, address account, address to, address[] calldata tokens) private {
-        if (to == address(0) || to == account || to == address(this) || to == address(vault)) revert BadKey();
-        if (!vault.isSpent(k.nullifier)) revert NotSpent();
+        if (to == address(0) || to == account || to == address(this) || to == address(vault) || to == address(hypeVault)) revert BadKey();
+        if (!hypeVault.isSpent(k.nullifier)) revert NotSpent();
         BidAccount a = _open(k, account);
         _tryClaim(k.auction, account);
         uint256 hype = account.balance;

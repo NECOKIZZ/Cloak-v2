@@ -171,6 +171,12 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         refundAfter = refundAfter_;
     }
 
+    /// @notice The vault an asset's notes are spent from and paid into. One vault here; CloakGloamBatcherV4 can keep
+    ///         HYPE in Gloam's vault and launch tokens in the launch vault.
+    function vaultFor(address) public view virtual returns (IGloamVault) {
+        return vault;
+    }
+
     receive() external payable {
         // HYPE comes in from an order's escrow as it opens, or from the venue while settling
         if (!_opening && !_venueMayPay(msg.sender)) revert Used();
@@ -241,8 +247,7 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         id = idOf(k);
         if (orders[id].net != 0) revert Used();
         address escrow = escrowFor(k);
-        bool sentAlone = vault.isSpent(s.nullifier);
-        if (!sentAlone) vault.unshield(s.proof, s.root, s.nullifier, asset, escrow, s.amount);
+        bool sentAlone = _spendInto(s, asset, escrow);
         uint256 net = _openEscrow(id, asset);
         // what landed is a note of this size less at most the vault's fee ceiling: not an amount paid in from outside
         if (net > k.size || net * 10_000 < uint256(k.size) * (10_000 - MAX_VAULT_FEE_BPS)) revert NotStandard();
@@ -372,12 +377,13 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         if (amount == 0) revert NotYet();
         if (d.asset != asset || d.amount != amount) revert WrongAmount(amount);
         orders[id].paid = true;
+        IGloamVault v = vaultFor(asset);
         if (asset == NATIVE) {
-            vault.shieldBound{value: amount}(NATIVE, amount, d.commitment, d.proof);
+            v.shieldBound{value: amount}(NATIVE, amount, d.commitment, d.proof);
         } else {
-            IERC20B(asset).approve(address(vault), amount);
-            vault.shieldBound(asset, amount, d.commitment, d.proof);
-            IERC20B(asset).approve(address(vault), 0);
+            IERC20B(asset).approve(address(v), amount);
+            v.shieldBound(asset, amount, d.commitment, d.proof);
+            IERC20B(asset).approve(address(v), 0);
         }
         emit OrderPaid(id, asset, amount, true);
     }
@@ -404,15 +410,7 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
         }
         if (sum != amount) revert WrongAmount(amount);
         orders[id].paid = true;
-        for (uint256 i; i < ds.length; ++i) {
-            if (asset == NATIVE) {
-                vault.shieldBound{value: ds[i].amount}(NATIVE, ds[i].amount, ds[i].commitment, ds[i].proof);
-            } else {
-                IERC20B(asset).approve(address(vault), ds[i].amount);
-                vault.shieldBound(asset, ds[i].amount, ds[i].commitment, ds[i].proof);
-            }
-        }
-        if (asset != NATIVE) IERC20B(asset).approve(address(vault), 0);
+        _payMany(asset, ds);
         emit OrderPaid(id, asset, amount, true);
     }
 
@@ -426,7 +424,7 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
      */
     function exit(OrderKey calldata k, address to, bytes calldata signature) external nonReentrant {
         bytes32 id = idOf(k);
-        if (to == address(0) || to == address(vault) || _recover(exitDigest(id, to), signature) != k.ownerKey) revert BadSignature();
+        if (to == address(0) || to == address(vault) || to == address(vaultFor(NATIVE)) || _recover(exitDigest(id, to), signature) != k.ownerKey) revert BadSignature();
         (address asset, uint256 amount) = owed(id);
         if (amount == 0) revert NotYet();
         orders[id].paid = true;
@@ -458,6 +456,27 @@ abstract contract CloakGloamBatcherBase is IEscrowPayee {
     }
 
     // ── internals ──────────────────────────────────────────────────────
+
+    /// @dev Deposits each note into the vault of `asset`.
+    function _payMany(address asset, Deposit[] calldata ds) private {
+        IGloamVault v = vaultFor(asset);
+        for (uint256 i; i < ds.length; ++i) {
+            if (asset == NATIVE) {
+                v.shieldBound{value: ds[i].amount}(NATIVE, ds[i].amount, ds[i].commitment, ds[i].proof);
+            } else {
+                IERC20B(asset).approve(address(v), ds[i].amount);
+                v.shieldBound(asset, ds[i].amount, ds[i].commitment, ds[i].proof);
+            }
+        }
+        if (asset != NATIVE) IERC20B(asset).approve(address(v), 0);
+    }
+
+    /// @dev Spends the order's note from its asset's vault to the escrow, unless a spend sent alone already did.
+    function _spendInto(Spend calldata s, address asset, address escrow) private returns (bool sentAlone) {
+        IGloamVault v = vaultFor(asset);
+        sentAlone = v.isSpent(s.nullifier);
+        if (!sentAlone) v.unshield(s.proof, s.root, s.nullifier, asset, escrow, s.amount);
+    }
 
     function _openEscrow(bytes32 salt, address asset) private returns (uint256 arrived) {
         uint256 before = asset == NATIVE ? address(this).balance : IERC20B(asset).balanceOf(address(this));

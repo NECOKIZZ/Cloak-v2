@@ -8,7 +8,7 @@
 //   NODE_USE_ENV_PROXY=1 node e2e-gloam/deploy-batcher-v4.mjs         # live: GLOAM_TESTNET_PK from ../.env
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { formatEther } from "viem";
+import { formatEther, zeroAddress } from "viem";
 import { createGloamLoop } from "../services/keeper/gloamLoop.mjs";
 import { ANVIL_KEYS, ELYSIUM_TESTNET_ID, ELYSIUM_TESTNET_RPC, REPO, clients, ourArtifact, sendAndLog, startAnvil } from "./lib.mjs";
 
@@ -38,7 +38,7 @@ const pub = me.pub;
 try {
   const start = await pub.getBalance({ address: me.account.address });
   console.log(`Adding CloakGloamBatcherV4 on ${FORK ? "a fork of " : ""}Elysium testnet from ${me.account.address} (${formatEther(start)} HYPE)`);
-  const r = await sendAndLog(pub, "deploy CloakGloamBatcherV4", me.wallet.deployContract({ ...ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), args: [rec.launchVault, rec.launchFactory, ROUND, MAX_SLIPPAGE_BPS, REFUND_AFTER] }));
+  const r = await sendAndLog(pub, "deploy CloakGloamBatcherV4", me.wallet.deployContract({ ...ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), args: [rec.launchVault, zeroAddress, rec.launchFactory, ROUND, MAX_SLIPPAGE_BPS, REFUND_AFTER] }));
   const batcherV4 = r.contractAddress;
   const send = async (x) => (await sendAndLog(pub, x.functionName, me.wallet.writeContract(x))).transactionHash;
   const t = await createGloamLoop({ publicClient: pub, account: me.account, send, batcherV4, batcherV4Block: r.blockNumber }).registerMarkets();

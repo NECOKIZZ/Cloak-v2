@@ -78,7 +78,7 @@ contract CloakGloamBidsTest is Test {
         launch = new TestToken("Launch", "LNCH", 18);
         pool.setDepositLimit(address(0), 1000e18, 100_000e18);
         pool.setDepositLimit(address(launch), 1e30, 1e32);
-        bids = new CloakGloamBids(address(pool));
+        bids = new CloakGloamBids(address(pool), address(0));
         auction = new MockAuction(launch, block.timestamp + 1 hours);
         launch.mint(address(auction), 1_000_000e18);
         vm.deal(address(this), 100e18);
@@ -338,5 +338,104 @@ contract CloakGloamBidsTest is Test {
         bytes memory sig = _sign(bids.callDigest(account, address(pool), 0, data, 0));
         vm.expectRevert(CloakGloamBids.BadKey.selector);
         bids.ownerCall(k, address(pool), 0, data, sig);
+    }
+}
+
+/// HYPE in Gloam's vault, launch tokens in Cloak's launch vault: a bid spends HYPE from Gloam's vault, and its win
+/// comes back as tokens in the launch vault and its refund as HYPE in Gloam's vault.
+contract CloakGloamBidsTwoVaultsTest is Test {
+    using stdJson for string;
+
+    ShieldPoolPayments gv; // Gloam's vault: HYPE
+    ShieldPoolPayments lv; // the launch vault: launch tokens
+    CloakGloamBids bids;
+    MockAuction auction;
+    TestToken launch;
+    uint256 ownerPk = 0x0B1D;
+    uint256 constant NOTE = 1e18;
+    uint256 constant ARRIVES = NOTE - (NOTE * 50) / 10_000;
+    bytes32 constant COMMITMENT = keccak256("commitment");
+
+    function _poseidon() internal returns (address addr) {
+        bytes memory code = vm.readFile("../vendor/gloam/contracts/test/fixtures/Poseidon2.json").readBytes(".bytecode");
+        assembly {
+            addr := create(0, add(code, 0x20), mload(code))
+        }
+    }
+
+    function _vault() internal returns (ShieldPoolPayments v) {
+        v = new ShieldPoolPayments(_poseidon(), address(new ToBindingVerifier()));
+        v.setShieldVerifier(address(new AcceptVerifier()));
+        v.setWithdrawFee(50, address(0xFEE));
+        v.turnOnDepositLimits();
+    }
+
+    function setUp() public {
+        vm.warp(1_900_000_000);
+        launch = new TestToken("Launch", "LNCH", 18);
+        gv = _vault();
+        gv.setDepositLimit(address(0), 1000e18, 100_000e18);
+        lv = _vault();
+        lv.setDepositLimit(address(launch), 1e30, 1e32);
+        bids = new CloakGloamBids(address(lv), address(gv));
+        auction = new MockAuction(launch, block.timestamp + 1 hours);
+        launch.mint(address(auction), 1_000_000e18);
+        vm.deal(address(this), 100e18);
+        gv.shieldBound{value: NOTE}(address(0), NOTE, bytes32(uint256(0xAA)), hex"00");
+    }
+
+    receive() external payable {}
+
+    function _sign(bytes32 digest) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ownerPk, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _place() internal returns (CloakGloamBids.BidKey memory k, address account) {
+        k = CloakGloamBids.BidKey(bytes32(uint256(0xAA)), NOTE, address(auction), vm.addr(ownerPk), address(0xFA11), block.timestamp + 30 days);
+        account = bids.accountFor(k);
+        bytes memory call = abi.encodeCall(MockAuction.commit, (COMMITMENT, bytes("sealed")));
+        CloakGloamBids.Spend memory s = CloakGloamBids.Spend(abi.encode(account), gv.currentRoot(), k.nullifier, address(0), NOTE);
+        bids.place(s, k, call, _sign(bids.placeDigest(account, call)));
+    }
+
+    function test_twoVaults_theBidSpendsHypeFromGloamsVault() public {
+        uint256 g0 = gv.deposited(address(0));
+        (, address account) = _place();
+        (address bidder, uint256 deposit, , ) = auction.bids(0);
+        assertEq(bidder, account);
+        assertEq(deposit, ARRIVES, "the deposit is the note less Gloam's vault's fee");
+        assertEq(g0 - gv.deposited(address(0)), NOTE, "the HYPE note left Gloam's vault");
+        assertEq(address(bids.hypeVault()), address(gv));
+        assertEq(address(bids.vault()), address(lv));
+    }
+
+    function test_twoVaults_winGoesToTheLaunchVaultAndRefundToGloamsVault() public {
+        (CloakGloamBids.BidKey memory k, address account) = _place();
+        auction.settle(0, 500e18, 0.3e18);
+        CloakGloamBids.Deposit[] memory ds = new CloakGloamBids.Deposit[](2);
+        ds[0] = CloakGloamBids.Deposit(hex"00", bytes32(uint256(0x500)), address(launch), 500e18);
+        ds[1] = CloakGloamBids.Deposit(hex"00", bytes32(uint256(0x501)), address(0), 0.3e18);
+        uint256 g0 = gv.deposited(address(0));
+        bids.finish(k, ds, _sign(bids.finishDigest(account, ds)));
+        assertEq(lv.deposited(address(launch)), 500e18, "the won tokens are a note in the launch vault");
+        assertEq(gv.deposited(address(0)) - g0, 0.3e18, "the refund is a note in Gloam's vault");
+        assertEq(lv.deposited(address(0)), 0, "no HYPE in the launch vault");
+        assertEq(account.balance + launch.balanceOf(account), 0);
+    }
+
+    function test_twoVaults_noOwnerCallOrExitIntoEitherVault() public {
+        (CloakGloamBids.BidKey memory k, address account) = _place();
+        bytes memory data = abi.encodeWithSignature("collectFees(address)", address(0));
+        bytes memory sg = _sign(bids.callDigest(account, address(gv), 0, data, 0));
+        vm.expectRevert(CloakGloamBids.BadKey.selector);
+        bids.ownerCall(k, address(gv), 0, data, sg);
+        bytes memory sl = _sign(bids.callDigest(account, address(lv), 0, data, 0));
+        vm.expectRevert(CloakGloamBids.BadKey.selector);
+        bids.ownerCall(k, address(lv), 0, data, sl);
+        address[] memory none = new address[](0);
+        bytes memory se = _sign(bids.exitDigest(account, address(gv)));
+        vm.expectRevert(CloakGloamBids.BadKey.selector);
+        bids.exit(k, address(gv), none, se);
     }
 }

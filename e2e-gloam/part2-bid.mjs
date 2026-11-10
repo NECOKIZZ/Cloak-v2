@@ -42,7 +42,7 @@ const waitChainTime = async (t) => {
 try {
   console.log("Part 2c on a fork of Elysium testnet: a private bid on a real Cloak launch");
   const bidsArt = ourArtifact("CloakGloamBids.sol", "CloakGloamBids");
-  const BIDS = (await sendAndLog(pub, "deploy CloakGloamBids", L.dep.wallet.deployContract({ ...bidsArt, args: [stack.pool] }))).contractAddress;
+  const BIDS = (await sendAndLog(pub, "deploy CloakGloamBids", L.dep.wallet.deployContract({ ...bidsArt, args: [stack.pool, zeroAddress] }))).contractAddress;
 
   // a launch on Cloak's live v4 factory (on the fork)
   const creator = new Cloak(pub, creatorC.wallet, deployments[99801].factory);

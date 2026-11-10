@@ -174,6 +174,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
         whype: g.whype,
         launchSwap: g.launchSwap,
         launchSwapV4: g.launchSwapV4,
+        router: g.router,
         batcher: g.batcher,
         batcherV4: g.batcherV4,
         receive: g.receive,

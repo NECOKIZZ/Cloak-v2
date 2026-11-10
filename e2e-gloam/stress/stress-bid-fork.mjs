@@ -52,7 +52,7 @@ try {
   await write(lv, LV_ABI, "transferOwnership", [guard]);
   await write(guard, guardArt.abi, "acceptVaultOwnership");
   await checkLaunchVault(pub, lv, { guard, dual: stack.dual, shieldVerifier: stack.shieldVerifier, factory: D.factory, feeRecipient: addr, pauser: addr, caps });
-  const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv]);
+  const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv, zeroAddress]);
   const block = await pub.getBlockNumber();
 
   const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: stack.pool, launchVault: lv, memoBoard: stack.payMemo, escrows: [bids], hourlySpendWei: parseEther("5") });

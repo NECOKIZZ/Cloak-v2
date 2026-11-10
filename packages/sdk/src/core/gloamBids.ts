@@ -99,21 +99,30 @@ export async function gloamBid(
   return { bids: p.bids, key, account, tick: p.tick, quantity: p.quantity, salt, txHash };
 }
 
-/** After settlement: put the bid's tokens and refund back into the vault as new notes of this account. */
-export async function gloamFinishBid(core: GloamCore, rec: GloamBidRecord, back: { asset: Address; amount: bigint }[], onStatus: Status = () => {}): Promise<Hex[]> {
+/**
+ * After settlement: put the bid's tokens and refund back as new notes of this account: tokens into the launch vault
+ * (`core`), the HYPE refund into `hypeCore`'s vault (Gloam's, on a bids contract built for it; else the launch vault).
+ */
+export async function gloamFinishBid(core: GloamCore, rec: GloamBidRecord, back: { asset: Address; amount: bigint }[], onStatus: Status = () => {}, hypeCore: GloamCore = core): Promise<Hex[]> {
   const pub = core.config.publicClient;
   onStatus("Proving the returning notes");
   const made = [];
-  for (const b of back.filter((x) => x.amount > 0n)) made.push(await core.depositFor(b.asset, b.amount));
+  const coreFor = (asset: Address) => (asset === "0x0000000000000000000000000000000000000000" ? hypeCore : core);
+  for (const b of back.filter((x) => x.amount > 0n)) made.push({ ...(await coreFor(b.asset).depositFor(b.asset, b.amount)), core: coreFor(b.asset) });
   const ds = made.map((m) => m.deposit);
   const digest: Hex = (await pub.readContract({ address: rec.bids, abi: BIDS, functionName: "finishDigest", args: [rec.account, ds] })) as Hex;
   const signature = await privateKeyToAccount(core.exitKeyFor(rec.key.nullifier)).sign({ hash: digest });
   onStatus("Returning the bid to the private balance");
   const tx = await core.config.submit({ kind: "escrow", to: rec.bids, data: encodeFunctionData({ abi: BIDS, functionName: "finish", args: [rec.key, ds, signature] }) });
-  for (const m of made) core.track({ commitment: m.note.commitment, asset: m.note.asset, amount: m.note.amount, secret: m.note.secret });
-  // after the deposit: relays take a memo only for a note already in the vault
-  const memo = made.length ? await core.post(BigInt(ds[0].commitment), made.map((m) => m.ticket), onStatus).catch(() => null) : null;
-  return memo ? [tx, memo] : [tx];
+  for (const m of made) m.core.track({ commitment: m.note.commitment, asset: m.note.asset, amount: m.note.amount, secret: m.note.secret });
+  // after the deposit: relays take a memo only for a note already in the vault; one memo per vault's notes
+  const out: Hex[] = [tx];
+  for (const c of [...new Set(made.map((m) => m.core))]) {
+    const mine = made.filter((m) => m.core === c);
+    const memo = await c.post(BigInt(mine[0].deposit.commitment), mine.map((m) => m.ticket), onStatus).catch(() => null);
+    if (memo) out.push(memo);
+  }
+  return out;
 }
 
 /** One owner-signed call from the bid account: a drop's NFTs out to a wallet, for instance. */

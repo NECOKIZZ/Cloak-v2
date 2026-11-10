@@ -228,9 +228,9 @@ export async function finishPending(
         r.kind === "launchSwap"
           ? await finishSwap(r.vaultIn ? coreOf(r.vaultIn, core, opts.cores) : core, r, now, onStatus)
           : r.kind === "bid"
-            ? await finishBid(core, r, onStatus)
+            ? await finishBid(core, r, onStatus, opts.cores)
             : r.kind === "batchOrder"
-              ? await finishBatchOrder(core, r, onStatus)
+              ? await finishBatchOrder(core, r, onStatus, opts.cores)
               : await finishGraduation(core, r, now, opts, onStatus);
       if (res) out.done.push({ record: r, ...res });
       else out.waiting.push(r);
@@ -240,6 +240,17 @@ export async function finishPending(
     }
   }
   return out;
+}
+
+/**
+ * The core of the vault an escrow keeps HYPE in: its hypeVault() (Gloam's vault, on escrows built for it), or the
+ * launch vault (`core`) on escrows without one.
+ */
+export async function hypeCoreOf(escrow: Address, core: GloamCore, cores: GloamCore[] = []): Promise<GloamCore> {
+  const v = (await core.config.publicClient
+    .readContract({ address: escrow, abi: parseAbi(["function hypeVault() view returns (address)"]), functionName: "hypeVault" })
+    .catch(() => core.config.pool)) as Address;
+  return coreOf(v, core, cores);
 }
 
 /** The core of a vault: the one passed, or one of `cores`. */
@@ -281,16 +292,20 @@ async function finishSwap(core: GloamCore, r: Extract<LaunchRecord, { kind: "lau
  * what it is owed. Waits while the round is open. An order never placed (the spend didn't land) is dropped once its
  * note is still unspent and the round is over.
  */
-async function finishBatchOrder(core: GloamCore, r: Extract<LaunchRecord, { kind: "batchOrder" }>, onStatus: Status) {
-  const pub = core.config.publicClient;
+async function finishBatchOrder(launchCore: GloamCore, r: Extract<LaunchRecord, { kind: "batchOrder" }>, onStatus: Status, cores: GloamCore[] = []) {
+  const pub = launchCore.config.publicClient;
+  // HYPE is spent from and paid into the batcher's HYPE vault (Gloam's, on a batcher built for it); tokens the launch vault
+  const hypeCore = await hypeCoreOf(r.batcher, launchCore, cores);
   const [token, round, , paid] = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "orders", args: [r.id] })) as [Address, bigint, boolean, boolean, bigint];
   if (paid) return { outcome: "already paid", txHashes: [] as Hex[] };
   if (round === 0n && token === "0x0000000000000000000000000000000000000000") {
-    const spent = (await pub.readContract({ address: core.config.pool, abi: parseAbi(["function isSpent(bytes32) view returns (bool)"]), functionName: "isSpent", args: [r.key.nullifier] })) as boolean;
+    const spentFrom = r.key.buy ? hypeCore : launchCore;
+    const spent = (await pub.readContract({ address: spentFrom.config.pool, abi: parseAbi(["function isSpent(bytes32) view returns (bool)"]), functionName: "isSpent", args: [r.key.nullifier] })) as boolean;
     return spent ? null : { outcome: "never placed, the note stayed in the balance", txHashes: [] as Hex[] };
   }
   const [asset, amount] = (await pub.readContract({ address: r.batcher, abi: BATCHER, functionName: "owed", args: [r.id] })) as [Address, bigint];
   if (amount === 0n) return null; // the round hasn't settled (or been cancelled) yet
+  const core = asset === "0x0000000000000000000000000000000000000000" ? hypeCore : launchCore;
   onStatus("Bringing a batch order's payout into your private balance");
   // a payout over the vault's per-deposit cap comes back as several notes (claimMany)
   const [perDeposit] = (await pub.readContract({ address: core.config.pool, abi: parseAbi(["function depositLimit(address) view returns (uint128 perDeposit, uint128 total)"]), functionName: "depositLimit", args: [asset] }).catch(() => [0n, 0n])) as [bigint, bigint];
@@ -362,7 +377,7 @@ async function finishGraduation(
 }
 
 /** After its launch settles: the bid's won tokens and refund back into the vault as notes (the auction claim included). */
-async function finishBid(core: GloamCore, r: Extract<LaunchRecord, { kind: "bid" }>, onStatus: Status) {
+async function finishBid(core: GloamCore, r: Extract<LaunchRecord, { kind: "bid" }>, onStatus: Status, cores: GloamCore[] = []) {
   const pub = core.config.publicClient;
   const A = parseAbi([
     "function settled() view returns (bool)",
@@ -383,6 +398,6 @@ async function finishBid(core: GloamCore, r: Extract<LaunchRecord, { kind: "bid"
   // a note for it would only add a piece to the balance
   const DUST = 10n ** 12n;
   const back = [{ asset: token, amount: tokens }, { asset: "0x0000000000000000000000000000000000000000" as Address, amount: refund >= DUST ? refund : 0n }];
-  const txHashes = await gloamFinishBid(core, r, back, onStatus);
+  const txHashes = await gloamFinishBid(core, r, back, onStatus, await hypeCoreOf(r.bids, core, cores));
   return { outcome: `${tokens} tokens and ${back[1].amount} wei of HYPE back as notes${refund > back[1].amount ? ` (${refund} wei of dust left in the bid account)` : ""}`, txHashes };
 }

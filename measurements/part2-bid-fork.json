@@ -12,7 +12,7 @@
     },
     "deploy CloakGloamBids": {
       "n": 1,
-      "median": 2530468
+      "median": 2570402
     },
     "queue listing (guard)": {
       "n": 1,
@@ -28,12 +28,12 @@
     },
     "relayed escrow": {
       "n": 2,
-      "median": 2195202
+      "median": 2195236
     },
     "execute listing (guard)": {
       "n": 1,
       "median": 57913
     }
   },
-  "wallMs": 62258
+  "wallMs": 60945
 }

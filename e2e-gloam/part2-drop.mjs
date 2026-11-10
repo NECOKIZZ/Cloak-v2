@@ -35,7 +35,7 @@ const waitChainTime = async (t) => {
 
 try {
   console.log("Part 2d on a fork of Elysium testnet: a private bid on a real Cloak drop");
-  const BIDS = (await sendAndLog(pub, "deploy CloakGloamBids", L.dep.wallet.deployContract({ ...ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), args: [stack.pool] }))).contractAddress;
+  const BIDS = (await sendAndLog(pub, "deploy CloakGloamBids", L.dep.wallet.deployContract({ ...ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), args: [stack.pool, zeroAddress] }))).contractAddress;
   const creator = new CloakDrops(pub, creatorC.wallet, deployments[99801].dropFactory);
   const { drop } = await creator.create({ name: "Gloam Drop", symbol: "GDROP", baseURI: "ipfs://gloam-test/", supply: 10, floor: parseEther("0.01"), biddingSecs: 40, revealSecs: 40 });
   console.log("  drop", drop);

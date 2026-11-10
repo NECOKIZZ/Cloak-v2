@@ -104,7 +104,8 @@ try {
   await write(lv, LV_ABI, "setShieldVerifier", [cfg.shieldVerifier]);
   await write(lv, LV_ABI, "setWithdrawFee", [50, cfg.feeRecipient]);
   await write(lv, LV_ABI, "turnOnDepositLimits");
-  await write(lv, LV_ABI, "setDepositLimit", [zeroAddress, BigInt(cfg.hype.perDeposit), BigInt(cfg.hype.total)]);
+  // HYPE lives in Gloam's vault: the launch vault takes it only if the config gives it caps ("hype")
+  if (cfg.hype) await write(lv, LV_ABI, "setDepositLimit", [zeroAddress, BigInt(cfg.hype.perDeposit), BigInt(cfg.hype.total)]);
   await write(lv, LV_ABI, "endSetup");
   const guardArt = gloamArtifact("VaultOwnerGuard.sol", "VaultOwnerGuard");
   const guard = await deploy("VaultOwnerGuard (launch vault)", guardArt, [lv, addr]);
@@ -117,9 +118,9 @@ try {
   const launchSwapV4 = await deploy("CloakLaunchSwapV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakLaunchSwapV4"), [lv, cfg.poolManager, cfg.whype, cfg.v4Hook]);
   // buys and sells between HYPE in Gloam's vault and launch tokens in the launch vault (one private call either way)
   const router = await deploy("CloakRouterV4", ourArtifact("CloakLaunchSwapV4.sol", "CloakRouterV4"), [lv, cfg.gloamVault, cfg.poolManager, cfg.whype, cfg.v4Hook]);
-  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter)]);
+  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.gloamVault, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter)]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [cfg.gloamVault, lv]);
-  const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv]);
+  const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv, cfg.gloamVault]);
   // graduation into Gloam's vault is off unless asked for: launch tokens live in the launch vault (one home per asset)
   const graduation = cfg.graduation ? await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [lv, cfg.gloamVault, BigInt(cfg.graduationRoundSecs)]) : undefined;
   const fv = await deploy("GloamFundsVerifierFinal", ourArtifact("GloamFundsVerifierFinal.sol", "GloamFundsVerifierFinal"));

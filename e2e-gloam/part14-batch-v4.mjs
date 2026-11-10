@@ -42,7 +42,7 @@ try {
   await write(lv, LV_ABI, "transferOwnership", [guard]);
   await write(guard, guardArt.abi, "acceptVaultOwnership");
   await checkLaunchVault(pub, lv, { guard, dual: stack.dual, shieldVerifier: stack.shieldVerifier, factory: D.factory, feeRecipient: addr, pauser: addr, caps });
-  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, D.factory, ROUND, 200n, 600n]);
+  const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, zeroAddress, D.factory, ROUND, 200n, 600n]);
   const block = await pub.getBlockNumber();
 
   // the keeper loop admits every settled launch and registers its v4 market for batch rounds

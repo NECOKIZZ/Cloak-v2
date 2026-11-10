@@ -14,7 +14,6 @@
   "safe": "FILL IN: Cloak's Safe (guard controller)",
   "pauser": "FILL IN: Cloak's Safe (launch pauser)",
   "feeRecipient": "FILL IN: the relay's fee account (the launch vault's 0.5% pays relay gas)",
-  "hype": { "perDeposit": "10000000000000000000", "total": "1000000000000000000000" },
   "launchCaps": { "perDeposit": "1000000000000000000000000000", "total": "100000000000000000000000000000" },
   "graduationRoundSecs": 3600,
   "batch": { "roundSecs": 60, "maxSlippageBps": 200, "refundAfter": 600 }
