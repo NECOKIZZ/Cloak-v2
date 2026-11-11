@@ -70,7 +70,15 @@
       "destination": "/brand.html"
     },
     {
-      "source": "/((?!assets/|circuits/|tokens/|brand/|hero/|media/|api/|demo-nft/|roadmap|brand$).*)",
+      "source": "/(docs|sdk|proof|agents|pitch|demo|claim|pay|app)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/(docs|sdk|proof|agents|pitch|demo|claim|pay|app)/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/app/:path*",
       "destination": "/index.html"
     }
   ],
@@ -145,6 +153,24 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=86400"
+        }
+      ]
+    },
+    {
+      "source": "/(tokens|hero|brand|media)/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/(logo.svg|og.jpg|theme.js)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
         }
       ]
     }

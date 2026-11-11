@@ -1,4 +1,23 @@
+# Link previews (cards on X, Telegram, Discord and others) can read every page.
+User-agent: Twitterbot
+User-agent: TelegramBot
+User-agent: Discordbot
+User-agent: facebookexternalhit
+User-agent: LinkedInBot
+User-agent: Slackbot
+Allow: /
+
+# Crawlers that only collect training data, or bring us no visitors.
+User-agent: GPTBot
+User-agent: CCBot
+User-agent: Bytespider
+User-agent: Baiduspider
+Disallow: /
+
+# Everyone else: the public pages, not the app (it needs a wallet) or the API.
 User-agent: *
 Allow: /
+Disallow: /app/
+Disallow: /api/
 
 Sitemap: https://cloak.boblabs.tech/sitemap.xml
