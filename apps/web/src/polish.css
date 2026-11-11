@@ -1,0 +1,139 @@
+/*
+ * The finer layer over styles.css: figures, labels and the trading surfaces. Colours still come only from brand.css.
+ * The landing page is not styled here.
+ */
+
+/* ───────────── figures: one numeric face, digits of equal width ───────────── */
+.stat .v, .countdown, .swap-box input, .bal .v, .wallet-total, .market-price, .claim-amount, .vol-big, .vol-side b,
+.meter .v, .fig {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.035em;
+}
+.dfeat-stats b, .dp-stats b, .dcard-stats b, .tc-ticker, .bucket, .pchart-y { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.dfeat-stats b, .dp-stats b { font-weight: 400; font-size: 20px; letter-spacing: -0.02em; }
+.tc-ticker { font-weight: 400; }
+.unit { font-size: 0.42em; letter-spacing: 0.04em; color: var(--mute); margin-left: 0.4em; font-weight: 400; }
+
+/* small labels over a figure */
+.label, .stat .k, .market-stats > div > .xs, .dfeat-stats span, .dp-stats span, .dcard-stats span {
+  font: 500 10.5px/1.3 var(--font-body); letter-spacing: 0.09em; text-transform: uppercase; color: var(--mute);
+}
+
+/* ───────────── inputs ───────────── */
+.input { font: 400 15.5px var(--font-num); font-variant-numeric: tabular-nums; border-color: var(--line); }
+.input::placeholder { color: var(--faint); }
+.input:focus { border-color: var(--signal-line); box-shadow: 0 0 0 3px var(--signal-soft); }
+.tsearch-wrap { position: relative; margin-bottom: 4px; }
+.tsearch-wrap svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+.tsearch-wrap .input { height: 50px; padding-left: 46px; border-radius: 999px; font-family: var(--font-body); font-size: 14.5px; }
+
+/* ───────────── page heads: a title and one line ───────────── */
+.page-head { margin-bottom: 24px; }
+.page-head h1 { font-size: 36px; }
+.page-head p { font-size: 14.5px; max-width: 520px; margin-top: 6px; }
+
+/* ───────────── "more": the long explanation, one tap away ───────────── */
+.more { border-top: 1px solid var(--line); }
+.more + .more { border-top: 1px solid var(--line); }
+.more summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 2px; font-size: 13px; color: var(--soft); user-select: none; }
+.more summary::-webkit-details-marker { display: none; }
+.more summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--mute); border-bottom: 1.5px solid var(--mute); transform: rotate(45deg) translateY(-2px); transition: transform 0.2s var(--ease); flex: none; margin-right: 4px; }
+.more[open] summary::after { transform: rotate(-135deg) translateY(-2px); }
+.more summary:hover { color: var(--text); }
+.more-body { padding: 0 2px 14px; font-size: 13px; line-height: 1.6; color: var(--mute); }
+.more-body ol, .more-body ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.more-list { margin-top: 10px; }
+.more-list .more:last-child { border-bottom: 1px solid var(--line); }
+.card > .more:last-child, .swap > .more-list { margin-bottom: -8px; }
+.swap > .more-list .more:last-child { border-bottom: 0; }
+
+/* ───────────── private swap ───────────── */
+@media (min-width: 981px) { .swap-wrap { grid-template-columns: minmax(0, 468px) minmax(0, 1fr); gap: 28px; } }
+.swap { padding: 10px; border-radius: 28px; }
+.swap-box { border-radius: 20px; padding: 18px 20px 20px; border: 1px solid transparent; transition: border-color 0.2s, background 0.2s; }
+.swap-box:focus-within { border-color: var(--signal-line); }
+.swap-box .k { align-items: center; min-height: 18px; font-size: 12.5px; }
+.swap-box .k > span:first-child { font: 500 10.5px/1.3 var(--font-body); letter-spacing: 0.09em; text-transform: uppercase; }
+.swap-box .k .link { text-decoration: none; color: var(--soft); }
+.swap-box .k .link:hover { color: var(--signal); }
+.swap-box .amt { margin-top: 12px; }
+.swap-box input { font-size: 42px; font-weight: 300; line-height: 1.1; }
+.swap-box input::placeholder { color: var(--faint); }
+.token-sel { height: 42px; padding: 0 14px 0 7px; font-size: 14.5px; box-shadow: var(--shadow); }
+.flip { margin: -15px auto; width: 38px; height: 38px; border-radius: 50%; border-width: 4px; box-shadow: none; transition: transform 0.25s var(--ease), color 0.2s; }
+.flip:hover { transform: rotate(180deg); }
+.swap .mode { gap: 4px; margin: 10px 0; padding: 4px; background: var(--card); border-radius: 18px; }
+.swap .mode button { border: 0; background: transparent; border-radius: 14px; padding: 10px 14px; transition: background 0.2s, box-shadow 0.2s; }
+.swap .mode button.on { background: var(--raised); box-shadow: var(--shadow); }
+.swap .mode b { display: flex; align-items: center; gap: 7px; }
+.swap .mode button.on b::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
+.swap .mode span { font-variant-numeric: tabular-nums; }
+.swap .btn-lg { min-height: 56px; font-size: 15.5px; border-radius: 18px; }
+.swap-facts { display: grid; gap: 9px; padding: 14px 8px 6px; font-size: 13px; }
+.swap-facts .row > :first-child { color: var(--mute); }
+.swap-facts .row > :last-child { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.sees .row { padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.sees .row:last-child { border-bottom: 0; padding-bottom: 2px; }
+.sees .row > :first-child { color: var(--mute); }
+
+/* ───────────── launch list ───────────── */
+.tsection { margin-top: 32px; }
+.tsection-head { margin-bottom: 14px; }
+.tsection-head h2 .mute { font-family: var(--font-num); font-size: 14px; margin-left: 6px; padding: 2px 9px; border-radius: 999px; background: var(--card-2); color: var(--soft); vertical-align: 2px; }
+.tgrid { grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 14px; }
+.tcard { grid-template-columns: 48px 1fr auto; grid-template-areas: "icon id tag" "stats stats stats"; gap: 18px 13px; padding: 18px; border-radius: 22px; box-shadow: var(--shadow); }
+.tcard:hover { transform: translateY(-2px); }
+.tcard-id b { font-size: 15.5px; letter-spacing: -0.01em; }
+.tcard-tag { grid-area: tag; align-self: start; }
+.tcard-stats { grid-area: stats; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+.tcard-stats > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.tcard-stats .fig { font-size: 19px; font-weight: 400; letter-spacing: -0.025em; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcard-stats .fig small { font-size: 11px; letter-spacing: 0.04em; color: var(--mute); margin-left: 4px; font-weight: 400; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font: 500 11.5px var(--font-num); font-variant-numeric: tabular-nums; background: var(--card-2); color: var(--soft); white-space: nowrap; border: 0; cursor: default; }
+.chip.up { background: var(--signal-soft); color: var(--signal); }
+.chip.down { background: var(--danger-soft); color: var(--danger); }
+.chip.live { background: var(--signal-soft); color: var(--signal); }
+.tsection .empty { padding: 40px 20px; border: 1px dashed var(--line-strong); background: transparent; }
+
+/* ───────────── launch page ───────────── */
+.market-price { font-size: 40px; font-weight: 300; }
+.market-price .xs { font-size: 12px; letter-spacing: 0.04em; margin-left: 6px; }
+.market-stats { gap: 28px; }
+.market-stats > div { gap: 5px; }
+.market-stats .mono { font-size: 15.5px; }
+.stat .v { font-size: 28px; }
+.countdown { font-size: 44px; }
+.summary { border-radius: 14px; padding: 14px 16px; gap: 9px; }
+.summary .mono, .fl .mono { font-size: 13.5px; }
+
+/* ───────────── portfolio ───────────── */
+.wallet-total { font-size: 64px; font-weight: 300; }
+.bal .v { font-size: 34px; }
+
+@media (max-width: 560px) {
+  .page-head h1 { font-size: 30px; }
+  .swap-box input { font-size: 34px; }
+  .tgrid { grid-template-columns: 1fr; }
+  .tcard { grid-template-columns: 44px 1fr auto; padding: 16px; gap: 16px 12px; }
+  .tcard > .token-icon { width: 44px !important; height: 44px !important; font-size: 14px !important; }
+  .wallet-total { font-size: 48px; }
+  .market-price { font-size: 32px; }
+}
+
+/* ───────────── landing experiment (?glass): fluted glass behind the cloaked figure ───────────── */
+.uncloak-glass { position: absolute; inset: 0 4% 22%; z-index: -1; pointer-events: none; overflow: hidden;
+  --fade: radial-gradient(58% 60% at 50% 42%, #000 35%, rgba(0, 0, 0, 0.5) 62%, transparent 82%);
+  -webkit-mask-image: var(--fade); mask-image: var(--fade); }
+.uncloak-glass i { position: absolute; inset: -6% -8%; filter: url(#reeded);
+  background:
+    radial-gradient(22% 30% at 30% 34%, color-mix(in srgb, var(--brand-signal) 85%, transparent), transparent 72%),
+    radial-gradient(20% 28% at 72% 50%, color-mix(in srgb, var(--brand-seal) 70%, transparent), transparent 72%),
+    radial-gradient(26% 26% at 54% 20%, color-mix(in srgb, var(--brand-ink) 30%, transparent), transparent 70%),
+    radial-gradient(30% 34% at 44% 66%, color-mix(in srgb, var(--brand-signal) 45%, transparent), transparent 74%);
+  animation: glass-drift 22s ease-in-out infinite alternate; }
+/* the flutes themselves: a lit edge, a soft body, a dark seam */
+.uncloak-glass::after { content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0, rgba(255, 255, 255, 0.02) 10px, transparent 26px, rgba(0, 0, 0, 0.16) 44px, rgba(0, 0, 0, 0.30) 46px); }
+@keyframes glass-drift { from { transform: translate3d(-3%, 1%, 0) scale(1.02); } to { transform: translate3d(3%, -2%, 0) scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .uncloak-glass i { animation: none; } }

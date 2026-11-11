@@ -158,7 +158,7 @@ export function Drops() {
       <div className="page-head">
         <div>
           <h1>NFT drops</h1>
-          <p>Sealed mints with no race, no bots and no gas war. Bid what you'd pay above the creator's price, every winner pays one price, and WL bids get a boost. Partner WL spots sell the same way.</p>
+          <p>Sealed mints with no race and no gas war. Every winner pays one price.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {SPOT_BOOK && <Link to="/app/drops/create?spots" className="btn btn-ghost">Sell WL spots</Link>}

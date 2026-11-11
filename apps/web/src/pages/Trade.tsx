@@ -7,7 +7,7 @@ import { hype, tokens, usd } from "../format";
 import { Link, useRoute } from "../router";
 import { useApp } from "../state";
 import { friendly } from "../errors";
-import { Icon, TokenIcon } from "../ui";
+import { Icon, More, TokenIcon } from "../ui";
 import { quoteRoute, useFeePct, useMarkets, useTradeFeePct, vaultOf, type Market } from "./markets";
 import { isHidden } from "../hidden";
 import { usePrivateBalances } from "../balances";
@@ -292,7 +292,7 @@ export function Trade() {
       <div className="page-head">
         <div>
           <h1>Private swap</h1>
-          <p>Swap launch tokens{bases.length ? ", outside tokens and USDC" : ""} from your private balance. A relayer submits for you, so your wallet is never on the trade. Batch mode also hides how much you traded.</p>
+          <p>From your private balance. Your wallet is never on the trade.</p>
         </div>
       </div>
       {err && <div className="err">{err}</div>}
@@ -302,7 +302,7 @@ export function Trade() {
           <div>
             <div className="swap">
               <div className="swap-box">
-                <div className="k"><span>You pay (private)</span>{priv && !bal && <Skel w="9ch" />}{fromBal !== undefined && <span className="link" onClick={async () => {
+                <div className="k"><span>You pay</span>{priv && !bal && <Skel w="9ch" />}{fromBal !== undefined && <span className="link" onClick={async () => {
                   // instant trades pay the relayer from the same balance; batch mode makes room for its own fees
                   const pool = from ? from.pool : priv?.hypeMarket.pool;
                   const most = mode === "instant" && priv && pool ? await priv.maxSpendable(pool).catch(() => fromBal) : fromBal;
@@ -315,7 +315,7 @@ export function Trade() {
               </div>
               <button className="flip" aria-label="Switch direction" onClick={() => { setSide(side === "buy" ? "sell" : "buy"); setAmt(""); setRes({}); }}><Icon.arrowDown /></button>
               <div className="swap-box">
-                <div className="k"><span>You receive (private)</span>{priv && !bal && <Skel w="9ch" />}{bal && <span>Balance {fmtOut(bal.to)}</span>}</div>
+                <div className="k"><span>You receive</span>{priv && !bal && <Skel w="9ch" />}{bal && <span>Balance {fmtOut(bal.to)}</span>}</div>
                 <div className="amt">
                   <input value={q ? fmtOut(q).replace(/,/g, "") : ""} readOnly placeholder="0" aria-label="Estimated output" />
                   {side === "buy" ? marketSel : baseSel}
@@ -324,8 +324,8 @@ export function Trade() {
               {base && <div className="summary small" style={{ margin: "0 0 12px" }}>Routed {fromSym} to HYPE to {toSym} in one private swap, through two pools.</div>}
               {BATCHER && market.batchable && !base && (
                 <div className="mode">
-                  <button className={mode === "instant" ? "on" : ""} onClick={() => setMode("instant")}><b>Instant</b><span>Fills now · size visible</span></button>
-                  <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}><b>Batch · hides size</b><span>{round ? `Next round in ${Math.max(0, Math.ceil(round.endsAt - now))}s` : "Settles every 30 s"}</span></button>
+                  <button className={mode === "instant" ? "on" : ""} onClick={() => setMode("instant")}><b>Instant</b><span>Fills now, size visible</span></button>
+                  <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}><b>Batch</b><span>{round ? `Hides size, next round in ${Math.max(0, Math.ceil(round.endsAt - now))}s` : "Hides size, about a minute"}</span></button>
                 </div>
               )}
               {mode === "batch" && split.sizes.length > 0 && (
@@ -342,13 +342,30 @@ export function Trade() {
               {res.err && <div className="err">{res.err}</div>}
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               {tracked && <div className={tracked.tone === "warn" ? "err" : tracked.tone === "ok" ? "okmsg" : "summary small"} style={{ marginTop: 8 }} aria-live="polite">{tracked.tone === "wait" && <span className="dot live" style={{ marginRight: 8 }} />}{tracked.text}</div>}
+              <div className="swap-facts">
+                <div className="row"><span>Rate</span><span>{q && amountIn > 0n ? `1 ${fromSym} ≈ ${fmtOut((q * 10n ** BigInt(decIn)) / amountIn)} ${toSym}` : "…"}</span></div>
+                <div className="row"><span>Max slippage</span><span>{mode === "instant" ? "1%" : "2%, or refunded"}</span></div>
+                <div className="row"><span>Gas</span><span>Paid by the relayer</span></div>
+              </div>
+              <div className="more-list">
+                <More title="Fees and how it works">Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees. {from && feePct !== "no" ? `${feePct} vault fee on the amount sold.` : !from ? `Gloam's vault keeps ${feePct} of the HYPE spent.` : ""} {cloakPct !== "no" ? `Cloak keeps ${cloakPct} of what a sale brings, in ${to ? to.symbol : "HYPE"}.` : ""} The relayer pays the gas, and whatever the trade didn't need comes back to your private balance.</More>
+                {BATCHER && market.batchable && !base && (
+                  <More title="How batch mode works">
+                    <ol>
+                      <li>Your amount is split into the standard sizes everyone uses.</li>
+                      <li>Orders wait in a round of about a minute alongside everyone else's.</li>
+                      <li>Buys and sells cross at the pool's average price over the round, which no single trade can move. Only the net trades on the pool.</li>
+                      <li>Everyone in the round gets the same price, paid back into private balances.</li>
+                    </ol>
+                  </More>
+                )}
+              </div>
             </div>
-            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees. {from && feePct !== "no" ? `${feePct} vault fee on the amount sold.` : !from ? `Gloam's vault keeps ${feePct} of the HYPE spent.` : ""} {cloakPct !== "no" ? `Cloak keeps ${cloakPct} of what a sale brings, in ${to ? to.symbol : "HYPE"}.` : ""} The relayer pays the gas, and whatever the trade didn't need comes back to your private balance.</p>
           </div>
           <div className="col">
             <div className="card">
               <div className="card-head"><h3>What the chain sees</h3><span className="pill sealed-p">● shielded</span></div>
-              <div className="fl" style={{ gridTemplateColumns: "1fr" }}>
+              <div className="sees">
                 <div className="row"><span className="mute">Sender</span><span>Relayer, <b style={{ fontWeight: 500 }}>not you</b></span></div>
                 <div className="row"><span className="mute">Your balance</span><span><span className="sealed" style={{ width: 70, height: 14 }} /></span></div>
                 <div className="row"><span className="mute">Your other trades</span><span>Unlinkable</span></div>
@@ -357,7 +374,7 @@ export function Trade() {
                   <div className="row"><span className="mute">Orders in this round</span><span className={crowd ? "signal" : "warn-t"}>{crowd === null ? "…" : crowd === 0 ? "None yet" : crowd.toLocaleString()}</span></div>
                 )}
               </div>
-              <div className="fl" style={{ gridTemplateColumns: "1fr", marginTop: 6 }}>
+              <div className="sees" style={{ borderTop: "1px solid var(--line)" }}>
                 {mode === "instant" && plan && <div className="row"><span className="mute">Parts</span><span>{plan.parts} trades{plan.cap ? ` · vault cap ${plan.cap}` : ""}</span></div>}
                 <div className="row"><span className="mute">Time</span><span>{mode === "instant" ? (plan ? `About ${plan.parts * 5} seconds` : "A few seconds") : "About 1 to 3 minutes"}</span></div>
                 <div className="row"><span className="mute">Risk</span><span className="warn-t" style={{ textAlign: "right" }}>{mode === "instant" ? "Price can slip up to 1%" : "Refunded if the price moves over 2%"}</span></div>
@@ -370,15 +387,6 @@ export function Trade() {
                 <div className="row"><span className="mute">Pool price</span><span className="mono">{hype(market.price)} HYPE</span></div>
                 <div className="row"><span className="mute">Liquidity</span><span className="mono">{hype(market.reserveHype)} HYPE</span></div>
               </div>
-            </div>
-            <div className="card flat">
-              <h3>How batch mode works</h3>
-              <ol className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>
-                <li>Your amount is split into the standard sizes everyone uses.</li>
-                <li>Orders wait in a round of about a minute alongside everyone else's.</li>
-                <li>Buys and sells cross at the pool's average price over the round, which no single trade can move. Only the net trades on the pool.</li>
-                <li>Everyone in the round gets the same price, paid back into private balances.</li>
-              </ol>
             </div>
           </div>
         </div>

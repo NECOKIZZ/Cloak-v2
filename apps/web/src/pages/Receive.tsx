@@ -125,9 +125,9 @@ export function Receive({ bridge = false }: { bridge?: boolean }) {
     <>
       {back}
       {bridge ? (
-        <div className="page-head"><div><h1>Bridge</h1><p>Bring HYPE or USDC in from another chain or an exchange. It lands in your private balance.</p></div></div>
+        <div className="page-head"><div><h1>Bridge</h1><p>Bring HYPE or USDC in from another chain. It lands in your private balance.</p></div></div>
       ) : (
-        <div className="page-head"><div><h1>Receive</h1><p>A normal address anyone can pay on Elysium: an exchange, a bridge or any wallet. What arrives moves into your private balance whenever Cloak is open.</p></div></div>
+        <div className="page-head"><div><h1>Receive</h1><p>A normal Elysium address anyone can pay. What arrives moves into your private balance.</p></div></div>
       )}
       {bridge ? (
         // the Bridge tab: the bridge alone. It delivers to a fresh receive address of this account, made in the background

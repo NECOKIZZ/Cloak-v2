@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEther, type Address } from "viem";
 import { cloakAuctionAbi, cloakPairAbi, cloakV4MarketAbi, poolManagerAbi, type AuctionState } from "@cloakely/sdk";
 import { DEPLOYMENT } from "./config";
-import { hype } from "./format";
+import { hype, tinyPrice } from "./format";
 import { publicClient } from "./wallet";
 import { every } from "./every";
 
@@ -69,7 +69,7 @@ export async function priceHistory(s: AuctionState): Promise<PricePoint[]> {
   return pts;
 }
 
-const fmtP = (p: number) => (p === 0 ? "0" : p < 1e-6 ? p.toExponential(2) : p < 1 ? p.toPrecision(3) : p.toLocaleString(undefined, { maximumFractionDigits: 4 }));
+const fmtP = (p: number) => (p === 0 ? "0" : p < 1e-6 ? tinyPrice(p) : p < 1 ? p.toPrecision(3) : p.toLocaleString(undefined, { maximumFractionDigits: 4 }));
 const fmtT = (t: number, span: number) =>
   new Date(t * 1000).toLocaleString(undefined, span > 2 * 86400 ? { month: "short", day: "numeric" } : span > 6 * 3600 ? { weekday: "short", hour: "2-digit", minute: "2-digit" } : { hour: "2-digit", minute: "2-digit" });
 
