@@ -119,7 +119,13 @@ contract GloakSimulation is Test {
         router = new CloakLaunchSwapV4(address(lv), address(pm), address(new WHYPE()), address(hook));
         bids = new CloakGloamBids(address(lv), address(0)); // HYPE in the launch vault here (Gloam's vault on mainnet)
 
-        GloakMaker maker = new GloakMaker(address(deployer), admin, address(pm), address(hook));
+        // GLOAK is born with its private zone approved (the maker fixes it at deploy)
+        address[] memory zone = new address[](3);
+        uint8[] memory roles = new uint8[](3);
+        (zone[0], roles[0]) = (address(lv), RECEIVE | VAULT);
+        (zone[1], roles[1]) = (address(router), RECEIVE | FEED | SWAP | PAYEE);
+        (zone[2], roles[2]) = (address(bids), RECEIVE);
+        GloakMaker maker = new GloakMaker(address(deployer), admin, address(pm), address(hook), zone, roles);
         bytes memory call_ = abi.encodeCall(CloakFactory.createLaunch, ("GLOAK", "GLOAK", 0, 0, _params(), ""));
         vm.prank(admin);
         deployer.useDoor(address(maker), address(factory), call_);
@@ -128,11 +134,7 @@ contract GloakSimulation is Test {
         gloak = GloakToken(t);
         console.log("1. Door used: GLOAK launched. Supply", _f(gloak.totalSupply()), "| team share 0 | door closed:", deployer.doorUsed());
 
-        vm.startPrank(admin);
-        gloak.setRoles(address(lv), RECEIVE | VAULT);
-        gloak.setRoles(address(router), RECEIVE | FEED | SWAP | PAYEE);
-        vm.stopPrank();
-        console.log("   Approved during setup: the launch vault (Receive, Vault), the router (Receive, Feed, Swap, Payee)");
+        console.log("   Born approved: the launch vault (Receive, Vault), the router (Receive, Feed, Swap, Payee), private bids (Receive)");
 
         // ── 2. bids: 3 HYPE in all ──
         PrivateBid memory ada = _privateBid(ADA, 1 ether, 100_000e18);
@@ -166,16 +168,8 @@ contract GloakSimulation is Test {
         (uint256 adaTokens,,) = auction.allocationOf(ada.id);
         CloakGloamBids.Deposit[] memory ds = new CloakGloamBids.Deposit[](1);
         ds[0] = CloakGloamBids.Deposit(hex"00", _commitment(), address(gloak), adaTokens);
-        bytes memory sig = _sign(ADA, bids.finishDigest(ada.account, ds));
-        try bids.finish(ada.k, ds, sig) {
-            console.log("   unexpected: Ada's private claim went through without the bids contract on GLOAK's list");
-        } catch {
-            console.log("   Ada's private claim FAILS while the private-bid contract isn't approved: it would get 90%");
-        }
-        vm.prank(admin);
-        gloak.setRoles(address(bids), RECEIVE);
-        bids.finish(ada.k, ds, sig);
-        console.log("   Approved the private-bid contract (Receive). Ada claims", _f(adaTokens), "GLOAK straight into the vault as a note");
+        bids.finish(ada.k, ds, _sign(ADA, bids.finishDigest(ada.account, ds)));
+        console.log("   Ada claims", _f(adaTokens), "GLOAK straight into the vault as a note (free, exact)");
         (uint256 benTokens,,) = auction.allocationOf(ben.id);
         bytes32 benNote = _finishPrivate(ben, BEN, benTokens);
         console.log("   Ben claims", _f(benTokens), "GLOAK into the vault as a note");

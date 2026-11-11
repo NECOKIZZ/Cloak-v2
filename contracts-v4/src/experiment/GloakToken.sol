@@ -102,6 +102,9 @@ contract GloakToken {
      * @param to, amounts the whole supply, as CloakToken mints it (the factory passes the launch's auction). Each holder
      *        here gets RECEIVE and SEND, so the auction can pay bidders and take back what the pool didn't use.
      * @param hook Cloak's v4 hook: it seeds the pool and collects its fees (RECEIVE, SEND, FEED).
+     * @param zone, zoneRoles the private zone GLOAK is born with (the launch vault, the router, batch rounds, private
+     *        bids), so nothing depends on approving them in time. The same limits as the admin's apply: no SEND, and
+     *        FEED or SWAP only to contracts.
      */
     constructor(
         string memory name_,
@@ -110,10 +113,12 @@ contract GloakToken {
         uint256[] memory amounts,
         address admin_,
         address poolManager_,
-        address hook
+        address hook,
+        address[] memory zone,
+        uint8[] memory zoneRoles
     ) {
         if (admin_ == address(0) || poolManager_ == address(0) || hook == address(0)) revert ZeroAddress();
-        require(to.length == amounts.length, "len");
+        require(to.length == amounts.length && zone.length == zoneRoles.length, "len");
         name = name_;
         symbol = symbol_;
         admin = admin_;
@@ -126,6 +131,11 @@ contract GloakToken {
             emit Transfer(address(0), to[i], amounts[i]);
         }
         _setRoles(hook, RECEIVE | SEND | FEED);
+        for (uint256 i; i < zone.length; ++i) {
+            if (zoneRoles[i] > ALL_ROLES) revert BadRoles();
+            _checkGrant(zone[i], zoneRoles[i] & ~rolesOf[zone[i]]);
+            _setRoles(zone[i], zoneRoles[i] | rolesOf[zone[i]]);
+        }
     }
 
     // ───────────────────────────── ERC-20 ─────────────────────────────
@@ -357,17 +367,29 @@ contract GloakToken {
 }
 
 /// @notice The door's maker: CloakVestingDeployer's one-time door calls make() for the GLOAK launch.
+/// @dev The private zone is fixed here, at the maker's deploy, so GLOAK is born with it: the launch vault (Receive,
+///      Vault), the router (Receive, Feed, Swap, Payee), batch rounds (Receive, Feed, Payee) and private bids (Receive).
 contract GloakMaker {
     address public immutable door;
     address public immutable admin;
     address public immutable poolManager;
     address public immutable hook;
+    address[] internal _zone;
+    uint8[] internal _zoneRoles;
 
-    constructor(address door_, address admin_, address poolManager_, address hook_) {
+    constructor(address door_, address admin_, address poolManager_, address hook_, address[] memory zone, uint8[] memory zoneRoles) {
+        require(zone.length == zoneRoles.length, "len");
         door = door_;
         admin = admin_;
         poolManager = poolManager_;
         hook = hook_;
+        _zone = zone;
+        _zoneRoles = zoneRoles;
+    }
+
+    /// @notice The contracts GLOAK will be born approved, and their roles.
+    function zone() external view returns (address[] memory, uint8[] memory) {
+        return (_zone, _zoneRoles);
     }
 
     function make(string calldata name, string calldata symbol, address[] calldata to, uint256[] calldata amounts)
@@ -375,6 +397,6 @@ contract GloakMaker {
         returns (address)
     {
         require(msg.sender == door, "door only");
-        return address(new GloakToken(name, symbol, to, amounts, admin, poolManager, hook));
+        return address(new GloakToken(name, symbol, to, amounts, admin, poolManager, hook, _zone, _zoneRoles));
     }
 }

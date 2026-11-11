@@ -128,7 +128,7 @@ contract GloakExperimentTest is Test {
         deployer = new CloakVestingDeployer(admin);
         factory = new CloakFactory(config, deployer, IMarketSeeder(address(hook)), IFeeLocker(address(0)));
         hook.setFactory(ICloakLaunchFactory(address(factory)));
-        maker = new GloakMaker(address(deployer), admin, address(pm), address(hook));
+        maker = new GloakMaker(address(deployer), admin, address(pm), address(hook), new address[](0), new uint8[](0));
         vm.deal(alice, 10_000 ether);
         vm.deal(bob, 10_000 ether);
     }
@@ -629,5 +629,42 @@ contract GloakExperimentTest is Test {
         vm.stopPrank();
         assertEq(gloak.balanceOf(bob), 90e18, "but anything it sends to a public address pays 10%");
         assertEq(gloak.totalSupply(), supply - 10e18);
+    }
+
+    // ───────────── born with its private zone ─────────────
+
+    function _makerWith(address[] memory zone, uint8[] memory roles) internal returns (GloakMaker m) {
+        m = new GloakMaker(address(deployer), admin, address(pm), address(hook), zone, roles);
+    }
+
+    function test_gloakIsBornWithItsPrivateZone() public {
+        address vaultLike = address(new YesV());
+        address routerLike = address(new YesV());
+        address[] memory zone = new address[](2);
+        uint8[] memory roles = new uint8[](2);
+        (zone[0], roles[0]) = (vaultLike, RECEIVE | VAULT);
+        (zone[1], roles[1]) = (routerLike, RECEIVE | FEED | SWAP | PAYEE);
+        maker = _makerWith(zone, roles);
+        _doorLaunch();
+        assertEq(gloak.rolesOf(vaultLike), RECEIVE | VAULT, "approved from its first block");
+        assertEq(gloak.rolesOf(routerLike), RECEIVE | FEED | SWAP | PAYEE);
+        assertEq(gloak.rolesOf(address(auction)), RECEIVE | SEND, "the auction keeps its own roles");
+    }
+
+    function test_theZoneFollowsTheSameLimits() public {
+        address[] memory zone = new address[](1);
+        uint8[] memory roles = new uint8[](1);
+        (zone[0], roles[0]) = (makeAddr("a wallet"), RECEIVE | SEND);
+        maker = _makerWith(zone, roles);
+        bytes memory call_ = abi.encodeCall(CloakFactory.createLaunch, ("GLOAK", "GLOAK", 0, 0, _params(), ""));
+        vm.prank(admin);
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        deployer.useDoor(address(maker), address(factory), call_);
+        (zone[0], roles[0]) = (makeAddr("a wallet"), FEED);
+        maker = _makerWith(zone, roles);
+        vm.prank(admin);
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        deployer.useDoor(address(maker), address(factory), call_);
+        assertFalse(deployer.doorUsed(), "a refused zone leaves the door unused");
     }
 }
