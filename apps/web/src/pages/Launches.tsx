@@ -3,9 +3,9 @@ import { formatEther, type Address } from "viem";
 import { cloakPairAbi, type AuctionState } from "@cloakely/sdk";
 import { isHidden } from "../hidden";
 import { FACTORY } from "../config";
-import { duration, hype, pctChange } from "../format";
+import { duration, hype, pctChange, tokens } from "../format";
 import { Link } from "../router";
-import { TokenIcon } from "../ui";
+import { Icon, TokenIcon } from "../ui";
 import { Skel } from "../skel";
 import { friendly } from "../errors";
 import { publicClient, readCloak } from "../wallet";
@@ -37,6 +37,7 @@ function Card({ s, price, now }: { s: AuctionState; price?: bigint; now: number 
   const p = trading ? price ?? s.clearingPrice : s.minPrice;
   const ch = trading ? change(p, s.clearingPrice) : null;
   const left = s.phase === "commit" ? s.commitEnd - now : 0;
+  const c = trading ? pctChange(ch) : null;
   return (
     <Link to={`/app/launch/${s.address}`} className="tcard">
       <TokenIcon symbol={s.tokenSymbol} token={s.token} size={48} />
@@ -44,23 +45,18 @@ function Card({ s, price, now }: { s: AuctionState; price?: bigint; now: number 
         <b>{s.tokenName}</b>
         <span className="mute">${s.tokenSymbol}</span>
       </div>
-      <div className="tcard-price">
-        <span className="xs mute">{trading ? "Price" : s.failed ? "Start price" : "Starts at"}</span>
-        <span className="mono">{hype(p)} <span className="xs mute">HYPE</span></span>
-      </div>
-      <div className="tcard-foot xs">
-        {trading ? (
-          (() => {
-            const c = pctChange(ch);
-            return c ? <span className={c.dir === "flat" ? "mute" : c.dir}>{c.text} since launch</span> : <span className="mute">Trading</span>;
-          })()
-        ) : s.failed ? (
-          <span className="mute">Refunds open</span>
-        ) : left > 0 ? (
-          <span><span className="dot live" style={{ marginRight: 6 }} />Closes in <span className="mono">{duration(left)}</span></span>
-        ) : (
-          <span className="mute">Opening bids</span>
-        )}
+      <span className={`chip tcard-tag ${trading ? c?.dir ?? "" : left > 0 ? "live" : ""}`}>
+        {trading ? (c && c.dir !== "flat" ? c.text : "Trading") : s.failed ? "Refunds open" : left > 0 ? <><span className="dot live" />Bidding</> : "Opening bids"}
+      </span>
+      <div className="tcard-stats">
+        <div>
+          <span className="label">{trading ? "Price" : s.failed ? "Start price" : "Starts at"}</span>
+          <span className="fig">{hype(p)}<small>HYPE</small></span>
+        </div>
+        <div>
+          <span className="label">{trading ? "Raised" : left > 0 ? "Closes in" : "For sale"}</span>
+          <span className="fig">{trading ? <>{hype(s.raised)}<small>HYPE</small></> : left > 0 ? duration(left) : tokens(s.saleSupply)}</span>
+        </div>
       </div>
     </Link>
   );
@@ -112,7 +108,7 @@ export function Launches() {
       <div className="page-head">
         <div>
           <h1>Launches</h1>
-          <p>Fair launches with sealed bids. Everyone pays one price, and trading opens on Uniswap with its liquidity locked.</p>
+          <p>Sealed bids, one price for everyone, liquidity locked.</p>
         </div>
         <Link to="/app/create" className="btn btn-ink">Create a launch</Link>
       </div>
@@ -126,8 +122,7 @@ export function Launches() {
               <div key={i} className="tcard tcard-skel">
                 <Skel w={48} h={48} round />
                 <div className="tcard-id"><Skel w="10ch" /><Skel w="5ch" h={11} /></div>
-                <div className="tcard-price"><Skel w="4ch" h={11} /><Skel w="8ch" /></div>
-                <div className="tcard-foot xs"><Skel w="12ch" h={11} /></div>
+                <div className="tcard-stats"><div><Skel w="5ch" h={10} /><Skel w="8ch" h={19} /></div><div><Skel w="5ch" h={10} /><Skel w="6ch" h={19} /></div></div>
               </div>
             ))}
           </div>
@@ -136,7 +131,7 @@ export function Launches() {
       {list?.length === 0 && <div className="empty"><h3>No launches yet</h3>Be the first: create a sealed-bid launch.</div>}
       {!!list?.length && (
         <>
-          <input className="input tsearch" placeholder="Search by name, ticker or contract address" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search launches" />
+          <div className="tsearch-wrap"><Icon.search /><input className="input tsearch" placeholder="Search by name, ticker or address" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search launches" /></div>
           {term && !shown.length && <div className="empty">Nothing matches "{q.trim()}".</div>}
           <Section title="Bidding now" note="Bids stay sealed until bidding closes" items={live} prices={prices} now={now} empty={term ? undefined : "No launch is taking bids right now."} />
           <Section title="Trading" note="Filled launches, newest first" items={trading} prices={prices} now={now} />

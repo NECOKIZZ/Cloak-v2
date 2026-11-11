@@ -52,12 +52,23 @@ export const Icon = {
   menu: P("M4 7h16M4 12h16M4 17h16"),
   github: P("M9 19c-4 1.5-4-2-6-2.5M15 21v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"),
   chev: P("M6 9l6 6 6-6"),
+  search: P("M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4"),
   arrowDown: P("M12 5v14M6 13l6 6 6-6"),
   check: P("M5 12.5l4.5 4.5L19 7"),
   copy: P("M9 9h11v11H9zM5 15H4V4h11v1"),
   bridge: P("M3 17h18M5 17v-4a7 7 0 0 1 14 0v4M9 17v-3M15 17v-3"),
   link: P("M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"),
 };
+
+/** A longer explanation folded behind its title: the page keeps one line, the detail is one tap away. */
+export function More({ title, children, open }: { title: string; children: React.ReactNode; open?: boolean }) {
+  return (
+    <details className="more" open={open}>
+      <summary>{title}</summary>
+      <div className="more-body">{children}</div>
+    </details>
+  );
+}
 
 /** The public source repository: VITE_GITHUB_URL once v2's code is public (Cloak v1's repository until then). */
 export const GITHUB: string = import.meta.env.VITE_GITHUB_URL ?? "https://github.com/NECOKIZZ/Cloak";

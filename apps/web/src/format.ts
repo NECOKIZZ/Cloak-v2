@@ -4,9 +4,22 @@ import { formatEther, formatUnits } from "viem";
 export function hype(wei: bigint, max = 6): string {
   const n = Number(formatEther(wei));
   if (n === 0) return "0";
-  if (n < 1e-6) return n.toExponential(2);
+  if (n < 1e-6) return tinyPrice(n);
   if (n < 1) return n.toPrecision(3).replace(/\.?0+$/, "");
   return n.toLocaleString(undefined, { maximumFractionDigits: Math.min(max, n < 100 ? 4 : 2) });
+}
+
+/**
+ * A very small price without scientific notation: every zero written out down to 0.00000001, and below that the
+ * zeros counted in a subscript ("0.0₉42" is 0.00000000042), the way price trackers print them.
+ */
+export function tinyPrice(n: number): string {
+  const [m, e] = n.toExponential(2).split("e-");
+  const zeros = Number(e) - 1;
+  const digits = m.replace(".", "").replace(/0+$/, "") || "0";
+  if (zeros <= 7) return `0.${"0".repeat(zeros)}${digits}`;
+  const sub = String(zeros).replace(/\d/g, (d) => "₀₁₂₃₄₅₆₇₈₉"[Number(d)]);
+  return `0.0${sub}${digits}`;
 }
 
 export function tokens(wei: bigint): string {

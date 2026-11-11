@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Info } from "../info";
 import { getAddress, isAddress, parseEther, type Address } from "viem";
-import { DROP_LIST_MAX, DROP_MAX_SUPPLY, type GtdEntry } from "@cloakely/sdk";
+import { DROP_LIST_MAX, DROP_MAX_FIELDS, DROP_MAX_REQUIREMENTS, DROP_MAX_SUPPLY, type GtdEntry, type SpotKind } from "@cloakely/sdk";
 import { dropsClient, imageSrc, itemPreview, pct, spotsClient, type ItemMeta } from "../drops";
 import { friendly, Hint } from "../errors";
 import { hype } from "../format";
@@ -14,6 +14,12 @@ import { ESCROW_DROP_FACTORY } from "../config";
 
 const WALLET_DAYS = [1, 2, 3, 7, 14];
 const DURATIONS: [string, number][] = [["10 minutes", 600], ["1 hour", 3600], ["6 hours", 21600], ["24 hours", 86400], ["3 days", 259200]];
+/** Bidding window choice meaning "close at the time picked below" instead of a fixed length. */
+const AT_TIME = -1;
+/** A datetime-local value (local time, minutes) for a unix time. */
+const localInput = (t: number) => { const d = new Date(t * 1000); d.setSeconds(0, 0); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+/** Bids open about 90 seconds after the drop is created (see CloakDrops.create). */
+const START_DELAY = 90;
 
 /** Wallets from pasted text: one per line, or separated by commas or spaces. GTD lines may end in a spot count. */
 function parseList(text: string, withSpots: boolean): { gtd: GtdEntry[]; wl: Address[]; bad: string[] } {
@@ -58,6 +64,10 @@ export function DropCreate() {
   const [existing, setExisting] = useState(() => !!ESCROW_DROP_FACTORY && typeof location !== "undefined" && /[?&]existing\b/.test(location.search));
   const [partner, setPartner] = useState("");
   const [walletDays, setWalletDays] = useState(3);
+  const [spotType, setSpotType] = useState<SpotKind>("WL");
+  const [reqs, setReqs] = useState<{ text: string; url: string }[]>([]);
+  const [fields, setFields] = useState<{ label: string; required: boolean }[]>([]);
+  const [closeAt, setCloseAt] = useState(() => localInput(Math.floor(Date.now() / 1000) + 86400));
   const [f, setF] = useState({ name: "", symbol: "", supply: "1000", price: "0.5", maxPerBid: "2", royalty: "5", baseURI: "", description: "", gtdOn: false, gtdList: "", gtdPrice: "0.4", gtdSecs: 86400, wlOn: false, wlList: "", boost: 20, biddingSecs: 86400 });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
   const [image, setImage] = useState("");
@@ -114,8 +124,18 @@ export function DropCreate() {
     const badLink = Object.entries(links).find(([, v]) => v.trim() && !/^https:\/\/[^\s"<>]+$/.test(v.trim()));
     if (!problem && badLink) problem = `The ${badLink[0] === "x" ? "X" : badLink[0]} link starts with https://.`;
     if (!problem && banner && !/^(https:\/\/|ipfs:\/\/|data:image\/)/.test(banner)) problem = "The banner link starts with https:// or ipfs://.";
-    return { supply, price, gtd: gtd.gtd, wl: wl.wl, gtdSpots, gtdPrice: gtdPrice ?? 0n, problem };
-  }, [f, spots, partner, links, banner]);
+    const badReq = reqs.find((q) => q.url.trim() && !/^https:\/\/[^\s"<>]+$/.test(q.url.trim()));
+    if (!problem && badReq) problem = `The link for "${badReq.text.trim().slice(0, 40) || "a requirement"}" starts with https://.`;
+    if (!problem && reqs.some((q) => q.url.trim() && !q.text.trim())) problem = "Say what each requirement link is for, like Follow @partner.";
+    const labels = fields.map((x) => x.label.trim().toLowerCase()).filter(Boolean);
+    if (!problem && new Set(labels).size !== labels.length) problem = "Give each bidder field a different name.";
+    // bidding that closes at a set time: its length counts from when bids open (about 90 s after creating)
+    const closeTs = Math.floor(new Date(closeAt).getTime() / 1000);
+    const biddingSecs = f.biddingSecs === AT_TIME ? closeTs - Math.floor(Date.now() / 1000) - START_DELAY - (f.gtdOn && !spots ? f.gtdSecs : 0) : f.biddingSecs;
+    if (!problem && f.biddingSecs === AT_TIME && !(biddingSecs >= 600)) problem = "Close bidding at least 10 minutes after the drop opens.";
+    else if (!problem && f.biddingSecs === AT_TIME && biddingSecs > 30 * 86400) problem = "Close bidding within 30 days.";
+    return { supply, price, gtd: gtd.gtd, wl: wl.wl, gtdSpots, gtdPrice: gtdPrice ?? 0n, biddingSecs, problem };
+  }, [f, spots, partner, links, banner, reqs, closeAt, fields]);
 
   async function pick(file?: File) {
     if (!file) return;
@@ -160,13 +180,15 @@ export function DropCreate() {
         royaltyBps: Math.round(Number(f.royalty) * 100),
         gtd: f.gtdOn ? { list: plan.gtd, price: plan.gtdPrice, durationSecs: f.gtdSecs } : undefined,
         wl: f.wlOn ? { list: plan.wl, boostBps: f.boost * 100 } : undefined,
-        biddingSecs: f.biddingSecs,
+        biddingSecs: plan.biddingSecs,
+        requirements: reqs.filter((q) => q.text.trim()).map((q) => ({ text: q.text.trim(), ...(q.url.trim() ? { url: q.url.trim() } : {}) })),
+        fields: fields.filter((x) => x.label.trim()).map((x) => ({ label: x.label.trim(), required: x.required })),
         image: image || (folderCover && /^(https|ipfs|ar):\/\//.test(folderCover) ? folderCover : undefined),
         banner: banner || undefined,
         category: category || undefined,
         links: Object.fromEntries(Object.entries(links).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v)),
         description: f.description.trim() || undefined,
-        spots: spots ? { partner: partner.trim() } : undefined,
+        spots: spots ? { partner: partner.trim(), kind: spotType } : undefined,
       });
       if (spots) {
         // the drop exists now; mark it as a spot sale (if this step fails, the drop page offers it again)
@@ -193,8 +215,8 @@ export function DropCreate() {
       <Link to="/app/drops" className="back-btn"><span aria-hidden>←</span>All drops</Link>
       <div className="page-head">
         <div>
-          <h1>{existing ? "Auction your NFTs" : spots ? "Sell WL spots" : "Create a drop"}</h1>
-          {existing ? <p>Auction NFTs that already exist, from any Elysium collection. Your tokens go into escrow when you create the auction, bids are sealed, the highest win, and every winner pays one price. Unsold tokens come back to you.</p> : spots ? <p>A partner collection gave you whitelist spots. Sell them in a sealed auction: your price is the floor, the highest bids win, every winner pays one price, and each winner names the wallet to whitelist. You hand the partner the list.</p> : <p>Your price is the floor. GTD wallets mint first; everyone else bids sealed, and every winner pays one price. If demand is higher than your price, you earn the difference instead of flippers.</p>}
+          <h1>{existing ? "Auction your NFTs" : spots ? `Sell ${spotType} spots` : "Create a drop"}</h1>
+          {existing ? <p>Auction NFTs that already exist, from any Elysium collection. Your tokens go into escrow when you create the auction, bids are sealed, the highest win, and every winner pays one price. Unsold tokens come back to you.</p> : spots ? <p>A partner collection gave you {spotType === "GTD" ? "guaranteed mint (GTD)" : "whitelist"} spots. Sell them in a sealed auction: your price is the floor, the highest bids win, every winner pays one price, and each winner names the wallet to put on the list. You hand the partner the list.</p> : <p>Your price is the floor. GTD wallets mint first; everyone else bids sealed, and every winner pays one price. If demand is higher than your price, you earn the difference instead of flippers.</p>}
         </div>
       </div>
       {(canSpots || ESCROW_DROP_FACTORY) && (
@@ -217,10 +239,20 @@ export function DropCreate() {
                 // keep the sale's name and symbol following the partner until the creator edits them
                 setF((x) => ({
                   ...x,
-                  name: !x.name || x.name === `${partner.trim()} WL spots` ? (v.trim() ? `${v.trim()} WL spots`.slice(0, 64) : "") : x.name,
+                  name: !x.name || x.name === `${partner.trim()} ${spotType} spots` ? (v.trim() ? `${v.trim()} ${spotType} spots`.slice(0, 64) : "") : x.name,
                   symbol: !x.symbol || x.symbol === sym(partner) ? (v.trim() ? sym(v) : "") : x.symbol,
                 }));
               }} placeholder="Moonfoxes" /></div>
+              <div className="field"><label><span>Spot type</span><span>what the partner gave</span></label>
+                <div className="tabs" role="radiogroup" style={{ marginBottom: 0 }}>
+                  {(["WL", "GTD"] as const).map((k) => <button key={k} type="button" role="radio" aria-checked={spotType === k} className={`tab ${spotType === k ? "on" : ""}`} onClick={() => {
+                    setSpotType(k);
+                    // rename the sale with the type, unless the creator wrote their own name
+                    setF((x) => ({ ...x, name: x.name === `${partner.trim()} ${spotType} spots` ? `${partner.trim()} ${k} spots`.slice(0, 64) : x.name }));
+                  }}>{k === "WL" ? "WL spots" : "GTD spots"}</button>)}
+                </div>
+                <span className="xs mute">{spotType === "GTD" ? "Each winner gets a guaranteed mint on the partner's list." : "Each winner gets a whitelist spot on the partner's list."} The wallet each winner bids from goes on it; they can swap in another.</span>
+              </div>
               <div className="field"><label><span>Time for winners to name wallets <Info tip="After bids open, winners have this long to say which wallet the partner should whitelist." /></span><span>after the bids open</span></label><select className="input" value={walletDays} onChange={(e) => setWalletDays(Number(e.target.value))}>{WALLET_DAYS.map((n) => <option key={n} value={n}>{n} day{n > 1 ? "s" : ""}</option>)}</select></div>
             </>
           )}
@@ -242,8 +274,39 @@ export function DropCreate() {
           </label>
           <div className="field"><label><span>Or link a banner <Info tip="A wide image across the top of the drop page. Upload one above or paste an https or ipfs link." /></span><span>https:// or ipfs://</span></label><input className="input mono" value={banner.startsWith("data:") ? "" : banner} onChange={(e) => setBanner(e.target.value.trim())} placeholder={banner.startsWith("data:") ? "uploaded" : "ipfs://… or https://…"} /></div>
           <div className="field"><label><span>Description <Info tip="A few lines shown on the drop page. Up to 1,000 characters." /></span><span>optional</span></label><textarea className="input" rows={2} maxLength={1000} value={f.description} onChange={(e) => set("description", e.target.value)} placeholder={spots ? "What winners get, from the partner" : "What the collection is"} /></div>
+          <div className="field">
+            <label><span>Requirements</span><span>optional · {reqs.length} of {DROP_MAX_REQUIREMENTS}</span></label>
+            {reqs.map((q, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 6, marginBottom: 10, alignItems: "center" }}>
+                <input className="input" style={{ gridColumn: "1 / -1" }} value={q.text} maxLength={200} onChange={(e) => setReqs((l) => l.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} placeholder={i === 0 ? "Follow @partner on X" : "Like and repost the announcement"} aria-label={`Requirement ${i + 1}`} />
+                <input className="input mono" value={q.url} maxLength={200} onChange={(e) => setReqs((l) => l.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} placeholder="https://x.com/… (optional)" aria-label={`Link for requirement ${i + 1}`} />
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReqs((l) => l.filter((_, j) => j !== i))} aria-label={`Remove requirement ${i + 1}`}>Remove</button>
+              </div>
+            ))}
+            {reqs.length < DROP_MAX_REQUIREMENTS && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReqs((l) => [...l, { text: "", url: "" }])}>Add a requirement</button>}
+            <span className="xs mute">What bidders must do to keep what they win, like following the partner or engaging a post. Shown on the {spots ? "sale" : "drop"} page next to the bid box. Cloak can't check them: {spots ? "you or the partner check winners before whitelisting." : "you check them yourself."}</span>
+          </div>
+          <div className="field">
+            <label><span>Bidder info</span><span>optional · {fields.length} of {DROP_MAX_FIELDS}</span></label>
+            {fields.map((x, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                <input className="input" value={x.label} maxLength={40} onChange={(e) => setFields((l) => l.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)))} placeholder="Field name, like X username" aria-label={`Bidder field ${i + 1}`} />
+                <label className="check" style={{ margin: 0, whiteSpace: "nowrap" }}><input type="checkbox" checked={x.required} onChange={(e) => setFields((l) => l.map((y, j) => (j === i ? { ...y, required: e.target.checked } : y)))} /> required</label>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFields((l) => l.filter((_, j) => j !== i))} aria-label={`Remove bidder field ${i + 1}`}>Remove</button>
+              </div>
+            ))}
+            {fields.length < DROP_MAX_FIELDS && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFields((l) => [...l, { label: "", required: true }])}>+ Add a field</button>
+                {["X username", "Discord username"].filter((p) => !fields.some((x) => x.label.trim().toLowerCase() === p.toLowerCase())).map((p) => (
+                  <button key={p} type="button" className="btn btn-ghost btn-sm" onClick={() => setFields((l) => [...l, { label: p, required: true }])}>+ {p}</button>
+                ))}
+              </div>
+            )}
+            <span className="xs mute">What every bidder fills in when bidding, for the partner's winners sheet. The answers are sealed with each bid, so nobody reads them before bidding closes. Then they're columns in the {spots ? "list" : "winners"} CSV.</span>
+          </div>
           <div className="field-row">
-            <div className="field"><label><span>{spots ? "WL spots" : "Supply"} <Info tip={spots ? "How many WL spots are for sale." : "How many NFTs exist in total. Unsold ones are never minted."} /></span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
+            <div className="field"><label><span>{spots ? `${spotType} spots` : "Supply"} <Info tip={spots ? `How many ${spotType} spots are for sale.` : "How many NFTs exist in total. Unsold ones are never minted."} /></span></label><input className="input" inputMode="numeric" value={f.supply} onChange={(e) => set("supply", e.target.value.replace(/\D/g, ""))} /></div>
             <div className="field"><label><span>Your price (floor) <Info tip="The lowest price anyone can bid, per item. Winners pay one clearing price, never below this." /></span><span>HYPE</span></label><input className="input" inputMode="decimal" value={f.price} onChange={(e) => set("price", e.target.value)} /></div>
           </div>
           <div className="field-row">
@@ -300,7 +363,8 @@ export function DropCreate() {
           )}
 
           <div className="card-head" style={{ marginTop: 18 }}><h3 className="info-row">Bidding <Info tip="Bids are sealed, so nobody sees them until bidding closes. Then they open and everyone pays one price." /></h3></div>
-          <div className="field"><label><span>Sealed bidding window <Info tip="How long people can place sealed bids. Longer gives more people a chance to join." /></span><span>{spots ? "opens about a minute after you create" : "opens when GTD closes"}</span></label><select className="input" value={f.biddingSecs} onChange={(e) => set("biddingSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}</select></div>
+          <div className="field"><label><span>Sealed bidding window <Info tip="How long people can place sealed bids. Longer gives more people a chance to join." /></span><span>{spots ? "opens about a minute after you create" : "opens when GTD closes"}</span></label><select className="input" value={f.biddingSecs} onChange={(e) => set("biddingSecs", Number(e.target.value))}>{DURATIONS.map(([l, s]) => <option key={s} value={s}>{l}</option>)}<option value={AT_TIME}>Close at a set time…</option></select></div>
+          {f.biddingSecs === AT_TIME && <div className="field"><label><span>Bidding closes at</span><span>your local time</span></label><input className="input" type="datetime-local" value={closeAt} onChange={(e) => setCloseAt(e.target.value)} /><span className="xs mute">Counted from when you create it, so create it soon after setting this.</span></div>}
         </div>
 
         <div className="card">
@@ -308,23 +372,25 @@ export function DropCreate() {
             <div className={`dcard-cover ${imageSrc(banner) || imageSrc(image || folderCover) ? "" : "dcard-cover-ph"}`} style={imageSrc(banner) ? { backgroundImage: `url("${imageSrc(banner)}")` } : imageSrc(image || folderCover) ? ({ ["--img" as string]: `url("${imageSrc(image || folderCover)}")`, ["--blur" as string]: "1" } as React.CSSProperties) : {}} />
             <div className="dcard-body">
               {image || folderCover ? <img className="drop-art dcard-avatar" src={imageSrc(image || folderCover)} alt="" width={52} height={52} style={{ width: 52, height: 52 }} /> : <span className="drop-art drop-art-ph dcard-avatar" style={{ width: 52, height: 52, fontSize: 17 }}>{(f.symbol || f.name || "?").slice(0, 2).toUpperCase()}</span>}
-              <div className="dcard-title"><b>{f.name.trim() || (spots ? "Your WL spot sale" : "Your collection")}</b><span className="xs mute">{category || "Elysium"} · {Number(f.supply || 0).toLocaleString()} {spots ? "spots" : "items"}</span></div>
+              <div className="dcard-title"><b>{f.name.trim() || (spots ? `Your ${spotType} spot sale` : "Your collection")}</b><span className="xs mute">{category || "Elysium"} · {Number(f.supply || 0).toLocaleString()} {spots ? "spots" : "items"}</span></div>
             </div>
           </div>
           <div className="card-head"><h3>Summary</h3></div>
           <div className="summary">
             {spots && <div className="row"><span className="mute">Partner</span><span style={{ overflowWrap: "anywhere" }}>{partner.trim() || "?"}</span></div>}
-            <div className="row"><span className="mute">{spots ? "WL spots" : "NFTs"}</span><span className="mono">{Number.isFinite(plan.supply) ? plan.supply.toLocaleString() : "?"}</span></div>
+            <div className="row"><span className="mute">{spots ? `${spotType} spots` : "NFTs"}</span><span className="mono">{Number.isFinite(plan.supply) ? plan.supply.toLocaleString() : "?"}</span></div>
             {f.gtdOn && <div className="row"><span className="mute">GTD spots</span><span className="mono">{plan.gtdSpots} at {hype(plan.gtdPrice)} HYPE</span></div>}
             <div className="row"><span className="mute">In the sealed auction</span><span className="mono">{auction >= 0 ? auction.toLocaleString() : "?"}{f.gtdOn ? " or more" : ""}</span></div>
             <div className="row"><span className="mute">Floor (your price)</span><span className="mono">{plan.price ? hype(plan.price) : "?"} HYPE</span></div>
             {f.wlOn && <div className="row"><span className="mute">WL boost</span><span className="mono">{pct(f.boost * 100)}</span></div>}
-            <div className="row"><span className="mute">Bidding</span><span>{DURATIONS.find(([, s]) => s === f.biddingSecs)?.[0]}{f.gtdOn ? `, after ${DURATIONS.find(([, s]) => s === f.gtdSecs)?.[0]} of GTD` : ""}</span></div>
+            <div className="row"><span className="mute">Bidding</span><span>{f.biddingSecs === AT_TIME ? `until ${new Date(closeAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}` : DURATIONS.find(([, s]) => s === f.biddingSecs)?.[0]}{f.gtdOn ? `, after ${DURATIONS.find(([, s]) => s === f.gtdSecs)?.[0]} of GTD` : ""}</span></div>
+            {reqs.some((q) => q.text.trim()) && <div className="row"><span className="mute">Requirements</span><span>{reqs.filter((q) => q.text.trim()).length}</span></div>}
+            {fields.some((x) => x.label.trim()) && <div className="row"><span className="mute">Bidders fill in</span><span style={{ textAlign: "right" }}>{fields.filter((x) => x.label.trim()).map((x) => x.label.trim()).join(", ")}</span></div>}
             {spots && <div className="row"><span className="mute">Winners name wallets</span><span>for {walletDays} day{walletDays > 1 ? "s" : ""}</span></div>}
             <div className="row"><span className="mute">Cloak fee</span><span>1.5% of sales</span></div>
           </div>
-          {spots ? <p className="note">Bids are sealed to a drand round: nobody, Cloak included, can read one before bidding closes. Once the bids open, each winner names the Elysium wallet to whitelist, one per spot, and gets a receipt NFT. The sale page shows the list as it fills, with a CSV for the partner. Creating a sale takes two confirmations.</p> : <p className="note">Bids are sealed to a drand round: nobody, Cloak included, can read one before bidding closes. Cloak's keeper opens them, settles, and delivers NFTs and refunds. Unused GTD spots roll into the auction, and anything left unsold is yours to mint.</p>}
-          <button className="btn btn-ink btn-lg btn-block" style={{ marginTop: 12 }} disabled={!!busy || imgBusy} onClick={create}>{busy || (wallet ? (spots ? "Create the WL spot sale" : "Create the drop") : "Connect wallet and create")}</button>
+          {spots ? <p className="note">Bids are sealed to a drand round: nobody, Cloak included, can read one before bidding closes. Once the bids open, each winner's bidding wallet goes on the partner's {spotType} list (they can swap in another wallet until the deadline), and gets a receipt NFT. The sale page shows the list as it fills, with a CSV for the partner. Creating a sale takes two confirmations.</p> : <p className="note">Bids are sealed to a drand round: nobody, Cloak included, can read one before bidding closes. Cloak's keeper opens them, settles, and delivers NFTs and refunds. Unused GTD spots roll into the auction, and anything left unsold is yours to mint.</p>}
+          <button className="btn btn-ink btn-lg btn-block" style={{ marginTop: 12 }} disabled={!!busy || imgBusy} onClick={create}>{busy || (wallet ? (spots ? `Create the ${spotType} spot sale` : "Create the drop") : "Connect wallet and create")}</button>
           {err && <div className="err">{err}</div>}
           {!err && plan.problem && <p className="xs mute" style={{ marginTop: 8 }}>{plan.problem}</p>}
         </div>

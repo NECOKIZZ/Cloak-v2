@@ -7,7 +7,8 @@ import { hype, tokens, usd } from "../format";
 import { Link, useRoute } from "../router";
 import { useApp } from "../state";
 import { friendly } from "../errors";
-import { Icon, TokenIcon } from "../ui";
+import { Icon, More, TokenIcon } from "../ui";
+import { TokenSheet, type SheetToken } from "../tokenPicker";
 import { quoteRoute, useFeePct, useMarkets, useTradeFeePct, vaultOf, type Market } from "./markets";
 import { isHidden } from "../hidden";
 import { usePrivateBalances } from "../balances";
@@ -118,27 +119,14 @@ function useRoundCrowd(batcher: Address | undefined, token: Address | undefined)
 /** Launch and outside tokens show their own image; HYPE and USDC their built-in marks. */
 const iconToken = (m: Market | null) => (m && (m.kind === "launch" || m.kind === "eco") ? m.token : undefined);
 
-function TokenSel({ label, token, onPick, markets, held }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean; held?: Record<string, bigint> }) {
-  const [open, setOpen] = useState(false);
+/** The token button on a swap side: opens the search sheet. */
+function TokenSel({ label, token, onOpen }: { label: string; token?: string; onOpen: () => void }) {
   return (
-    <div style={{ position: "relative" }}>
-      <button className="token-sel" onClick={() => onPick && setOpen(!open)} style={!onPick ? { cursor: "default" } : undefined}>
-        <TokenIcon symbol={label} token={token} />
-        {label}
-        {onPick && <Icon.chev size={14} />}
-      </button>
-      {open && markets && (
-        <div className="menu">
-          {/* test tokens stay off the list, unless you hold some: then you can always swap out */}
-          {markets.filter((m) => !isHidden(m.token) || m.token.toLowerCase() === token?.toLowerCase() || (held?.[m.token] ?? 0n) > 0n).map((m) => (
-            <button key={m.token} onClick={() => { onPick?.(m); setOpen(false); }}>
-              <TokenIcon symbol={m.symbol} token={iconToken(m)} />
-              <span style={{ textAlign: "left" }}>{m.symbol}<div className="xs mute">{m.name}</div></span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <button className="token-sel" onClick={onOpen} aria-haspopup="dialog">
+      <TokenIcon symbol={label} token={token} />
+      {label}
+      <Icon.chev size={14} />
+    </button>
   );
 }
 
@@ -278,31 +266,57 @@ export function Trade() {
   else if (mode === "batch" && split.sizes.length === 0) cta = { label: "Amount too small", disabled: true };
   else cta = { label: mode === "batch" ? `Place ${split.sizes.length} sealed order${split.sizes.length > 1 ? "s" : ""}` : "Swap privately", act: swap };
 
-  // the token traded (any market but the one paid with), and what it's paid with (HYPE or USDC)
-  const marketSel = market && markets ? <TokenSel label={market.symbol} token={iconToken(market)} markets={markets.filter((m) => m.token !== base?.token)} onPick={(m) => { setMarket(m); setRes({}); }} held={bals} /> : null;
-  const hypeChoice = { token: "HYPE" as Address, symbol: "HYPE", name: "Hyperliquid" } as Market;
-  const baseSel = bases.length ? (
-    <TokenSel label={base?.symbol ?? "HYPE"} markets={[hypeChoice, ...bases.filter((m) => m.token !== market?.token)]} onPick={(m) => { setBase(m.token === hypeChoice.token ? null : m); setAmt(""); setRes({}); }} held={bals} />
-  ) : (
-    <TokenSel label="HYPE" hypeSide />
-  );
+  // Either side takes any token: HYPE, USDC and other assets (once the router is live), and every launch token. One
+  // side is always HYPE or an asset, so picking two launch tokens puts HYPE back on the other side.
+  const [sheet, setSheet] = useState<"pay" | "receive" | null>(null);
+  const HYPE = "HYPE";
+  const keyOf = (m: Market | null) => (m ? m.token : HYPE);
+  const byKey = (k: string) => (k === HYPE ? null : markets?.find((m) => m.token === k) ?? null);
+  const isMain = (m: Market | null) => !m || m.kind === "asset";
+  const listed = (markets ?? []).filter((m) => !isHidden(m.token) || m.token === market?.token || (bals[m.token] ?? 0n) > 0n);
+  const sheetTokens: SheetToken[] = [
+    { key: HYPE, symbol: "HYPE", name: "Hyperliquid", bal: priv && balLoaded ? hype(bals.HYPE ?? 0n) : undefined },
+    ...[...listed].sort((a, b) => Number(b.kind === "asset") - Number(a.kind === "asset")).map((m) => ({
+      key: m.token, symbol: m.symbol, name: m.name, iconToken: iconToken(m), tag: m.kind === "launch" ? "Launch" : undefined,
+      bal: priv && balLoaded ? fmtOf(m, bals[m.token] ?? 0n) : undefined,
+    })),
+  ];
+  function choose(slot: "pay" | "receive", k: string) {
+    let pay = slot === "pay" ? byKey(k) : from;
+    let rec = slot === "receive" ? byKey(k) : to;
+    // the same token on both sides: the sides swap
+    if (keyOf(pay) === keyOf(rec)) slot === "pay" ? (rec = from) : (pay = to);
+    // two launch tokens (or, before the router, anything but HYPE on the other side): HYPE on the other side
+    const ok = GLOAM?.router ? isMain(pay) || isMain(rec) : !pay !== !rec;
+    if (!ok || keyOf(pay) === keyOf(rec)) slot === "pay" ? (rec = null) : (pay = null);
+    if (!pay && !rec) return;
+    if (pay && !isMain(pay)) (setSide("sell"), setMarket(pay), setBase(rec));
+    else if (rec && !isMain(rec)) (setSide("buy"), setMarket(rec), setBase(pay));
+    else if (!rec) (setSide("sell"), setMarket(pay), setBase(null));
+    else (setSide("buy"), setMarket(rec), setBase(pay));
+    setAmt("");
+    setRes({});
+  }
+  const paySel = <TokenSel label={fromSym} token={iconToken(from)} onOpen={() => setSheet("pay")} />;
+  const receiveSel = <TokenSel label={toSym} token={iconToken(to)} onOpen={() => setSheet("receive")} />;
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Private swap</h1>
-          <p>Swap launch tokens{bases.length ? ", outside tokens and USDC" : ""} from your private balance. A relayer submits for you, so your wallet is never on the trade. Batch mode also hides how much you traded.</p>
+          <p>From your private balance. Your wallet is never on the trade.</p>
         </div>
       </div>
       {err && <div className="err">{err}</div>}
       {markets?.length === 0 && <div className="empty"><h3>No private markets yet</h3>Private trading opens for a launch once it settles. <Link to="/app/launches" className="link">See launches</Link></div>}
+      {sheet && <TokenSheet title={sheet === "pay" ? "You pay with" : "You receive"} tokens={sheetTokens} value={keyOf(sheet === "pay" ? from : to)} quick={[HYPE, ...bases.map((m) => m.token)]} onPick={(k) => choose(sheet, k)} onClose={() => setSheet(null)} />}
       {market && (
         <div className="swap-wrap">
           <div>
             <div className="swap">
               <div className="swap-box">
-                <div className="k"><span>You pay (private)</span>{priv && !bal && <Skel w="9ch" />}{fromBal !== undefined && <span className="link" onClick={async () => {
+                <div className="k"><span>You pay</span>{priv && !bal && <Skel w="9ch" />}{fromBal !== undefined && <span className="link" onClick={async () => {
                   // instant trades pay the relayer from the same balance; batch mode makes room for its own fees
                   const pool = from ? from.pool : priv?.hypeMarket.pool;
                   const most = mode === "instant" && priv && pool ? await priv.maxSpendable(pool).catch(() => fromBal) : fromBal;
@@ -310,22 +324,22 @@ export function Trade() {
                 }}>Balance {fmtIn(fromBal)}</span>}</div>
                 <div className="amt">
                   <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" aria-label="Amount" />
-                  {side === "buy" ? baseSel : marketSel}
+                  {paySel}
                 </div>
               </div>
               <button className="flip" aria-label="Switch direction" onClick={() => { setSide(side === "buy" ? "sell" : "buy"); setAmt(""); setRes({}); }}><Icon.arrowDown /></button>
               <div className="swap-box">
-                <div className="k"><span>You receive (private)</span>{priv && !bal && <Skel w="9ch" />}{bal && <span>Balance {fmtOut(bal.to)}</span>}</div>
+                <div className="k"><span>You receive</span>{priv && !bal && <Skel w="9ch" />}{bal && <span>Balance {fmtOut(bal.to)}</span>}</div>
                 <div className="amt">
                   <input value={q ? fmtOut(q).replace(/,/g, "") : ""} readOnly placeholder="0" aria-label="Estimated output" />
-                  {side === "buy" ? marketSel : baseSel}
+                  {receiveSel}
                 </div>
               </div>
               {base && <div className="summary small" style={{ margin: "0 0 12px" }}>Routed {fromSym} to HYPE to {toSym} in one private swap, through two pools.</div>}
               {BATCHER && market.batchable && !base && (
                 <div className="mode">
-                  <button className={mode === "instant" ? "on" : ""} onClick={() => setMode("instant")}><b>Instant</b><span>Fills now · size visible</span></button>
-                  <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}><b>Batch · hides size</b><span>{round ? `Next round in ${Math.max(0, Math.ceil(round.endsAt - now))}s` : "Settles every 30 s"}</span></button>
+                  <button className={mode === "instant" ? "on" : ""} onClick={() => setMode("instant")}><b>Instant</b><span>Fills now, size visible</span></button>
+                  <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}><b>Batch</b><span>{round ? `Hides size, next round in ${Math.max(0, Math.ceil(round.endsAt - now))}s` : "Hides size, about a minute"}</span></button>
                 </div>
               )}
               {mode === "batch" && split.sizes.length > 0 && (
@@ -342,13 +356,30 @@ export function Trade() {
               {res.err && <div className="err">{res.err}</div>}
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               {tracked && <div className={tracked.tone === "warn" ? "err" : tracked.tone === "ok" ? "okmsg" : "summary small"} style={{ marginTop: 8 }} aria-live="polite">{tracked.tone === "wait" && <span className="dot live" style={{ marginRight: 8 }} />}{tracked.text}</div>}
+              <div className="swap-facts">
+                <div className="row"><span>Rate</span><span>{q && amountIn > 0n ? `1 ${fromSym} ≈ ${fmtOut((q * 10n ** BigInt(decIn)) / amountIn)} ${toSym}` : "…"}</span></div>
+                <div className="row"><span>Max slippage</span><span>{mode === "instant" ? "1%" : "2%, or refunded"}</span></div>
+                <div className="row"><span>Gas</span><span>Paid by the relayer</span></div>
+              </div>
+              <div className="more-list">
+                <More title="Fees and how it works">Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees. {from && feePct !== "no" ? `${feePct} vault fee on the amount sold.` : !from ? `Gloam's vault keeps ${feePct} of the HYPE spent.` : ""} {cloakPct !== "no" ? `Cloak keeps ${cloakPct} of what a sale brings, in ${to ? to.symbol : "HYPE"}.` : ""} The relayer pays the gas, and whatever the trade didn't need comes back to your private balance.</More>
+                {BATCHER && market.batchable && !base && (
+                  <More title="How batch mode works">
+                    <ol>
+                      <li>Your amount is split into the standard sizes everyone uses.</li>
+                      <li>Orders wait in a round of about a minute alongside everyone else's.</li>
+                      <li>Buys and sells cross at the pool's average price over the round, which no single trade can move. Only the net trades on the pool.</li>
+                      <li>Everyone in the round gets the same price, paid back into private balances.</li>
+                    </ol>
+                  </More>
+                )}
+              </div>
             </div>
-            <p className="note" style={{ padding: "0 8px" }}>Proofs are generated on this device (a 12 MB circuit downloads on first use, then each trade takes about 4 s). 1% max slippage on instant trades. Fees. {from && feePct !== "no" ? `${feePct} vault fee on the amount sold.` : !from ? `Gloam's vault keeps ${feePct} of the HYPE spent.` : ""} {cloakPct !== "no" ? `Cloak keeps ${cloakPct} of what a sale brings, in ${to ? to.symbol : "HYPE"}.` : ""} The relayer pays the gas, and whatever the trade didn't need comes back to your private balance.</p>
           </div>
           <div className="col">
             <div className="card">
               <div className="card-head"><h3>What the chain sees</h3><span className="pill sealed-p">● shielded</span></div>
-              <div className="fl" style={{ gridTemplateColumns: "1fr" }}>
+              <div className="sees">
                 <div className="row"><span className="mute">Sender</span><span>Relayer, <b style={{ fontWeight: 500 }}>not you</b></span></div>
                 <div className="row"><span className="mute">Your balance</span><span><span className="sealed" style={{ width: 70, height: 14 }} /></span></div>
                 <div className="row"><span className="mute">Your other trades</span><span>Unlinkable</span></div>
@@ -357,7 +388,7 @@ export function Trade() {
                   <div className="row"><span className="mute">Orders in this round</span><span className={crowd ? "signal" : "warn-t"}>{crowd === null ? "…" : crowd === 0 ? "None yet" : crowd.toLocaleString()}</span></div>
                 )}
               </div>
-              <div className="fl" style={{ gridTemplateColumns: "1fr", marginTop: 6 }}>
+              <div className="sees" style={{ borderTop: "1px solid var(--line)" }}>
                 {mode === "instant" && plan && <div className="row"><span className="mute">Parts</span><span>{plan.parts} trades{plan.cap ? ` · vault cap ${plan.cap}` : ""}</span></div>}
                 <div className="row"><span className="mute">Time</span><span>{mode === "instant" ? (plan ? `About ${plan.parts * 5} seconds` : "A few seconds") : "About 1 to 3 minutes"}</span></div>
                 <div className="row"><span className="mute">Risk</span><span className="warn-t" style={{ textAlign: "right" }}>{mode === "instant" ? "Price can slip up to 1%" : "Refunded if the price moves over 2%"}</span></div>
@@ -370,15 +401,6 @@ export function Trade() {
                 <div className="row"><span className="mute">Pool price</span><span className="mono">{hype(market.price)} HYPE</span></div>
                 <div className="row"><span className="mute">Liquidity</span><span className="mono">{hype(market.reserveHype)} HYPE</span></div>
               </div>
-            </div>
-            <div className="card flat">
-              <h3>How batch mode works</h3>
-              <ol className="small soft" style={{ paddingLeft: 18, margin: "10px 0 0", display: "grid", gap: 6 }}>
-                <li>Your amount is split into the standard sizes everyone uses.</li>
-                <li>Orders wait in a round of about a minute alongside everyone else's.</li>
-                <li>Buys and sells cross at the pool's average price over the round, which no single trade can move. Only the net trades on the pool.</li>
-                <li>Everyone in the round gets the same price, paid back into private balances.</li>
-              </ol>
             </div>
           </div>
         </div>

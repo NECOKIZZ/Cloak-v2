@@ -201,7 +201,7 @@ export function Links() {
       <div className="page-head">
         <div>
           <h1>Payment links</h1>
-          <p>Send money as a link anyone can claim, or ask to be paid with one. Everything stays private, and the details live only in the link.</p>
+          <p>Send money as a link anyone can claim, or ask to be paid with one.</p>
         </div>
       </div>
 

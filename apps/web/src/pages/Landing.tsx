@@ -114,6 +114,26 @@ function Demos() {
   );
 }
 
+// A pane of fluted ("fractal") glass behind the cloaked figure, bending two soft lights. ?noglass hides it.
+const GLASS = typeof location === "undefined" || !new URLSearchParams(location.search).has("noglass");
+const RIB = 46; // px, one flute
+// each flute's displacement map: red ramps left to right, so the light behind bends across the flute and jumps at its edge
+const RIB_MAP = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${RIB}" height="${RIB}"><defs><linearGradient id="g"><stop offset="0" stop-color="rgb(0,128,0)"/><stop offset="1" stop-color="rgb(255,128,0)"/></linearGradient></defs><rect width="${RIB}" height="${RIB}" fill="url(#g)"/></svg>`)}`;
+function FractalGlass() {
+  return (
+    <div className="uncloak-glass" aria-hidden="true">
+      <svg width="0" height="0" style={{ position: "absolute" }}>
+        <filter id="reeded" x="0" y="0" width="100%" height="100%" primitiveUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+          <feImage href={RIB_MAP} x="0" y="0" width={RIB} height={RIB} preserveAspectRatio="none" result="rib" />
+          <feTile in="rib" result="map" />
+          <feDisplacementMap in="SourceGraphic" in2="map" scale="90" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
+      <i />
+    </div>
+  );
+}
+
 /** Two aligned portraits; the uncloaked one shows through a soft circle that follows the pointer. */
 function Uncloak() {
   const stage = useRef<HTMLDivElement>(null);
@@ -175,6 +195,7 @@ function Uncloak() {
   }, []);
   return (
     <div className="uncloak" ref={stage}>
+      {GLASS && <FractalGlass />}
         <div className="uncloak-figure">
           <img src="/hero/cloaked.webp" alt="A figure hidden under a black hooded cloak" width={1400} height={933} draggable={false} />
           <img src="/hero/man.webp" alt="" aria-hidden="true" className="uncloak-reveal" width={1400} height={933} draggable={false} />

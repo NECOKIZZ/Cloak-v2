@@ -5,7 +5,8 @@ import { CHAIN_ID } from "./config";
 import { ensureElysium, type Eip1193 } from "./wallet";
 import { useApp } from "./state";
 import { QR } from "./qr";
-import { Icon } from "./ui";
+import { Icon, More, TokenIcon } from "./ui";
+import { TokenSheet, type SheetToken } from "./tokenPicker";
 import { every } from "./every";
 import { friendly } from "./errors";
 
@@ -77,6 +78,7 @@ export function BridgeIn({ to, onArrived }: { to: Address | undefined; onArrived
   const [err, setErr] = useState("");
   const [pending, setPending] = useState<Pending[]>(loadPending);
   const [copied, setCopied] = useState(false);
+  const [sheet, setSheet] = useState<"from" | "to" | null>(null);
 
   // refunds go back to the connected wallet on EVM chains unless another address is given
   const refundTo = refund.trim() || (src.kind === "evm" && wallet?.account ? wallet.account.address : "");
@@ -176,37 +178,39 @@ export function BridgeIn({ to, onArrived }: { to: Address | undefined; onArrived
   const refundOk = validRefundAddress(src.kind, refundTo);
   const canWallet = src.kind === "evm" && !!wallet?.account && !!provider;
   const ready = !!to && amount > 0n && refundOk && !busy;
+  const srcKey = `${chainId}:${token.symbol}`;
+  const sources: SheetToken[] = RELAY_SOURCES.filter((c) => !c.needsKey).flatMap((c) => c.tokens.map((t) => ({ key: `${c.id}:${t.symbol}`, symbol: t.symbol, name: `on ${c.name}` })));
+  const needRefund = !(src.kind === "evm" && wallet?.account);
+  const refundField = (
+    <div className="field" style={{ margin: needRefund ? "10px 0 0" : 0 }}><label><span>Refund address on {src.name}{!needRefund ? ", your wallet unless you change it" : ""}</span></label>
+      <input className="input mono" value={refund} onChange={(e) => setRefund(e.target.value)} placeholder={src.kind === "evm" ? wallet?.account?.address ?? "0x…" : src.kind === "tvm" ? "T…" : "bc1…"} aria-label="Refund address" />
+    </div>
+  );
   return (
-    <div className="card">
-      <div className="card-head"><h3>From another chain or an exchange</h3><span className="xs mute">via Relay</span></div>
+    <div className="swap bridge">
+      {sheet === "from" && <TokenSheet title="Send from" tokens={sources} value={srcKey} placeholder="Search a token or a network" filters={RELAY_SOURCES.filter((c) => !c.needsKey).slice(0, 6).map((c) => c.name)} onPick={(k) => { const [c, sym] = k.split(":"); setChainId(Number(c)); setSymbol(sym); }} onClose={() => setSheet(null)} />}
+      {sheet === "to" && <TokenSheet title="Receive privately as" tokens={dests.map((t) => ({ key: t.symbol, symbol: t.symbol, name: "Private balance on Elysium" }))} value={dest} onPick={setDest} onClose={() => setSheet(null)} />}
       {!LIVE && <div className="summary small" style={{ margin: "0 0 10px" }}>Preview. Quotes are live from Relay into Elysium mainnet, and nothing is sent from this network.</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <div className="field"><label><span>From</span></label>
-          <select className="input" value={chainId} onChange={(e) => { const c = RELAY_SOURCES.find((x) => x.id === Number(e.target.value))!; setChainId(c.id); setSymbol(c.tokens[0].symbol); }}>
-            {RELAY_SOURCES.filter((c) => !c.needsKey).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="field"><label><span>Token</span></label>
-          <select className="input" value={token.symbol} onChange={(e) => setSymbol(e.target.value)}>
-            {src.tokens.map((t) => <option key={t.symbol} value={t.symbol}>{t.symbol}</option>)}
-          </select>
-        </div>
-        <div className="field"><label><span>Amount</span></label>
-          <input className="input" value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder={token.stable ? "20" : "0.1"} aria-label="Amount" />
-        </div>
-        <div className="field"><label><span>Receive privately as</span></label>
-          <select className="input" value={dest} onChange={(e) => setDest(e.target.value)}>
-            {dests.map((t) => <option key={t.symbol} value={t.symbol}>{t.symbol}</option>)}
-          </select>
+      <div className="swap-box">
+        <div className="k"><span>You send</span><span>{src.name}</span></div>
+        <div className="amt">
+          <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder="0" aria-label="Amount" />
+          <button className="token-sel two" onClick={() => setSheet("from")} aria-haspopup="dialog"><TokenIcon symbol={token.symbol} /><span>{token.symbol}<small>{src.name}</small></span><Icon.chev size={14} /></button>
         </div>
       </div>
-      <div className="field"><label><span>Refund address on {src.name}{src.kind === "evm" && wallet?.account ? ", your wallet unless you change it" : ""}</span></label>
-        <input className="input mono" value={refund} onChange={(e) => setRefund(e.target.value)} placeholder={src.kind === "evm" ? wallet?.account?.address ?? "0x…" : src.kind === "tvm" ? "T…" : "bc1…"} aria-label="Refund address" />
+      <div className="flip still" aria-hidden="true"><Icon.arrowDown /></div>
+      <div className="swap-box">
+        <div className="k"><span>You receive</span><span>Private balance</span></div>
+        <div className="amt">
+          <input value={q ? Number(q.receive.formatted).toPrecision(5).replace(/\.?0+$/, "") : ""} readOnly placeholder="0" aria-label="Estimated amount received" />
+          <button className="token-sel two" onClick={() => dests.length > 1 && setSheet("to")} style={dests.length > 1 ? undefined : { cursor: "default" }}><TokenIcon symbol={dest} /><span>{dest}<small>Elysium</small></span>{dests.length > 1 && <Icon.chev size={14} />}</button>
+        </div>
       </div>
+      {needRefund && refundField}
       {refundTo && !refundOk && <div className="err">That isn't a {src.name} address.</div>}
-      <div className="row-flex" style={{ gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-        <button className="btn btn-ink" disabled={!ready} onClick={() => quote(false)}>{busy && !q ? busy : "Get a deposit address"}</button>
-        {canWallet && <button className="btn btn-ghost" disabled={!ready} onClick={() => quote(true)}>Pay from my wallet</button>}
+      <div className="bridge-cta">
+        <button className="btn btn-ink btn-lg" disabled={!ready} onClick={() => quote(false)}>{busy && !q ? busy : amount <= 0n ? "Enter an amount" : !refundOk ? "Add a refund address" : "Get a deposit address"}</button>
+        {canWallet && <button className="btn btn-ghost btn-lg" disabled={!ready} onClick={() => quote(true)}>Pay from my wallet</button>}
       </div>
       {busy && q && <div className="summary small" style={{ marginTop: 10 }}><span className="dot live" style={{ marginRight: 8 }} />{busy}</div>}
       {err && <div className="err">{err}</div>}
@@ -237,7 +241,10 @@ export function BridgeIn({ to, onArrived }: { to: Address | undefined; onArrived
           ))}
         </div>
       )}
-      <p className="note">Relay delivers to your receive address on Elysium, never to your wallet, and Cloak moves it into your private balance. Like any deposit, what was sent and from where is public. A deposit address from an exchange keeps your wallet out of it. Paying from your wallet links that wallet to this receive address, so use a new address afterwards.</p>
+      <div className="more-list">
+        {!needRefund && <More title="Refund address">{refundField}</More>}
+        <More title="What is public and what isn't">Relay delivers to your receive address on Elysium, never to your wallet, and Cloak moves it into your private balance. Like any deposit, what was sent and from where is public. A deposit address from an exchange keeps your wallet out of it. Paying from your wallet links that wallet to this receive address, so use a new address afterwards.</More>
+      </div>
     </div>
   );
 }

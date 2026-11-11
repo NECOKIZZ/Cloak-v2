@@ -71,7 +71,7 @@ export function ProveFunds() {
   return (
     <>
       {back}
-      <div className="page-head"><div><h1>Prove what you hold</h1><p>Show someone you hold at least an amount, without showing your balance, your wallet or anything you've done.</p></div></div>
+      <div className="page-head"><div><h1>Prove what you hold</h1><p>Show you hold at least an amount, without showing your balance or your wallet.</p></div></div>
       <div className="grid">
         <div className="card">
           {!proof ? (

@@ -149,7 +149,7 @@ export function Volume() {
       <div className="page-head">
         <div>
           <h1>Volume</h1>
-          <p>Everything that has moved through Cloak v2 on Elysium testnet, counted from public on-chain events. Who did what stays private.</p>
+          <p>Counted from public on-chain events. Who did what stays private.</p>
         </div>
         <span className="pill"><span className="dot live" />Live · refreshes every minute</span>
       </div>

@@ -9,7 +9,7 @@ export function Create() {
       <div className="page-head">
         <div>
           <h1>Create a launch</h1>
-          <p>A fair, private launch in one transaction. Bids stay sealed until bidding closes, every winner pays one price, and the token opens on Uniswap at that price with its liquidity locked.</p>
+          <p>Sealed bids, one price for every winner, then a Uniswap pool with locked liquidity. One transaction.</p>
         </div>
       </div>
       <CreateForm wallet={wallet} onCreated={(a) => navigate(`/app/launch/${a}?new=1`)} />
