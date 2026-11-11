@@ -12,7 +12,8 @@ for (const n of names) {
   out += `\nexport const ${n === n.toUpperCase() ? n.toLowerCase() : n[0].toLowerCase() + n.slice(1)}Abi = ${JSON.stringify(abi, null, 2)} as const;\n`;
 }
 // Uniswap v4: Cloak's hook and market (contracts-v4), and the PoolManager built with Uniswap's settings
-const v4 = { CloakV4Hook: `${root}contracts-v4/out/CloakV4Hook.sol/CloakV4Hook.json`, CloakV4Market: `${root}contracts-v4/out/CloakV4Market.sol/CloakV4Market.json`, PoolManager: `${root}contracts-v4/out-uniswap/PoolManager.sol/PoolManager.json` };
+// GLOAK, the one private-only token (docs/GLOAK.md): the token and the maker the launch deployer's one-time door calls
+const v4 = { CloakV4Hook: `${root}contracts-v4/out/CloakV4Hook.sol/CloakV4Hook.json`, CloakV4Market: `${root}contracts-v4/out/CloakV4Market.sol/CloakV4Market.json`, PoolManager: `${root}contracts-v4/out-uniswap/PoolManager.sol/PoolManager.json`, GloakToken: `${root}contracts-v4/out/GloakToken.sol/GloakToken.json`, GloakMaker: `${root}contracts-v4/out/GloakToken.sol/GloakMaker.json` };
 for (const [n, file] of Object.entries(v4)) {
   const { abi } = JSON.parse(readFileSync(file, "utf8"));
   out += `\nexport const ${n[0].toLowerCase() + n.slice(1)}Abi = ${JSON.stringify(abi, null, 2)} as const;\n`;
