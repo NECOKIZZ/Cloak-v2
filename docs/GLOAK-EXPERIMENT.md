@@ -119,12 +119,17 @@ Before deploy, regenerate the SDK's ABIs and bytecode (`pnpm abis`), since the d
 4. **Approve the private zone on GLOAK** before bidding opens (instant during setup):
    - the launch vault: Receive, Vault;
    - `CloakRouterV4`: Receive, Feed, Swap, Payee;
-   - `CloakGloamBatcherV4`: Receive, Feed, Payee.
+   - `CloakGloamBatcherV4`: Receive, Feed, Payee;
+   - `CloakGloamBids`: Receive. **Required:** a private bidder's winnings pass from its bid account through this contract into the vault, and it checks it got the exact amount. Without the approval it would get 90% and every private claim would fail (the simulation shows this).
 5. **After settlement:** the keeper admits GLOAK to the launch vault and registers it for batch rounds. Give the pool's market adapter (`auction.pair()`) Swap if batch rounds should trade GLOAK.
 6. **End setup on GLOAK** (`endSetup`). From then on a new approval waits 3 days in public.
 7. **Another privacy protocol:** once we've vetted their vault and router, queue Receive and Vault for their vault, and Receive, Feed, Swap and Payee for their router. Apply after 3 days.
 
-Bidding uses the normal private-bid flow. Winnings go from the auction into the vault without a surcharge.
+Bidding uses the normal private-bid flow. Winnings go from the auction into the vault without a surcharge, once `CloakGloamBids` is approved.
+
+**Public bids still work.** Bidders don't need a private balance: the auction pays every winner for free, so a public bidder gets public GLOAK and can shield it for free. The contracts can't require private bids without charging private bidders too, so if only private bids are wanted, the app shouldn't offer public ones. Don't remove the auction's Send role to force it: that charges every claim, private ones included, and Send can never be given back.
+
+**Notes belong to their owners.** Nobody, the owner wallet included, can move someone else's note: the vault has no function for it. So GLOAK can't be moved between vaults in bulk. Each holder moves their own (an approved bridge address they trust, a migrator if one is built, or their own wallet at 10%). Cloak can move only the GLOAK Cloak owns. Pick GLOAK's home vault before launch.
 
 ## Moving GLOAK from one vault to another
 
@@ -159,5 +164,7 @@ Our router always trades GLOAK in Cloak's launch vault, because launch tokens ar
 - **Fork only:** Uniswap's real Universal Router on mainnet can't buy GLOAK but still buys a plain launch.
 
 Run locally (`forge test --match-contract GloakExperiment` in `contracts-v4`): all 24 pass; the 2 fork-only tests do nothing there. Run on a fork of Elysium mainnet against Uniswap's real PoolManager (`MAINNET_RPC=https://rpc.elysium.kinetiq.xyz forge test --match-contract GloakExperiment`): all 24 pass, the fork-only ones included. The existing suites still pass: 119 in `contracts`, 219 in `contracts-v4`, and the 5-test mainnet fork suite.
+
+**Simulation** (`contracts-v4/test/GloakSimulation.t.sol`, run with `-vv` to read it): 500,000 GLOAK, no team share, 3 HYPE of bids (Ada 1 and Ben 1.5 from private balances, Cy 0.5 in public). It clears at 0.00001 HYPE: 300,000 sold, a pool of about 1.48 HYPE and 147,750 GLOAK, and 52,250 unused burned at 0xdEaD. Then private claims, private buys and sells (nothing burned), Uniswap's real Universal Router refused, a withdrawal and a public transfer (10% each), a buyback from the pool's fees burned at 0xdEaD, and a move into a second vault through an approved bridge address (free) or a holder's own wallet (10%). It passes on the mainnet fork and locally. With a pool this thin a 0.2 HYPE buy moves the price about 25%, and two trades' fees buy back under 100 GLOAK; the raise itself (about 1.48 HYPE to the treasury) is the real buyback money.
 
 Not yet run: the end-to-end rehearsal with real zero-knowledge proofs (`e2e-gloam/part22-mainnet-fork.mjs`). The tests above use stand-in proof checks, as the router's own tests do.
