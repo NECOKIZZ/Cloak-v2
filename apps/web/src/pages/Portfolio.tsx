@@ -17,6 +17,8 @@ import { useFeePct, useMarkets, vaultOf, type Market } from "./markets";
 import { usePrivateBalances } from "../balances";
 import { schedule, useScheduled } from "../scheduled";
 import { Skel } from "../skel";
+import { GloakWithdrawNote, useGloak } from "../gloak";
+import { gloakArrives } from "@cloakely/sdk";
 
 type Kind = "shield" | "send" | "withdraw";
 type Key = "HYPE" | Address;
@@ -117,6 +119,7 @@ export function Portfolio() {
   const assets = useAssets();
   const { bals, refresh, loaded, synced } = usePrivateBalances();
   const px = useHypeUsd();
+  const gloak = useGloak();
   const anyHeld = Object.values(bals).some((b) => b > 0n);
   useEffect(() => {
     if (anyHeld) markDone("shield");
@@ -177,7 +180,7 @@ export function Portfolio() {
               {held.map(({ a, bal, v }) => (
                 <div key={a.key} className="asset-row">
                   <TokenIcon symbol={a.symbol} token={a.iconToken} size={34} />
-                  <div className="nm"><b>{a.symbol}</b><span className="xs mute">{a.name}</span></div>
+                  <div className="nm"><b>{a.symbol}{gloak.is(a.key) && <span className="pill ok" style={{ marginLeft: 6 }} title="Free to trade privately; 10% burned when it leaves for a wallet">private-only</span>}</b><span className="xs mute">{a.name}</span></div>
                   <div className="amt"><b className="mono">{amountOf(a, bal)}</b><span className="xs mute">{v === null ? a.symbol : dollars(v)}</span></div>
                   <div className="asset-acts">
                     {a.market && <Link to={`/app/trade?token=${a.key}&side=sell`} className="btn btn-ghost btn-xs" title={`Swap ${a.symbol} for HYPE privately`}>Swap</Link>}
@@ -269,21 +272,22 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
   const [windowSecs, setWindowSecs] = useState(3600);
   const [busy, setBusy] = useState("");
   const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
+  const gloak = useGloak();
   // send and withdraw start on the first token held, once balances arrive
   const firstHeld = assets.find((a) => (bals[a.key] ?? 0n) > 0n)?.key;
   useEffect(() => {
     if (kind !== "shield" && asset === undefined && firstHeld) setAsset(firstHeld);
   }, [firstHeld]);
 
-  // shield: HYPE, USDC and CLOAK, with what the wallet holds of each
-  const shieldable = assets.filter((a) => a.kind !== "launch");
+  // shield: HYPE, USDC and CLOAK, with what the wallet holds of each; and GLOAK, which lives in private balances
+  const shieldable = assets.filter((a) => a.kind !== "launch" || gloak.is(a.key));
   useEffect(() => {
     if (kind !== "shield" || !wallet) return;
     const me = wallet.account.address;
     Promise.all(
       shieldable.map(async (a) => [a.key, a.key === "HYPE" ? await publicClient.getBalance({ address: me }) : await publicClient.readContract({ address: a.key, abi: erc20Abi, functionName: "balanceOf", args: [me] })] as const),
     ).then((e) => setPub(Object.fromEntries(e))).catch(() => {});
-  }, [kind, wallet, shieldable.length, res.tx]);
+  }, [kind, wallet, shieldable.length, res.tx, gloak.token]);
 
   if (!wallet || !priv) return <Locked title={TITLES[kind][0]} back />;
 
@@ -370,7 +374,8 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
             setRes({ ok: `${amt} ${cur.symbol} goes to ${name} in ${pieces.length} pieces: ${pieces.map((p) => `${amountOf(cur, p.amount)} around ${at(p.notBefore)}`).join(", ")}. You can close Cloak: the relayer sends them.` });
           } else {
             const tx = cur.key === "HYPE" ? await priv.unshieldHype(dest.address, a, setBusy) : await priv.unshieldToken(cur.key, dest.address, a, setBusy);
-            setRes({ ok: `${amt} ${cur.symbol} withdrawn to ${name}.`, tx });
+            const isG = gloak.is(cur.key);
+            setRes({ ok: isG ? `${amt} GLOAK withdrawn to ${name}: ${tokens(gloakArrives(a, gloak.info?.surchargeBps ?? 1000))} arrives, the rest is burned.` : `${amt} ${cur.symbol} withdrawn to ${name}.`, tx });
           }
         }
       }
@@ -430,17 +435,22 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                   )}
                 </div>
               )}
+              {kind === "withdraw" && cur && gloak.is(cur.key) && <GloakWithdrawNote amount={(() => { try { return parseUnits(amt.trim() || "0", cur.decimals); } catch { return 0n; } })()} info={gloak.info} />}
               <button className="btn btn-ink btn-lg btn-block" disabled={!!busy || !cur} onClick={act}>
                 {busy || (kind === "shield" ? `Shield ${cur?.symbol ?? ""}` : kind === "send" ? "Send privately" : "Withdraw privately")}
               </button>
               {res.err && <div className="err">{res.err}</div>}
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               <p className="note">
-                {kind === "shield"
+                {kind === "shield" && cur && gloak.is(cur.key)
+                  ? "Shielding GLOAK is free: the vault receives exactly what you send, and from there you trade it privately for free. Only taking it back out to a wallet burns 10%."
+                  : kind === "shield"
                   ? `Shielding is the one public step: your wallet deposits ${cur?.symbol ?? "it"}. It lands on a one-time key, so it can't be linked to anything you do next.${cur && cur.key !== "HYPE" ? ` ${cur.symbol} needs two confirmations the first time: an approval, then the deposit.` : ""} Then swap privately into other tokens on Trade.${caps && cur && caps.perDeposit > 0n ? ` For now the private vault takes up to ${amountOf(cur, caps.perDeposit)} ${cur.symbol} per deposit, so a bigger amount goes in parts, one signature each, and has room for ${amountOf(cur, caps.left)} more in total. These caps rise as Cloak and Gloam grow.` : ""}`
                   : kind === "send"
                     ? <>A transfer inside the vault. The chain only sees that a private transaction happened. No cloak: address to send to? <Link to="/app/links" className="link">Send it as a link</Link> they can claim to any wallet.</>
-                    : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. The vault keeps ${feePct} of a withdrawal, and the relayer pays the gas.`}
+                    : cur && gloak.is(cur.key)
+                      ? "GLOAK is meant to stay private: a withdrawal burns 10% on the way out, and every move between wallets after that burns 10% again. Shielding it back in is free. The relayer pays the gas."
+                      : `Withdrawing is public on purpose: funds land in a normal wallet. A brand-new address keeps the most privacy. The vault keeps ${feePct} of a withdrawal, and the relayer pays the gas.`}
               </p>
             </>
           )}

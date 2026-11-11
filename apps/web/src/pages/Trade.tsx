@@ -2,6 +2,7 @@ import { markDone } from "../guide";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, parseAbi, parseEventLogs, parseUnits, toHex, type Address, type Hex } from "viem";
 import { standardSizesFor } from "@cloakely/sdk";
+import { useGloak } from "../gloak";
 import { GLOAM, txLink } from "../config";
 import { hype, tokens, usd } from "../format";
 import { Link, useRoute } from "../router";
@@ -152,6 +153,7 @@ export function Trade() {
   const [now, setNow] = useState(Date.now() / 1000);
   const [busy, setBusy] = useState("");
   const [res, setRes] = useState<{ ok?: string; tx?: Hex; err?: string }>({});
+  const gloak = useGloak();
   const [track, setTrack] = useState<Track | null>(null);
   const orderStatus = useOrderStatus(track);
 
@@ -356,6 +358,11 @@ export function Trade() {
               {res.err && <div className="err">{res.err}</div>}
               {res.ok && <div className="okmsg">{res.ok} {res.tx && txLink(res.tx) && <a href={txLink(res.tx)} target="_blank" rel="noreferrer">View tx ↗</a>}</div>}
               {tracked && <div className={tracked.tone === "warn" ? "err" : tracked.tone === "ok" ? "okmsg" : "summary small"} style={{ marginTop: 8 }} aria-live="polite">{tracked.tone === "wait" && <span className="dot live" style={{ marginRight: 8 }} />}{tracked.text}</div>}
+              {market && gloak.is(market.token) && (
+                <div className="summary small" role="note" style={{ marginTop: 8 }}>
+                  GLOAK only trades privately, here. Buying and selling it is free of its 10% surcharge, and what a trade doesn't use comes back to your private balance. Only withdrawing it to a wallet burns 10%.
+                </div>
+              )}
               <div className="swap-facts">
                 <div className="row"><span>Rate</span><span>{q && amountIn > 0n ? `1 ${fromSym} ≈ ${fmtOut((q * 10n ** BigInt(decIn)) / amountIn)} ${toSym}` : "…"}</span></div>
                 <div className="row"><span>Max slippage</span><span>{mode === "instant" ? "1%" : "2%, or refunded"}</span></div>
