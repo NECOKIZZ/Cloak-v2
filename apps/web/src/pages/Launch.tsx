@@ -36,6 +36,9 @@ function Share({ s, big }: { s: AuctionState; big?: boolean }) {
     <span className="row-flex" style={{ gap: 8 }}>
       <button className={`btn btn-ghost ${size}`} onClick={() => { navigator.clipboard?.writeText(url).catch(() => {}); toast("Launch link copied"); }}><Icon.copy size={14} />Copy link</button>
       <a className={`btn btn-ghost ${size}`} href={`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">Share on X</a>
+      <a className={`btn btn-ghost ${size}`} href={`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">Telegram</a>
+      {/* phones: the system share sheet (WhatsApp, Discord, messages) */}
+      {typeof navigator !== "undefined" && "share" in navigator && <button className={`btn btn-ghost ${size}`} onClick={() => navigator.share({ title: `$${s.tokenSymbol} on Cloak`, text, url }).catch(() => {})}>More</button>}
     </span>
   );
 }
@@ -161,6 +164,7 @@ export function Launch({ auction }: { auction: Address }) {
             </button>
             {addrLink(s.token) && <a href={addrLink(s.token)} target="_blank" rel="noreferrer" className="link">Explorer ↗</a>}
             {uni && trading && <a href={addrLink(s.uniPair)} target="_blank" rel="noreferrer" className="link">{s.pool === "v4" ? "Uniswap v4 pool ↗" : "Uniswap pool ↗"}</a>}
+            {!s.settled && <span className="mute">Uniswap v4 pool opens when the launch settles</span>}
           </div>
           {meta?.description && <p className="token-card-desc">{meta.description}</p>}
         </div>

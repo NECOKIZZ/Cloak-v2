@@ -108,6 +108,65 @@ export function cleanLinks(l: unknown): DropLinks | undefined {
   }
   return Object.keys(out).length ? out : undefined;
 }
+/** What a partner's spots are: WL (a whitelist spot) or GTD (a guaranteed mint). */
+export type SpotKind = "WL" | "GTD";
+/** A spot sale's kind, read from its details (sales made before the field existed are WL). */
+export const spotKind = (d?: { spots?: { kind?: SpotKind } }): SpotKind => (d?.spots?.kind === "GTD" ? "GTD" : "WL");
+
+/** Something bidders must do to keep what they win, like "Follow @partner", with an optional https link. */
+export interface DropRequirement {
+  text: string;
+  url?: string;
+}
+/** Most requirements one drop can list. */
+export const DROP_MAX_REQUIREMENTS = 10;
+/** Keep up to 10 requirements: text up to 200 characters, links only if https (up to 200 characters). */
+export function cleanRequirements(r: unknown): DropRequirement[] | undefined {
+  if (!Array.isArray(r)) return undefined;
+  const out: DropRequirement[] = [];
+  for (const e of r) {
+    const text = typeof e?.text === "string" ? e.text.trim().slice(0, 200) : "";
+    if (!text) continue;
+    const url = typeof e?.url === "string" ? e.url.trim() : "";
+    out.push(/^https:\/\/[^\s"<>]+$/.test(url) && url.length <= 200 ? { text, url } : { text });
+    if (out.length === DROP_MAX_REQUIREMENTS) break;
+  }
+  return out.length ? out : undefined;
+}
+
+/** Something a drop asks every bidder to fill in (an X username, say), sealed with their bid. */
+export interface DropField {
+  label: string;
+  required?: boolean;
+}
+/** Most bid fields one drop can ask for. */
+export const DROP_MAX_FIELDS = 5;
+/** Keep up to 5 fields with distinct labels of up to 40 characters. */
+export function cleanFields(f: unknown): DropField[] | undefined {
+  if (!Array.isArray(f)) return undefined;
+  const out: DropField[] = [];
+  const seen = new Set<string>();
+  for (const e of f) {
+    const label = typeof e?.label === "string" ? e.label.trim().replace(/\s+/g, " ").slice(0, 40) : "";
+    if (!label || seen.has(label.toLowerCase())) continue;
+    seen.add(label.toLowerCase());
+    out.push(e?.required ? { label, required: true } : { label });
+    if (out.length === DROP_MAX_FIELDS) break;
+  }
+  return out.length ? out : undefined;
+}
+/** A bidder's answers, checked against the drop's fields: trimmed, at most 100 characters, required ones present. */
+export function checkFieldAnswers(fields: DropField[] | undefined, answers: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!fields?.length) return undefined;
+  const out: Record<string, string> = {};
+  for (const f of fields) {
+    const v = (answers?.[f.label] ?? "").trim().slice(0, 100);
+    if (!v && f.required) throw new Error(`Fill in "${f.label}": this sale needs it from every bidder.`);
+    if (v) out[f.label] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 const imageOk = (v: unknown): v is string => typeof v === "string" && /^(https:\/\/|ipfs:\/\/|data:image\/(png|jpeg|webp|gif);base64,)/.test(v);
 
 /** What a drop publishes about itself at creation (the DropDetails event). */
@@ -122,8 +181,12 @@ export interface DropDetails {
   description?: string;
   gtd?: GtdEntry[];
   wl?: Address[];
-  /** Set when the drop sells WL spots for a partner collection (see CloakSpots). */
-  spots?: { partner: string };
+  /** What bidders must do to keep what they win (follow, engage, join…). Shown on the drop page. */
+  requirements?: DropRequirement[];
+  /** What every bidder fills in when bidding (sealed with the bid; on the winners sheet once bids open). */
+  fields?: DropField[];
+  /** Set when the drop sells WL or GTD spots for a partner collection (see CloakSpots). Missing kind means WL. */
+  spots?: { partner: string; kind?: SpotKind };
 }
 
 export interface CreateDropOptions {
@@ -154,8 +217,12 @@ export interface CreateDropOptions {
   /** A category shown with the collection, like Art or PFP. */
   category?: string;
   description?: string;
-  /** A WL spot sale: published with the drop so its pages and metadata say so. */
-  spots?: { partner: string };
+  /** What bidders must do to keep what they win. Up to 10, shown on the drop page. */
+  requirements?: DropRequirement[];
+  /** What every bidder fills in when bidding, like "X username". Up to 5; sealed with each bid. */
+  fields?: DropField[];
+  /** A WL (or GTD) spot sale: published with the drop so its pages and metadata say so. */
+  spots?: { partner: string; kind?: SpotKind };
 }
 
 /** An auction of NFTs that already exist (CloakEscrowDrop): the tokens move into the drop when it's created. */
@@ -179,6 +246,7 @@ export interface CreateEscrowDropOptions {
   links?: DropLinks;
   category?: string;
   description?: string;
+  requirements?: DropRequirement[];
 }
 
 /** Where an escrow drop's tokens come from. */
@@ -331,7 +399,9 @@ export class CloakDrops {
       wlRoot: merkleTree(wlList.map(wlLeaf)).root,
     };
     const links = cleanLinks(o.links);
-    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.banner && imageOk(o.banner) ? { banner: o.banner } : {}), ...(links ? { links } : {}), ...(o.category?.trim() ? { category: o.category.trim().slice(0, 32) } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(gtdList.length ? { gtd: gtdList } : {}), ...(wlList.length ? { wl: wlList } : {}), ...(o.spots ? { spots: { partner: o.spots.partner.slice(0, 200) } } : {}) };
+    const reqs = cleanRequirements(o.requirements);
+    const fields = cleanFields(o.fields);
+    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.banner && imageOk(o.banner) ? { banner: o.banner } : {}), ...(links ? { links } : {}), ...(o.category?.trim() ? { category: o.category.trim().slice(0, 32) } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(gtdList.length ? { gtd: gtdList } : {}), ...(wlList.length ? { wl: wlList } : {}), ...(reqs ? { requirements: reqs } : {}), ...(fields ? { fields } : {}), ...(o.spots ? { spots: { partner: o.spots.partner.slice(0, 200), ...(o.spots.kind === "GTD" ? { kind: "GTD" as const } : {}) } } : {}) };
     const detailsJson = JSON.stringify(details);
     if (new TextEncoder().encode(detailsJson).length > DROP_MAX_DETAILS)
       throw new Error("The images and lists are too big to publish together. Link the banner (https:// or ipfs://) instead of uploading it, or use a smaller image.");
@@ -360,7 +430,9 @@ export class CloakDrops {
         description: typeof d.description === "string" ? d.description : undefined,
         gtd: Array.isArray(d.gtd) ? d.gtd.filter((e: GtdEntry) => isAddress(e?.wallet) && Number.isInteger(e?.spots)) : undefined,
         wl: Array.isArray(d.wl) ? d.wl.filter((a: string) => isAddress(a)) : undefined,
-        spots: typeof d.spots?.partner === "string" ? { partner: d.spots.partner } : undefined,
+        requirements: cleanRequirements(d.requirements),
+        fields: cleanFields(d.fields),
+        spots: typeof d.spots?.partner === "string" ? { partner: d.spots.partner, kind: spotKind(d) } : undefined,
       };
     } catch {
       return {};
@@ -482,7 +554,8 @@ export class CloakDrops {
       wlRoot: merkleTree(wlList.map(wlLeaf)).root,
     };
     const links = cleanLinks(o.links);
-    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.banner && imageOk(o.banner) ? { banner: o.banner } : {}), ...(links ? { links } : {}), ...(o.category?.trim() ? { category: o.category.trim().slice(0, 32) } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(wlList.length ? { wl: wlList } : {}) };
+    const reqs = cleanRequirements(o.requirements);
+    const details: DropDetails & { v: 1 } = { v: 1, ...(o.image ? { image: o.image } : {}), ...(o.banner && imageOk(o.banner) ? { banner: o.banner } : {}), ...(links ? { links } : {}), ...(o.category?.trim() ? { category: o.category.trim().slice(0, 32) } : {}), ...(o.description ? { description: o.description.slice(0, 1000) } : {}), ...(wlList.length ? { wl: wlList } : {}), ...(reqs ? { requirements: reqs } : {}) };
     const detailsJson = JSON.stringify(details);
     if (new TextEncoder().encode(detailsJson).length > DROP_MAX_DETAILS) throw new Error("The images and lists are too big to publish together. Link the banner (https:// or ipfs://) instead of uploading it, or use a smaller image.");
     const { result, request } = await this.publicClient.simulateContract({
@@ -580,9 +653,12 @@ export class CloakDrops {
    * nobody can read it before bidding closes; the keeper opens it then. A WL bid must come from the listed wallet.
    * `deposit` may be more than the bid needs (the rest comes back), which hides the bid's size from the deposit.
    */
-  async bid(drop: Address, o: { price: bigint; quantity: number; wl?: boolean; deposit?: bigint }): Promise<{ id: bigint; txHash: Hex; tick: number; salt: Hex }> {
+  async bid(drop: Address, o: { price: bigint; quantity: number; wl?: boolean; deposit?: bigint; fields?: Record<string, string> }): Promise<{ id: bigint; txHash: Hex; tick: number; salt: Hex }> {
     const w = this.wallet();
     const s = await this.get(drop);
+    // the drop's bid fields: required ones must be filled in; the answers are sealed with the bid
+    const asked = (await this.details(drop)).fields;
+    const answers = checkFieldAnswers(asked, o.fields);
     if (s.phase !== "bidding") throw new Error(s.phase === "gtd" ? "Bidding opens when the GTD window closes." : "Bidding has closed.");
     if (!Number.isInteger(o.quantity) || o.quantity < 1 || o.quantity > s.maxPerBid) throw new Error(`Bid for 1 to ${s.maxPerBid} NFTs.`);
     const tick = CloakDrops.tickFor(s, o.price);
@@ -599,7 +675,7 @@ export class CloakDrops {
     const salt = toHex(crypto.getRandomValues(new Uint8Array(32)));
     const quantity = BigInt(o.quantity);
     const commitment = commitmentOf(drop, w.account.address, tick, quantity, salt);
-    const sealed = await sealBid({ auction: drop, bidder: w.account.address, tick, quantity, salt }, s.tlockRound);
+    const sealed = await sealBid({ auction: drop, bidder: w.account.address, tick, quantity, salt, ...(answers ? { fields: answers } : {}) }, s.tlockRound);
     const { result, request } = await this.publicClient.simulateContract({ address: drop, abi: cloakDropAbi, functionName: "commit", args: [commitment, sealed, !!o.wl, proof], value: deposit, account: w.account });
     const txHash = await w.writeContract(request);
     await this.send(txHash);
@@ -649,6 +725,24 @@ export class CloakDrops {
         return { id: ids[i], bidder: b.bidder, wl: b.wl, revealed: b.revealed, claimed: b.claimed, tick: b.tick, price: CloakDrops.priceAt(s, b.tick), quantity: b.quantity, deposit: b.deposit, nfts: a ? Number(a[0]) : 0, paid: a?.[1] ?? 0n, refund: a?.[2] ?? 0n };
       })
       .filter((b) => !bidder || b.bidder.toLowerCase() === bidder.toLowerCase());
+  }
+
+  /**
+   * Every bid's answers to the drop's bid fields, by bid id, read from the sealed bids. Only works once the drop's
+   * drand round is out (bidding has closed); a bid whose ciphertext doesn't match its commitment is left out.
+   */
+  async bidFields(drop: Address): Promise<Map<bigint, Record<string, string>>> {
+    const out = new Map<bigint, Record<string, string>>();
+    for (const l of await this.committedLogs(drop)) {
+      try {
+        const p = await unsealBid(l.args.sealedBid);
+        if (p.auction.toLowerCase() !== drop.toLowerCase() || p.bidder.toLowerCase() !== l.args.bidder.toLowerCase()) continue;
+        if (p.fields) out.set(l.args.id, p.fields);
+      } catch {
+        /* not open yet, or garbage: no answers */
+      }
+    }
+    return out;
   }
 
   // ── what the keeper (or anyone) runs ──

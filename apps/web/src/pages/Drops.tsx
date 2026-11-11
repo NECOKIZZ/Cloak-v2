@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { DropDetails, DropState } from "@cloakely/sdk";
+import { spotKind, type DropDetails, type DropState } from "@cloakely/sdk";
 import { DROP_FACTORY, ESCROW_DROP_FACTORY, SPOT_BOOK } from "../config";
 import { dropsClient, imageSrc, pct, tokenMeta } from "../drops";
 import { friendly } from "../errors";
@@ -8,6 +8,7 @@ import { Link } from "../router";
 import { Icon } from "../ui";
 import { isHidden } from "../hidden";
 import { Who } from "../who";
+import { verifiedBy } from "../verified";
 
 export type Row = DropState & { details: DropDetails };
 
@@ -26,6 +27,18 @@ export function phaseBadge(s: DropState, now: number): { text: string; tone: "li
   if (s.phase === "reveal" || s.phase === "settle" || s.phase === "numbering") return { text: "Opening bids", tone: "soon" };
   if (s.failed) return { text: "No sale", tone: "done" };
   return { text: s.sold + s.gtdMinted >= s.supply ? "Sold out" : "Ended", tone: "done" };
+}
+
+/** The check mark for a drop Cloak listed itself or approved (see verified.ts). */
+export function Verified({ drop, creator, size = 16 }: { drop: string; creator: string; size?: number }) {
+  const by = verifiedBy(drop, creator);
+  if (!by) return null;
+  const title = by === "team" ? "Verified: listed by Cloak" : "Verified: approved by Cloak";
+  return (
+    <span className="verified" title={title} aria-label={title} role="img">
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden><path fill="currentColor" d="M12 1.5l2.6 1.9 3.2-.2 1 3 2.7 1.8-.9 3.1.9 3.1-2.7 1.8-1 3-3.2-.2L12 22.5l-2.6-1.9-3.2.2-1-3-2.7-1.8.9-3.1-.9-3.1 2.7-1.8 1-3 3.2.2z" /><path d="M7.5 12.2l3 3 6-6.2" fill="none" stroke="var(--bg)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </span>
+  );
 }
 
 export function DropArt({ details, name, size = 64, className = "" }: { details?: DropDetails; name: string; size?: number; className?: string }) {
@@ -49,7 +62,7 @@ export function coverStyle(details?: DropDetails): React.CSSProperties {
 export const soldShare = (s: DropState) => Math.min(1, (s.sold + s.gtdMinted) / Math.max(1, s.supply));
 
 function kindText(s: Row) {
-  return s.details.spots ? `${s.supply.toLocaleString()} WL spot${s.supply > 1 ? "s" : ""} · ${s.details.spots.partner}` : s.escrow ? (s.supply === 1 ? "1 NFT, auctioned" : `${s.supply.toLocaleString()} NFTs, auctioned`) : `${s.supply.toLocaleString()} items`;
+  return s.details.spots ? `${s.supply.toLocaleString()} ${spotKind(s.details)} spot${s.supply > 1 ? "s" : ""} · ${s.details.spots.partner}` : s.escrow ? (s.supply === 1 ? "1 NFT, auctioned" : `${s.supply.toLocaleString()} NFTs, auctioned`) : `${s.supply.toLocaleString()} items`;
 }
 
 function Card({ s, now }: { s: Row; now: number }) {
@@ -59,13 +72,13 @@ function Card({ s, now }: { s: Row; now: number }) {
     <Link to={`/app/drop/${s.address}`} className="dcard">
       <div className={`dcard-cover ${imageSrc(s.details.banner) || imageSrc(s.details.image) ? "" : "dcard-cover-ph"}`} style={coverStyle(s.details)}>
         <span className={`dbadge ${b.tone}`}>{b.tone === "live" && <span className="dot live" />}{b.text}</span>
-        {s.details.spots && <span className="dbadge kind">WL spots</span>}
+        {s.details.spots && <span className="dbadge kind">{spotKind(s.details)} spots</span>}
         {s.escrow && <span className="dbadge kind">Auction</span>}
       </div>
       <div className="dcard-body">
         <DropArt details={s.details} name={s.name} size={52} className="dcard-avatar" />
         <div className="dcard-title">
-          <b>{s.name}</b>
+          <b className="vname"><span>{s.name}</span><Verified drop={s.address} creator={s.creator} size={15} /></b>
           <span className="xs mute">by <Who address={s.creator} />{s.details.category ? ` · ${s.details.category}` : ""}</span>
         </div>
         <div className="dcard-stats">
@@ -95,7 +108,7 @@ function Featured({ s, now }: { s: Row; now: number }) {
         <DropArt details={s.details} name={s.name} size={96} className="dfeat-avatar" />
         <div className="dfeat-id">
           <span className="xs mute">{s.details.category ? `${s.details.category} · ` : ""}Elysium · {kindText(s)}</span>
-          <h2>{s.name}</h2>
+          <h2 className="vname"><span>{s.name}</span><Verified drop={s.address} creator={s.creator} size={22} /></h2>
           <span className="small mute">by <Who address={s.creator} /></span>
         </div>
         <div className="dfeat-stats">
@@ -149,8 +162,8 @@ export function Drops() {
     for (const s of sorted) c[group(s)]++;
     return c;
   }, [sorted]);
-  // the featured drop: a live one with art if there is one, else the newest
-  const featured = sorted.find((s) => group(s) === "live" && (s.details.banner || s.details.image)) ?? sorted.find((s) => group(s) === "live") ?? sorted[0];
+  // the featured drop: a live verified one if there is one, else a live one with art, else the newest
+  const featured = sorted.find((s) => group(s) === "live" && verifiedBy(s.address, s.creator)) ?? sorted.find((s) => group(s) === "live" && (s.details.banner || s.details.image)) ?? sorted.find((s) => group(s) === "live") ?? sorted[0];
   const needle = q.trim().toLowerCase();
   const shown = sorted.filter((s) => (filter === "all" || group(s) === filter) && (!needle || `${s.name} ${s.symbol} ${s.details.spots?.partner ?? ""}`.toLowerCase().includes(needle)));
   return (
@@ -161,7 +174,7 @@ export function Drops() {
           <p>Sealed mints with no race and no gas war. Every winner pays one price.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {SPOT_BOOK && <Link to="/app/drops/create?spots" className="btn btn-ghost">Sell WL spots</Link>}
+          {SPOT_BOOK && <Link to="/app/drops/create?spots" className="btn btn-ghost">Sell WL / GTD spots</Link>}
           {ESCROW_DROP_FACTORY && <Link to="/app/drops/create?existing" className="btn btn-ghost">Auction your NFTs</Link>}
           <Link to="/app/drops/create" className="btn btn-ink"><Icon.plus size={16} />Create a drop</Link>
         </div>

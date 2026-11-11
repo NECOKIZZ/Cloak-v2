@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { every } from "../every";
 import { PageSkel } from "../skel";
-import { isAddress, parseEther, type Address, type Hex } from "viem";
-import { CloakDrops, CloakSpots, drandRoundTime, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
+import { getAddress, isAddress, parseEther, type Address, type Hex } from "viem";
+import { CloakDrops, CloakSpots, drandRoundTime, spotKind, type DropBid, type DropDetails, type DropState, type SpotSale, type SpotWinner } from "@cloakely/sdk";
 import { addrLink, txLink } from "../config";
 import { collectionInfo, dropsClient, imageSrc, itemPreview, pct, spotsClient, tokenMetas, type ItemMeta } from "../drops";
 import { checked, friendly, Hint } from "../errors";
@@ -10,8 +10,31 @@ import { duration, hype, short } from "../format";
 import { Link } from "../router";
 import { useApp } from "../state";
 import { Icon } from "../ui";
-import { coverStyle, DropArt, phaseBadge, phaseText, soldShare } from "./Drops";
+import { coverStyle, DropArt, Verified, phaseBadge, phaseText, soldShare } from "./Drops";
 import { Who } from "../who";
+
+/**
+ * The wallet a bidder wants on a spot sale's list, when it isn't the one they bid from (say they bid from a fresh
+ * wallet funded from their private balance). Kept only in this browser: putting it on chain at bid time would link
+ * the two wallets for everyone, losers included. Once the bid wins, the page fills it in and the winner confirms it.
+ */
+const listKey = (drop: string, bid: bigint) => `cloak.listWallet.${drop.toLowerCase()}.${bid}`;
+function savedListWallet(drop: string, bid: bigint): Address | null {
+  try {
+    const v = localStorage.getItem(listKey(drop, bid));
+    return v && isAddress(v) ? getAddress(v) : null;
+  } catch {
+    return null;
+  }
+}
+function saveListWallet(drop: string, bid: bigint, wallet: Address) {
+  try {
+    localStorage.setItem(listKey(drop, bid), wallet);
+  } catch {
+    /* private window or blocked storage: the winner can still name it after the sale */
+  }
+}
+const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 type Me = { wl: boolean; gtdSpots: number; gtdMinted: number };
 type Tab = "mint" | "items" | "details";
@@ -49,6 +72,8 @@ export function Drop({ drop }: { drop: Address }) {
   const [busy, setBusy] = useState("");
   const going = useRef(false);
   const [price, setPrice] = useState("");
+  const [listWallet, setListWallet] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [qty, setQty] = useState(1);
   const [gtdQty, setGtdQty] = useState(1);
   const [to, setTo] = useState("");
@@ -169,18 +194,24 @@ export function Drop({ drop }: { drop: Address }) {
   const gtdLeft = me ? me.gtdSpots - me.gtdMinted : 0;
   const left = s.supply - s.gtdMinted - (s.failed ? 0 : s.sold) - (s.escrow?.returned ?? 0);
   const esc = s.escrow;
+  const sk = spotKind(details);
+  const reqs = details.requirements;
   const myWins = sale ? mine.filter((b) => b.nfts > 0) : [];
   const walletsOpen = !!sale && now < sale.deadline;
   const totalSpots = winners.reduce((a, w) => a + w.spots, 0);
-  const namedSpots = winners.reduce((a, w) => a + Math.min(w.wallets.length, w.spots), 0);
+  const listRows = CloakSpots.rows(winners);
+  const namedSpots = listRows.filter((r) => r.wallet).length;
   /** The wallets typed for a bid, falling back to what it has already named. */
-  const typed = (b: DropBid) => named[String(b.id)] ?? Array.from({ length: b.nfts }, (_, i) => winners.find((w) => w.bidId === b.id)?.wallets[i] ?? "");
+  const onChain = (b: DropBid) => winners.find((w) => w.bidId === b.id)?.wallets ?? [];
+  /** A wallet chosen in this browser at bid time and not yet put on the list. */
+  const pendingChoice = (b: DropBid) => { const c = savedListWallet(drop, b.id); return c && !onChain(b).some((a) => a.toLowerCase() === c.toLowerCase()) && !onChain(b).length ? c : null; };
+  const typed = (b: DropBid) => named[String(b.id)] ?? Array.from({ length: b.nfts }, (_, i) => onChain(b)[i] ?? (i === 0 ? pendingChoice(b) ?? "" : ""));
   const unit = sale ? "spot" : "NFT";
   function downloadCsv() {
-    const url = URL.createObjectURL(new Blob([CloakSpots.csv(winners)], { type: "text/csv" }));
+    const url = URL.createObjectURL(new Blob([CloakSpots.csv(winners, details.fields)], { type: "text/csv" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${(sale?.partner || s!.name).replace(/[^A-Za-z0-9]+/g, "-").toLowerCase()}-whitelist.csv`;
+    a.download = `${(sale?.partner || s!.name).replace(/[^A-Za-z0-9]+/g, "-").toLowerCase()}-${sk.toLowerCase()}-list.csv`;
     // attached to the page: some browsers (Safari, Firefox) ignore a click on a detached link
     a.style.display = "none";
     document.body.appendChild(a);
@@ -201,7 +232,7 @@ export function Drop({ drop }: { drop: Address }) {
     ...(s.hasGtd ? [{ name: "GTD mint", when: `${hype(s.gtdPrice)} HYPE · ends ${when(s.gtdEnd)}`, state: (s.phase === "gtd" ? "live" : "done") as "live" | "done" }] : []),
     { name: "Sealed bidding", when: `from ${hype(s.floor)} HYPE · closes ${when(s.commitEnd)}`, state: s.phase === "gtd" ? "next" : s.phase === "bidding" ? "live" : "done" },
     { name: "Bids open", when: `drand round ${s.tlockRound} · by ${when(s.revealEnd)} at the latest`, state: opening ? "live" : s.phase === "settled" ? "done" : "next" },
-    { name: sale ? "Winners name wallets" : "Results and delivery", when: sale ? `until ${when(sale.deadline)}` : "one price for every winner, refunds for the rest", state: s.phase === "settled" ? (sale && now < sale.deadline ? "live" : "done") : "next" },
+    { name: sale ? "Winners can change wallets" : "Results and delivery", when: sale ? `until ${when(sale.deadline)}` : "one price for every winner, refunds for the rest", state: s.phase === "settled" ? (sale && now < sale.deadline ? "live" : "done") : "next" },
   ];
   // the bar shows sales once settled, else how far through the current window we are
   const winStart = s.phase === "gtd" ? s.gtdEnd - Math.max(600, s.commitEnd - s.gtdEnd) : s.phase === "bidding" ? (s.hasGtd ? s.gtdEnd : s.commitEnd - Math.max(600, s.commitEnd - s.gtdEnd)) : 0;
@@ -218,11 +249,11 @@ export function Drop({ drop }: { drop: Address }) {
         <div className="dp-name">
           <div className="dp-pills">
             <span className={`pill ${p.live ? "ok" : ""}`}>{p.live && <span className="dot live" />}{p.text}</span>
-            {sale && <span className="pill">WL spots · {sale.partner}</span>}
+            {sale && <span className="pill">{sk} spots · {sale.partner}</span>}
             {details.category && <span className="pill">{details.category}</span>}
             {esc && <span className={`pill ${esc.held === s.supply || s.settled ? "ok" : "warn"}`} title="Checked on chain: the tokens this auction holds">{s.settled ? `NFT auction · ${s.supply - esc.held} of ${s.supply} out of escrow` : `NFT auction · ${esc.held} of ${s.supply} in escrow`}</span>}
           </div>
-          <h1>{s.name} <span className="mute">{s.symbol}</span></h1>
+          <h1>{s.name} <Verified drop={s.address} creator={s.creator} size={26} /> <span className="mute">{s.symbol}</span></h1>
           {one?.name && <p className="small">{one.name}{colName ? ` from ${colName}` : ""}, token #{String(esc!.tokenIds[0])}</p>}
           <p className="small mute">by {addrLink(s.creator) ? <a className="link" href={addrLink(s.creator)} target="_blank" rel="noreferrer"><Who address={s.creator} /></a> : <Who address={s.creator} />} · {s.supply.toLocaleString()} {sale ? `spot${s.supply > 1 ? "s" : ""}` : esc ? `existing token${s.supply > 1 ? "s" : ""}${colName ? ` from ${colName}` : ""}` : "items"} · Elysium{!sale && s.royaltyBps ? ` · ${pct(s.royaltyBps)} royalty` : ""}</p>
         </div>
@@ -234,7 +265,7 @@ export function Drop({ drop }: { drop: Address }) {
       <div className="dp-stats">
         <div><span className="xs mute">Floor</span><b className="mono">{hype(s.floor)} <small>HYPE</small></b></div>
         {sold && <div><span className="xs mute">Sold at</span><b className="mono">{hype(s.publicPrice)} <small>HYPE</small></b></div>}
-        <div><span className="xs mute">{sale ? "WL spots" : esc ? "Tokens" : "Supply"}</span><b className="mono">{s.supply.toLocaleString()}</b></div>
+        <div><span className="xs mute">{sale ? `${sk} spots` : esc ? "Tokens" : "Supply"}</span><b className="mono">{s.supply.toLocaleString()}</b></div>
         <div><span className="xs mute">Sealed bids</span><b className="mono">{s.bids}</b></div>
         {s.hasGtd && <div><span className="xs mute">GTD minted</span><b className="mono">{s.gtdMinted} <small>at {hype(s.gtdPrice)}</small></b></div>}
         {s.hasWl && <div><span className="xs mute">WL bid boost</span><b className="mono">{pct(s.wlBoostBps)}</b></div>}
@@ -287,11 +318,12 @@ export function Drop({ drop }: { drop: Address }) {
                 <h3 className="dp-h3">How this {kind} works</h3>
                 {sale ? (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <li>{sale.partner} gave {s.supply} WL spot{s.supply > 1 ? "s" : ""}. Bid sealed, at {hype(s.floor)} HYPE or more per spot. Nobody sees any bid until bidding closes.</li>
+                  <li>{sale.partner} gave {s.supply} {sk} spot{s.supply > 1 ? "s" : ""}. Bid sealed, at {hype(s.floor)} HYPE or more per spot. Nobody sees any bid until bidding closes.</li>
                   {s.hasWl && <li>WL bids rank {pct(s.wlBoostBps)} higher, and WL winners pay {pct(s.wlBoostBps)} less, never under the floor.</li>}
                   <li>The highest bids win, and every winner pays one price: the lowest winning bid. Ties at that price are drawn at random.</li>
-                  <li>Winners name the wallet to whitelist, one per spot, until {new Date(sale.deadline * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}. Everyone else gets their deposit back.</li>
-                  <li>The whitelist on this page is the list {sale.partner} receives, with a CSV to download.</li>
+                  <li>The wallet you bid with goes on the {sk} list, so winners don't need to do anything. To use another wallet, change it until {new Date(sale.deadline * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}. Everyone else gets their deposit back.</li>
+                  {!!reqs?.length && <li>{sale.partner} only honours winners who meet the requirements listed with the bid box, so do them before you bid.</li>}
+                  <li>The {sk} list on this page is the list {sale.partner} receives, with a CSV to download.</li>
                 </ol>
                 ) : (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -327,11 +359,12 @@ export function Drop({ drop }: { drop: Address }) {
                 <h3 className="dp-h3">How this {kind} works</h3>
                 {sale ? (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <li>{sale.partner} gave {s.supply} WL spot{s.supply > 1 ? "s" : ""}. Bid sealed, at {hype(s.floor)} HYPE or more per spot. Nobody sees any bid until bidding closes.</li>
+                  <li>{sale.partner} gave {s.supply} {sk} spot{s.supply > 1 ? "s" : ""}. Bid sealed, at {hype(s.floor)} HYPE or more per spot. Nobody sees any bid until bidding closes.</li>
                   {s.hasWl && <li>WL bids rank {pct(s.wlBoostBps)} higher, and WL winners pay {pct(s.wlBoostBps)} less, never under the floor.</li>}
                   <li>The highest bids win, and every winner pays one price: the lowest winning bid. Ties at that price are drawn at random.</li>
-                  <li>Winners name the wallet to whitelist, one per spot, until {new Date(sale.deadline * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}. Everyone else gets their deposit back.</li>
-                  <li>The whitelist on this page is the list {sale.partner} receives, with a CSV to download.</li>
+                  <li>The wallet you bid with goes on the {sk} list, so winners don't need to do anything. To use another wallet, change it until {new Date(sale.deadline * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}. Everyone else gets their deposit back.</li>
+                  {!!reqs?.length && <li>{sale.partner} only honours winners who meet the requirements listed with the bid box, so do them before you bid.</li>}
+                  <li>The {sk} list on this page is the list {sale.partner} receives, with a CSV to download.</li>
                 </ol>
                 ) : (
                 <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -348,11 +381,20 @@ export function Drop({ drop }: { drop: Address }) {
             </div>
           </div>
           <div className="dp-panel">
-            <h2 className="dp-title">{sale ? `Bid on ${sale.partner} WL spots` : one?.name ? `Bid on ${one.name}` : `${s.phase === "gtd" && s.hasGtd ? "Mint" : "Bid on"} ${s.name}`}</h2>
+            <h2 className="dp-title">{sale ? `Bid on ${sale.partner} ${sk} spots` : one?.name ? `Bid on ${one.name}` : `${s.phase === "gtd" && s.hasGtd ? "Mint" : "Bid on"} ${s.name}`}</h2>
             <div className="dp-progress">
               <div className="row"><span className="small">{s.settled ? (sale ? "Spots sold" : esc ? "Tokens sold" : "Items sold") : s.phase === "gtd" ? (s.hasGtd ? "GTD window" : "Bidding opens") : s.phase === "bidding" ? "Bidding window" : "Opening the bids"}</span><span className="small mono">{s.settled ? `${s.sold + s.gtdMinted} / ${s.supply}` : s.phase === "gtd" ? `${duration(s.gtdEnd - now)} left` : s.phase === "bidding" ? `${duration(s.commitEnd - now)} left` : `${s.reveals} of ${s.bids} open`}</span></div>
               <div className="dprog lg"><i style={{ width: `${(s.settled ? soldShare(s) : timeShare) * 100}%` }} /></div>
             </div>
+            {!!reqs?.length && (
+              <div className="card dp-reqs" style={{ marginBottom: 12 }}>
+                <div className="card-head"><h3>Requirements</h3><span className="pill warn">to keep what you win</span></div>
+                <ol className="small" style={{ paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6, margin: 0 }}>
+                  {reqs.map((q, i) => <li key={i}>{q.url ? <a className="link" href={q.url} target="_blank" rel="noreferrer nofollow">{q.text} ↗</a> : q.text}</li>)}
+                </ol>
+                <p className="xs mute" style={{ marginTop: 8 }}>{sale ? `${sale.partner} checks these before honouring a spot` : "The creator checks these"}; Cloak can't. A winner who skips them may lose the spot, and the bid isn't refunded.</p>
+              </div>
+            )}
             <div className="card dp-stage">
               {s.phase === "gtd" && !s.hasGtd && (
                 <>
@@ -385,19 +427,38 @@ export function Drop({ drop }: { drop: Address }) {
                     <div className="field"><label><span>Most you'd pay, each</span><span>HYPE, at least {hype(s.floor)}</span></label><input className="input mono" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} /></div>
                     <div className="field"><label><span>{sale ? "Spots" : "How many"}</span></label><select className="input" value={qty} onChange={(e) => setQty(Number(e.target.value))}>{Array.from({ length: s.maxPerBid }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select></div>
                   </div>
+                  {details.fields?.map((fd) => (
+                    <div className="field" key={fd.label}>
+                      <label><span>{fd.label}</span><span>{fd.required ? "required" : "optional"} · sealed with your bid</span></label>
+                      <input className="input" value={answers[fd.label] ?? ""} maxLength={100} onChange={(e) => setAnswers((a) => ({ ...a, [fd.label]: e.target.value }))} placeholder={/x username|twitter/i.test(fd.label) ? "@yourname" : fd.label} />
+                    </div>
+                  ))}
+                  {!!details.fields?.length && <p className="xs mute" style={{ marginTop: -6, marginBottom: 12 }}>{sale ? sale.partner : "The creator"} needs this from every winner. It's sealed inside your bid: nobody can read it until bidding closes.</p>}
+                  {sale && (
+                    <div className="field">
+                      <label><span>Wallet for the {sk} list</span><span>optional</span></label>
+                      <input className="input mono" value={listWallet} onChange={(e) => setListWallet(e.target.value.trim())} placeholder={wallet ? `empty = ${shortAddr(wallet.account.address)}, the wallet you bid from` : "0x… empty = the wallet you bid from"} />
+                      <span className="xs mute">Bidding from a fresh wallet, say from your private balance? Put the wallet you'll mint with. It stays in this browser and nobody else sees it, so losing bids reveal nothing. If you win, this page fills it in and you confirm it once.</span>
+                    </div>
+                  )}
                   <div className="summary">
                     <div className="row"><span className="mute">Your bid level</span><span className="mono">{hype(level)} HYPE</span></div>
                     {priceWei > level + s.tickSize && tick === s.numTicks - 1 && <div className="row"><span className="mute">Highest level in this drop</span><span className="mono">{hype(level)} HYPE</span></div>}
                     {wlBid && <div className="row"><span className="mute">Ranks as (WL +{pct(s.wlBoostBps)})</span><span className="mono">{hype(ranks)} HYPE</span></div>}
                     <div className="row"><span className="mute">Deposit (refunded above what you pay)</span><span className="mono">{hype(level * BigInt(qty))} HYPE</span></div>
                   </div>
-                  <p className="note">Nobody can read your bid until bidding closes in {duration(s.commitEnd - now)}. Every winner pays one price, the lowest winning bid, so bid what it's really worth to you.{wlBid ? " You're on the WL: you pay that price ÷ " + (1 + s.wlBoostBps / 10_000).toFixed(2) + ", never under the floor." : ""}</p>
+                  <p className="note">Nobody can read your bid until bidding closes in {duration(s.commitEnd - now)}. Every winner pays one price, the lowest winning bid, so bid what it's really worth to you.{sale ? ` If you win, the wallet you bid from goes on ${sale.partner}'s ${sk} list with nothing more to do, unless you name another one above.` : ""}{wlBid ? " You're on the WL: you pay that price ÷ " + (1 + s.wlBoostBps / 10_000).toFixed(2) + ", never under the floor." : ""}</p>
                   <button className="btn btn-ink btn-lg btn-block" disabled={!!busy} onClick={act("Sealed bid placed", async (w) => {
                     if (priceWei < s.floor) throw new Hint(`Bid at least the creator's price, ${hype(s.floor)} HYPE.`);
+                    if (sale && listWallet && !isAddress(listWallet)) throw new Hint(`${listWallet.length > 20 ? `${listWallet.slice(0, 10)}…${listWallet.slice(-6)}` : listWallet} isn't a wallet address. Paste the full 0x address, or leave it empty.`);
                     const c = dropsClient(w);
                     // read the WL fresh: a quick click must never send a WL wallet's bid without its boost
                     const listed = await c.listed(drop, w.account.address);
-                    return (await c.bid(drop, { price: priceWei, quantity: qty, wl: listed.wl })).txHash;
+                    const missing = details.fields?.find((fd) => fd.required && !(answers[fd.label] ?? "").trim());
+                    if (missing) throw new Hint(`Fill in "${missing.label}" first: this sale needs it from every bidder.`);
+                    const r = await c.bid(drop, { price: priceWei, quantity: qty, wl: listed.wl, fields: answers });
+                    if (sale && listWallet && getAddress(listWallet) !== getAddress(w.account.address)) saveListWallet(drop, r.id, getAddress(listWallet));
+                    return r.txHash;
                   })}>{busy || (wallet ? `Seal a bid for ${qty} at ${hype(level)} HYPE` : "Connect wallet to bid")}</button>
                 </>
               )}
@@ -453,7 +514,7 @@ export function Drop({ drop }: { drop: Address }) {
                   <div className="drop-bids">
                     {mine.map((b) => (
                       <div key={String(b.id)}>
-                        <span className="small"><span className="mono">{b.revealed ? `${b.quantity} × ${hype(b.price)} HYPE` : `Sealed bid · ${hype(b.deposit)} HYPE deposit`}</span>{b.wl && <span className="pill ok" style={{ marginLeft: 6 }}>WL</span>}</span>
+                        <span className="small"><span className="mono">{b.revealed ? `${b.quantity} × ${hype(b.price)} HYPE` : `Sealed bid · ${hype(b.deposit)} HYPE deposit`}</span>{b.wl && <span className="pill ok" style={{ marginLeft: 6 }}>WL</span>}{!s.settled && !!details.fields?.length && <span className="xs mute" style={{ marginLeft: 6 }}>your info is sealed with it</span>}{sale && !s.settled && savedListWallet(drop, b.id) && <span className="xs mute" style={{ marginLeft: 6 }}>list wallet {shortAddr(savedListWallet(drop, b.id)!)}, kept in this browser</span>}</span>
                         <span className="small mute">
                           {!s.settled ? (b.revealed ? "opened" : "sealed") : s.phase !== "settled" ? "settling" : !b.revealed ? `never opened · ${b.deposit ? Number(((b.deposit - b.refund) * 100n) / b.deposit) : 0}% kept` : b.nfts ? `won ${b.nfts}${sale ? ` spot${b.nfts > 1 ? "s" : ""}` : ""}${wonIds[String(b.id)]?.length ? ` (${wonIds[String(b.id)].map((x) => `#${x}`).join(", ")})` : ""} · paid ${hype(b.paid)}` : "not won"}
                           {s.phase === "settled" && (b.claimed ? " · delivered" : b.refund > 0n ? ` · ${hype(b.refund)} back` : "")}
@@ -463,14 +524,18 @@ export function Drop({ drop }: { drop: Address }) {
                   </div>
                   {s.phase === "settled" && myWins.length > 0 && (
                     <>
-                      <div className="card-head" style={{ marginTop: 18 }}><h3>Wallets to whitelist</h3>{walletsOpen && <span className="pill">{duration(sale!.deadline - now)} left</span>}</div>
-                      <p className="xs mute">Name the Elysium wallet {sale!.partner} should whitelist, one per spot. It can be a different wallet from the one you bid with. You can change it until the deadline.</p>
+                      <div className="card-head" style={{ marginTop: 18 }}><h3>Wallet on the {sk} list</h3>{walletsOpen && <span className="pill">{duration(sale!.deadline - now)} left</span>}</div>
+                      {myWins.some((b) => pendingChoice(b)) ? (
+                        <p className="small" style={{ color: "var(--signal)" }}>When you bid, you chose {myWins.map((b) => pendingChoice(b)).filter(Boolean).map((a) => shortAddr(a!)).join(", ")} for the list. It's filled in below: confirm it once to put it on the list. Until then your bidding wallet holds the spot.</p>
+                      ) : (
+                        <p className="xs mute">Nothing to do: the wallet you bid with is on {sale!.partner}'s {sk} list. To use a different Elysium wallet, enter it below and save, until the deadline.</p>
+                      )}
                       {myWins.map((b) => (
                         <div key={String(b.id)}>
                           {typed(b).map((v, i) => (
                             <div className="field" key={i}>
-                              <label><span>Spot {i + 1}{myWins.length > 1 ? ` · bid #${b.id}` : ""}</span>{winners.find((w) => w.bidId === b.id)?.wallets[i] ? <span style={{ color: "var(--signal)" }}>named</span> : <span>not named yet</span>}</label>
-                              <input className="input mono" value={v} disabled={!walletsOpen} placeholder="0x… wallet to whitelist" onChange={(e) => { const next = [...typed(b)]; next[i] = e.target.value.trim(); setNamed((x) => ({ ...x, [String(b.id)]: next })); }} />
+                              <label><span>Spot {i + 1}{myWins.length > 1 ? ` · bid #${b.id}` : ""}</span>{(() => { const row = listRows.filter((x) => x.bidId === b.id)[i]; return row?.source === "named" ? <span style={{ color: "var(--signal)" }}>your choice</span> : i === 0 && pendingChoice(b) ? <span style={{ color: "var(--seal)" }}>chosen when you bid · not saved yet</span> : row?.source === "bidder" ? <span style={{ color: "var(--signal)" }}>your bidding wallet</span> : <span>no wallet yet</span>; })()}</label>
+                              <input className="input mono" value={v} disabled={!walletsOpen} placeholder={i === 0 ? b.bidder : "0x… wallet for this spot"} onChange={(e) => { const next = [...typed(b)]; next[i] = e.target.value.trim(); setNamed((x) => ({ ...x, [String(b.id)]: next })); }} />
                             </div>
                           ))}
                           {walletsOpen && (
@@ -482,7 +547,7 @@ export function Drop({ drop }: { drop: Address }) {
                               const h = await spotsClient(w)!.setWallets(drop, b.id, list);
                               setNamed((x) => { const { [String(b.id)]: _, ...rest } = x; return rest; });
                               return h;
-                            })}>{busy || (winners.find((w) => w.bidId === b.id)?.wallets.length ? "Update wallets" : "Save wallets")}</button>
+                            })}>{busy || (onChain(b).length ? "Update wallet" : pendingChoice(b) ? `Put ${shortAddr(pendingChoice(b)!)} on the list` : "Use this wallet instead")}</button>
                           )}
                         </div>
                       ))}
@@ -535,16 +600,16 @@ export function Drop({ drop }: { drop: Address }) {
             <div className="dp-extra">
               {sale && s.phase === "settled" && !s.failed && (
                 <>
-                  <div className="card-head" style={{ marginTop: 18 }}><h3>Whitelist</h3><span className="pill">{winnersRaw ? `${namedSpots} of ${totalSpots} named` : "loading…"}</span></div>
+                  <div className="card-head" style={{ marginTop: 18 }}><h3>{sk === "GTD" ? "GTD list" : "Whitelist"}</h3><span className="pill">{winnersRaw ? `${namedSpots} of ${totalSpots} wallets` : "loading…"}</span></div>
                   <div className="drop-bids">
-                    {winners.flatMap((w) => Array.from({ length: w.spots }, (_, i) => (
-                      <div key={`${w.bidId}-${i}`}>
-                        <span className="small mono" style={{ overflowWrap: "anywhere" }}>{w.wallets[i] ?? "not named yet"}</span>
-                        <span className="xs mute">bid #{String(w.bidId)}</span>
+                    {listRows.map((r, i) => (
+                      <div key={`${r.bidId}-${i}`}>
+                        <span className="small mono" style={{ overflowWrap: "anywhere" }}>{r.wallet ?? "no wallet yet"}</span>
+                        <span className="xs mute">{Object.values(r.fields).length ? `${Object.values(r.fields).join(" · ")} · ` : ""}bid #{String(r.bidId)}{r.source === "bidder" ? " · bidding wallet" : r.source === "named" ? " · named" : ""}</span>
                       </div>
-                    )))}
+                    ))}
                   </div>
-                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} disabled={!winners.length} onClick={downloadCsv}>Download the whitelist (CSV)</button>
+                  <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} disabled={!winners.length} onClick={downloadCsv}>Download the {sk} list (CSV)</button>
                 </>
               )}
               {isCreator && !sale && details.spots && !s.settled && spotsClient() && (

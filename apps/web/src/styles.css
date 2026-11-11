@@ -1045,3 +1045,8 @@ button.asset-row { cursor: pointer; }
 .info:hover, .info:focus-visible, .info:focus { color: var(--text); border-color: var(--text); outline: none; }
 .info::after { content: attr(data-tip); position: absolute; left: -8px; bottom: calc(100% + 8px); z-index: 40; width: max-content; max-width: min(260px, calc(100vw - 40px)); padding: 9px 11px; border-radius: 10px; background: var(--text); color: var(--bg); font: 400 12px/1.45 var(--font-body); font-style: normal; text-align: left; white-space: normal; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity 0.12s, transform 0.12s, visibility 0.12s; pointer-events: none; }
 .info:hover::after, .info:focus::after { opacity: 1; visibility: visible; transform: none; }
+
+/* the check mark on drops Cloak listed or approved (verified.ts) */
+.verified { display: inline-flex; flex: none; color: var(--signal); vertical-align: middle; position: relative; top: -0.08em; }
+.vname { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.vname > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

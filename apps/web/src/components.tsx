@@ -94,6 +94,8 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
   const [maxPrice, setMaxPrice] = useState(defaultPrice);
   const [qty, setQty] = useState("10000");
   const [bucket, setBucket] = useState<bigint | null>(null);
+  // the total while it's being typed (null: show the sum of price × amount)
+  const [totalEdit, setTotalEdit] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState<Hex | undefined>();
@@ -109,6 +111,8 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
     }
   }, [maxPrice, qty, s.minPrice, s.tickSize, s.numTicks]);
   const deposit = quote ? (bucket && bucket >= quote.cost ? bucket : quote.deposit) : 0n;
+  const qtyText = (() => { try { return tokens(parseEther(qty.trim() || "0")); } catch { return "?"; } })();
+  const priceText = (() => { try { return hype(parseEther(maxPrice.trim() || "0")); } catch { return "?"; } })();
   // a private bid bigger than the biggest note goes in as several sealed bids at the same price: show how many
   const [bidParts, setBidParts] = useState(1);
   useEffect(() => {
@@ -218,25 +222,51 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
       )}
       <div className="field">
         <label>
-          <span>Highest price you'd pay per token</span>
+          <span>1. Your highest price for one {s.tokenSymbol}</span>
           <span>from {hype(s.minPrice)} HYPE</span>
         </label>
         <div className="input-unit"><input className="input" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} inputMode="decimal" aria-label="Highest price per token, in HYPE" /><span>HYPE</span></div>
       </div>
       <div className="field">
         <label>
-          <span>How many {s.tokenSymbol}</span>
+          <span>2. How many {s.tokenSymbol} you want</span>
           <span>{tokens(s.saleSupply)} for sale</span>
         </label>
         <div className="input-unit"><input className="input" value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" aria-label={`How many ${s.tokenSymbol}`} /><span>{s.tokenSymbol}</span></div>
       </div>
+      {/* the sum, spelled out: price × amount = the most this bid can cost. Typing a total works back to the amount. */}
+      <div className="bid-sum" aria-live="polite">
+        <div className="bid-sum-eq"><span className="mono">{qtyText}</span> {s.tokenSymbol} <i>×</i> <span className="mono">{priceText}</span> HYPE <i>=</i></div>
+        <div className="input-unit total">
+          <input
+            className="input"
+            inputMode="decimal"
+            aria-label="The most this bid can cost, in HYPE. Type a total to set how many tokens."
+            value={totalEdit ?? (quote ? formatEther(quote.cost) : "")}
+            placeholder="0"
+            onFocus={() => setTotalEdit(quote ? formatEther(quote.cost) : "")}
+            onBlur={() => setTotalEdit(null)}
+            onChange={(e) => {
+              setTotalEdit(e.target.value);
+              // a total typed here sets the amount: total ÷ price, rounded down to a whole token
+              try {
+                const t = parseEther(e.target.value.trim() || "0");
+                const p = parseEther(maxPrice.trim() || "0");
+                if (p > 0n && t > 0n) setQty(String(t / p));
+              } catch {}
+            }}
+          />
+          <span>HYPE</span>
+        </div>
+        <span className="xs mute">The most this bid can cost. You pay less if the final price is lower. Type a total here to work out the amount for you.</span>
+      </div>
       <div className="field">
         <label>
-          <span>Amount to lock, in HYPE</span>
-          <span>extra comes back</span>
+          <span>3. Lock a round amount</span>
+          <span>the rest comes back</span>
         </label>
         <div className="buckets">
-          {(quote ? budgetBuckets(quote.cost, 6) : []).map((b) => (
+          {(quote ? budgetBuckets(quote.cost, 5) : []).map((b) => (
             <button
               key={b.toString()}
               className={`bucket ${deposit === b ? "on" : ""}`}
@@ -248,19 +278,24 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
             </button>
           ))}
         </div>
+        <span className="xs mute">Everyone locks one of the same round amounts, so the size of your bid stays hidden. Locking more doesn't raise your bid or what you pay.</span>
       </div>
-      <div className="summary">
-        <div className="row"><span className="mute">If you win, you pay at most</span><span className="mono">{quote ? `${hype(quote.cost)} HYPE` : "—"}</span></div>
-        <div className="row"><span className="mute">You lock now</span><span className="mono">{quote ? `${hype(deposit)} HYPE` : "—"}</span></div>
-        {bidParts > 1 && <div className="row"><span className="mute">Parts</span><span>{bidParts} sealed bids, same price</span></div>}
-      </div>
+      {quote && (
+        <div className="bid-lock">
+          <div className="bid-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, Number((quote.cost * 1000n) / (deposit || 1n)) / 10)}%` }} /></div>
+          <div className="row"><span><i className="sw" style={{ background: "var(--signal)" }} />Your bid, at most</span><span className="mono">{hype(quote.cost)} HYPE</span></div>
+          <div className="row"><span><i className="sw" style={{ background: "var(--line-strong)" }} />Comes back for sure</span><span className="mono">{hype(deposit - quote.cost)} HYPE</span></div>
+          <div className="row total"><span>You lock now</span><span className="mono">{hype(deposit)} HYPE</span></div>
+          {bidParts > 1 && <div className="row"><span className="mute">Parts</span><span>{bidParts} sealed bids, same price</span></div>}
+        </div>
+      )}
       {problem && <div className="hint">{problem}</div>}
       <button className="btn btn-ink btn-lg btn-block" disabled={!!wallet && (!!problem || busy)} onClick={wallet ? submit : () => connect()}>
         {!wallet ? "Connect a wallet to bid" : busy ? status || "Sealing your bid…" : from === "private" ? "Seal bid from private balance" : "Seal bid"}
       </button>
       {err && <div className="err">{err}</div>}
       {ok && <div className="okmsg">Bid sealed. You can close this tab, it opens by itself. <Tx hash={ok} /></div>}
-      <p className="note">Sealed until bidding closes. Everyone pays one final price, never more than your max.</p>
+      <p className="note">Sealed until bidding closes. Every winner pays one final price, never more than their max.</p>
       <div className="more-list">
         <More title="How sealed bidding works">
           Nobody sees your price or amount until bidding closes. Every winner pays the same final price, which can be lower than your max, and whatever you locked beyond that comes back to you.

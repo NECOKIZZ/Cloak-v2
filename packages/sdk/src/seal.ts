@@ -9,6 +9,8 @@ export interface BidPreimage {
   tick: number;
   quantity: bigint;
   salt: Hex;
+  /** Answers to the drop's bid fields (an X username, say), sealed with the bid and readable once it opens. */
+  fields?: Record<string, string>;
 }
 
 let client: ReturnType<typeof mainnetClient> | undefined;
@@ -26,7 +28,8 @@ export function drandRoundTime(round: number): number {
 
 /** Encrypt a bid preimage to a future drand round. Nobody — sequencer, DA committee, us — can open it early. */
 export async function sealBid(p: BidPreimage, round: number): Promise<Hex> {
-  const json = JSON.stringify({ v: 1, a: p.auction, b: p.bidder, t: p.tick, q: p.quantity.toString(), s: p.salt });
+  // `x` (the bid fields) is an extra key: readers that only know v1's keys ignore it
+  const json = JSON.stringify({ v: 1, a: p.auction, b: p.bidder, t: p.tick, q: p.quantity.toString(), s: p.salt, ...(p.fields && Object.keys(p.fields).length ? { x: p.fields } : {}) });
   const armored = await timelockEncrypt(round, Buffer.from(json), drand());
   return stringToHex(armored);
 }
@@ -50,5 +53,6 @@ export async function unsealBid(sealed: Hex): Promise<BidPreimage> {
   const plain = await quiet(() => timelockDecrypt(hexToString(sealed), drand()));
   const j = JSON.parse(bytesToString(new Uint8Array(plain)));
   if (j.v !== 1) throw new Error("unknown sealed bid version");
-  return { auction: j.a, bidder: j.b, tick: Number(j.t), quantity: BigInt(j.q), salt: j.s };
+  const fields = j.x && typeof j.x === "object" ? Object.fromEntries(Object.entries(j.x).filter(([k, v]) => typeof k === "string" && typeof v === "string").map(([k, v]) => [k.slice(0, 40), (v as string).slice(0, 100)])) : undefined;
+  return { auction: j.a, bidder: j.b, tick: Number(j.t), quantity: BigInt(j.q), salt: j.s, ...(fields ? { fields } : {}) };
 }

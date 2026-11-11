@@ -30,6 +30,8 @@ import {
   LINK_SHARES_MAX,
   CloakDrops,
   CloakSpots,
+  checkFieldAnswers,
+  spotKind,
   type DropBid,
   type DropState,
   type AuctionState,
@@ -64,7 +66,7 @@ Private balances: shield moves HYPE or USDC from the wallet into a private balan
 
 Payment links (HYPE, USDC): create_payment_link puts money in a link anyone can claim (into their private balance, or to any wallet with no gas), optionally locked with a passcode and riddle or split into shares; claim_payment_link claims one (or takes back your own), check_payment_link shows what is left. request_payment_link makes a link that asks to be paid, and pay_payment_request pays one. Amounts are in whole units ("0.5" HYPE), and send, sell and withdraw accept "max".
 
-NFT drops and WL spot sales: list_drops and get_drop show sealed NFT drops (and sales of a partner collection's whitelist spots). place_drop_bid seals a bid at the creator's price or more (WL wallets get their public boost automatically); bids open by themselves after bidding closes and every winner pays one price. claim_drop takes NFTs (optionally to a fresh wallet) and refunds without waiting for the keeper. In a WL spot sale, set_whitelist_wallets names the Elysium wallet to whitelist for each spot won, until the sale's deadline.
+NFT drops and WL spot sales: list_drops and get_drop show sealed NFT drops (and sales of a partner collection's whitelist spots). place_drop_bid seals a bid at the creator's price or more (WL wallets get their public boost automatically); bids open by themselves after bidding closes and every winner pays one price. claim_drop takes NFTs (optionally to a fresh wallet) and refunds without waiting for the keeper. In a WL or GTD spot sale, the winning bid's own wallet goes on the list by default; set_whitelist_wallets swaps in other wallets, one per spot won, until the sale's deadline.
 
 Safety: every action that moves value is checked against per-transaction and daily spending limits (see cloak_info), and any write tool takes dry_run: true to see exactly what would happen without signing anything. Use dry_run first when unsure.`;
 
@@ -503,7 +505,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
       drop: s.address,
       name: s.name,
       symbol: s.symbol,
-      kind: sale ? `WL spot sale for ${sale.partner}` : s.escrow ? "auction of existing NFTs" : "NFT drop",
+      kind: sale ? `${spotKind(det)} spot sale for ${sale.partner}` : s.escrow ? "auction of existing NFTs" : "NFT drop",
       ...(s.escrow ? { collection: s.escrow.collection, tokenIds: s.escrow.tokenIds.map(String), heldInEscrow: `${s.escrow.held} of ${s.supply}` } : {}),
       phase: dropPhase(s),
       ...(s.phase === "gtd" ? { biddingOpens: iso(s.gtdEnd) } : {}),
@@ -518,6 +520,8 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
       ...(s.settled && !s.failed ? { sold: s.sold, publicWinnersPaid: hype(s.publicPrice), ...(s.hasWl ? { wlWinnersPaid: hype(s.wlPrice) } : {}) } : {}),
       ...(sale ? { walletsDeadline: iso(sale.deadline) } : {}),
       ...(det.description ? { description: det.description } : {}),
+      ...(det.fields?.length ? { bidFields: det.fields.map((f) => `${f.label}${f.required ? " (required)" : ""}`), bidFieldsNote: "Pass them to place_drop_bid as fields. They're sealed with the bid and go on the winners sheet." } : {}),
+      ...(det.requirements?.length ? { requirements: det.requirements.map((q) => (q.url ? `${q.text} (${q.url})` : q.text)), requirementsNote: "Off-chain tasks the creator or partner checks before honouring a win. Cloak can't check them." } : {}),
       page: `https://cloak.boblabs.tech/app/drop/${s.address}`,
     };
   }
@@ -569,7 +573,7 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
       const listed = who ? await c.listed(s.address, who) : null;
       const sp = spotsFor();
       const sale = sp ? await sp.sale(s.address) : null;
-      const whitelist = sale && s.phase === "settled" && !s.failed ? (await sp!.winners(s.address)).flatMap((x) => Array.from({ length: x.spots }, (_, i) => ({ bid: x.bidId.toString(), wallet: x.wallets[i] ?? "not named yet" }))) : undefined;
+      const whitelist = sale && s.phase === "settled" && !s.failed ? CloakSpots.rows(await sp!.winners(s.address)).map((r, i) => ({ id: i + 1, ...r.fields, bid: r.bidId.toString(), wallet: r.wallet ?? "no wallet yet", source: r.source === "bidder" ? "bidding wallet (default)" : r.source })) : undefined;
       return {
         ...view,
         ...(listed && who ? { listing: { wallet: who, onWl: listed.wl, gtdSpots: listed.gtdSpots, gtdMinted: listed.gtdMinted } } : {}),
@@ -1247,10 +1251,10 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
     {
       title: "Bid on an NFT drop",
       description: "Seal a bid on an NFT drop or WL spot sale: up to max_price HYPE each for quantity NFTs (or spots). Nobody can read it until bidding closes; it opens by itself afterwards. A wallet on the drop's WL bids with its boost automatically. Spends the deposit from the wallet; whatever isn't paid at the clearing price comes back.",
-      inputSchema: { drop: addr, max_price: amt("Most you'd pay for each, in HYPE (at least the floor)"), quantity: z.number().int().min(1).max(20).optional().describe("How many (default 1)"), dry_run: dry },
+      inputSchema: { drop: addr, max_price: amt("Most you'd pay for each, in HYPE (at least the floor)"), quantity: z.number().int().min(1).max(20).optional().describe("How many (default 1)"), fields: z.record(z.string(), z.string().max(100)).optional().describe("Answers to the drop's bid fields (get_drop lists them as bidFields), keyed by field name, e.g. {\"X username\": \"@me\"}. Required ones must be given. Sealed with the bid."), dry_run: dry },
       annotations: WRITE,
     },
-    safe(async ({ drop, max_price, quantity, dry_run }: { drop: string; max_price: string; quantity?: number; dry_run?: boolean }) => {
+    safe(async ({ drop, max_price, quantity, fields, dry_run }: { drop: string; max_price: string; quantity?: number; fields?: Record<string, string>; dry_run?: boolean }) => {
       const { wallet: w, account, spending } = needWallet();
       if (!isAddress(drop)) throw new Error("That isn't a drop address.");
       const c = dropsFor(w);
@@ -1265,13 +1269,14 @@ export function createCloakServer(settings: Settings, opts: { hosted?: boolean }
       const level = CloakDrops.priceAt(s, tick);
       const deposit = level * BigInt(qty);
       const { wl } = await c.listed(s.address, account.address);
+      const answers = checkFieldAnswers((await c.details(s.address)).fields, fields);
       spending.check("hype", deposit);
-      const plan = { drop: s.address, quantity: qty, bidLevel: `${formatEther(level)} HYPE each${level < price ? ` (your ${max_price} snaps down to the nearest level)` : ""}`, deposit: hype(deposit), wl, ...(wl ? { ranksAs: `${formatEther((level * BigInt(10_000 + s.wlBoostBps)) / 10_000n)} HYPE each` } : {}), biddingEnds: iso(s.commitEnd) };
+      const plan = { drop: s.address, quantity: qty, bidLevel: `${formatEther(level)} HYPE each${level < price ? ` (your ${max_price} snaps down to the nearest level)` : ""}`, deposit: hype(deposit), wl, ...(wl ? { ranksAs: `${formatEther((level * BigInt(10_000 + s.wlBoostBps)) / 10_000n)} HYPE each` } : {}), biddingEnds: iso(s.commitEnd), ...(answers ? { sealedFields: answers } : {}) };
       if (isDry(dry_run)) return { dryRun: true, wouldBid: plan };
       return exclusive(async () => {
         // again inside the queue: parallel calls each passed the first check before any recorded (review O-09)
         spending.check("hype", deposit);
-        const b = await c.bid(s.address, { price: level, quantity: qty, wl });
+        const b = await c.bid(s.address, { price: level, quantity: qty, wl, fields: answers });
         spending.record("hype", deposit);
         return { placed: true, bidId: b.id.toString(), ...plan, tx: link(b.txHash), next: "The bid opens by itself after bidding closes. Check results with get_drop or my_drop_bids, then claim_drop." };
       });

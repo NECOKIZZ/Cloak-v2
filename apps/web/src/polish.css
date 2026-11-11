@@ -181,3 +181,18 @@
 .bucket.on { border-color: transparent; }
 .card .btn-lg.btn-block { border-radius: 18px; min-height: 54px; }
 .card > .more-list { margin-top: 6px; }
+
+/* the bid's sum, spelled out */
+.field label > span:first-child { color: var(--soft); }
+.bid-sum { display: grid; gap: 8px; padding: 14px; margin: 2px 0 16px; border-radius: 16px; background: var(--card); }
+.bid-sum-eq { font-size: 13px; color: var(--mute); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.bid-sum-eq .mono { color: var(--text); font-size: 14px; }
+.bid-sum-eq i { font-style: normal; color: var(--faint); padding: 0 2px; }
+.input-unit.total .input { background: var(--raised); font-size: 24px; height: 58px; }
+.bid-lock { display: grid; gap: 9px; padding: 14px; margin: 0 0 14px; border-radius: 16px; background: var(--card); font-size: 13px; }
+.bid-lock .row > :first-child { color: var(--mute); display: inline-flex; align-items: center; }
+.bid-lock .row.total { border-top: 1px solid var(--line); padding-top: 10px; font-size: 14px; }
+.bid-lock .row.total > :first-child { color: var(--text); }
+.bid-lock .row.total .mono { font-size: 16px; }
+.bid-bar { height: 8px; border-radius: 999px; background: var(--line-strong); overflow: hidden; }
+.bid-bar i { display: block; height: 100%; background: var(--signal); border-radius: 999px; transition: width 0.3s var(--ease); }
