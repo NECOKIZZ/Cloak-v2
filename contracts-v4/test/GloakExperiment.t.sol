@@ -566,4 +566,68 @@ contract GloakExperimentTest is Test {
         assertGt(CloakToken(t).balanceOf(bob), 0, "the Universal Router still buys a plain launch");
         assertEq(gloak.balanceOf(bob), 0, "but not GLOAK");
     }
+
+    // ───────────── what the admin may grant ─────────────
+
+    function test_adminCanNeverGrantTaxFreeSending() public {
+        _live();
+        address wallet = makeAddr("some wallet");
+        vm.startPrank(admin);
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        gloak.setRoles(wallet, SEND); // not even in setup
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        gloak.setRoles(address(lv), RECEIVE | VAULT | SEND);
+        gloak.endSetup();
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        gloak.queueRoles(wallet, RECEIVE | SEND);
+        vm.stopPrank();
+    }
+
+    function test_uniswapAccessOnlyForContracts() public {
+        _live();
+        address wallet = makeAddr("some wallet");
+        vm.startPrank(admin);
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        gloak.setRoles(wallet, FEED);
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        gloak.setRoles(wallet, SWAP);
+        gloak.endSetup();
+        gloak.queueRoles(wallet, RECEIVE | FEED); // queueing is allowed, applying checks the code
+        vm.warp(block.timestamp + 3 days);
+        vm.expectRevert(GloakToken.RoleNotGrantable.selector);
+        gloak.applyRoles(wallet, RECEIVE | FEED);
+        vm.stopPrank();
+    }
+
+    /// A public address approved to receive (3 days in public) carries GLOAK from one vault to another for free. Whatever
+    /// it sends anywhere else still pays, so it isn't a way out.
+    function test_anApprovedAddressMovesGloakBetweenVaultsForFree() public {
+        _live();
+        CloakLaunchVault other = new CloakLaunchVault(_poseidon(), address(new ToV()), address(factory), 1e30, 1e32, address(0));
+        other.setShieldVerifier(address(new YesV()));
+        other.turnOnDepositLimits();
+        other.endSetup();
+        other.admitLaunch(factory.launchesCount() - 1);
+        address bridge = makeAddr("bridge wallet");
+        vm.startPrank(admin);
+        gloak.endSetup();
+        gloak.queueRoles(address(other), RECEIVE | VAULT);
+        gloak.queueRoles(bridge, RECEIVE);
+        vm.warp(block.timestamp + 3 days);
+        gloak.applyRoles(address(other), RECEIVE | VAULT);
+        gloak.applyRoles(bridge, RECEIVE);
+        vm.stopPrank();
+
+        uint256 supply = gloak.totalSupply();
+        _unshield(bytes32(uint256(0x70)), 1_000e18, bridge);
+        assertEq(gloak.balanceOf(bridge), 1_000e18, "out of the first vault to the approved address: free");
+        vm.startPrank(bridge);
+        gloak.approve(address(other), 900e18);
+        other.shieldBound(address(gloak), 900e18, bytes32(uint256(0xB1)), hex"00");
+        assertEq(other.deposited(address(gloak)), 900e18, "into the second vault: free and exact");
+        gloak.transfer(bob, 100e18);
+        vm.stopPrank();
+        assertEq(gloak.balanceOf(bob), 90e18, "but anything it sends to a public address pays 10%");
+        assertEq(gloak.totalSupply(), supply - 10e18);
+    }
 }

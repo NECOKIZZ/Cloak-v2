@@ -13,6 +13,7 @@ GLOAK is a token meant to live in private vaults. It launches on Cloak like any 
 - **Cloak is the creator.** The pool's liquidity is locked forever with its fees to Cloak's treasury. Those fees fund buybacks: the treasury buys GLOAK privately and sends it to 0x…dEaD (sending to 0x…dEaD is free).
 - **The bid cap stays** at 10,000 HYPE per launch.
 - **New approvals wait 3 days in public** once setup ends. Removing one is instant.
+- **What the owner wallet can approve is limited**, during setup too: it can never let an address send GLOAK tax-free, and it can open Uniswap to contracts only, never to a wallet. Everything else it can grant only makes GLOAK arriving free, never leaving.
 - **A privacy meter** on the token shows how much GLOAK is in vaults, in the pool and in public.
 - **Built for one use.** The door closes after one launch, and only that launch's pool is private.
 
@@ -101,7 +102,7 @@ Every other launch gets a plain `CloakToken` exactly as before, at the cost of o
 
 ### 3. New contracts (`contracts-v4/src/experiment/GloakToken.sol`)
 
-- `GloakToken`: the token, its rule, the roles, the privacy meter (`meter()`), and the admin's setup-then-3-day-wait controls.
+- `GloakToken`: the token, its rule, the roles, the privacy meter (`meter()`), and the admin's setup-then-3-day-wait controls. The admin can never grant Send (only the auction and the hook have it, from the start), and grants Feed or Swap only to an address with code.
 - `GloakMaker`: what the door calls to make GLOAK. Only the door can call it.
 
 ### What doesn't change
@@ -125,6 +126,15 @@ Before deploy, regenerate the SDK's ABIs and bytecode (`pnpm abis`), since the d
 
 Bidding uses the normal private-bid flow. Winnings go from the auction into the vault without a surcharge.
 
+## Moving GLOAK from one vault to another
+
+A note can't move between vaults: each vault has its own tree. Moving is always a withdrawal from one vault and a deposit into the other, and the withdrawal is what pays 10%. Two ways to make it free:
+
+- **An approved address (works now, no new code).** The owner wallet approves an address to receive (Receive, 3 days in public). Withdrawing to it is free, and its deposit into the other vault is free. What it sends anywhere else still pays 10%, so it isn't a way out. The limits: whoever holds that address holds the tokens in between, and the withdrawal and deposit are public and linked by amount and timing. Good for Cloak moving its own GLOAK, not for users.
+- **A migrator contract (for users; not built).** Like the router without the swap: in one transaction it spends a note in one vault through a one-time escrow and deposits the same amount as a new note in the other. With Receive and Payee it gets the escrow refund, so the move is free and exact, and nobody holds the tokens in between. It's a small new contract plus app support, and the other vault must list GLOAK.
+
+Our router always trades GLOAK in Cloak's launch vault, because launch tokens are checked first. So GLOAK in another vault is traded by that protocol's own router.
+
 ## Known limits
 
 - **A spend sent alone pays 10%.** If someone submits a private sell's withdrawal in its own transaction, without the router, the refund can't happen. The money isn't stuck: after the deadline the router returns the 90% to the owner key. It takes deliberate front-running to cause.
@@ -132,21 +142,22 @@ Bidding uses the normal private-bid flow. Winnings go from the auction into the 
 - **Public bids work.** The auction pays every winner without a surcharge, so a public bidder ends up with public GLOAK. The app should only offer private bids for GLOAK.
 - **Public buys through the market adapter cost 10%** once the adapter is approved for batch rounds. Anyone can call the adapter, and a public buyer receives 90%.
 - **The pool's fees paid in GLOAK lose 10%** on their way to the treasury. Fees paid in HYPE are untouched.
-- **The admin key** can approve contracts (3 days after setup), remove approvals at once, lower the surcharge, or renounce for good. It can't move anyone's GLOAK. Removing a router's approval would stop private trading until it's added back.
+- **The admin key** can approve vaults, routers and receiving addresses (3 days after setup), remove approvals at once, lower the surcharge, or renounce for good. It can't move anyone's GLOAK, make an address tax-free on the way out, or open Uniswap to a wallet. Removing a router's approval would stop private trading until it's added back. Approving a contract with Feed or Swap still means trusting that contract, so vet each router first.
 - **Exchanges and other DEXs** can't really hold it: every deposit to a public address pays 10%.
 
 ## Tests
 
-`contracts-v4/test/GloakExperiment.t.sol`, 22 tests:
+`contracts-v4/test/GloakExperiment.t.sol`, 24 tests:
 - **The door:** makes GLOAK's launch; works once and only for the owner wallet; reverts whole if its launch fails; nobody else can make a GLOAK.
 - **Other launches untouched:** a launch after the door gets a plain token and an open pool; a deployer with no door never makes a private pool.
 - **The private pool:** an outside contract can't swap it (taking tokens or claims); public addresses can't pay into Uniswap or sell through the adapter.
 - **Private trading is free:** an exact buy, an exact sell, the leftover claimed back into the vault, and nothing burned.
 - **Leaving costs 10%:** a withdrawal, a router exit, and public-to-public transfers; shielding back in is free. A spend sent alone loses the 10% but is rescued.
 - **The adapter:** refused until approved; a public buy then arrives less 10%.
-- **The rules:** the 3-day wait after setup, instant removal, the surcharge only falling, the privacy meter.
+- **The rules:** the 3-day wait after setup, instant removal, the surcharge only falling, the privacy meter; Send can never be granted; Feed and Swap only to contracts.
+- **Between vaults:** an approved address moves GLOAK from one vault to another for free, and still pays 10% sending anywhere else.
 - **Fork only:** Uniswap's real Universal Router on mainnet can't buy GLOAK but still buys a plain launch.
 
-Run locally (`forge test --match-contract GloakExperiment` in `contracts-v4`): 20 pass, plus 2 fork-only tests that skip. Run on a fork of Elysium mainnet against Uniswap's real PoolManager (`MAINNET_RPC=https://rpc.elysium.kinetiq.xyz forge test --match-contract GloakExperiment`): all 22 pass. The existing suites still pass: 119 in `contracts`, 219 in `contracts-v4`, and the 5-test mainnet fork suite.
+Run locally (`forge test --match-contract GloakExperiment` in `contracts-v4`): all 24 pass; the 2 fork-only tests do nothing there. Run on a fork of Elysium mainnet against Uniswap's real PoolManager (`MAINNET_RPC=https://rpc.elysium.kinetiq.xyz forge test --match-contract GloakExperiment`): all 24 pass, the fork-only ones included. The existing suites still pass: 119 in `contracts`, 219 in `contracts-v4`, and the 5-test mainnet fork suite.
 
 Not yet run: the end-to-end rehearsal with real zero-knowledge proofs (`e2e-gloam/part22-mainnet-fork.mjs`). The tests above use stand-in proof checks, as the router's own tests do.

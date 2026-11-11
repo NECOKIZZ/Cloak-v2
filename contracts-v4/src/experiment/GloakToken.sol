@@ -19,7 +19,10 @@ pragma solidity ^0.8.26;
  *          - PAYEE    a router or batch round that one-time escrows pay (it receives that refund).
  *
  *         The admin (Cloak's owner wallet) sets roles at once during setup. After endSetup, adding a role waits 3 days
- *         in public; removing one is instant. The surcharge can only be lowered.
+ *         in public; removing one is instant. The surcharge can only be lowered. What the admin may grant is limited,
+ *         in setup too: SEND never (only the launch's auction and the hook have it, from the constructor), and FEED or
+ *         SWAP only to an address with code, since those open Uniswap. RECEIVE, VAULT and PAYEE may go to any address:
+ *         they make arriving free, never leaving, so what an approved address sends on to a public one still pays.
  *
  * @dev The escrow refund uses transient storage (EIP-1153): what a vault's withdrawal burned is remembered for the rest
  *      of that transaction only, keyed by the recipient.
@@ -84,6 +87,8 @@ contract GloakToken {
     error SetupEnded_();
     error BadSurcharge();
     error BadRoles();
+    /// @notice The admin can never grant SEND, and grants FEED or SWAP only to contracts.
+    error RoleNotGrantable();
     error ZeroAddress();
     error Balance();
     error Allowance();
@@ -267,13 +272,18 @@ contract GloakToken {
     /// @notice Set `account`'s roles. In setup: at once. After: at once only if it removes roles; adding waits (queueRoles).
     function setRoles(address account, uint8 roles) external onlyAdmin {
         if (roles > ALL_ROLES) revert BadRoles();
-        if (!setupMode && roles & ~rolesOf[account] != 0) revert TimelockRequired();
+        uint8 added = roles & ~rolesOf[account];
+        if (added != 0) {
+            if (!setupMode) revert TimelockRequired();
+            _checkGrant(account, added);
+        }
         _setRoles(account, roles);
     }
 
     /// @notice After setup: announce a role change that adds roles; it may be applied ROLE_DELAY later.
     function queueRoles(address account, uint8 roles) external onlyAdmin returns (uint256 eta) {
         if (roles > ALL_ROLES || account == address(0)) revert BadRoles();
+        if (roles & SEND & ~rolesOf[account] != 0) revert RoleNotGrantable();
         eta = block.timestamp + ROLE_DELAY;
         queuedAt[keccak256(abi.encode(account, roles))] = eta;
         emit RolesQueued(account, roles, eta);
@@ -285,7 +295,14 @@ contract GloakToken {
         if (eta == 0) revert NotQueued();
         if (block.timestamp < eta) revert TooEarly();
         delete queuedAt[id];
+        _checkGrant(account, roles & ~rolesOf[account]);
         _setRoles(account, roles);
+    }
+
+    /// @dev What the admin may add: never SEND; FEED and SWAP only to a contract (checked when applied).
+    function _checkGrant(address account, uint8 added) private view {
+        if (added & SEND != 0) revert RoleNotGrantable();
+        if (added & (FEED | SWAP) != 0 && account.code.length == 0) revert RoleNotGrantable();
     }
 
     function cancelRoles(address account, uint8 roles) external onlyAdmin {
