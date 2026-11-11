@@ -396,8 +396,8 @@ export function Trade() {
               </div>
             </div>
             <div className="card flat">
-              <div className="card-head"><h3>{market.name} <span className="mute">${market.symbol}</span></h3><Link to={`/app`} className="xs arrow">Launches</Link></div>
-              <div className="fl" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <div className="card-head"><h3>{market.name} <span className="mute">${market.symbol}</span></h3><Link to="/app/launches" className="xs arrow">Launches</Link></div>
+              <div className="fl pool-facts">
                 <div className="row"><span className="mute">Pool price</span><span className="mono">{hype(market.price)} HYPE</span></div>
                 <div className="row"><span className="mute">Liquidity</span><span className="mono">{hype(market.reserveHype)} HYPE</span></div>
               </div>

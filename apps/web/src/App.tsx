@@ -64,13 +64,14 @@ function Routes() {
       : path === "/app/create" ? <Create />
       : path === "/app/volume" ? <Volume />
       : path === "/app/links" ? <Links />
-      : <Portfolio />;
+      : path === "/app" || path === "/app/portfolio" ? <Portfolio />
+      : <div className="nf"><b>404</b><h3>Nothing is hidden here</h3><p className="mute">This page doesn't exist. The link may be old or mistyped.</p><div className="row"><a className="btn btn-ink" href="/app">Go to your portfolio</a></div></div>;
     return <AppShell>{page}</AppShell>;
   }
   return (
     <>
       <Nav />
-      <div className="wrap section"><div className="empty"><h3>Page not found</h3><a className="link" href="/">Back home</a></div></div>
+      <div className="wrap section"><div className="nf"><b>404</b><h3>Nothing is hidden here</h3><p className="mute">This page doesn't exist. The link may be old or mistyped.</p><div className="row"><a className="btn btn-ink" href="/app">Open the app</a><a className="btn btn-ghost" href="/">Back home</a></div></div></div>
     </>
   );
 }

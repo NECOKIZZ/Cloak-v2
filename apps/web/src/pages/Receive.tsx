@@ -12,6 +12,7 @@ import { Icon } from "../ui";
 import { QR } from "../qr";
 import { every } from "../every";
 import { BridgeIn } from "../bridge";
+import { Gate } from "../gate";
 
 /** The receive-address contract (CloakGloamReceive). */
 const RECEIVE = GLOAM?.receive;
@@ -111,7 +112,7 @@ export function Receive({ bridge = false }: { bridge?: boolean }) {
   // the Bridge tab is in the nav, so no way back is needed there
   const back = bridge ? null : <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>;
   if (!RECEIVE) return <>{back}<div className="empty">Receive addresses aren't available on this network yet.</div></>;
-  if (!priv) return <>{back}{bridge && <div className="page-head"><div><h1>Bridge</h1></div></div>}<div className="empty">Unlock your private account on the <Link to="/app" className="link">Portfolio</Link> first.</div></>;
+  if (!priv) return <>{back}<div className="page-head"><div><h1>{bridge ? "Bridge" : "Receive"}</h1><p>{bridge ? "Bring funds from another chain straight into your private balance." : "A one-time address that pays into your private balance."}</p></div></div><Gate what={bridge ? "bridge funds into your private balance" : "get a receive address"} /></>;
   const cur = issued?.at(-1);
   const curUsed = cur && ((state[cur.address]?.waiting.length ?? 0) > 0 || (state[cur.address]?.delivered.length ?? 0) > 0);
   const copy = () => {

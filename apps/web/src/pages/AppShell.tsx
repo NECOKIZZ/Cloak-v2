@@ -135,7 +135,7 @@ function Status({ keeper }: { keeper: "up" | "down" | "?" }) {
   const { priv } = useApp();
   return (
     <div className="side-status">
-      <span><span className="dot" style={{ background: keeper === "down" ? "var(--danger)" : undefined }} />Keeper {keeper === "up" ? "online" : keeper === "down" ? "offline" : "…"}</span>
+      {KEEPER_URL && <span><span className="dot" style={{ background: keeper === "down" ? "var(--danger)" : keeper === "?" ? "var(--mute)" : undefined }} />Keeper {keeper === "up" ? "online" : keeper === "down" ? "offline" : "checking"}</span>}
       <span><Icon.lock size={11} />{priv ? "Unlocked" : "Locked"}</span>
     </div>
   );

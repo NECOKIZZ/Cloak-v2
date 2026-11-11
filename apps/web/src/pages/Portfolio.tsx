@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { every } from "../every";
 import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address, type Hex } from "viem";
 import { checkPayee } from "@cloakely/sdk";
-import { ASSETS, GLOAM, txLink } from "../config";
+import { ASSETS, CHAIN_ID, GLOAM, txLink } from "../config";
 import { publicClient } from "../wallet";
 import { hype, tokens, usd } from "../format";
 import { useApp } from "../state";
@@ -92,12 +92,12 @@ function valueUsd(a: Asset, amount: bigint, px: number | null): number | null {
 const dollars = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const amountOf = (a: Asset, x: bigint) => (a.kind === "hype" ? hype(x) : a.kind === "stable" ? usd(x, a.decimals) : tokens(x));
 
-function Locked({ title, back }: { title: string; back?: boolean }) {
+function Locked({ title, sub, back }: { title: string; sub?: string; back?: boolean }) {
   const { wallet, connect, unlock, unlocking } = useApp();
   return (
     <>
       {back && <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>}
-      <div className="page-head"><div><h1>{title}</h1><p>Your private balance, visible only to you.</p></div></div>
+      <div className="page-head"><div><h1>{title}</h1><p>{sub ?? "Your private balance, visible only to you."}</p></div></div>
       <div className="card wallet-hero">
         <div className="row-flex"><span className="soft">Private balance</span><span className="pill ok"><Icon.lock size={12} />Only you</span></div>
         <div className="wallet-total mute">$0.00</div>
@@ -285,7 +285,7 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     ).then((e) => setPub(Object.fromEntries(e))).catch(() => {});
   }, [kind, wallet, shieldable.length, res.tx]);
 
-  if (!wallet || !priv) return <Locked title={TITLES[kind][0]} back />;
+  if (!wallet || !priv) return <Locked title={TITLES[kind][0]} sub={TITLES[kind][1]} back />;
 
   const list: Asset[] = kind === "shield" ? shieldable : assets.filter((a) => (bals[a.key] ?? 0n) > 0n);
   const balOf = (k: Key) => (kind === "shield" ? pub[k] : bals[k]);
@@ -407,6 +407,9 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
                   {cur && have !== undefined && <span className="link" onClick={useMax}>max {amountOf(cur, have)}</span>}
                 </label>
                 <input className="input" value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder="0.0" />
+                {kind === "shield" && cur?.key === "HYPE" && have === 0n && CHAIN_ID === 99801 && (
+                  <p className="xs mute" style={{ margin: "8px 0 0" }}>This wallet has no HYPE yet. Get free testnet HYPE from the <a className="link" href="https://elysium.kinetiq.xyz/testnet-faucet" target="_blank" rel="noreferrer">Elysium faucet</a>.</p>
+                )}
               </div>
               {kind !== "shield" && (
                 <div className="field">

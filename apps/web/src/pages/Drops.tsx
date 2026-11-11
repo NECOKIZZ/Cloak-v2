@@ -43,9 +43,11 @@ export function Verified({ drop, creator, size = 16 }: { drop: string; creator: 
 
 export function DropArt({ details, name, size = 64, className = "" }: { details?: DropDetails; name: string; size?: number; className?: string }) {
   const src = imageSrc(details?.image);
-  return src ? (
+  // a picture that fails to load (a dead link, a slow gateway) falls back to the initials, not a broken-image icon
+  const [dead, setDead] = useState("");
+  return src && dead !== src ? (
     // small pixel art stays crisp when shown large
-    <img className={`drop-art ${className}`} src={src} alt="" width={size} height={size} style={{ width: size, height: size }} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth && i.naturalWidth <= 256 && i.naturalWidth < size) i.style.imageRendering = "pixelated"; }} />
+    <img className={`drop-art ${className}`} src={src} alt="" width={size} height={size} style={{ width: size, height: size }} onError={() => setDead(src)} onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth && i.naturalWidth <= 256 && i.naturalWidth < size) i.style.imageRendering = "pixelated"; }} />
   ) : (
     <span className={`drop-art drop-art-ph ${className}`} style={{ width: size, height: size, fontSize: size / 3 }}>{name.slice(0, 2).toUpperCase()}</span>
   );
