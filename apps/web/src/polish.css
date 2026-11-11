@@ -227,3 +227,33 @@
 @media (max-width: 560px) { .pool-facts { grid-template-columns: 1fr; } }
 /* portfolio: the five actions share one row on a wide screen */
 @media (min-width: 1181px) { .wallet-actions { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
+
+/* ───────────── payment links: your links ───────────── */
+.your-links { margin-top: 18px; }
+.yl-filters { display: inline-flex; flex-wrap: wrap; margin-bottom: 12px; }
+.yl-filters .tab { flex: none; padding: 0 14px; gap: 6px; }
+.yl-list { display: grid; }
+.yl-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
+.yl-ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--signal-soft); color: var(--signal); }
+.yl-row.done .yl-ico, .yl-row.req .yl-ico { background: var(--card-2); color: var(--mute); }
+.yl-row.warn .yl-ico { background: var(--seal-soft); color: var(--seal); }
+.yl-row.done .yl-top b { color: var(--soft); }
+.yl-main { display: grid; gap: 5px; min-width: 0; }
+.yl-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.yl-top b { font-weight: 500; font-size: 15.5px; overflow-wrap: anywhere; }
+.yl-main .soft { color: var(--soft); }
+.yl-shares { display: flex; gap: 3px; margin: 2px 0; max-width: 360px; }
+.yl-shares i { flex: 1; height: 6px; border-radius: 3px; background: var(--card-2); }
+.yl-shares i.on { background: var(--signal); }
+.yl-pass { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; border-radius: 12px; background: var(--card); width: fit-content; max-width: 100%; }
+.yl-pass b { font-weight: 500; overflow-wrap: anywhere; }
+.yl-pass .btn-text { padding: 0; min-height: 0; }
+.yl-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: 6px; }
+.yl-row .claims { list-style: none; margin: 2px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 3px; overflow-wrap: anywhere; }
+.yl-foot { display: grid; gap: 10px; padding-top: 14px; margin-top: 4px; border-top: 1px solid var(--line); }
+@media (max-width: 560px) { .yl-row { grid-template-columns: minmax(0, 1fr); } .yl-ico { display: none; } }
+/* claim page: the badge and the amount say what state the link is in */
+.claim-badge.ok { background: var(--signal-soft); color: var(--signal); }
+.claim-badge.gone { background: var(--card-2); color: var(--mute); }
+.claim-badge.wait { background: var(--seal-soft); color: var(--seal); }
+.claim-amount.gone { color: var(--mute); text-decoration: line-through; text-decoration-thickness: 2px; }

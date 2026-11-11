@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { buildClaimLink, buildRequestLink, checkPayee, LINK_SHARES_MAX, LINK_TOKENS, newLinkSecret, normalizeLinkAmount, parseClaimLink, type LinkToken } from "@cloakely/sdk";
 import { formatUnits, parseUnits, type Hex } from "viem";
 import { friendly, Hint, checked } from "../errors";
-import { addLink, linkBalances, linkClaims, linkState, loadLinks, newId, newLinkTarget, saveLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
+import { addLink, linkBalances, linkClaims, linkState, loadLinks, newId, newLinkTarget, removeLink, exportLinks, importLinks, openLinkAccount, shareTargets, tokenOf, TOKEN_DECIMALS, updateLink, type LinkRecord, type SentLink } from "../links";
 import { QR } from "../qr";
 import { TokenPicker, type PickerOption } from "../tokenPicker";
 import { publicClient } from "../wallet";
@@ -154,7 +154,7 @@ export function Links() {
         } catch (e) {
           // the very first send never went out: nothing reached the link, so forget it
           if (i === 0 && !tx) {
-            await saveLinks(p.keys, (await loadLinks(p.keys)).filter((x) => x.id !== rec.id));
+            await removeLink(p.keys, rec.id).catch(() => {});
             throw e;
           }
           setList(await loadLinks(p.keys));
@@ -163,7 +163,7 @@ export function Links() {
       }
       if (!rc) return;
       const url = linkAt(rc.blockNumber);
-      await updateLink(p.keys, rec.id, { url, status: "open" });
+      await updateLink(p.keys, rec.id, { url, status: "open" }).catch(() => {});
       setMade({ url, title: n > 1 ? `${amtStr} ${sf.token} in ${n} shares of ${shareStr}` : `${amtStr} ${sf.token} in a link`, passcode: rec.passcode, share: sf.lock ? (sf.hint ? `Solve this to claim ${amtStr} ${sf.token}: ${sf.hint}` : `A locked gift of ${amtStr} ${sf.token}`) : n > 1 ? `Red envelope: ${n} shares of ${shareStr} ${sf.token}. First ${n} to open it each get one` : `${amtStr} ${sf.token} for you, sent privately with Cloak` });
     } catch (e) {
       setErr(friendly(e));
@@ -185,7 +185,7 @@ export function Links() {
       } else checked(() => checkPayee(to));
       const amount = rf.amt.trim() ? checked(() => normalizeLinkAmount(rf.amt, TOKEN_DECIMALS[rf.token])) : undefined;
       const url = buildRequestLink({ to, token: rf.token, amount, note: rf.note, name: rf.name }, location.origin);
-      if (priv) await addLink(priv.keys, { id: newId(), kind: "request", url, token: rf.token, amount, note: rf.note || undefined, to, created: Date.now() });
+      if (priv) await addLink(priv.keys, { id: newId(), kind: "request", url, token: rf.token, amount, note: rf.note || undefined, to, created: Date.now() }).catch(() => {});
       setMade({ url, title: amount ? `Request for ${amount} ${rf.token}` : `${rf.token} tip jar`, share: `${rf.name ? rf.name + " requests" : "Pay me"} ${amount ? amount + " " : ""}${rf.token} privately${rf.note ? ` · ${rf.note}` : ""}` });
     } catch (e) {
       setErr(friendly(e));
@@ -308,9 +308,9 @@ export function Links() {
               </div>
             ))}
           </div>
-          <YourLinks list={list} onChange={() => priv && loadLinks(priv.keys).then(setList)} />
         </div>
       </div>
+      <YourLinks list={list} onChange={() => priv && loadLinks(priv.keys).then(setList)} />
     </>
   );
 }
@@ -333,15 +333,21 @@ const TOKEN_NAMES: Record<LinkToken, string> = { HYPE: "Hyperliquid", USDC: "USD
 const trim = (s: string) => (s.includes(".") ? s.replace(/(\.\d{0,6})\d*$/, "$1").replace(/\.?0+$/, "") : s);
 
 
-function linkPill(l: SentLink, shares: number) {
+type Filter = "all" | "waiting" | "claimed" | "back" | "requests";
+const FILTERS: [Filter, string][] = [["all", "All"], ["waiting", "Waiting"], ["claimed", "Claimed"], ["back", "Taken back"], ["requests", "Requests"]];
+const sharesOf = (l: LinkRecord) => { if (l.kind !== "claim") return 1; try { return parseClaimLink(l.url).shares ?? 1; } catch { return 1; } };
+const groupOf = (l: LinkRecord): Filter => l.kind === "request" ? "requests" : l.status === "claimed" ? "claimed" : l.status === "back" || l.status === "unfunded" ? "back" : "waiting";
+
+/** What state a link is in, in a few words, with the tone of its badge. */
+function statusOf(l: SentLink, shares: number): { text: string; tone: "ok" | "warn" | "done" | "wait"; line: string } {
   const n = l.claims?.length ?? 0;
   switch (l.status) {
-    case "funding": return <span className="pill">Funding…</span>;
-    case "unfunded": return <span className="pill warn">Not funded</span>;
-    case "back": return <span className="pill">Taken back</span>;
-    case "claimed": return <span className="pill">{shares > 1 ? `All ${shares} claimed` : "Claimed"}</span>;
-    case "partly": return <span className="pill ok">{n} of {shares} claimed</span>;
-    default: return <span className="pill ok">Waiting</span>;
+    case "funding": return { text: "Sending", tone: "wait", line: "The money is on its way into the link. Keep this tab open until it lands." };
+    case "unfunded": return { text: "Not funded", tone: "warn", line: "No money reached this link (the send didn't go through), so there's nothing to take back. You can remove it." };
+    case "back": return { text: "Taken back", tone: "done", line: "You took this one back into your private balance. The link is empty now." };
+    case "claimed": return { text: shares > 1 ? `All ${shares} claimed` : "Claimed", tone: "done", line: shares > 1 ? "Every share has been claimed." : "Someone claimed it. The link is empty now." };
+    case "partly": return { text: `${n} of ${shares} claimed`, tone: "ok", line: `${shares - n} share${shares - n === 1 ? " is" : "s are"} still waiting. You can take back what's left.` };
+    default: return { text: "Waiting", tone: "ok", line: l.passcode ? "Nobody has claimed it yet. It opens with the link and the passcode together." : "Nobody has claimed it yet. Anyone with the link can, so share it carefully." };
   }
 }
 
@@ -393,12 +399,12 @@ function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => voi
         for (let round = 0; round < 12; round++) {
           const r = await acct.sweep(tokenOf(acct, t), me, (s) => setBusy((b) => ({ ...b, [l.id]: s })));
           txs.push(r.txHash);
-          await updateLink(priv.keys, l.id, { backTx: txs });
+          await updateLink(priv.keys, l.id, { backTx: txs }).catch(() => {});
           await publicClient.waitForTransactionReceipt({ hash: r.txHash });
           if (r.left === 0n) break;
         }
       }
-      await updateLink(priv.keys, l.id, { status: "back", backTx: txs });
+      await updateLink(priv.keys, l.id, { status: "back", backTx: txs }).catch(() => {});
       toast("Taken back into your private balance");
       onChange();
     } catch (e) {
@@ -425,57 +431,136 @@ function YourLinks({ list, onChange }: { list: LinkRecord[]; onChange: () => voi
     return () => { stop = true; };
   }, [priv, list]);
 
-  const copy = (s: string) => { navigator.clipboard?.writeText(s).catch(() => {}); toast("Link copied"); };
+  const [filter, setFilter] = useState<Filter>("all");
+  const [seen, setSeen] = useState<Record<string, boolean>>({});
+  const [qr, setQr] = useState("");
+  const [note, setNote] = useState("");
+  const file = useRef<HTMLInputElement>(null);
+  const copy = (s: string, m = "Link copied") => { navigator.clipboard?.writeText(s).catch(() => {}); toast(m); };
+
+  async function remove(l: LinkRecord) {
+    if (!priv) return;
+    await removeLink(priv.keys, l.id).catch((e) => setNote(friendly(e)));
+    onChange();
+  }
+  async function backup() {
+    if (!priv) return;
+    try {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([await exportLinks(priv.keys)], { type: "application/json" }));
+      a.download = `cloak-links-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      setNote("Backup saved. It is encrypted: only this wallet's private account can open it.");
+    } catch (e) {
+      setNote(friendly(e));
+    }
+  }
+  async function restore(f?: File) {
+    if (!priv || !f) return;
+    try {
+      const n = await importLinks(priv.keys, await f.text());
+      setNote(n ? `${n} link${n === 1 ? "" : "s"} added from the backup.` : "Every link in that backup is already here.");
+      onChange();
+    } catch (e) {
+      setNote(friendly(e));
+    }
+  }
+
+  const count = (f: Filter) => (f === "all" ? list.length : list.filter((l) => groupOf(l) === f).length);
+  const shown = filter === "all" ? list : list.filter((l) => groupOf(l) === filter);
+  const waiting = list.filter((l): l is SentLink => l.kind === "claim" && groupOf(l) === "waiting");
   return (
-    <div className="card">
-      <div className="card-head"><h3>Your links</h3><span className="pill"><Icon.lock size={12} />this browser only</span></div>
+    <div className="card your-links">
+      <div className="card-head">
+        <h3>Your links</h3>
+        <span className="pill"><Icon.lock size={12} />saved in this browser</span>
+      </div>
       {!priv ? (
         <p className="small mute">Unlock your private account to see the links you made here. They're stored encrypted in this browser.</p>
       ) : list.length === 0 ? (
-        <p className="small mute">Links you make show up here, so you can copy them again, see who claimed them, or take back one nobody claimed.</p>
+        <p className="small mute">Every link you make is kept here, claimed or not, so you can copy it again, see who claimed it, or take back one nobody claimed.</p>
       ) : (
-        <div className="link-list">
-          {list.map((l) => {
-            const shares = l.kind === "claim" ? (() => { try { return parseClaimLink(l.url).shares ?? 1; } catch { return 1; } })() : 1;
-            const live = l.kind === "claim" && !["back", "claimed"].includes(l.status ?? "");
-            return (
-              <div key={l.id} className="link-row">
-                <div className="row-flex" style={{ justifyContent: "space-between", gap: 8 }}>
-                  <b>{l.kind === "claim" ? `${l.amount} ${l.token} ${shares > 1 ? `envelope · ${shares} shares` : "link"}` : l.amount ? `Request · ${l.amount} ${l.token}` : `Tip jar · ${l.token}`}</b>
-                  {l.kind === "claim" && linkPill(l, shares)}
+        <>
+          <p className="small mute" style={{ margin: "-6px 0 14px" }}>
+            {waiting.length ? `${waiting.length} link${waiting.length === 1 ? " is" : "s are"} still waiting to be claimed.` : "No link is waiting to be claimed."} Claimed and taken-back links stay in the list until you remove them.
+          </p>
+          <div className="tabs yl-filters" role="tablist">
+            {FILTERS.filter(([f]) => f === "all" || count(f) > 0).map(([f, name]) => (
+              <button key={f} role="tab" aria-selected={filter === f} className={`tab ${filter === f ? "on" : ""}`} onClick={() => setFilter(f)}>{name} <span className="mute">{count(f)}</span></button>
+            ))}
+          </div>
+          <div className="yl-list">
+            {shown.length === 0 && <p className="small mute">Nothing here.</p>}
+            {shown.map((l) => {
+              const shares = sharesOf(l);
+              const st = l.kind === "claim" ? statusOf(l, shares) : null;
+              const live = l.kind === "claim" && groupOf(l) === "waiting";
+              const claimed = l.kind === "claim" ? l.claims?.length ?? 0 : 0;
+              return (
+                <div key={l.id} className={`yl-row ${st?.tone ?? "req"}`}>
+                  <span className="yl-ico" aria-hidden>{l.kind === "request" ? <Icon.arrowDown size={16} /> : st!.tone === "done" ? <Icon.check size={16} /> : l.passcode ? <Icon.lock size={15} /> : <Icon.send size={15} />}</span>
+                  <div className="yl-main">
+                    <div className="yl-top">
+                      <b>{l.kind === "claim" ? <><span className="mono">{l.amount} {l.token}</span> {shares > 1 ? `in ${shares} shares` : ""}</> : l.amount ? <>Request for <span className="mono">{l.amount} {l.token}</span></> : `${l.token} tip jar`}</b>
+                      {st ? <span className={`pill ${st.tone === "ok" ? "ok" : st.tone === "warn" ? "warn" : ""}`}>{st.tone === "wait" && <span className="dot live" />}{st.text}</span> : <span className="pill">Request</span>}
+                    </div>
+                    <span className="xs mute">Made {ago(l.created)}{l.kind === "claim" && l.message ? ` · “${l.message}”` : l.kind === "request" && l.note ? ` · ${l.note}` : ""}</span>
+                    {st && <span className="small soft">{st.line}</span>}
+                    {l.kind === "request" && <span className="small soft">A request holds no money. Anyone who opens it can pay you{l.to.startsWith("cloak") ? " privately" : ""}.</span>}
+                    {l.kind === "claim" && shares > 1 && l.status !== "unfunded" && l.status !== "funding" && (
+                      <div className="yl-shares" title={`${claimed} of ${shares} claimed`}>{Array.from({ length: shares }, (_, i) => <i key={i} className={i < claimed ? "on" : ""} />)}</div>
+                    )}
+                    {l.kind === "claim" && l.passcode && (
+                      <div className="yl-pass">
+                        <span className="xs mute">Passcode</span>
+                        <b className="mono">{seen[l.id] ? l.passcode : "•".repeat(Math.min(10, Math.max(4, l.passcode.length)))}</b>
+                        <button className="btn btn-text btn-sm" onClick={() => setSeen((x) => ({ ...x, [l.id]: !x[l.id] }))}>{seen[l.id] ? "Hide" : "Show"}</button>
+                        <button className="btn btn-text btn-sm" onClick={() => copy(l.passcode!, "Passcode copied")}>Copy</button>
+                        {l.hint && <span className="xs mute">Riddle: {l.hint}</span>}
+                      </div>
+                    )}
+                    {l.kind === "claim" && !!l.claims?.length && (
+                      <ul className="claims">
+                        {l.claims.slice(0, 6).map((c) => (
+                          <li key={c.tx} className="xs">
+                            <span className="mono">{c.amount} {c.token}</span>
+                            <span className="mute"> {c.to === "private" ? "into a private balance" : <>to <Who address={c.to} /></>} · {ago(c.at)}</span>
+                            {txLink(c.tx) && <a className="link" href={txLink(c.tx)} target="_blank" rel="noreferrer"> ↗</a>}
+                          </li>
+                        ))}
+                        {l.claims.length > 6 && <li className="xs mute">and {l.claims.length - 6} more</li>}
+                      </ul>
+                    )}
+                    <div className="yl-actions">
+                      {(l.kind === "request" || live) && <button className="btn btn-ghost btn-sm" onClick={() => copy(l.url)}><Icon.copy size={13} />Copy link</button>}
+                      {(l.kind === "request" || live) && <button className="btn btn-ghost btn-sm" onClick={() => setQr(qr === l.id ? "" : l.id)}>{qr === l.id ? "Hide QR" : "QR"}</button>}
+                      {l.kind === "claim" && <button className="btn btn-ghost btn-sm" disabled={!!busy[l.id]} onClick={() => refresh(l)}>Check now</button>}
+                      {l.kind === "claim" && live && l.status !== "funding" && <button className="btn btn-ghost btn-sm" disabled={!!busy[l.id]} onClick={() => takeBack(l)}>Take back</button>}
+                      {!live && <button className="btn btn-text btn-sm" onClick={() => remove(l)}>Remove</button>}
+                      {busy[l.id] && <span className="xs mute updating">{busy[l.id]}</span>}
+                      {!busy[l.id] && l.kind === "claim" && l.checked && <span className="xs mute">checked {ago(l.checked)}</span>}
+                    </div>
+                    {qr === l.id && <div className="qr-wrap"><QR text={l.url} size={200} /></div>}
+                    {msg[l.id] && <div className="err" style={{ marginTop: 2 }}>{msg[l.id]}</div>}
+                  </div>
                 </div>
-                <span className="xs mute">{new Date(l.created).toLocaleString()}{l.kind === "claim" && l.passcode ? ` · passcode “${l.passcode}”` : ""}{l.kind === "claim" && l.message ? ` · “${l.message}”` : l.kind === "request" && l.note ? ` · ${l.note}` : ""}</span>
-                {l.kind === "claim" && !!l.claims?.length && (
-                  <ul className="claims">
-                    {l.claims.slice(0, 6).map((c) => (
-                      <li key={c.tx} className="xs">
-                        <span className="mono">{c.amount} {c.token}</span>
-                        <span className="mute"> {c.to === "private" ? "into a private balance" : <>to <Who address={c.to} /></>} · {ago(c.at)}</span>
-                        {txLink(c.tx) && <a className="link" href={txLink(c.tx)} target="_blank" rel="noreferrer"> ↗</a>}
-                      </li>
-                    ))}
-                    {l.claims.length > 6 && <li className="xs mute">and {l.claims.length - 6} more</li>}
-                  </ul>
-                )}
-                {l.kind === "claim" && l.status === "unfunded" && <span className="xs mute">No money reached this link (the send didn't go through). Nothing to take back.</span>}
-                <div className="row-flex" style={{ gap: 6 }}>
-                  <button className="btn btn-text btn-sm" onClick={() => copy(l.url)}>Copy</button>
-                  {l.kind === "claim" && (
-                    <button className="btn btn-text btn-sm" disabled={!!busy[l.id]} onClick={() => refresh(l)}>Refresh</button>
-                  )}
-                  {l.kind === "claim" && live && l.status !== "unfunded" && (
-                    <button className="btn btn-text btn-sm" disabled={!!busy[l.id]} onClick={() => takeBack(l)}>Take back</button>
-                  )}
-                  {busy[l.id] && <span className="xs mute">{busy[l.id]}</span>}
-                </div>
-                {msg[l.id] && <div className="err" style={{ marginTop: 2 }}>{msg[l.id]}</div>}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </>
+      )}
+      {priv && (
+        <div className="yl-foot">
+          <p className="note" style={{ margin: 0 }}>This list lives in this browser only. Clearing site data, or using another device, starts an empty list: save a backup to carry it over. Claims into a private balance show only when they happened; claims to a wallet show the wallet.</p>
+          <div className="row-flex" style={{ gap: 8 }}>
+            {list.length > 0 && <button className="btn btn-ghost btn-sm" onClick={backup}>Save a backup</button>}
+            <button className="btn btn-ghost btn-sm" onClick={() => file.current?.click()}>Restore a backup</button>
+            <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => { restore(e.target.files?.[0]); e.target.value = ""; }} />
+          </div>
+          {note && <p className="xs soft" style={{ margin: 0 }}>{note}</p>}
         </div>
       )}
-      <p className="note">Claims into a private balance show only when they happened. Claims to a wallet show the wallet, like any withdrawal.</p>
     </div>
   );
 }
-

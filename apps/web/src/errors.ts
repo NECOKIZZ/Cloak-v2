@@ -101,6 +101,23 @@ const RULES: [RegExp, string][] = [
   [/no batcher configured|batching disabled/, "Batch mode isn't available on this deployment."],
   [/walletclient is required/, "Connect a wallet first."],
   [/factory address required/, "This site isn't set up with a launch factory."],
+  // payment links and proofs: short technical words from the SDK
+  [/^\s*bad link( secret)?\s*$|unknown sealed bid version/m, "This link is damaged or cut short. Ask the sender to copy the whole link again."],
+  [/^\s*enter the passcode\s*$/m, "Enter the passcode the sender gave you."],
+  [/amount too small to trade/, "That amount is too small to trade. Try a larger one."],
+  [/no fees earned yet|this launch has no creator fees/, "There are no fees to collect yet."],
+  [/not a cloak proof of funds/, "This isn't a Cloak proof of funds. Ask for the link again."],
+  [/^\s*not on the list\s*$/m, "This wallet isn't on the list for this drop."],
+  [/sealed for another drop/, "This bid was sealed for a different drop, so it can't be used here."],
+  [/split did not land/, "The withdrawal couldn't be split into parts just now. Nothing left your private balance. Try again in a moment."],
+  [/this bid won no tokens/, "This bid didn't win any tokens, so there's nothing to claim. Your deposit comes back as a refund."],
+  [/isn't deployed on chain/, "Cloak isn't available on this network. Switch your wallet to Elysium."],
+  [/could not download .* from|don't match this sdk version's hashes/, "Couldn't load the privacy prover. Check your connection, refresh the page and try again."],
+  [/relay failed \(4\d\d\)|relay 4\d\d/, "The relayer turned this transaction down. Refresh the page so your balance is up to date, then try again."],
+  [/quotaexceeded|quota has been exceeded|storage is full/, "This browser's storage is full, so Cloak couldn't save that on this device. Free some space and try again."],
+  [/operation was aborted|aborterror/, "That took too long and was stopped. Nothing was sent. Try again."],
+  [/unexpected token|json\.parse|unexpected end of json|not valid json/, "The network sent back something unreadable. Try again in a moment."],
+  [/http (error )?5\d\d|status(:| code) 5\d\d|bad gateway|service unavailable|gateway time/, "A Cloak service is having trouble right now. Wait a moment and try again."],
   // unknown reverts
   [/execution reverted|transaction reverted|call reverted|shield reverted|reverted/, "The transaction was rejected by the contract, so nothing changed. Refresh the page and try again."],
 ];
@@ -185,7 +202,21 @@ export function friendly(e: unknown): string {
     if (REASONS[k]) return REASONS[k];
   }
   for (const [re, msg] of RULES) if (re.test(low)) return msg;
+  const own = plain(e);
+  if (own) return own;
   return "Something went wrong on our side. Refresh the page and try again. If it keeps happening, tell us on GitHub.";
+}
+
+/**
+ * A message that was already written for a person: one sentence starting with a capital and ending with a full
+ * stop, with nothing technical in it. Cloak's own code and SDK throw many of these as plain errors (a wrong address,
+ * a full vault, a feature that isn't on this network), and they say more than "something went wrong".
+ */
+function plain(e: unknown): string | null {
+  const m = e instanceof Error ? e.message.trim() : typeof e === "string" ? e.trim() : "";
+  if (!/^[A-Z"“][^{}<>\n\\]{6,280}[.!?)]$/.test(m)) return null;
+  if (/0x[0-9a-fA-F]{8}|https?:\/\/\w|\b(rpc|viem|json|http|undefined|null|nan|bigint|abi|revert|selector|nullifier|merkle|poseidon|sdk)\b|version:|\bat \S+ \(/i.test(m)) return null;
+  return m;
 }
 
 /** A link that can't be read: the parser's own words say what's wrong with it, so show those. */

@@ -13,6 +13,7 @@ import { QR } from "../qr";
 import { every } from "../every";
 import { BridgeIn } from "../bridge";
 import { Gate } from "../gate";
+import { friendly } from "../errors";
 
 /** The receive-address contract (CloakGloamReceive). */
 const RECEIVE = GLOAM?.receive;
@@ -52,7 +53,7 @@ export function Receive({ bridge = false }: { bridge?: boolean }) {
       await sealBox(p, "receive", JSON.stringify(next));
       setIssued(next);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(friendly(e));
     } finally {
       setBusy(false);
     }
