@@ -358,6 +358,24 @@ export const cloakConfigAbi = [
   },
   {
     "type": "function",
+    "name": "launchFloors",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "limitOf",
     "inputs": [
       {
@@ -510,6 +528,24 @@ export const cloakConfigAbi = [
         "internalType": "uint256"
       }
     ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "raiseLaunchFloors",
+    "inputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
@@ -672,6 +708,24 @@ export const cloakConfigAbi = [
         "name": "recipient",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setLaunchFloors",
+    "inputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "outputs": [],
@@ -971,6 +1025,25 @@ export const cloakConfigAbi = [
   },
   {
     "type": "event",
+    "name": "LaunchFloorsSet",
+    "inputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "LimitSet",
     "inputs": [
       {
@@ -1114,6 +1187,11 @@ export const cloakConfigAbi = [
   {
     "type": "error",
     "name": "NotAdded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotHigher",
     "inputs": []
   },
   {
@@ -1317,6 +1395,11 @@ export const cloakFactoryAbi = [
             "name": "tlockRound",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "minRaise",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       },
@@ -1611,6 +1694,11 @@ export const cloakAuctionAbi = [
             "name": "tlockRound",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "minRaise",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       },
@@ -1684,6 +1772,19 @@ export const cloakAuctionAbi = [
         "name": "",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_REVEAL_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -2337,6 +2438,11 @@ export const cloakAuctionAbi = [
         "name": "tlockRound",
         "type": "uint64",
         "internalType": "uint64"
+      },
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
       }
     ],
     "stateMutability": "view"
@@ -9408,6 +9514,10 @@ export const cloakV4HookAbi = [
     "stateMutability": "nonpayable"
   },
   {
+    "type": "receive",
+    "stateMutability": "payable"
+  },
+  {
     "type": "function",
     "name": "DEAD",
     "inputs": [],
@@ -9442,6 +9552,19 @@ export const cloakV4HookAbi = [
         "name": "",
         "type": "int24",
         "internalType": "int24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PROTOCOL_SHARE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -10261,6 +10384,19 @@ export const cloakV4HookAbi = [
   },
   {
     "type": "function",
+    "name": "claimHeldFees",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address payable"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "collectFees",
     "inputs": [
       {
@@ -10361,6 +10497,25 @@ export const cloakV4HookAbi = [
         "name": "",
         "type": "address",
         "internalType": "contract ICloakLaunchFactory"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "heldFees",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -10641,6 +10796,19 @@ export const cloakV4HookAbi = [
   },
   {
     "type": "function",
+    "name": "treasuryOf",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "t",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "unlockCallback",
     "inputs": [
       {
@@ -10691,6 +10859,50 @@ export const cloakV4HookAbi = [
   },
   {
     "type": "event",
+    "name": "FeesHeld",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hype",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "HeldFeesClaimed",
+    "inputs": [
+      {
+        "name": "by",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "hype",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Listed",
     "inputs": [
       {
@@ -10728,6 +10940,37 @@ export const cloakV4HookAbi = [
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      },
+      {
+        "name": "hype",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokens",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ProtocolFeesCollected",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "treasury",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
       },
       {
         "name": "hype",

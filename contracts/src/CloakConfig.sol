@@ -42,6 +42,15 @@ contract CloakConfig {
     Limit public defaultLimitBps;
     /// @notice Limits for new sealed-bid auctions, in wei of HYPE: per bid deposit and total deposits.
     Limit public auctionLimit;
+    /// @notice The floors every new launch must meet, read once when its auction is created: the least HYPE its sale
+    ///         must raise to open its pool (below it the launch fails and every deposit comes back in full), and the
+    ///         least share of the raise that must go into its pool. Raising them is instant; lowering waits the timelock.
+    struct LaunchFloors {
+        uint128 minRaise; // wei of HYPE
+        uint16 minLpBps;
+    }
+
+    LaunchFloors public launchFloors;
     /// @notice Cloak's own contracts (router, batcher, migrator) move money that is already inside Cloak, so caps don't
     ///         apply to them.
     mapping(address => bool) public capExempt;
@@ -75,6 +84,7 @@ contract CloakConfig {
     event LimitSet(address indexed asset, uint128 perDeposit, uint128 total);
     event DefaultLimitSet(uint128 perDepositBps, uint128 totalBps);
     event AuctionLimitSet(uint128 perBid, uint128 total);
+    event LaunchFloorsSet(uint128 minRaise, uint16 minLpBps);
     event CapExemptSet(address indexed account, bool exempt);
     event LaunchFactoryAdded(address indexed factory);
     event LaunchFactoryRemoved(address indexed factory);
@@ -94,6 +104,7 @@ contract CloakConfig {
     error FeeTooHigh();
     error ZeroAddress();
     error NotLower();
+    error NotHigher();
     error BadBps();
     error AlreadyAdded();
     error NotAdded();
@@ -186,6 +197,11 @@ contract CloakConfig {
         _setAuctionLimit(perBid, total);
     }
 
+    /// @notice The least a new launch must raise (wei of HYPE) and the least share of its raise its pool must get.
+    function setLaunchFloors(uint128 minRaise, uint16 minLpBps) external onlyOwner onlySetup {
+        _setLaunchFloors(minRaise, minLpBps);
+    }
+
     function setCapExempt(address account, bool exempt) external onlyOwner onlySetup {
         _setCapExempt(account, exempt);
     }
@@ -240,6 +256,13 @@ contract CloakConfig {
         _setAuctionLimit(perBid, total);
     }
 
+    /// @notice Raise the launch floors (never lower them here: that loosens the rules, so it waits the timelock).
+    function raiseLaunchFloors(uint128 minRaise, uint16 minLpBps) external onlyOwner {
+        LaunchFloors memory f = launchFloors;
+        if (minRaise < f.minRaise || minLpBps < f.minLpBps) revert NotHigher();
+        _setLaunchFloors(minRaise, minLpBps);
+    }
+
     // ───────────────────────────── timelock ─────────────────────────────
 
     function endSetup() external onlyOwner {
@@ -284,6 +307,7 @@ contract CloakConfig {
         if (s == this.setLimit.selector) return 3;
         if (s == this.setDefaultLimit.selector) return 2;
         if (s == this.setAuctionLimit.selector) return 2;
+        if (s == this.setLaunchFloors.selector) return 2;
         if (s == this.setCapExempt.selector) return 2;
         if (s == this.addLaunchFactory.selector) return 1;
         if (s == this.approveAsset.selector) return 1;
@@ -312,6 +336,9 @@ contract CloakConfig {
         } else if (s == this.setAuctionLimit.selector) {
             (uint128 p, uint128 t) = abi.decode(a, (uint128, uint128));
             _setAuctionLimit(p, t);
+        } else if (s == this.setLaunchFloors.selector) {
+            (uint128 r, uint16 b) = abi.decode(a, (uint128, uint16));
+            _setLaunchFloors(r, b);
         } else if (s == this.setCapExempt.selector) {
             (address account, bool exempt) = abi.decode(a, (address, bool));
             _setCapExempt(account, exempt);
@@ -373,6 +400,12 @@ contract CloakConfig {
     function _setAuctionLimit(uint128 p, uint128 t) internal {
         auctionLimit = Limit(p, t);
         emit AuctionLimitSet(p, t);
+    }
+
+    function _setLaunchFloors(uint128 r, uint16 b) internal {
+        if (b > 10_000) revert BadBps();
+        launchFloors = LaunchFloors(r, b);
+        emit LaunchFloorsSet(r, b);
     }
 
     function _setCapExempt(address account, bool exempt) internal {

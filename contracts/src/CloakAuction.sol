@@ -80,6 +80,7 @@ contract CloakAuction {
         uint16 noRevealPenaltyBps; // burned from deposits that never get revealed
         uint64 lpLockUntil; // 0 = LP burned forever; type(uint64).max = locked forever, the creator earns its trading fees
         uint64 tlockRound; // drand round the sealed bids are encrypted to (metadata for clients/keepers)
+        uint128 minRaise; // the least HYPE (wei) the sale must raise to open its pool; below it the launch fails and every deposit comes back
     }
 
     struct Bid {
@@ -184,6 +185,14 @@ contract CloakAuction {
         require(p.lpBps <= 10_000 && p.noRevealPenaltyBps <= 5_000, "bps");
         require(p.noRevealPenaltyBps >= MIN_NO_REVEAL_PENALTY_BPS, "penalty");
         require(p.lpLockUntil == 0 || p.lpLockUntil >= p.revealEnd, "lock");
+        // Cloak's floors (CloakConfig.launchFloors, read once here): a real raise and a real pool, or no launch
+        (uint128 floorRaise, uint16 floorLpBps) = config_.launchFloors();
+        require(p.minRaise >= floorRaise, "min raise");
+        require(p.lpBps >= floorLpBps, "pool share");
+        // the reserve covers the pool's share of a sold-out sale at any price, so the pool always gets its full share
+        require(p.lpReserve * 10_000 >= p.saleSupply * p.lpBps, "pool reserve");
+        // a minimum the sale can actually reach (all of it sold at the top price)
+        require(uint256(p.minRaise) <= ((p.minPrice + uint256(p.numTicks - 1) * p.tickSize) * p.saleSupply) / 1e18, "min raise unreachable");
         if (p.tlockRound != 0) {
             // the round must open after bidding closes and early enough for the keeper to reveal before the end
             uint256 at = DRAND_GENESIS + (uint256(p.tlockRound) - 1) * DRAND_PERIOD;
@@ -374,6 +383,15 @@ contract CloakAuction {
         uint256 gross = (price * sold) / 1e18;
         uint256 buffer = revealCount * (price / 1e18 + 1);
         raised = gross > buffer ? gross - buffer : 0;
+
+        // under the launch's minimum raise: no pool and no fee. It fails like a launch with no bids, so every deposit
+        // comes back in full (no penalty) and the tokens go back to the creator.
+        if (raised < p.minRaise) {
+            failed = true;
+            require(token.transfer(p.creator, p.saleSupply + p.lpReserve), "t");
+            emit Failed();
+            return;
+        }
 
         uint256 fee = (raised * launchFeeBps) / 10_000;
         feesOwed = fee;

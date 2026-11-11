@@ -39,7 +39,10 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 | A valid bid | Its deposit must cover price × quantity at its tick. One that doesn't fails to reveal and counts as unrevealed | Contract (fixed) |
 | Unrevealed bids | Lose the creator's penalty, at least **20%** (10% on factories before the mainnet one) and at most **50%** of the deposit, **burned**. No penalty if the launch fails | Contract (fixed) |
 | Clearing price | Walk from the highest tick down until demand covers the sale. Every winner pays that one price; the clearing tick fills pro rata; lower bids get everything back. If demand never covers the sale, everyone fills at the lowest revealed tick, so one bid at the minimum price sets the price for everyone (standard for uniform-price sales). Creators: set a minimum you are happy to sell at | Contract (fixed) |
-| A failed launch | Only when no bid was revealed. Every deposit is refunded in full and every token goes back to the creator | Contract (fixed) |
+| Minimum raise | Every launch names one, at least Cloak's floor (**50 HYPE** proposed). If the raise is under it, the launch fails: no pool, no fee, every deposit back in full. Shown to bidders before they bid | Contract, floor in Config |
+| Pool's share of the raise | At least Cloak's floor (**50%** proposed), and the pool reserve must cover that share of a sold-out sale, so the pool always gets its full share | Contract, floor in Config |
+| The floors | `CloakConfig.launchFloors`, read once when a launch is created. Raising them is instant (`raiseLaunchFloors`); lowering waits 3 days in public | Config |
+| A failed launch | When no bid was revealed, or the raise is under the launch's minimum. Every deposit is refunded in full (no penalty) and every token goes back to the creator | Contract (fixed) |
 | Launch fee | **1.5%** of a successful raise, fixed when the launch is created. Nothing if it fails | Config (ceiling 3%) |
 | Bid caps (beta) | **100 HYPE** per bid, **10,000 HYPE** per launch, fixed when the launch is created | Config |
 | Creator share | At most **20%** of the supply, always vesting linearly over at least **30 days** from the end of the reveal window | Contract (fixed) |
@@ -104,6 +107,7 @@ Elysium testnet (chain `99801`) as of Nov 9, 2026, read from Cloak v2's contract
 
 ## Read them yourself
 
-- Launch fee, bid caps and setup mode: `CloakConfig` at `0xfedf…4f1e` (`launchFeeBps`, `auctionLimit`, `setupMode`).
+- Launch fee, bid caps, launch floors and setup mode: `CloakConfig` (`launchFeeBps`, `auctionLimit`, `launchFloors`, `setupMode`). On testnet: `0xfedf…4f1e`, which has no floors.
+- Every launch's own terms, including its minimum raise: `CloakAuction.params()`, shown on its page under "Terms and maths".
 - Vault fees and caps: `withdrawFeeBps()` and the asset limits on Gloam's vault `0x8D15…cB44` and the launch vault `0x1305…288f`.
 - Batch settings: `CloakGloamBatcherV4` at `0xbd4a…28f8` (`roundSecs`, `maxSlippageBps`, `refundAfter`).
