@@ -15,6 +15,7 @@ import { Icon, TokenIcon } from "../ui";
 import { launchCreatedLogs, useTokenMeta } from "../tokenMeta";
 import { publicClient, readCloak } from "../wallet";
 import { every } from "../every";
+import { LaunchTerms } from "../launchTerms";
 
 type MyBidsT = Awaited<ReturnType<typeof readCloak.bidsOf>>;
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -288,13 +289,14 @@ function Market({ s }: { s: AuctionState }) {
 /** The launch's own story, out of the way until someone wants it: results, the demand behind the price, every transaction. */
 function Details({ s, curve }: { s: AuctionState; curve: bigint[] }) {
   const tabs = [
+    ["terms", "Terms and maths"],
     ...(s.settled && !s.failed ? [["results", "Launch results"]] : []),
     ...(s.phase !== "commit" ? [["demand", "Bids by price"]] : []),
     ["record", "On-chain record"],
   ] as [string, string][];
-  // always open, on the record unless someone picks another tab
-  const [tab, setTab] = useState("record");
-  const open = tabs.some((t) => t[0] === tab) ? tab : "record";
+  // always open: the terms while bidding is open, the results once it settles, unless someone picks another tab
+  const [tab, setTab] = useState(s.settled && !s.failed ? "results" : "terms");
+  const open = tabs.some((t) => t[0] === tab) ? tab : "terms";
   return (
     <div className="details" style={{ marginTop: 20 }}>
       <div className="tabs details-tabs" role="tablist">
@@ -302,6 +304,7 @@ function Details({ s, curve }: { s: AuctionState; curve: bigint[] }) {
           <button key={k} role="tab" aria-selected={open === k} className={`tab ${open === k ? "on" : ""}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
+      {open === "terms" && <LaunchTerms s={s} />}
       {open === "results" && <FairLaunchCard s={s} />}
       {open === "demand" && <DemandChart s={s} curve={curve} />}
       {open === "record" && <LaunchRecord s={s} />}
