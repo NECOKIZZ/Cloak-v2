@@ -42,9 +42,10 @@ contract GloakSimulation is Test {
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
     uint160 constant FLAGS = (1 << 13) | (1 << 11) | (1 << 9) | (1 << 7);
 
-    // the launch: 500,000 GLOAK = 350,000 for sale + 150,000 for the pool; 0.00001 HYPE a token at the lowest tick
-    uint256 constant SALE = 350_000e18;
-    uint256 constant LP_RESERVE = 150_000e18;
+    // the launch: 500,000 GLOAK = 300,000 for sale + 200,000 for the pool (the reserve must cover the pool's 50% of a
+    // sold-out sale); 0.00001 HYPE a token at the lowest tick
+    uint256 constant SALE = 300_000e18;
+    uint256 constant LP_RESERVE = 200_000e18;
     uint256 constant MIN_PRICE = 1e13;
 
     uint8 constant RECEIVE = 1;
@@ -146,7 +147,7 @@ contract GloakSimulation is Test {
         console.log("2. Bids sealed: Ada 1 HYPE and Ben 1.5 HYPE from private balances, Cy 0.5 HYPE from her public wallet");
         console.log("   The auction sees Ada's and Ben's one-time bid accounts, not who they are:", ada.account, ben.account);
 
-        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,) = auction.params();
+        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,,) = auction.params();
         vm.warp(commitEnd);
         auction.reveal(ada.id, 0, ada.qty, ada.salt);
         auction.reveal(ben.id, 0, ben.qty, ben.salt);
@@ -320,7 +321,8 @@ contract GloakSimulation is Test {
             lpBps: 5_000,
             noRevealPenaltyBps: 2_000,
             lpLockUntil: type(uint64).max,
-            tlockRound: 0
+            tlockRound: 0,
+            minRaise: 0
         });
     }
 

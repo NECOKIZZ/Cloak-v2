@@ -358,6 +358,24 @@ export const cloakConfigAbi = [
   },
   {
     "type": "function",
+    "name": "launchFloors",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "limitOf",
     "inputs": [
       {
@@ -510,6 +528,24 @@ export const cloakConfigAbi = [
         "internalType": "uint256"
       }
     ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "raiseLaunchFloors",
+    "inputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
@@ -672,6 +708,24 @@ export const cloakConfigAbi = [
         "name": "recipient",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setLaunchFloors",
+    "inputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "outputs": [],
@@ -971,6 +1025,25 @@ export const cloakConfigAbi = [
   },
   {
     "type": "event",
+    "name": "LaunchFloorsSet",
+    "inputs": [
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "minLpBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "LimitSet",
     "inputs": [
       {
@@ -1114,6 +1187,11 @@ export const cloakConfigAbi = [
   {
     "type": "error",
     "name": "NotAdded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotHigher",
     "inputs": []
   },
   {
@@ -1317,6 +1395,11 @@ export const cloakFactoryAbi = [
             "name": "tlockRound",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "minRaise",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       },
@@ -1611,6 +1694,11 @@ export const cloakAuctionAbi = [
             "name": "tlockRound",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "minRaise",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       },
@@ -2350,6 +2438,11 @@ export const cloakAuctionAbi = [
         "name": "tlockRound",
         "type": "uint64",
         "internalType": "uint64"
+      },
+      {
+        "name": "minRaise",
+        "type": "uint128",
+        "internalType": "uint128"
       }
     ],
     "stateMutability": "view"
@@ -3893,17 +3986,6 @@ export const cloakVestingAbi = [
 
 export const cloakVestingDeployerAbi = [
   {
-    "type": "constructor",
-    "inputs": [
-      {
-        "name": "doorAdmin_",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
     "type": "function",
     "name": "deploy",
     "inputs": [
@@ -3975,99 +4057,6 @@ export const cloakVestingDeployerAbi = [
       }
     ],
     "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "doorAdmin",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "doorToken",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "doorUsed",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "useDoor",
-    "inputs": [
-      {
-        "name": "maker",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "factory",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "createLaunchCall",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "ret",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "event",
-    "name": "DoorUsed",
-    "inputs": [
-      {
-        "name": "factory",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "maker",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "token",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
   }
 ] as const;
 

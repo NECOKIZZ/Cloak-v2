@@ -22,6 +22,7 @@ export const CONFIG_ABI = parseAbi([
   "function depositLimitsOn() view returns (bool)",
   "function launchFeeBps() view returns (uint16)",
   "function feeRecipient() view returns (address)",
+  "function launchFloors() view returns (uint128 minRaise, uint16 minLpBps)",
 ]);
 const LV_ABI = parseAbi(["function factory() view returns (address)", "function isLaunchToken(address) view returns (bool)", "function admitLaunch(uint256) returns (address)"]);
 const BATCH_ABI = parseAbi(["function marketOf(address) view returns (address)", "function register(uint256) returns (address)"]);
@@ -48,9 +49,9 @@ export function zoneOf(partner) {
 /**
  * The launch, checked against the auction's rules and the live bid caps, with what it does at its lowest and highest
  * clearing price. `l` (wei strings): saleSupply, lpReserve, minPrice, maxPrice, numTicks, lpBps, noRevealPenaltyBps,
- * commitEnd (unix seconds), revealMinutes, metadataURI. The team share is always 0.
+ * commitEnd (unix seconds), revealMinutes, metadataURI, minRaise (optional, default 0). The team share is always 0.
  */
-export function planGloak(l, { treasury, launchFeeBps, perBid, totalCap, capsOn, now }) {
+export function planGloak(l, { treasury, launchFeeBps, perBid, totalCap, capsOn, now, floors = { minRaise: 0n, minLpBps: 0 } }) {
   const S = BigInt(l.saleSupply);
   const L = BigInt(l.lpReserve);
   const minPrice = BigInt(l.minPrice);
@@ -60,6 +61,7 @@ export function planGloak(l, { treasury, launchFeeBps, perBid, totalCap, capsOn,
   const penalty = Number(l.noRevealPenaltyBps ?? 2000);
   const commitEnd = Number(l.commitEnd);
   const revealEnd = commitEnd + Math.round(Number(l.revealMinutes) * 60);
+  const minRaise = BigInt(l.minRaise ?? 0);
   const problems = [];
   const warnings = [];
   if (S <= 0n) problems.push("saleSupply must be above zero");
@@ -72,6 +74,10 @@ export function planGloak(l, { treasury, launchFeeBps, perBid, totalCap, capsOn,
   const top = minPrice + BigInt(n - 1) * tickSize;
   if (!(lpBps >= 0 && lpBps <= 10_000)) problems.push("lpBps must be 0 to 10,000");
   if (penalty < 2000 || penalty > 5000) problems.push("noRevealPenaltyBps must be 2,000 to 5,000");
+  // Cloak's launch floors and the reserve rule (CloakAuction's constructor)
+  if (lpBps < floors.minLpBps) problems.push(`lpBps is under Cloak's floor of ${floors.minLpBps}`);
+  if (minRaise < floors.minRaise) problems.push(`minRaise is under Cloak's floor of ${fmt(floors.minRaise)} HYPE`);
+  if (L * 10_000n < S * BigInt(lpBps)) problems.push(`lpReserve must be at least saleSupply × lpBps (${fmt((S * BigInt(lpBps)) / 10_000n, 0)} GLOAK)`);
   if (commitEnd <= now) problems.push("commitEnd is in the past");
   const window = revealEnd - commitEnd;
   if (window < MIN_REVEAL || window > MAX_REVEAL) problems.push("the reveal window must be 5 minutes to 7 days");
@@ -96,6 +102,7 @@ export function planGloak(l, { treasury, launchFeeBps, perBid, totalCap, capsOn,
   const needL = (S * BigInt(10_000 - launchFeeBps) * BigInt(lpBps)) / 100_000_000n;
   if (L < needL) warnings.push(`lpReserve is under what a sold-out sale puts in the pool (${fmt(needL, 0)}): the pool gets less HYPE and Cloak more`);
   if (L > needL + needL / 50n) warnings.push(`lpReserve is above what a sold-out sale uses (${fmt(needL, 0)}): ${fmt(L - needL, 0)} would be burned even then`);
+  if (minRaise > high.raised) problems.push("minRaise is more than a sell-out at the top price raises");
   if (capsOn && high.raised > BigInt(totalCap)) warnings.push(`a sell-out at the top price (${fmt(high.raised, 0)} HYPE) is over the launch cap (${fmt(BigInt(totalCap), 0)} HYPE): bids stop at the cap`);
   if (capsOn && BigInt(perBid) < (minPrice * S) / E / 100n) warnings.push(`the per-bid cap (${fmt(BigInt(perBid), 0)} HYPE) means at least 100 bidders for a sell-out at the lowest price`);
   if (n > 1 && tickSize * 4n > minPrice) warnings.push(`the first price step is ${Number((tickSize * 10_000n) / minPrice) / 100}% of the lowest price: coarse at the bottom of the range`);
@@ -113,6 +120,7 @@ export function planGloak(l, { treasury, launchFeeBps, perBid, totalCap, capsOn,
     noRevealPenaltyBps: penalty,
     lpLockUntil: 2n ** 64n - 1n, // locked forever, the pool's fees to the creator (Cloak's treasury)
     tlockRound: BigInt(tlockRound),
+    minRaise,
   };
   return { params, supply: S + L, top, low, high, problems, warnings };
 }
@@ -128,6 +136,7 @@ export function printPlan(plan, l) {
   row("bids open (reveal) until", `${new Date(Number(p.revealEnd) * 1000).toISOString()} (time-lock round ${p.tlockRound})`);
   row("pool's share of the raise", `${p.lpBps / 100}%, locked forever, fees to ${p.creator}`);
   row("unrevealed-bid penalty", `${p.noRevealPenaltyBps / 100}%`);
+  row("minimum raise", p.minRaise > 0n ? `${fmt(p.minRaise)} HYPE (under it, everyone is refunded)` : "none");
   for (const [name, s] of [["sold out at the lowest price", plan.low], ["sold out at the top price", plan.high]]) {
     console.log(`  ${name}:`);
     row("  raised", `${fmt(s.raised)} HYPE (fee ${fmt(s.fee)})`);
@@ -162,6 +171,10 @@ export async function preflight(pub, { factory, hook, deployer, config, admin, t
   if (doorUsed) fails.push("the door has been used already");
   if (!same(hookFactory, factory)) fails.push(`the hook's factory is ${hookFactory}`);
   if (BigInt(privatePool) !== 0n) fails.push("the hook already has a private pool");
+  const floors = await pub
+    .readContract({ address: config, abi: CONFIG_ABI, functionName: "launchFloors" })
+    .then(([minRaise, minLpBps]) => ({ minRaise, minLpBps: Number(minLpBps) }))
+    .catch(() => ({ minRaise: 0n, minLpBps: 0 }));
   const [feeRecipient, launchFeeBps, [perBid, totalCap], capsOn] = await Promise.all([
     pub.readContract({ address: config, abi: CONFIG_ABI, functionName: "feeRecipient" }),
     pub.readContract({ address: config, abi: CONFIG_ABI, functionName: "launchFeeBps" }),
@@ -172,7 +185,7 @@ export async function preflight(pub, { factory, hook, deployer, config, admin, t
   for (const z of zone) if (((await pub.getCode({ address: z.address })) ?? "0x") === "0x") fails.push(`the ${z.what} at ${z.address} has no code`);
   const lv = zone.find((z) => z.roles & ROLES.VAULT)?.address;
   if (lv && !same(await pub.readContract({ address: lv, abi: LV_ABI, functionName: "factory" }), factory)) fails.push("the launch vault admits another factory's launches");
-  return { vestingDeployer: vd, launchFeeBps: Number(launchFeeBps), perBid, totalCap, capsOn, fails };
+  return { vestingDeployer: vd, launchFeeBps: Number(launchFeeBps), perBid, totalCap, capsOn, floors, fails };
 }
 
 /** Deploy GLOAK's maker (anyone can: it only answers the door) and read it back. */

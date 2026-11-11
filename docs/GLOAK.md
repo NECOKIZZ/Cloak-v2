@@ -66,16 +66,19 @@ GLOAK launches on Cloak, in a sealed-bid auction: bids are hidden until a reveal
 - **Raised** = `p × sold`, less a tiny rounding buffer.
 - **Launch fee** = 1.5% of raised, to Cloak.
 - **Net** = raised − fee.
-- **Pool HYPE** = net × the pool share chosen at launch (e.g. 50%).
-- **Pool GLOAK** = pool HYPE ÷ `p`, at most the pool reserve.
+- **Pool HYPE** = net × the pool share chosen at launch: at least 50%, Cloak's floor for every launch; GLOAK uses 70%.
+- **Pool GLOAK** = pool HYPE ÷ `p`. The pool reserve must be at least the sale × the pool share, so the pool always gets its full share.
 - The pool opens at exactly `p`, as one full-range position. **It is locked forever**: nobody can add or remove liquidity.
 - **Creator proceeds** = net − pool HYPE. The creator is Cloak.
 - **Unused GLOAK** is sent to 0x…dEaD: the unsold sale supply plus the unused pool reserve. It stays in the total supply but can never move.
+- **No minimum raise.** GLOAK opens its pool whatever it raises.
 
-Worked example: 350,000 for sale, 150,000 for the pool, and 3 HYPE of bids at 0.00001 HYPE.
-- 300,000 are sold and 2.9999 HYPE is raised; the fee is 0.045 HYPE.
+Worked example: 300,000 for sale, 200,000 for the pool, a 50% pool share, and 3 HYPE of bids at 0.00001 HYPE.
+- All 300,000 are sold and 2.9999 HYPE is raised; the fee is 0.045 HYPE.
 - The pool opens with 1.4775 HYPE and 147,750 GLOAK; Cloak's proceeds are 1.4775 HYPE.
-- 52,250 GLOAK goes to 0x…dEaD: 50,000 unsold plus 2,250 of unused pool reserve.
+- 52,250 GLOAK of unused pool reserve goes to 0x…dEaD.
+
+GLOAK's own parameters are 294,000 for sale and 206,000 for the pool, with 70% of the raise into the pool, at 0.0002 to 0.01 HYPE per GLOAK. Sold out at the lowest price, that raises 58.8 HYPE and opens a pool of about 40.5 HYPE.
 
 **Claims.** The auction pays every winner free of the surcharge. A private bidder's winnings go straight into the vault as a note. A public bidder receives GLOAK in their wallet and can deposit it into a vault for free. From then on the rule applies.
 

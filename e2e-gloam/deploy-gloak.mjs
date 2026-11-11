@@ -48,7 +48,7 @@ if (pre.fails.length) {
 const now = Number((await pub.getBlock()).timestamp);
 const l = cfg.launch;
 const commitEnd = typeof l.commitEnd === "string" && !/^\d+$/.test(l.commitEnd) ? Math.floor(Date.parse(l.commitEnd) / 1000) : Number(l.commitEnd);
-const plan = planGloak({ ...l, commitEnd }, { treasury, launchFeeBps: pre.launchFeeBps, perBid: pre.perBid, totalCap: pre.totalCap, capsOn: pre.capsOn, now });
+const plan = planGloak({ ...l, commitEnd }, { treasury, launchFeeBps: pre.launchFeeBps, perBid: pre.perBid, totalCap: pre.totalCap, capsOn: pre.capsOn, now, floors: pre.floors });
 printPlan(plan, l);
 console.log("GLOAK's private zone (born approved):");
 for (const z of zone) console.log(`  ${z.what.padEnd(36)} ${z.address}  roles ${z.roles}`);

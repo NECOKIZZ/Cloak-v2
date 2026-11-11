@@ -59,7 +59,8 @@ contract UniswapLaunchTest is Test {
             lpBps: 5_000,
             noRevealPenaltyBps: 2_000,
             lpLockUntil: lpLockUntil,
-            tlockRound: 0
+            tlockRound: 0,
+            minRaise: 0
         });
         (address a, address t) = factory.createLaunch("Uni Test", "UNIT", 100_000e18, 30 days, p, "");
         auction = CloakAuction(payable(a));
@@ -72,7 +73,7 @@ contract UniswapLaunchTest is Test {
         bytes32 h = auction.commitmentOf(alice, 19, uint128(SUPPLY), salt);
         vm.prank(alice);
         uint256 id = auction.commit{value: 3_000 ether}(h, "");
-        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,) = auction.params();
+        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,,) = auction.params();
         vm.warp(commitEnd);
         auction.reveal(id, 19, uint128(SUPPLY), salt);
         vm.warp(revealEnd); // absolute times: with via-ir, block.timestamp can be cached within a function

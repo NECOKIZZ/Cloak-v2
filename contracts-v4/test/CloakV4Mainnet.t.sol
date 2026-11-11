@@ -117,7 +117,8 @@ contract CloakV4MainnetTest is Test {
             lpBps: 5_000,
             noRevealPenaltyBps: 2_000,
             lpLockUntil: type(uint64).max,
-            tlockRound: 0
+            tlockRound: 0,
+            minRaise: 0
         });
         (address a2, address t) = factory.createLaunch("Mainnet Fork", "MFORK", 100_000e18, 30 days, p, "");
         auction = CloakAuction(payable(a2));
@@ -126,7 +127,7 @@ contract CloakV4MainnetTest is Test {
         bytes32 h = auction.commitmentOf(alice, 19, uint128(1_000_000e18), salt);
         vm.prank(alice);
         uint256 id = auction.commit{value: 3_000 ether}(h, "");
-        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,) = auction.params();
+        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,,) = auction.params();
         vm.warp(commitEnd);
         auction.reveal(id, 19, uint128(1_000_000e18), salt);
         vm.warp(revealEnd);

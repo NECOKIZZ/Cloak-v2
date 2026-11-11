@@ -168,7 +168,8 @@ contract GloakExperimentTest is Test {
             lpBps: 5_000,
             noRevealPenaltyBps: 2_000,
             lpLockUntil: type(uint64).max, // locked forever, fees to the creator
-            tlockRound: 0
+            tlockRound: 0,
+            minRaise: 0
         });
     }
 
@@ -190,7 +191,7 @@ contract GloakExperimentTest is Test {
 
     /// Reveal, settle and claim a committed bid (the bidder takes the whole sale at tick 19).
     function _settle(CloakAuction a, uint256 id) internal {
-        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,) = a.params();
+        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,,) = a.params();
         if (block.timestamp < commitEnd) vm.warp(commitEnd);
         a.reveal(id, 19, uint128(SALE), keccak256("s"));
         if (block.timestamp < revealEnd) vm.warp(revealEnd);
@@ -304,7 +305,7 @@ contract GloakExperimentTest is Test {
         CloakAuction plain = CloakAuction(payable(a));
         uint256 plainBid = _commit(plain, bob);
         uint256 gloakBid = _commit(auction, alice);
-        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,) = plain.params();
+        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,,) = plain.params();
         vm.warp(commitEnd);
         plain.reveal(plainBid, 19, uint128(SALE), keccak256("s"));
         auction.reveal(gloakBid, 19, uint128(SALE), keccak256("s"));
@@ -549,7 +550,7 @@ contract GloakExperimentTest is Test {
         CloakAuction plain = CloakAuction(payable(a));
         uint256 plainBid = _commit(plain, bob);
         uint256 gloakBid = _commit(auction, alice);
-        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,) = plain.params();
+        (,,,,,, uint64 commitEnd, uint64 revealEnd,,,,,) = plain.params();
         vm.warp(commitEnd);
         plain.reveal(plainBid, 19, uint128(SALE), keccak256("s"));
         auction.reveal(gloakBid, 19, uint128(SALE), keccak256("s"));
