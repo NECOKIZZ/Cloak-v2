@@ -20,7 +20,7 @@ contract CreatorFeesTest is UniswapLaunchTest {
     function setUp() public override {
         super.setUp();
         locker = new CloakFeeLocker();
-        factory = new CloakFactory(config, new CloakVestingDeployer(), seeder, IFeeLocker(address(locker)));
+        factory = new CloakFactory(config, new CloakVestingDeployer(address(0)), seeder, IFeeLocker(address(locker)));
         vm.deal(attacker, 10_000 ether);
     }
 

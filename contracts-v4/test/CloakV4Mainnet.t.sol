@@ -100,7 +100,7 @@ contract CloakV4MainnetTest is Test {
                 break;
             }
         }
-        factory = new CloakFactory(config, new CloakVestingDeployer(), IMarketSeeder(address(hook)), IFeeLocker(address(0)));
+        factory = new CloakFactory(config, new CloakVestingDeployer(address(0)), IMarketSeeder(address(hook)), IFeeLocker(address(0)));
         hook.setFactory(ICloakLaunchFactory(address(factory)));
         vm.deal(alice, 10_000 ether);
         vm.deal(trader, 10_000 ether);

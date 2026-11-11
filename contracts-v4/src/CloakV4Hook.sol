@@ -29,6 +29,20 @@ interface ICloakLaunchFactory {
     function config() external view returns (address);
 }
 
+/// The factory's token deployer, as far as the hook needs it: the one token its one-time door made (GLOAK).
+interface ICloakFactoryDoor {
+    function vestingDeployer() external view returns (address);
+}
+
+interface ICloakDoor {
+    function doorToken() external view returns (address);
+}
+
+/// The door's token decides who may swap in its pool.
+interface IPrivatePoolGate {
+    function canSwap(address swapper) external view returns (bool);
+}
+
 /// CloakConfig's treasury: where the launch fee goes, and Cloak's share of the trading fees.
 interface ICloakTreasury {
     function feeRecipient() external view returns (address);
@@ -103,6 +117,9 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
     ///         address with claimHeldFees. Holding them keeps one refusal from blocking Cloak's share (review R-02).
     mapping(address => uint256) public heldFees;
     mapping(address => PoolId) internal _poolOf; // token → its pool
+    /// @notice The one private-only pool (the GLOAK experiment: the token the factory deployer's one-time door made), or
+    ///         zero. Only swappers that token approves may swap there. Every other pool is untouched: its id is never zero.
+    PoolId public privatePool;
 
     event Listed(address indexed token, PoolId indexed id, address market, address feeTo, uint160 sqrtPriceX96, uint128 liquidity, uint256 hype, uint256 tokens);
     event FeesCollected(address indexed token, address indexed to, uint256 hype, uint256 tokens);
@@ -112,6 +129,7 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
 
     error NotPoolManager();
     error OnlyHook();
+    error PrivatePool();
 
     modifier onlyPoolManager() {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
@@ -205,6 +223,7 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
         CloakV4Market m = new CloakV4Market(poolManager, IHookView(address(this)), token);
         _poolOf[token] = id;
         _launches[id] = Launch(m, feeTo, uint64(block.timestamp), uint64(block.timestamp), 0);
+        if (_isDoorToken(token)) privatePool = id;
         (market, uniPair, shares) = (address(m), address(m), liquidity);
 
         if (tokenAmount > tokensUsed) require(IERC20V4(token).transfer(msg.sender, tokenAmount - tokensUsed), "t");
@@ -213,6 +232,19 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
             require(ok, "refund");
         }
         emit Listed(token, id, address(m), feeTo, sqrtP, liquidity, hypeUsed, tokensUsed);
+    }
+
+    /// @dev Whether `token` is the one token the factory's deployer made through its one-time door. Never reverts: a
+    ///      factory or deployer without a door answers no.
+    function _isDoorToken(address token) internal view returns (bool) {
+        if (PoolId.unwrap(privatePool) != bytes32(0)) return false;
+        try ICloakFactoryDoor(address(factory)).vestingDeployer() returns (address d) {
+            if (d.code.length == 0) return false;
+            try ICloakDoor(d).doorToken() returns (address t) {
+                return t != address(0) && t == token;
+            } catch {}
+        } catch {}
+        return false;
     }
 
     function _creatorOf(address auction) internal view returns (address creator) {
@@ -366,12 +398,16 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
         return IHooks.beforeRemoveLiquidity.selector;
     }
 
-    function beforeSwap(address, PoolKey calldata key, SwapParams calldata, bytes calldata)
+    function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata, bytes calldata)
         external
         onlyPoolManager
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         PoolId id = key.toId();
+        // the GLOAK experiment's pool only: its token names who may swap (a router that delivers into a vault)
+        if (PoolId.unwrap(id) == PoolId.unwrap(privatePool) && !IPrivatePoolGate(Currency.unwrap(key.currency1)).canSwap(sender)) {
+            revert PrivatePool();
+        }
         Launch storage l = _launches[id];
         uint64 nowTs = uint64(block.timestamp);
         if (nowTs > l.lastAt) {

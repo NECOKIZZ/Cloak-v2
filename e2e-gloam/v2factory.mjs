@@ -72,7 +72,8 @@ export async function deployV2Factory({ pub, wallet, treasury, copyFrom, rules, 
   if (((await pub.getCode({ address: hook })) ?? "0x") === "0x") throw new Error("hook not deployed");
 
   // 3. the factory, with its own vesting deployer and no fee locker (the hook pays creators itself)
-  const vd = await deploy("CloakVestingDeployer", art("contracts", "CloakVesting.sol", "CloakVestingDeployer"));
+  // its one-time door (the GLOAK experiment, docs/GLOAK-EXPERIMENT.md) belongs to the owner wallet
+  const vd = await deploy("CloakVestingDeployer", art("contracts", "CloakVesting.sol", "CloakVestingDeployer"), [owner ?? addr]);
   const factory = await deploy("CloakFactory (v2)", art("contracts", "CloakFactory.sol", "CloakFactory"), [config, vd, hook, zeroAddress]);
   const factoryBlock = await pub.getBlockNumber();
   await write(hook, cloakV4HookAbi, "setFactory", [factory]);

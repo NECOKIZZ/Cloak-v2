@@ -76,7 +76,7 @@ contract CloakV4Test is Test {
         pm = new PoolManager(address(this));
         config = new CloakConfig(address(1), address(0));
         hook = _deployHook(3_000, 100_000, 300);
-        factory = new CloakFactory(config, new CloakVestingDeployer(), IMarketSeeder(address(hook)), IFeeLocker(address(0)));
+        factory = new CloakFactory(config, new CloakVestingDeployer(address(0)), IMarketSeeder(address(hook)), IFeeLocker(address(0)));
         hook.setFactory(ICloakLaunchFactory(address(factory)));
         vm.deal(alice, 10_000 ether);
         vm.deal(trader, 10_000 ether);

@@ -40,7 +40,7 @@ contract UniswapLaunchTest is Test {
         vm.createSelectFork(vm.envOr("RPC_URL", string("https://testnet-rpc.elysium.kinetiq.xyz")));
         config = new CloakConfig(address(1), address(0));
         seeder = new CloakSeeder(UNI, WHYPE, 997);
-        factory = new CloakFactory(config, new CloakVestingDeployer(), seeder, IFeeLocker(address(0)));
+        factory = new CloakFactory(config, new CloakVestingDeployer(address(0)), seeder, IFeeLocker(address(0)));
         vm.deal(alice, 10_000 ether);
         vm.deal(bob, 10_000 ether);
         vm.deal(trader, 10_000 ether);

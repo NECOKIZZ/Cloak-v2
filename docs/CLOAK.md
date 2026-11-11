@@ -72,6 +72,8 @@ On a $1,000 private round trip on a launch token, that's about $6.20 for Cloak.
 
 Bob's idea (Nov 10). **GLOAK is an experiment, not $CLOAK and not an ecosystem token.** It doesn't touch $CLOAK's plans or the ecosystem vault's rules.
 
+**Updated Nov 11: the build is in `docs/GLOAK-EXPERIMENT.md`.** It replaces the plan below: withdrawals cost 10% (burned) instead of being blocked, it launches on Cloak through a one-time door, and other privacy protocols can hold it once approved.
+
 - **What it is.** A token that can only ever be held privately. Every unit lives in a vault, withdrawals to outside wallets are blocked, so it can only be bought and sold privately through Cloak. Possibly the world's first completely private token.
 - **How it could work.** The token's own transfer rule allows only the vault, Cloak's router and its one-time escrows, and its Uniswap pool. A transfer to any other wallet reverts, so a withdrawal fails, and the way out is selling privately for HYPE.
 - **What stays public.** The pool, so the price and each trade's size are visible. Who holds it, and how much, isn't.
