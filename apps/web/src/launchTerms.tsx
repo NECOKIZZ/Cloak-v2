@@ -35,7 +35,7 @@ export function LaunchTerms({ s }: { s: AuctionState }) {
     ["Creator's own share", creatorShare > 0n ? `${tokens(creatorShare)}, unlocking over time` : "None"],
     ["Total supply", supply !== null ? tokens(supply) : "…"],
     ["Price levels", `${s.numTicks}, from ${hype(s.minPrice, 10)} to ${hype(top, 10)} HYPE per token, ${hype(s.tickSize, 10)} apart`],
-    ["Minimum raise", s.minRaise > 0n ? `${hype(s.minRaise)} HYPE. Under it the launch fails and every deposit comes back in full` : "None (a launch from before minimum raises)"],
+    ["Minimum raise", s.minRaise > 0n ? `${hype(s.minRaise)} HYPE. Under it the launch fails and every deposit comes back in full` : "None: the launch opens its pool whatever it raises"],
     ["Pool's share of the raise", `${pct(s.lpBps)}, after Cloak's fee`],
     ["Cloak's launch fee", `${pct(s.launchFeeBps)} of the raise, only if the launch succeeds`],
     ["The pool's liquidity", lp],

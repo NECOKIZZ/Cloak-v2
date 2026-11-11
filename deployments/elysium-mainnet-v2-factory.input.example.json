@@ -13,8 +13,8 @@
   "perBid": "100000000000000000000",
   "total": "10000000000000000000000",
   "capsOn": true,
-  "launchFloors": { "minRaise": "50000000000000000000", "minLpBps": 5000 },
-  "_launchFloors": "Every launch names a minimum raise of at least 50 HYPE (under its minimum, it fails and every deposit comes back in full, like Uniswap's graduation threshold and PinkSale's soft cap) and puts at least 50% of its raise into its pool. Raising them later is instant; lowering waits 3 days in public. DECIDE.",
+  "launchFloors": { "minRaise": "0", "minLpBps": 5000 },
+  "_launchFloors": "Every launch puts at least 50% of its raise into its pool, and its pool reserve must cover that share. No minimum raise is required (0): a creator may still set one, and under it the launch fails and every deposit comes back. Raising either floor later is instant; lowering waits 3 days in public. Decided Nov 11.",
   "_caps": "Beta bid caps: 100 HYPE per bid, 10,000 HYPE per launch. DECIDE.",
   "hook": { "baseFee": 3000, "startFee": 100000, "decaySecs": 300 },
   "_hook": "Pool fee in pips (1e6 = 100%): 0.3% base, 10% at listing falling to 0.3% over 5 minutes. 20% of all of it to the treasury (CloakConfig feeRecipient), 80% to the creator: PROTOCOL_SHARE_BPS in the hook (decided Nov 10). Fixed in the hook for good."
