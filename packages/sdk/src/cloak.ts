@@ -9,6 +9,7 @@ import {
   type WalletClient,
   encodeAbiParameters,
   keccak256,
+  parseAbi,
   parseEventLogs,
   toHex,
 } from "viem";
@@ -22,6 +23,58 @@ export const MIN_REVEAL_SECS = 300;
 /** Seconds the keeper needs between the drand round and the end of reveals (the contracts' REVEAL_MARGIN). */
 export const REVEAL_MARGIN_SECS = 120;
 export const LOCK_FOREVER_FEES = 2n ** 64n - 1n;
+
+/** An auction's params() before launches had a minimum raise (12 values): read with this, then minRaise is 0. */
+const PARAMS_V1 = parseAbi([
+  "function params() view returns (address creator, uint256 saleSupply, uint256 lpReserve, uint256 minPrice, uint256 tickSize, uint16 numTicks, uint64 commitEnd, uint64 revealEnd, uint16 lpBps, uint16 noRevealPenaltyBps, uint64 lpLockUntil, uint64 tlockRound)",
+]);
+const FLOORS = parseAbi(["function launchFloors() view returns (uint128 minRaise, uint16 minLpBps)", "function config() view returns (address)"]);
+
+/** Cloak's launch floors: the least HYPE (wei) a launch must name as its minimum raise, and its pool's least share. */
+export interface LaunchFloors {
+  minRaise: bigint;
+  minLpBps: number;
+}
+
+/** What a launch does if its whole sale clears at `price` (wei of HYPE per whole token), as CloakAuction.settle does. */
+export interface LaunchOutcome {
+  price: bigint;
+  raised: bigint;
+  fee: bigint;
+  poolHype: bigint;
+  poolTokens: bigint;
+  creatorHype: bigint;
+  /** Pool reserve the pool doesn't use: sent to 0x…dEaD. */
+  unusedReserve: bigint;
+  /** False when the raise is under the launch's minimum: then it fails and every deposit comes back. */
+  opens: boolean;
+}
+
+/**
+ * The launch's maths at one clearing price, with `sold` tokens sold (the whole sale by default). Mirrors
+ * CloakAuction.settle (less its few-wei rounding buffer): raise, launch fee, the pool's HYPE and tokens, the creator's
+ * HYPE, and the pool reserve left over.
+ */
+export function launchOutcome(
+  l: { saleSupply: bigint; lpReserve: bigint; lpBps: number; minRaise?: bigint },
+  price: bigint,
+  launchFeeBps: number,
+  sold: bigint = l.saleSupply,
+): LaunchOutcome {
+  const raised = (price * sold) / 10n ** 18n;
+  const fee = (raised * BigInt(launchFeeBps)) / 10_000n;
+  const net = raised - fee;
+  let poolHype = (net * BigInt(l.lpBps)) / 10_000n;
+  let poolTokens = price > 0n ? (poolHype * 10n ** 18n) / price : 0n;
+  if (poolTokens > l.lpReserve) {
+    poolTokens = l.lpReserve;
+    poolHype = (poolTokens * price) / 10n ** 18n;
+  }
+  const opens = raised >= (l.minRaise ?? 0n) && raised > 0n;
+  return opens
+    ? { price, raised, fee, poolHype, poolTokens, creatorHype: net - poolHype, unusedReserve: l.lpReserve - poolTokens, opens }
+    : { price, raised, fee: 0n, poolHype: 0n, poolTokens: 0n, creatorHype: 0n, unusedReserve: 0n, opens };
+}
 import { type BidPreimage, drandRoundAt, sealBid, unsealBid } from "./seal.js";
 
 const WAD = 10n ** 18n;
@@ -56,6 +109,11 @@ export interface LaunchParams {
   noRevealPenaltyBps?: number;
   creator?: Address;
   metadataURI?: string;
+  /**
+   * The least HYPE (wei) the sale must raise to open its pool; under it the launch fails and every deposit comes back.
+   * At least Cloak's floor (launchFloors); defaults to the floor.
+   */
+  minRaise?: bigint;
 }
 
 export interface AuctionState {
@@ -73,6 +131,8 @@ export interface AuctionState {
   noRevealPenaltyBps: number;
   lpLockUntil: number;
   tlockRound: number;
+  /** The least HYPE (wei) the sale must raise to open its pool (0 on launches from before minimum raises). */
+  minRaise: bigint;
   phase: "commit" | "reveal" | "settle" | "settled";
   commits: number;
   reveals: number;
@@ -225,6 +285,12 @@ export class Cloak {
     if (lock !== 0n && lock !== LOCK_FOREVER_FEES && !(await this.timedLocks())) throw new Error("Launches from this factory open a Uniswap v4 pool, whose liquidity stays locked: choose \"burn\" or \"fees\" (locked forever, trading fees to the creator), not a lock date.");
     // the contract refuses a reveal window under five minutes: an honest bidder must have time to be revealed
     if (p.revealEnd - p.commitEnd < MIN_REVEAL_SECS) throw new Error(`The reveal window must be at least ${MIN_REVEAL_SECS / 60} minutes, so every sealed bid can open in time.`);
+    // Cloak's floors: the minimum raise defaults to the floor, and the pool's share must be at least its floor
+    const floors = await this.launchFloors();
+    const minRaise = p.minRaise ?? floors.minRaise;
+    if (minRaise < floors.minRaise) throw new Error(`The minimum raise must be at least ${Number(floors.minRaise) / 1e18} HYPE (Cloak's floor).`);
+    const lpBps = p.lpBps ?? Math.max(5000, floors.minLpBps);
+    if (lpBps < floors.minLpBps) throw new Error(`The pool's share of the raise must be at least ${floors.minLpBps / 100}% (Cloak's floor).`);
     const params = {
       creator: p.creator ?? w.account.address,
       saleSupply: p.saleSupply,
@@ -234,10 +300,11 @@ export class Cloak {
       numTicks: p.numTicks ?? 100,
       commitEnd: BigInt(p.commitEnd),
       revealEnd: BigInt(p.revealEnd),
-      lpBps: p.lpBps ?? 5000,
+      lpBps,
       noRevealPenaltyBps: p.noRevealPenaltyBps ?? 2000,
       lpLockUntil: lock,
       tlockRound: BigInt(drandRoundAt(p.commitEnd)),
+      minRaise,
     };
     const txHash = await w.writeContract({
       address: this.factory,
@@ -248,6 +315,21 @@ export class Cloak {
     const r = await this.send(txHash);
     const [ev] = parseEventLogs({ abi: cloakFactoryAbi, logs: r.logs, eventName: "LaunchCreated" });
     return { auction: ev.args.auction, token: ev.args.token, txHash, block: r.blockNumber };
+  }
+
+  /**
+   * Cloak's launch floors from the factory's CloakConfig: every new launch must name at least `minRaise` and give its
+   * pool at least `minLpBps` of the raise. Zero on factories whose config has no floors.
+   */
+  async launchFloors(): Promise<LaunchFloors> {
+    if (!this.factory) return { minRaise: 0n, minLpBps: 0 };
+    try {
+      const config = await this.publicClient.readContract({ address: this.factory, abi: FLOORS, functionName: "config" });
+      const [minRaise, minLpBps] = await this.publicClient.readContract({ address: config, abi: FLOORS, functionName: "launchFloors" });
+      return { minRaise, minLpBps: Number(minLpBps) };
+    } catch {
+      return { minRaise: 0n, minLpBps: 0 };
+    }
   }
 
   /** Whether this factory's launches may lock LP until a date (false for Uniswap v4 launches). */
@@ -300,7 +382,8 @@ export class Cloak {
     const r = this.publicClient;
     const [params, token, phase, commits, reveals, totalDeposits, totalDemand, settled, failed, clearingTick, clearingPrice, sold, raised, pair, launchFeeBps, bidCap, depositCap, creatorOwed, feesOwed, uniPair, creatorFees] =
       await Promise.all([
-        r.readContract({ ...c, functionName: "params" }),
+        // launches from before minimum raises return 12 values: read those with the older shape (minRaise 0)
+        r.readContract({ ...c, functionName: "params" }).catch(async () => [...(await r.readContract({ address: auction, abi: PARAMS_V1, functionName: "params" })), 0n] as const),
         r.readContract({ ...c, functionName: "token" }),
         r.readContract({ ...c, functionName: "phase" }),
         r.readContract({ ...c, functionName: "bidsCount" }),
@@ -327,7 +410,7 @@ export class Cloak {
     // a v4 launch's seeder is CloakV4Hook, the only seeder that says it can't hand LP back after a timed lock
     const seeder = await r.readContract({ ...c, functionName: "seeder" }).catch(() => zeroAddress);
     const v4 = seeder !== zeroAddress && (await r.readContract({ address: seeder, abi: cloakV4HookAbi, functionName: "timedLocks" }).then((t) => t === false, () => false));
-    const [creator, saleSupply, lpReserve, minPrice, tickSize, numTicks, commitEnd, revealEnd, lpBps, noRevealPenaltyBps, lpLockUntil, tlockRound] =
+    const [creator, saleSupply, lpReserve, minPrice, tickSize, numTicks, commitEnd, revealEnd, lpBps, noRevealPenaltyBps, lpLockUntil, tlockRound, minRaise] =
       params;
     const [tokenName, tokenSymbol] = await Promise.all([
       r.readContract({ address: token, abi: cloakTokenAbi, functionName: "name" }),
@@ -348,6 +431,7 @@ export class Cloak {
       noRevealPenaltyBps,
       lpLockUntil: Number(lpLockUntil),
       tlockRound: Number(tlockRound),
+      minRaise: BigInt(minRaise),
       phase: PHASES[phase],
       commits: Number(commits),
       reveals: Number(reveals),

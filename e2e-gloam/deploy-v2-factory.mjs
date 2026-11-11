@@ -63,7 +63,7 @@ try {
   console.log(`Cloak v2's launch factory, from ${addr} (${formatEther(start)} HYPE)${REHEARSE ? " on a fork" : ""}`);
 
   if ((await pub.getChainId()) !== CHAIN_ID) throw new Error(`the RPC is chain ${await pub.getChainId()}, the config says ${CHAIN_ID}`);
-  const { config, factory, factoryBlock, hook, vestingDeployer: vd, launchFeeBps, perBid, total, capsOn, hookFees, owner } = await deployV2Factory({
+  const { config, factory, factoryBlock, hook, vestingDeployer: vd, launchFeeBps, perBid, total, capsOn, hookFees, owner, launchFloors } = await deployV2Factory({
     pub,
     wallet: me.wallet,
     treasury,
@@ -85,6 +85,7 @@ try {
     vestingDeployer: vd,
     launchFeeBps: Number(launchFeeBps),
     auctionLimit: { perBid: String(perBid), total: String(total), on: capsOn },
+    launchFloors,
     treasury,
     hookFees,
     owner,

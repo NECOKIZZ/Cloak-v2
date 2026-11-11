@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { parseEther, type Address } from "viem";
-import { Cloak, type Wallet } from "@cloakely/sdk";
+import { Cloak, type LaunchFloors, type Wallet } from "@cloakely/sdk";
 import { FACTORY, V4_HOOK } from "../config";
 import { Info } from "../info";
 import { hype, tokens } from "../format";
@@ -28,6 +28,7 @@ interface Form {
   penaltyPct: string; // burned from bids never revealed (20 to 50)
   creatorPct: string; // creator's share of the total supply (0 to 20)
   vestDays: string;
+  minRaise: string; // HYPE: under it the launch fails and every deposit comes back ("" = Cloak's floor)
 }
 
 const PRESETS: { id: string; name: string; blurb: string; f: Partial<Form> }[] = [
@@ -35,7 +36,7 @@ const PRESETS: { id: string; name: string; blurb: string; f: Partial<Form> }[] =
   { id: "standard", name: "Standard", blurb: "6 hours of bidding, so people in every time zone can take part.", f: { sale: "10000000", start: "0.0000001", ceiling: "0.00001", levels: "100", commitMin: "360", revealMin: "10" } },
   { id: "extended", name: "Extended", blurb: "24 hours of bidding for a larger sale with a wide price range.", f: { sale: "100000000", start: "0.00000001", ceiling: "0.000002", levels: "200", commitMin: "1440", revealMin: "15" } },
 ];
-const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "20", creatorPct: "0", vestDays: "90" };
+const BASE: Form = { sale: "1000000", start: "0.000001", ceiling: "0.0001", levels: "100", commitMin: "15", revealMin: "5", lpPct: "50", lp: "fees", lockDays: "180", penaltyPct: "20", creatorPct: "0", vestDays: "90", minRaise: "" };
 const LAUNCH_FEE_BPS = 150n;
 
 function Field({ label, unit, help, value, onChange, mode, disabled }: { label: string; unit?: string; help: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; mode: "decimal" | "numeric"; disabled?: boolean }) {
@@ -62,6 +63,11 @@ const mins = (m: number) => (m >= 1440 && m % 1440 === 0 ? `${m / 1440} day${m =
 export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCreated: (a: Address) => void }) {
   const { connect } = useApp();
   const [share, setShare] = useState(0);
+  // Cloak's floors for every launch: the least minimum raise, and the pool's least share of the raise
+  const [floors, setFloors] = useState<LaunchFloors>({ minRaise: 0n, minLpBps: 0 });
+  useEffect(() => {
+    readCloak.launchFloors().then(setFloors).catch(() => {});
+  }, []);
   useEffect(() => {
     if (V4_HOOK) readCloak.protocolShareBps(V4_HOOK).then(setShare).catch(() => {});
   }, []);
@@ -121,6 +127,9 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
       if (!pos(f.revealMin) || Number(f.revealMin) < 5) return "The reveal window must be at least 5 minutes, so every sealed bid can open in time.";
       if (Number(f.revealMin) > 7 * 24 * 60) return "The reveal window can be at most 7 days, since bidders' money waits through it.";
       if (!num(f.lpPct) || Number(f.lpPct) > 100) return "The pool's share of the raise must be between 0 and 100%.";
+      if (Number(f.lpPct) * 100 < floors.minLpBps) return `The pool's share of the raise must be at least ${floors.minLpBps / 100}% (Cloak's floor), so every launch opens a real market.`;
+      if (f.minRaise.trim() && (!num(f.minRaise) || wei(f.minRaise) < 0n)) return "The minimum raise must be a number of HYPE.";
+      if (f.minRaise.trim() && wei(f.minRaise) < floors.minRaise) return `The minimum raise must be at least ${hype(floors.minRaise)} HYPE (Cloak's floor).`;
       if (f.lp === "date" && (!/^\d+$/.test(f.lockDays.trim()) || Number(f.lockDays) < 1)) return "Lock the pool for at least 1 day.";
       if (!num(f.penaltyPct) || Number(f.penaltyPct) < 20 || Number(f.penaltyPct) > 50) return "The penalty for unrevealed bids must be between 20% and 50%.";
       if (!num(f.creatorPct) || Number(f.creatorPct) > 20) return "Your own share can be at most 20% of the supply.";
@@ -141,8 +150,11 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
     const sold = sale * 2n;
     const pct = Number(f.creatorPct || "0");
     const creatorAlloc = pct > 0 ? (sold * BigInt(Math.round(pct * 100))) / BigInt(10_000 - Math.round(pct * 100)) : 0n;
-    return { problem, ok: true as const, levels, tick, top, start, sale, lpBps, minRaise: raiseAt(start), maxRaise: raiseAt(top), poolMin: pool(start), poolMax: pool(top), creatorAlloc, supply: sold + creatorAlloc };
-  }, [f, name, symbol]);
+    // the least the sale must raise to open its pool: the creator's, or Cloak's floor
+    const minimum = f.minRaise.trim() && wei(f.minRaise) >= 0n ? wei(f.minRaise) : floors.minRaise;
+    const unreachable = minimum > raiseAt(top) ? `A sell-out at the top price raises ${hype(raiseAt(top))} HYPE, under the minimum raise of ${hype(minimum)} HYPE. Raise the top price or the tokens for sale, or lower the minimum.` : "";
+    return { problem: problem || unreachable, ok: true as const, levels, tick, top, start, sale, lpBps, minimum, minRaise: raiseAt(start), maxRaise: raiseAt(top), poolMin: pool(start), poolMax: pool(top), creatorAlloc, supply: sold + creatorAlloc };
+  }, [f, name, symbol, floors]);
 
   async function create() {
     if (!wallet || !FACTORY || !plan.ok || plan.problem) return;
@@ -168,6 +180,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
         creatorAlloc: plan.creatorAlloc,
         creatorVestSecs: Number(f.vestDays) * 86400,
         metadataURI: encodeMeta({ image, description: desc }),
+        minRaise: plan.minimum,
       });
       loadAllMeta(true);
       onCreated(r.auction);
@@ -233,7 +246,8 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
                 <Field label="Top price" unit="HYPE per token" help="The highest price anyone can bid. It caps how much the launch can raise." value={f.ceiling} onChange={set("ceiling")} mode="decimal" disabled={f.levels.trim() === "1"} />
                 <Field label="Bidding" unit="minutes" help="How long people can place sealed bids. Longer gives more people a chance to join." value={f.commitMin} onChange={set("commitMin")} mode="numeric" />
                 <Field label="Reveal window" unit="minutes" help="The pause after bidding while sealed bids open themselves. A few minutes is plenty." value={f.revealMin} onChange={set("revealMin")} mode="numeric" />
-                <Field label="Pool's share of the raise" unit="%" help="How much of the HYPE raised goes into the trading pool. More means a deeper pool and steadier price, less means more for you." value={f.lpPct} onChange={set("lpPct")} mode="decimal" />
+                <Field label="Pool's share of the raise" unit={floors.minLpBps ? `at least ${floors.minLpBps / 100}%` : "%"} help="How much of the HYPE raised goes into the trading pool. More means a deeper pool and steadier price, less means more for you. Cloak sets a floor so every launch opens a real market." value={f.lpPct} onChange={set("lpPct")} mode="decimal" />
+                <Field label="Minimum raise" unit={floors.minRaise > 0n ? `HYPE, at least ${hype(floors.minRaise)}` : "HYPE, optional"} help="Optional. If the bids raise less than this, the launch fails: no pool opens, no fee is taken, and every bidder gets their whole deposit back. Bidders see it before they bid. Leave it empty for none." value={f.minRaise} onChange={set("minRaise")} mode="decimal" />
                 <Field label="Penalty for unrevealed bids" unit="20 to 50%" help="Taken from a bid that never opens, so nobody can place fake bids to make demand look bigger." value={f.penaltyPct} onChange={set("penaltyPct")} mode="decimal" />
                 <Field label="Your own share" unit="0 to 20% of supply" help="Tokens kept for you on top of the sale. Bidders see this before they bid." value={f.creatorPct} onChange={set("creatorPct")} mode="decimal" />
                 <Field label="Your share unlocks over" unit="days, at least 30" help="Your tokens unlock a little each day, so you can't dump them all at once." value={f.vestDays} onChange={set("vestDays")} mode="numeric" disabled={!Number(f.creatorPct)} />
@@ -280,6 +294,7 @@ export function CreateForm({ wallet, onCreated }: { wallet: Wallet | null; onCre
             <div className="row"><span className="mute">For sale</span><span className="mono">{plan.ok ? tokens(plan.sale) : "—"}</span></div>
             <div className="row"><span className="mute">Raise, sold out at the start price</span><span className="mono">{plan.ok ? `${hype(plan.minRaise)} HYPE` : "—"}</span></div>
             <div className="row"><span className="mute">Raise, sold out at the top price</span><span className="mono">{plan.ok ? `${hype(plan.maxRaise)} HYPE` : "—"}</span></div>
+            {plan.ok && plan.minimum > 0n && <div className="row"><span className="mute">Minimum raise (else everyone is refunded)</span><span className="mono">{hype(plan.minimum)} HYPE</span></div>}
             <div className="row"><span className="mute">Goes into the pool</span><span className="mono">{plan.ok ? `${f.lpPct}% · ${hype(plan.poolMin.hype)} to ${hype(plan.poolMax.hype)} HYPE` : "—"}</span></div>
             <div className="row"><span className="mute">You receive</span><span className="mono">{plan.ok ? `${hype(plan.poolMin.creator)} to ${hype(plan.poolMax.creator)} HYPE` : "—"}</span></div>
             {plan.ok && plan.creatorAlloc > 0n && <div className="row"><span className="mute">Your share, vesting</span><span className="mono">{tokens(plan.creatorAlloc)} over {f.vestDays} days</span></div>}

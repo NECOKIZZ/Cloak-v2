@@ -247,7 +247,7 @@ type Option = PickerOption<Key>;
 // ───────────── shield, send, withdraw ─────────────
 
 const TITLES: Record<Kind, [string, string]> = {
-  shield: ["Shield", "Move HYPE, USDC or CLOAK from your wallet into your private balance."],
+  shield: ["Shield", "Move HYPE, USDC or any token Cloak trades privately from your wallet into your private balance."],
   send: ["Send privately", "Pay any cloak: address from your private balance. Nobody can see who paid whom, or how much."],
   withdraw: ["Withdraw", "Move funds from your private balance to a normal wallet address."],
 };
@@ -275,15 +275,22 @@ export function PortfolioAction({ kind }: { kind: Kind }) {
     if (kind !== "shield" && asset === undefined && firstHeld) setAsset(firstHeld);
   }, [firstHeld]);
 
-  // shield: HYPE, USDC and CLOAK, with what the wallet holds of each
-  const shieldable = assets.filter((a) => a.kind !== "launch");
+  // shield: HYPE and USDC always, and every launch or listed token the wallet holds (or the one a link asked for),
+  // with what the wallet holds of each. Balances are read one by one, so one token that won't answer hides only itself.
   useEffect(() => {
     if (kind !== "shield" || !wallet) return;
     const me = wallet.account.address;
     Promise.all(
-      shieldable.map(async (a) => [a.key, a.key === "HYPE" ? await publicClient.getBalance({ address: me }) : await publicClient.readContract({ address: a.key, abi: erc20Abi, functionName: "balanceOf", args: [me] })] as const),
-    ).then((e) => setPub(Object.fromEntries(e))).catch(() => {});
-  }, [kind, wallet, shieldable.length, res.tx]);
+      assets.map(async (a) => {
+        try {
+          return [a.key, a.key === "HYPE" ? await publicClient.getBalance({ address: me }) : await publicClient.readContract({ address: a.key as Address, abi: erc20Abi, functionName: "balanceOf", args: [me] })] as const;
+        } catch {
+          return [a.key, 0n] as const;
+        }
+      }),
+    ).then((e) => setPub(Object.fromEntries(e)));
+  }, [kind, wallet, assets.length, res.tx]);
+  const shieldable = assets.filter((a) => a.kind !== "launch" || (pub[a.key] ?? 0n) > 0n || a.key === asset);
 
   if (!wallet || !priv) return <Locked title={TITLES[kind][0]} back />;
 

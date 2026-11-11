@@ -62,7 +62,12 @@ export async function deployV2Factory({ pub, wallet, treasury, copyFrom, rules, 
   if (capsOn) {
     await write(config, cloakConfigAbi, "turnOnDepositLimits");
     await write(config, cloakConfigAbi, "setAuctionLimit", [perBid, total]);
-  }
+  }  // Cloak's launch floors: every launch names a minimum raise of at least this much HYPE (under it, the launch fails and
+  // every deposit comes back) and gives its pool at least this share of the raise. Raising them later is instant;
+  // lowering waits 3 days in public.
+  const floors = rules?.launchFloors ? { minRaise: BigInt(rules.launchFloors.minRaise), minLpBps: Number(rules.launchFloors.minLpBps) } : null;
+  if (floors) await write(config, cloakConfigAbi, "setLaunchFloors", [floors.minRaise, floors.minLpBps]);
+
 
   // 2. the hook at a flagged address, on Uniswap's PoolManager, with its fees fixed for good
   const hookArt = art("contracts-v4", "CloakV4Hook.sol", "CloakV4Hook");
@@ -92,6 +97,10 @@ export async function deployV2Factory({ pub, wallet, treasury, copyFrom, rules, 
   const c = { address: config, abi: cloakConfigAbi };
   const [fee, rec, setup, lim] = await Promise.all(["launchFeeBps", "feeRecipient", "setupMode", "auctionLimit"].map((functionName) => pub.readContract({ ...c, functionName })));
   if (Number(fee) !== Number(launchFeeBps) || !same(rec, treasury) || setup !== false || lim[0] !== perBid || lim[1] !== total) throw new Error("config misconfigured");
+  if (floors) {
+    const [r, b] = await pub.readContract({ ...c, functionName: "launchFloors" });
+    if (r !== floors.minRaise || Number(b) !== floors.minLpBps) throw new Error("launch floors misread");
+  }
   const fees = await Promise.all(["baseFee", "startFee", "decaySecs"].map((functionName) => pub.readContract({ ...hk, functionName })));
   if (Number(fees[0]) !== baseFee || Number(fees[1]) !== startFee || Number(fees[2]) !== decaySecs) throw new Error("hook fees misread");
   if (owner && !same(owner, addr)) {
@@ -100,5 +109,5 @@ export async function deployV2Factory({ pub, wallet, treasury, copyFrom, rules, 
   }
   console.log("  read back: hook flags and fees, hook → factory, factory → config and hook, config fees, caps, setup ended" + (owner && !same(owner, addr) ? ", ownership offered to the owner wallet" : ""));
 
-  return { config, factory, factoryBlock, hook, vestingDeployer: vd, launchFeeBps, perBid, total, capsOn, hookFees, owner: owner ?? addr };
+  return { config, factory, factoryBlock, hook, vestingDeployer: vd, launchFeeBps, perBid, total, capsOn, hookFees, owner: owner ?? addr, launchFloors: floors ? { minRaise: String(floors.minRaise), minLpBps: floors.minLpBps } : null };
 }

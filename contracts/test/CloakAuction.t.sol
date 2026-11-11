@@ -57,7 +57,8 @@ contract CloakAuctionTest is Test {
             lpBps: lpBps,
             noRevealPenaltyBps: penaltyBps,
             lpLockUntil: lpLockUntil,
-            tlockRound: 0
+            tlockRound: 0,
+            minRaise: 0
         });
         (address a, address t) = factory.createLaunch("Cloak Test", "CLK", 100_000e18, 30 days, p, "ipfs://meta");
         auction = CloakAuction(payable(a));
@@ -326,7 +327,8 @@ contract CloakAuctionTest is Test {
             lpBps: 5_000,
             noRevealPenaltyBps: 2_000,
             lpLockUntil: 0,
-            tlockRound: 0
+            tlockRound: 0,
+            minRaise: 0
         });
         vm.expectRevert(bytes("times"));
         factory.createLaunch("Short", "SHT", 100_000e18, 30 days, p, "ipfs://meta");
@@ -347,7 +349,8 @@ contract CloakAuctionTest is Test {
             lpBps: 5_000,
             noRevealPenaltyBps: 2_000,
             lpLockUntil: 0,
-            tlockRound: 0
+            tlockRound: 0,
+            minRaise: 0
         });
         vm.expectRevert(bytes("times"));
         factory.createLaunch("Long", "LNG", 100_000e18, 30 days, p, "ipfs://meta");
