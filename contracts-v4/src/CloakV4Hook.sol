@@ -99,11 +99,16 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
     }
 
     mapping(PoolId => Launch) internal _launches;
+    /// @notice A creator's HYPE fees its address wouldn't take (a contract that refuses HYPE): it claims them to another
+    ///         address with claimHeldFees. Holding them keeps one refusal from blocking Cloak's share (review R-02).
+    mapping(address => uint256) public heldFees;
     mapping(address => PoolId) internal _poolOf; // token → its pool
 
     event Listed(address indexed token, PoolId indexed id, address market, address feeTo, uint160 sqrtPriceX96, uint128 liquidity, uint256 hype, uint256 tokens);
     event FeesCollected(address indexed token, address indexed to, uint256 hype, uint256 tokens);
     event ProtocolFeesCollected(address indexed token, address indexed treasury, uint256 hype, uint256 tokens);
+    event FeesHeld(address indexed to, uint256 hype);
+    event HeldFeesClaimed(address indexed by, address indexed to, uint256 hype);
 
     error NotPoolManager();
     error OnlyHook();
@@ -232,8 +237,32 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
         uint256 ph;
         uint256 pt;
         (hype, tokens, ph, pt) = abi.decode(poolManager.unlock(abi.encode(uint8(1), keyFor(token), uint256(0), l.feeTo, treasury)), (uint256, uint256, uint256, uint256));
+        // the creator's HYPE came here: pay it on, and hold it if the address refuses, so a creator that can't take HYPE
+        // never blocks the payout, Cloak's share included (review R-02)
+        if (hype > 0) {
+            (bool ok,) = l.feeTo.call{value: hype, gas: 50_000}("");
+            if (!ok) {
+                heldFees[l.feeTo] += hype;
+                emit FeesHeld(l.feeTo, hype);
+            }
+        }
         emit FeesCollected(token, l.feeTo, hype, tokens);
         if (ph > 0 || pt > 0) emit ProtocolFeesCollected(token, treasury, ph, pt);
+    }
+
+    /// @notice A creator whose address refused its HYPE fees takes them to another address.
+    function claimHeldFees(address payable to) external {
+        uint256 amount = heldFees[msg.sender];
+        require(amount > 0, "nothing held");
+        heldFees[msg.sender] = 0;
+        (bool ok,) = to.call{value: amount}("");
+        require(ok, "send");
+        emit HeldFeesClaimed(msg.sender, to, amount);
+    }
+
+    /// @notice HYPE arrives only from the PoolManager, as a creator's fees on their way out.
+    receive() external payable {
+        if (msg.sender != address(poolManager)) revert NotPoolManager();
     }
 
     /// @notice Where Cloak's share goes: the launch factory's CloakConfig treasury (address(0) if it can't be read,
@@ -270,7 +299,8 @@ contract CloakV4Hook is IHooks, IUnlockCallback {
         uint256 pt = treasury == address(0) ? 0 : (ft * PROTOCOL_SHARE_BPS) / 10_000;
         if (ph > 0) poolManager.take(key.currency0, treasury, ph);
         if (pt > 0) poolManager.take(key.currency1, treasury, pt);
-        if (fh > ph) poolManager.take(key.currency0, to, fh - ph);
+        // the creator's HYPE comes here first and is paid on after the unlock (collectFees), so a refusal can't revert it
+        if (fh > ph) poolManager.take(key.currency0, address(this), fh - ph);
         if (ft > pt) poolManager.take(key.currency1, to, ft - pt);
         return abi.encode(fh - ph, ft - pt, ph, pt);
     }

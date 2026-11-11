@@ -82,17 +82,22 @@ The values live in two config files, which were rehearsed end to end on a fork o
 
 **Technical. Done.** `MIN_NO_REVEAL_PENALTY_BPS = 2_000` in CloakAuction (stress item W-03); the creator picks 20% to 50%. The create form, the SDK default and the docs follow. Earlier factories keep their 10% floor. The penalty stays burned.
 
-### A6. Can one wallet fill a whole launch? (DECIDED: accept for the beta)
+### A6. Can one wallet fill a whole launch? (DECIDED: accept for the beta, KNOWN ISSUE W-01)
 
-**Decided (Nov 10).** Accept for the beta. The caps keep it small.
+**Decided (Nov 10, confirmed after the review).** Accept for the beta. Fixing it properly is an expensive contract change, so it waits for after the beta.
 
-**Plain words.** Yes, within the caps. Many wallets can belong to one person, and a sealed sale can't tell them apart.
+**What it really is (W-01, rated High by the reviewer).** A launch's 10,000 HYPE cap counts the deposits placed while bidding is open. Someone with 100 wallets (one per 100 HYPE bid) can deposit up to the cap with bids at the creator's minimum price. Nobody else can then bid, because the cap is full, so the launch clears at the minimum price and that person buys the whole sale.
 
-**Technical.** Stress item W-01. The alternative is counting only revealed bids against the cap, which is a contract change.
+**Why we accept it for now:**
+- it takes about 10,000 HYPE (about $730,000) of capital, refunded beyond the cost after settlement;
+- the attacker pays at least the creator's chosen minimum price for every token, so the creator's floor protects them;
+- the caps are temporary (they lift after the audit), and without caps the lockout can't happen.
 
-**Now.** Allowed within the caps. Fixed per factory.
+**After the beta, the options:**
+- drop the per-launch total cap and keep the per-bid cap;
+- count each bid's cost (price × quantity) toward the cap instead of its deposit.
 
-**Recommendation.** Accept it for the beta. The caps keep it small, and no launchpad can stop it.
+**Where it's noted:** here, `SECURITY.md` (known issues) and the site's Docs (limits).
 
 ### A7. How long can a reveal window be? (DECIDED: 5 minutes to 7 days, built)
 

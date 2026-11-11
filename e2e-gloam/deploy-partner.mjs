@@ -7,7 +7,7 @@
 //     control to the Safe), read back with 12 checks.
 //   - Around it: CloakLaunchSwapV4, CloakRouterV4 (buys and sells between Gloam's vault and the launch vault),
 //     CloakGloamBatcherV4, CloakGloamReceive, CloakGloamBids, CloakFundsGate and CloakReceiptCheck with their final-key
-//     verifiers. CloakGraduation (into Gloam's vault) only with "graduation": true in the config.
+//     verifiers.
 //   - Every settled launch admitted and registered for batch rounds.
 //   - The guard's control handed to the Safe: transferController(safe) now; the Safe then calls acceptController()
 //     (the script prints the call). The pauser and the fee recipient are fixed to the config's addresses at deploy.
@@ -19,7 +19,7 @@
 //
 // The config (JSON): { name, chainId, rpcUrl, gloamVault, memoBoard, poseidon, verifier, shieldVerifier, factory,
 //   poolManager, v4Hook, whype, safe, pauser, feeRecipient, hype: { perDeposit, total }, launchCaps: { perDeposit,
-//   total }, graduationRoundSecs, batch: { roundSecs, maxSlippageBps, refundAfter }, assets: [{ symbol, token, decimals,
+//   total }, batch: { roundSecs, maxSlippageBps, refundAfter }, assets: [{ symbol, token, decimals,
 //   fee, tickSpacing }] (USDC and its plain HYPE pool), ecosystem: {...} }. Amounts are wei strings.
 // Then `node scripts/sdk-entry.mjs deployments/<name>.json deployments/<factory>.json` prints the SDK's deployment entry.
 // Key: DEPLOYER_PK, or GLOAM_TESTNET_PK from ../.env (a fresh key that holds nothing else). Never Cloak v1's keys.
@@ -65,7 +65,6 @@ function rehearsalConfig() {
     feeRecipient: "0x000000000000000000000000000000000000fee5",
     hype: { perDeposit: String(10n ** 19n), total: String(10n ** 21n) },
     launchCaps: { perDeposit: String(10n ** 27n), total: String(10n ** 29n) },
-    graduationRoundSecs: 3600,
     batch: { roundSecs: 60, maxSlippageBps: 200, refundAfter: 600 },
     ecosystem: { minHypeLiquidity: String(250n * 10n ** 18n), minMcapHype: String(50_000n * 10n ** 18n), maxPerDepositBps: 10, maxTotalBps: 100, tokens: [] },
   };
@@ -225,8 +224,6 @@ try {
   const batcherV4 = await deploy("CloakGloamBatcherV4", ourArtifact("CloakGloamBatcherV4.sol", "CloakGloamBatcherV4"), [lv, cfg.gloamVault, cfg.factory, BigInt(b.roundSecs), BigInt(b.maxSlippageBps), BigInt(b.refundAfter), tradeFee]);
   const receive = await deploy("CloakGloamReceive", ourArtifact("CloakGloamReceive.sol", "CloakGloamReceive"), [cfg.gloamVault, lv]);
   const bids = await deploy("CloakGloamBids", ourArtifact("CloakGloamBids.sol", "CloakGloamBids"), [lv, cfg.gloamVault]);
-  // graduation into Gloam's vault is off unless asked for: launch tokens live in the launch vault (one home per asset)
-  const graduation = cfg.graduation ? await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [lv, cfg.gloamVault, BigInt(cfg.graduationRoundSecs)]) : undefined;
   const fv = await deploy("GloamFundsVerifierFinal", ourArtifact("GloamFundsVerifierFinal.sol", "GloamFundsVerifierFinal"));
   const rv = await deploy("GloamReceiptVerifierFinal", ourArtifact("GloamReceiptVerifierFinal.sol", "GloamReceiptVerifierFinal"));
   const fundsGate = await deploy("CloakFundsGate", ourArtifact("CloakFundsGate.sol", "CloakFundsGate"), [fv, cfg.gloamVault, lv]);
@@ -277,7 +274,6 @@ try {
     batcherV4Rounds: b,
     receive,
     bids,
-    graduation,
     fundsGate,
     receiptCheck,
     fundsVerifier: fv,

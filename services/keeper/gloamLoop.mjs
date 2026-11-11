@@ -9,9 +9,8 @@
 //   - confirm every wallet still eligible in an allocation gate (CloakFundsGate.confirm) once the gate closes, so its
 //     owner is free to spend and the creator has a fixed list.
 //
-// What it can't do: anything that spends or signs for a user. A swap's leftover, a graduation's exit, a bid's or batch
-// order's payout all need the account's seed, so the app does them on open (finishPending in the SDK). A graduation's
-// 30-day timeout exit needs the entry's key, which only the app has.
+// What it can't do: anything that spends or signs for a user. A swap's leftover, a bid's or a batch order's payout all
+// need the account's seed, so the app does them on open (finishPending in the SDK).
 //
 // Every call is simulated first and only sent if it would succeed, so a round that can't settle yet (price moved,
 // too much impact) costs nothing and is tried again next time.

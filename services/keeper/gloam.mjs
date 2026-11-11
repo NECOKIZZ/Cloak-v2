@@ -1,13 +1,13 @@
 // Gloam relay for the keeper (Cloak v2 on Gloam). Relays the calls GloamCore and Cloak's escrows make, so the user's
 // wallet is never the sender: vault transfers and cash outs (Gloam's vault and Cloak's launch vault), memo posts, and
-// calls to Cloak's escrows (launch swaps, graduation, bids, batch orders). It holds no secrets and can't change a call:
+// calls to Cloak's escrows (launch swaps, bids, batch orders). It holds no secrets and can't change a call:
 // every spend is fixed by its proof, every escrow action by its escrow key or owner signature.
 //
 // Gloam's proofs carry no relayer fee, so the relay pays gas from its own wallet. What keeps that from being drained:
 //   - only known targets and selectors (each vault's transfer and unshield, the board's postMemo, the escrows), never
 //     anything else;
 //   - every call is simulated first: one that would revert is refused and costs nothing;
-//   - one in-flight call per spend (by nullifier), and a spend already used on chain, or with a proof against a tree the
+//   - one in-flight call per spend (by nullifier) and per escrow call (by its exact data), and a spend already used on chain, or with a proof against a tree the
 //     vault doesn't know, is refused before the gas estimate. Each spend's last send is kept a day: the spend isn't sent
 //     again while that send could still land, and its lock goes only when nothing was sent or the send reverted;
 //   - no cash out to the zero address, the token itself, a vault, the memo board or an escrow;
@@ -28,7 +28,7 @@
 // still can't spend more than what came in plus the base budget. Fees in launch tokens stay owed to the recipient.
 //
 //   POST /gloam/relay {kind, to, data} -> {txHash}
-import { decodeFunctionData, parseAbi, parseEther, toFunctionSelector, zeroAddress } from "viem";
+import { decodeFunctionData, keccak256, parseAbi, parseEther, toFunctionSelector, zeroAddress } from "viem";
 
 const VAULT_ABI = parseAbi([
   "function transfer(bytes proof, bytes32 root, bytes32 nullifier, bytes32[2] newCommitments)",
@@ -49,9 +49,6 @@ const DAY_MS = 86_400_000;
 /** Escrow calls that take money out or back (refunds, exits, claims): they may use the whole budget. */
 const EXIT_SELECTORS = new Set(
   [
-    // CloakGraduation
-    "leave((bytes32,address,uint128,address,address),address,(bytes,bytes32),bytes)",
-    "exitAfterTimeout((bytes32,address,uint128,address,address))",
     // CloakLaunchSwap
     "rescue((bytes32,address,uint256,bytes32,address,uint256,bytes32,address,uint256))",
     "claim(bytes32,(bytes,bytes32,address,uint256),bytes)",
@@ -222,6 +219,9 @@ export function createGloamRelay({
       // a memo for a payment in Cloak's launch vault is Cloak's call
       cloakCall = seenIn.cloak;
     }
+    // an escrow call (a swap, an order, a bid, a claim) locks on the call itself: copies of it sent together would all
+    // pass the simulation, then all but one revert on chain and burn the relay's gas (review R-03)
+    if (t.role === "escrow") spendKey = `${lc(t.address)}:call:${keccak256(body.data)}`;
     if (spendKey) {
       expireLocks();
       if (inflight.has(spendKey)) throw fail(409, "this spend is already being relayed");

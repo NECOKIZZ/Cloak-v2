@@ -52,6 +52,17 @@ v1's batchers got the matching fix in v1's repository.
 
 **Nov 9, 2026, stress test.** Contract and relay findings and their fixes in [`docs/STRESS-REPORT.md`](docs/STRESS-REPORT.md).
 
+**Nov 10, 2026, code review.**
+- **R-01 (Medium), fixed.** A batch order whose spend lands alone could be blocked for good by a stranger topping up its public escrow (1 wei with no vault fee). The order now counts at most its size. Tests: `test_R01_a_topped_up_escrow_still_places`, `test_R01_one_wei_with_no_vault_fee` (both fail on the old code).
+- **R-02 (Low), fixed.** A creator contract that refuses HYPE could block Cloak's 20% of its pool's fees. The hook now pays the creator separately, and holds what a creator refuses for it to claim elsewhere (`claimHeldFees`). Tests: `test_R02_*`.
+- **R-03 (Low), fixed.** Copies of one escrow call sent to the relay together all passed simulation and burned gas. The relay now locks each escrow call while it's in flight (end to end: part 3).
+- **R-04 and R-05 (Low): no change.** The uint128 casts in batch settlement are bounded by the 4% side cap and the token's supply. An escrow can't be opened without its order being recorded in the same transaction.
+- `CloakGraduation`, which had R-01's flaw too, was removed for the beta.
+
+## Known issues (accepted for the beta)
+
+- **W-01 (High): one well-funded bidder can fill a launch's deposit cap.** With 100 wallets and about 10,000 HYPE, someone can fill a launch's 10,000 HYPE cap with bids at the creator's minimum price, lock others out, and buy the whole sale at that price. They always pay at least the creator's minimum, and their deposit beyond the cost comes back. It exists only while the beta caps do, and the fix (counting each bid's cost rather than its deposit, or dropping the total cap) waits for after the beta (`docs/MAINNET-DECISIONS.md`, A6).
+
 ## Audit scope for mainnet
 
 Cloak's code only (Gloam's vault and circuits are audited separately). Counted without comments, tests or interfaces:
@@ -65,5 +76,5 @@ Cloak's code only (Gloam's vault and circuits are audited separately). Counted w
 | **Total** | | **about 3,270** |
 
 Not shipped to mainnet, so not in scope: the Uniswap V2 path (`CloakPair`, `CloakSeeder`, `CloakV2Market`,
-`CloakFeeLocker`, `CloakV2PairSwap`), `CloakGraduation` (launch tokens stay in the launch vault), NFT drops, and
+`CloakFeeLocker`, `CloakV2PairSwap`), NFT drops, and
 `TestToken`.

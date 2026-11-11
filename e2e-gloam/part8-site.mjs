@@ -27,7 +27,7 @@ const keeperWallet = createWalletClient({ chain, account: privateKeyToAccount(AN
 const user = privateKeyToAccount(ANVIL_KEYS[1]).address;
 
 // the local relay: POST /gloam/relay only; everything else the site asks the keeper for answers 404
-const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.launchSwapV4, G.receive, G.bids, G.graduation, G.batcher, G.batcherV4, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("1") });
+const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.launchSwapV4, G.receive, G.bids, G.batcher, G.batcherV4, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("1") });
 let relayed = 0;
 const relayServer = createServer((req, res) => {
   const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type", "content-type": "application/json" };

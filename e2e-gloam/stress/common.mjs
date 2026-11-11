@@ -47,7 +47,7 @@ export async function setup({ port, blockTime, roundSecs = 60n, seed = { hype: p
     await rpc(rpcUrl, "evm_setAutomine", [false]);
     await rpc(rpcUrl, "evm_setIntervalMining", [blockTime]);
   }
-  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: c.gloamVault, launchVault: c.launchVault, memoBoard: c.memoBoard, escrows: [c.launchSwap, c.graduation, c.batcher, c.fundsGate, c.receive], hourlySpendWei: parseEther(hourly), ...relayOpts });
+  const relay = createGloamRelay({ publicClient: pub, walletClient: keeper.wallet, vault: c.gloamVault, launchVault: c.launchVault, memoBoard: c.memoBoard, escrows: [c.launchSwap, c.batcher, c.fundsGate, c.receive], hourlySpendWei: parseEther(hourly), ...relayOpts });
   const loop = createGloamLoop({ publicClient: pub, account: keeper.account, send: async (call) => (await sendAndLog(pub, call.functionName, keeper.wallet.writeContract(call))).transactionHash, launchVault: c.launchVault, batcher: c.batcher, batcherBlock: block, relay });
   await loop.tick(); // admits the launch token
   const provers = { shield: await finalProver("shield"), transfer: await finalProver("transfer"), unshield: await finalProver("unshield") };

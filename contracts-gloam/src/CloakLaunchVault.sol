@@ -31,8 +31,7 @@ interface ILaunchAuctionV {
  *         raised back by anyone.
  *
  * @dev Notes here and in Gloam's vault use the same format but live in different trees, so a note can't be spent
- *      across vaults. Moving between them is a cash-out from one and a deposit into the other (see the graduation
- *      escrow).
+ *      across vaults. Moving between them is a cash-out from one and a deposit into the other.
  */
 contract CloakLaunchVault is ShieldPoolCore {
     /// @notice The only factory whose launches are admitted without the timelock.

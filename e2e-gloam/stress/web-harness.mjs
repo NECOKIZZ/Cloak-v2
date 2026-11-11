@@ -106,7 +106,7 @@ export async function startStack({ base = 8650, vitePort = 5200, wantVite = true
   const chain = chainFor(anvilUrl);
   const pub = createPublicClient({ chain, transport: http(anvilUrl), pollingInterval: 100 });
   const keeperWallet = createWalletClient({ chain, account: privateKeyToAccount(ANVIL_KEYS[8]), transport: http(anvilUrl) });
-  const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.launchSwapV4, G.receive, G.bids, G.graduation, G.batcher, G.batcherV4, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("5") });
+  const relay = createGloamRelay({ publicClient: pub, walletClient: keeperWallet, vault: G.gloamVault, launchVault: G.launchVault, memoBoard: G.memoBoard, escrows: [G.launchSwap, G.launchSwapV4, G.receive, G.bids, G.batcher, G.batcherV4, G.fundsGate].filter(Boolean), hourlySpendWei: parseEther("5") });
   const keeperKnobs = { relayDown: false, relayDelayMs: 0 };
   const stats = { relayed: 0, relayErrors: [], scheduled: 0 };
   // the schedule on the chain's clock, so tests can warp time

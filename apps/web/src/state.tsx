@@ -211,7 +211,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ASSETS.forEach((a) => g.addAsset({ ...a, pool: a.hop }));
       setPrivAddress(await g.address());
       setPriv(g);
-      g.finishPending().catch(() => {}); // a swap's buffer, a graduation: whatever can finish now
+      g.finishPending().catch(() => {}); // a swap's buffer, a bid, a batch payout: whatever can finish now
       collectOnUnlock(g).catch(() => {}); // payments waiting at this account's receive addresses
       return g;
     } catch (e) {

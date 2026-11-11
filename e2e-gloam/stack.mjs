@@ -1,6 +1,6 @@
 // Deploys the whole Cloak v2 on Gloam stack for a run: Gloam's guarded vault and memo board (Cloak's instance, HYPE
 // and a test launch token listed at deploy), CloakLaunchVault on the same final-key verifiers, CloakLaunchSwap with a
-// V2 pool stand-in, CloakGraduation, CloakGloamBatcher, CloakFundsGate, CloakReceiptCheck. The launch is a stand-in
+// V2 pool stand-in, CloakGloamBatcher, CloakFundsGate, CloakReceiptCheck. The launch is a stand-in
 // (FakeFactory and FakeAuction). Used by live-elysium.mjs (live and --anvil) and part7-adapter.mjs.
 import { encodeFunctionData, parseAbi, parseEther, zeroAddress } from "viem";
 import { deployGloamStack, deployPoseidon, gloamArtifact, ourArtifact, sendAndLog } from "./lib.mjs";
@@ -66,7 +66,7 @@ export async function checkLaunchVault(pub, lv, want) {
  * @param warp (seconds) => moves the chain's clock (anvil); without it a realistic listing is only queued
  * @param me clients() for the funded deployer, who is also every fee recipient and the guard's controller
  * @param seed { hype, tokens }: what the V2 pool starts with (default 0.2 HYPE and 200 tokens: 1 HYPE = 1000 tokens)
- * @param roundSecs graduation and batch rounds
+ * @param roundSecs batch rounds
  */
 export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEther("0.2"), tokens: parseEther("200") }, roundSecs = 60n, gloamAssets = "realistic", warp, pauser }) {
   pauser ??= me.account.address; // the launch pauser (Cloak's multisig in production)
@@ -124,7 +124,6 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
   await write(lvGuard, guardArt.abi, "acceptVaultOwnership");
   await checkLaunchVault(pub, lv, { guard: lvGuard, dual: stack.dual, shieldVerifier: stack.shieldVerifier, factory, feeRecipient: addr, pauser, caps: lvCaps });
   const router = await deploy("CloakLaunchSwap", ourArtifact("CloakLaunchSwap.sol", "CloakLaunchSwap"), [lv, v2, weth]);
-  const graduation = await deploy("CloakGraduation", ourArtifact("CloakGraduation.sol", "CloakGraduation"), [lv, stack.pool, roundSecs]);
   const batcher = await deploy("CloakGloamBatcher", ourArtifact("CloakGloamBatcher.sol", "CloakGloamBatcher"), [lv, v2, weth, roundSecs, 200n, 600n]);
   const fv = await deploy("GloamFundsVerifierFinal", ourArtifact("GloamFundsVerifierFinal.sol", "GloamFundsVerifierFinal"));
   const rv = await deploy("GloamReceiptVerifierFinal", ourArtifact("GloamReceiptVerifierFinal.sol", "GloamReceiptVerifierFinal"));
@@ -145,6 +144,6 @@ export async function deployCloakGloam({ me, rpcUrl, pk, seed = { hype: parseEth
     }
   }
   const block = await pub.getBlockNumber();
-  const contracts = { usdc, launchVaultGuard: lvGuard, gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, receive, graduation, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
+  const contracts = { usdc, launchVaultGuard: lvGuard, gloamVault: stack.pool, guard: stack.guard, memoBoard: stack.payMemo, poseidon, dual: stack.dual, shieldVerifier: stack.shieldVerifier, launchVault: lv, launchSwap: router, receive, batcher, fundsGate: gate, receiptCheck: receipts, fundsVerifier: fv, receiptVerifier: rv, launchToken: launch, factoryStandIn: factory, auctionStandIn: auction, whypeStandIn: weth, v2FactoryStandIn: v2, pair };
   return { contracts, block, stack, listing };
 }

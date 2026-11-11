@@ -4,7 +4,7 @@
  *
  * Underneath are two GloamCores made from the same one wallet signature, so one private address (gloamr1.) receives in
  * both vaults:
- *   - Gloam's vault, the big shared crowd (HYPE and USDC once Gloam lists them, graduated tokens);
+ *   - Gloam's vault, the big shared crowd (HYPE, USDC and what Gloam lists);
  *   - Cloak's launch vault (CloakLaunchVault, Gloam's code and keys), where launch tokens trade from the moment their
  *     launch settles.
  * Balances add up across both. A deposit goes to the launch vault when it takes the asset (so it can trade), else to
@@ -76,7 +76,7 @@ export interface GloamPrivateConfig {
    * see GloamCoreConfig.pendingStore). Without it they're kept for this session only.
    */
   pendingStore?: (vault: Address) => { load(): string | null; save(s: string): void };
-  /** Where the app keeps per-action records for finishPending (a swap's leftover, a graduation). */
+  /** Where the app keeps per-action records for finishPending (a swap's leftover, a bid, a batch order). */
   records?: { load(): LaunchRecord[]; save(r: LaunchRecord[]): void };
   logChunk?: bigint;
 }
@@ -792,7 +792,7 @@ export class GloamPrivate {
     this.cfg.records.save([...this.cfg.records.load(), r]);
   }
 
-  /** Run on every app open: swap leftovers back as notes, graduations moved once their round ends. */
+  /** Run on every app open: swap leftovers, bids and batch payouts back as notes. */
   async finishPending(onStatus: Status = () => {}) {
     const core = this.launchCore;
     if (!core || !this.cfg.records) return { waiting: [], done: [], errors: [] };
