@@ -135,7 +135,7 @@ function Status({ keeper }: { keeper: "up" | "down" | "?" }) {
   const { priv } = useApp();
   return (
     <div className="side-status">
-      <span><span className="dot" style={{ background: keeper === "down" ? "var(--danger)" : undefined }} />Keeper {keeper === "up" ? "online" : keeper === "down" ? "offline" : "…"}</span>
+      {KEEPER_URL && <span><span className="dot" style={{ background: keeper === "down" ? "var(--danger)" : keeper === "?" ? "var(--mute)" : undefined }} />Keeper {keeper === "up" ? "online" : keeper === "down" ? "offline" : "checking"}</span>}
       <span><Icon.lock size={11} />{priv ? "Unlocked" : "Locked"}</span>
     </div>
   );
@@ -153,6 +153,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useSheet();
   const bar = useRef<HTMLElement>(null);
   const [keeper, setKeeper] = useState<"up" | "down" | "?">("?");
+  // someone opening a claim link, a payment request or a proof came for that: no welcome or checklist on top of it
+  const arrival = /^\/(claim|pay|proof)$/.test(path);
   const [welcome, setWelcome] = useState(() => {
     try {
       return localStorage.getItem("cloak.welcomed") !== "1";
@@ -162,11 +164,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   });
   // the checklist opens by itself once, after the welcome; later from the sidebar
   useEffect(() => {
-    if (!welcome && !guide.shown && !guide.hidden) {
+    if (!welcome && !guide.shown && !guide.hidden && !arrival) {
       setGuideOpen(true);
       guideShown();
     }
-  }, [welcome]);
+  }, [welcome, arrival]);
   useEffect(() => {
     if (priv) markDone("unlock");
   }, [priv]);
@@ -241,7 +243,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </footer>
       </main>
       {guideOpen && !welcome && <GettingStarted onClose={() => setGuideOpen(false)} />}
-      {welcome && <Welcome onClose={() => { setWelcome(false); try { localStorage.setItem("cloak.welcomed", "1"); } catch {} }} />}
+      {welcome && !arrival && <Welcome onClose={() => { setWelcome(false); try { localStorage.setItem("cloak.welcomed", "1"); } catch {} }} />}
     </div>
   );
 }

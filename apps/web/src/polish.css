@@ -124,14 +124,13 @@
 /* ───────────── landing: fluted glass behind the cloaked figure ───────────── */
 .uncloak-glass { position: absolute; inset: 0 4% 22%; z-index: -1; pointer-events: none; overflow: hidden;
   --fade: radial-gradient(58% 60% at 50% 42%, #000 35%, rgba(0, 0, 0, 0.5) 62%, transparent 82%);
-  -webkit-mask-image: var(--fade); mask-image: var(--fade); }
-.uncloak-glass i { position: absolute; inset: -6% -8%; filter: blur(26px) url(#reeded); opacity: 0.7;
-  background:
-    radial-gradient(24% 32% at 30% 34%, color-mix(in srgb, var(--brand-signal) 62%, transparent), transparent 74%),
-    radial-gradient(20% 28% at 72% 50%, color-mix(in srgb, var(--brand-seal) 40%, transparent), transparent 74%),
-    radial-gradient(26% 26% at 54% 20%, color-mix(in srgb, var(--brand-ink) 22%, transparent), transparent 70%),
-    radial-gradient(30% 34% at 44% 66%, color-mix(in srgb, var(--brand-signal) 34%, transparent), transparent 76%);
+  -webkit-mask-image: var(--fade), linear-gradient(transparent, #000 16%); mask-image: var(--fade), linear-gradient(transparent, #000 16%);
+  -webkit-mask-composite: source-in; mask-composite: intersect; }
+.uncloak-glass i { position: absolute; inset: -6% -8%; filter: blur(14px) url(#reeded); opacity: 0.6;
   animation: glass-drift 22s ease-in-out infinite alternate; }
+/* the light behind the glass is the Cloak mark itself, in the accent colour, far too big and out of focus */
+.uncloak-glass i::before { content: ""; position: absolute; inset: 0; background: var(--brand-signal);
+  -webkit-mask: url(/brand/cloak-mark.svg) 50% 12% / auto 150% no-repeat; mask: url(/brand/cloak-mark.svg) 50% 12% / auto 150% no-repeat; }
 /* the flutes themselves: a lit edge, a soft body, a dark seam */
 .uncloak-glass::after { content: ""; position: absolute; inset: 0;
   background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0, rgba(255, 255, 255, 0.02) 10px, transparent 26px, rgba(0, 0, 0, 0.16) 44px, rgba(0, 0, 0, 0.30) 46px); }
@@ -199,3 +198,62 @@
 .bid-lock .row.total .mono { font-size: 16px; }
 .bid-bar { height: 8px; border-radius: 999px; background: var(--line-strong); overflow: hidden; }
 .bid-bar i { display: block; height: 100%; background: var(--signal); border-radius: 999px; transition: width 0.3s var(--ease); }
+
+/* ───────────── review pass, Nov 11 ───────────── */
+/* a locked page says what it is and unlocks in place */
+.gate { display: grid; justify-items: center; gap: 14px; text-align: center; padding: 48px 24px; }
+.gate p { margin: 0; max-width: 46ch; color: var(--soft); }
+.gate .gate-ico { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--signal-soft); color: var(--signal); }
+/* error cards on claim and pay: the button no longer touches the text */
+.claim-card > h2 + p { margin: 8px 0 18px; }
+/* card headings keep their note on one line each on a phone */
+@media (max-width: 560px) { .card-head { flex-wrap: wrap; gap: 4px 12px; } .card-head h3 { white-space: nowrap; } }
+/* numbered steps on the agents page */
+.steps-label { margin: 18px 0 8px; font-weight: 500; color: var(--text); }
+/* page not found */
+.nf { display: grid; justify-items: center; gap: 10px; text-align: center; padding: 72px 20px; }
+.nf b { font: 300 clamp(64px, 12vw, 120px)/1 var(--font-num); letter-spacing: -0.04em; color: var(--mute); }
+.nf h3 { font-size: 22px; }
+.nf .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.card > p.small + .field { margin-top: 16px; }
+/* drop page: only the picture overlaps the banner. A long name used to ride up onto the banner art and become unreadable. */
+@media (min-width: 761px) { .dp-id { align-items: flex-start; } .dp-name, .dp-links { margin-top: 68px; } }
+/* unit labels beside a big figure were inheriting the figure's tight tracking and looked squashed */
+.market-price .mute, .stat .v .mute, .vcard .v .mute, .v > .small.mute { letter-spacing: 0; }
+/* launch page: on wide screens the chart fills the height of the trade column beside it instead of leaving a gap */
+@media (min-width: 981px) { .pchart svg { height: 330px; } }
+/* swap page: the pool's two facts sit side by side on a wide screen and stack on a phone, so neither wraps */
+.pool-facts { grid-template-columns: 1fr 1fr; }
+@media (max-width: 560px) { .pool-facts { grid-template-columns: 1fr; } }
+/* portfolio: the five actions share one row on a wide screen */
+@media (min-width: 1181px) { .wallet-actions { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } }
+
+/* ───────────── payment links: your links ───────────── */
+.your-links { margin-top: 18px; }
+.yl-filters { display: inline-flex; flex-wrap: wrap; margin-bottom: 12px; }
+.yl-filters .tab { flex: none; padding: 0 14px; gap: 6px; }
+.yl-list { display: grid; }
+.yl-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
+.yl-ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--signal-soft); color: var(--signal); }
+.yl-row.done .yl-ico, .yl-row.req .yl-ico { background: var(--card-2); color: var(--mute); }
+.yl-row.warn .yl-ico { background: var(--seal-soft); color: var(--seal); }
+.yl-row.done .yl-top b { color: var(--soft); }
+.yl-main { display: grid; gap: 5px; min-width: 0; }
+.yl-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.yl-top b { font-weight: 500; font-size: 15.5px; overflow-wrap: anywhere; }
+.yl-main .soft { color: var(--soft); }
+.yl-shares { display: flex; gap: 3px; margin: 2px 0; max-width: 360px; }
+.yl-shares i { flex: 1; height: 6px; border-radius: 3px; background: var(--card-2); }
+.yl-shares i.on { background: var(--signal); }
+.yl-pass { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; border-radius: 12px; background: var(--card); width: fit-content; max-width: 100%; }
+.yl-pass b { font-weight: 500; overflow-wrap: anywhere; }
+.yl-pass .btn-text { padding: 0; min-height: 0; }
+.yl-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: 6px; }
+.yl-row .claims { list-style: none; margin: 2px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 3px; overflow-wrap: anywhere; }
+.yl-foot { display: grid; gap: 10px; padding-top: 14px; margin-top: 4px; border-top: 1px solid var(--line); }
+@media (max-width: 560px) { .yl-row { grid-template-columns: minmax(0, 1fr); } .yl-ico { display: none; } }
+/* claim page: the badge and the amount say what state the link is in */
+.claim-badge.ok { background: var(--signal-soft); color: var(--signal); }
+.claim-badge.gone { background: var(--card-2); color: var(--mute); }
+.claim-badge.wait { background: var(--seal-soft); color: var(--seal); }
+.claim-amount.gone { color: var(--mute); text-decoration: line-through; text-decoration-thickness: 2px; }

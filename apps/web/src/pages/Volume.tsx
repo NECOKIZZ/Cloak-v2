@@ -175,9 +175,9 @@ export function Volume() {
           </div>
           <div className="stats" style={{ marginTop: 18 }}>
             <Card k="Shielded (all time)" v={hype(s.shielded, 4)} sub={`${hype(s.withdrawn, 4)} HYPE withdrawn`} />
-            <Card k="Private swap volume" v={hype(s.swapVolume, 4)} sub={`${s.swaps} private swaps`} />
-            <Card k="Batch volume" v={hype(s.batchVolume, 4)} sub={`${s.batchOrders} sealed orders in ${s.batchRounds} rounds`} />
-            <Card k="Sealed-bid deposits" v={hype(s.bidDeposits, 4)} sub={`${s.bids} sealed bids across ${s.launches} launches · ${hype(s.raised, 4)} HYPE raised`} />
+            <Card k="Private swap volume" v={hype(s.swapVolume, 4)} sub={`${s.swaps} private swap${s.swaps === 1 ? "" : "s"}`} />
+            <Card k="Batch volume" v={hype(s.batchVolume, 4)} sub={`${s.batchOrders} sealed order${s.batchOrders === 1 ? "" : "s"} in ${s.batchRounds} round${s.batchRounds === 1 ? "" : "s"}`} />
+            <Card k="Sealed-bid deposits" v={hype(s.bidDeposits, 4)} sub={`${s.bids} sealed bid${s.bids === 1 ? "" : "s"} across ${s.launches} launch${s.launches === 1 ? "" : "es"} · ${hype(s.raised, 4)} HYPE raised`} />
           </div>
           {(s.tokensLive !== undefined || s.drops !== undefined) && (
             <div className="stats" style={{ marginTop: 18, gridTemplateColumns: "repeat(2, 1fr)" }}>

@@ -8,6 +8,7 @@ import { Link } from "../router";
 import { friendly } from "../errors";
 import { Icon } from "../ui";
 import { QR } from "../qr";
+import { Gate } from "../gate";
 import { usePrivateBalances } from "../balances";
 import { useMarkets } from "./markets";
 
@@ -67,14 +68,19 @@ export function ProveFunds() {
 
   const link = proof ? `${location.origin}/proof#${encodeFundsProof(proof)}` : "";
   const back = <Link to="/app" className="back-btn"><span aria-hidden>←</span>Back to Portfolio</Link>;
-  if (!priv) return <>{back}<div className="empty">Unlock your private account on the Portfolio first.</div></>;
+  if (!priv) return <>{back}<div className="page-head"><div><h1>Prove what you hold</h1><p>Show you hold at least an amount, without showing your balance or your wallet.</p></div></div><Gate what="prove what you hold" /></>;
   return (
     <>
       {back}
       <div className="page-head"><div><h1>Prove what you hold</h1><p>Show you hold at least an amount, without showing your balance or your wallet.</p></div></div>
       <div className="grid">
         <div className="card">
-          {!proof ? (
+          {!proof && assets.length === 0 ? (
+            <div className="empty" style={{ padding: "36px 20px" }}>
+              <p style={{ margin: "0 0 14px" }}>You have no private balance to prove yet.</p>
+              <Link to="/app/portfolio/shield" className="btn btn-ink btn-sm">Shield first</Link>
+            </div>
+          ) : !proof ? (
             <>
               <div className="field"><label><span>Token</span></label>
                 <select className="input" value={cur?.key ?? ""} onChange={(e) => setAsset(e.target.value)}>

@@ -4,6 +4,7 @@ import { ASSETS, GLOAM, RELAYER_URL, chain } from "./config";
 import { gloamProvers } from "./gloam";
 import type { Priv } from "./state";
 import { publicClient } from "./wallet";
+import { Hint } from "./errors";
 
 export const TOKEN_DECIMALS: Record<LinkToken, number> = { HYPE: 18, USDC: 6 };
 
@@ -17,7 +18,7 @@ export async function openLinkAccount(link: ClaimLink, passcode?: string): Promi
 
 /** A claim link's account: both vaults, spending what it received directly, through the relay. */
 async function gloamLinkAccount(keys: Awaited<ReturnType<typeof gloamLinkKeys>>): Promise<GloamPrivate> {
-  if (!GLOAM || !RELAYER_URL) throw new Error("Payment links aren't available on this deployment yet.");
+  if (!GLOAM || !RELAYER_URL) throw new Hint("Payment links aren't available on this deployment yet.");
   const p = new GloamPrivate(
     {
       publicClient,
@@ -49,7 +50,7 @@ export async function newLinkTarget(secret: Uint8Array, passcode?: string): Prom
 export function tokenOf(p: Priv, t: LinkToken): Address {
   if (t === "HYPE") return p.hypeMarket.token;
   const a = ASSETS.find((x) => x.symbol.toUpperCase() === "USDC");
-  if (!a) throw new Error("USDC isn't available on this deployment.");
+  if (!a) throw new Hint("USDC isn't available on this deployment.");
   return a.token;
 }
 
@@ -176,14 +177,21 @@ async function aesKey(keys: StoreKeys) {
 }
 const fingerprint = (keys: StoreKeys) => keccak256(concat([toBytes("cloak-links-id-v1"), keys.encPub])).slice(2, 18);
 
+const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const b64 = (u: Uint8Array) => { let s = ""; for (const x of u) s += String.fromCharCode(x); return btoa(s); };
+
+async function decryptList(keys: StoreKeys, raw: string): Promise<LinkRecord[]> {
+  const { iv, ct } = JSON.parse(raw) as { iv: string; ct: string };
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, await aesKey(keys), unb64(ct));
+  const list = JSON.parse(new TextDecoder().decode(pt));
+  if (!Array.isArray(list)) throw new Error("bad link store");
+  return list;
+}
+
 export async function loadLinks(keys: StoreKeys): Promise<LinkRecord[]> {
   try {
     const raw = localStorage.getItem(storeKey(fingerprint(keys)));
-    if (!raw) return [];
-    const { iv, ct } = JSON.parse(raw) as { iv: string; ct: string };
-    const b = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b(iv) }, await aesKey(keys), b(ct));
-    return JSON.parse(new TextDecoder().decode(pt));
+    return raw ? await decryptList(keys, raw) : [];
   } catch {
     return [];
   }
@@ -192,20 +200,81 @@ export async function loadLinks(keys: StoreKeys): Promise<LinkRecord[]> {
 export async function saveLinks(keys: StoreKeys, list: LinkRecord[]) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(keys), new TextEncoder().encode(JSON.stringify(list))));
-  const s = (u: Uint8Array) => btoa(String.fromCharCode(...u));
   try {
-    localStorage.setItem(storeKey(fingerprint(keys)), JSON.stringify({ iv: s(iv), ct: s(ct) }));
-  } catch {}
+    localStorage.setItem(storeKey(fingerprint(keys)), JSON.stringify({ iv: b64(iv), ct: b64(ct) }));
+  } catch {
+    throw new Hint("This browser wouldn't save the link list (its storage is full, or blocked in private mode). Free some space or use a normal window, then try again.");
+  }
 }
 
-export async function addLink(keys: StoreKeys, rec: LinkRecord) {
-  const list = await loadLinks(keys);
-  await saveLinks(keys, [rec, ...list.filter((x) => x.id !== rec.id)].slice(0, 200));
+// Every change to the list is read, changed and written as one step, one after another. Two changes at once (a new
+// link being saved while an older one is being re-checked) used to be able to write over each other and lose a link.
+let queue: Promise<unknown> = Promise.resolve();
+function change(keys: StoreKeys, f: (list: LinkRecord[]) => LinkRecord[]): Promise<void> {
+  const run = async () => {
+    const k = storeKey(fingerprint(keys));
+    let list: LinkRecord[] = [];
+    const raw = (() => { try { return localStorage.getItem(k); } catch { return null; } })();
+    if (raw) {
+      try {
+        list = await decryptList(keys, raw);
+      } catch {
+        // a list that can't be read is set aside, never written over
+        try { localStorage.setItem(`${k}.unreadable.${Date.now()}`, raw); } catch {}
+      }
+    }
+    await saveLinks(keys, f(list));
+  };
+  const next = queue.then(run, run);
+  queue = next.catch(() => {});
+  return next;
 }
 
-export async function updateLink(keys: StoreKeys, id: string, patch: Partial<SentLink>) {
+/** How many links are kept. Old finished ones drop off the end first; a link with money waiting is never dropped. */
+const KEEP = 500;
+const isLive = (x: LinkRecord) => x.kind === "claim" && !["claimed", "back", "unfunded"].includes(x.status ?? "");
+
+export function addLink(keys: StoreKeys, rec: LinkRecord) {
+  return change(keys, (list) => {
+    const all = [rec, ...list.filter((x) => x.id !== rec.id)];
+    if (all.length <= KEEP) return all;
+    let drop = all.length - KEEP;
+    return all.reverse().filter((x) => !(drop > 0 && !isLive(x) && drop--)).reverse();
+  });
+}
+
+export function updateLink(keys: StoreKeys, id: string, patch: Partial<SentLink>) {
+  return change(keys, (list) => list.map((x) => (x.id === id ? ({ ...x, ...patch } as LinkRecord) : x)));
+}
+
+export function removeLink(keys: StoreKeys, id: string) {
+  return change(keys, (list) => list.filter((x) => x.id !== id));
+}
+
+/** The list as a backup file's text: still encrypted, readable only by this private account. */
+export async function exportLinks(keys: StoreKeys): Promise<string> {
   const list = await loadLinks(keys);
-  await saveLinks(keys, list.map((x) => (x.id === id ? ({ ...x, ...patch } as LinkRecord) : x)));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(keys), new TextEncoder().encode(JSON.stringify(list))));
+  return JSON.stringify({ cloakLinks: 1, iv: b64(iv), ct: b64(ct) });
+}
+
+/** Adds a backup's links to the list. Returns how many were new. */
+export async function importLinks(keys: StoreKeys, text: string): Promise<number> {
+  let got: LinkRecord[];
+  try {
+    got = await decryptList(keys, text);
+  } catch {
+    throw new Hint("That file isn't a backup of this account's links. A backup only opens with the wallet that made it.");
+  }
+  let added = 0;
+  await change(keys, (list) => {
+    const have = new Set(list.map((x) => x.id));
+    const fresh = got.filter((x) => x && typeof x.id === "string" && typeof x.url === "string" && !have.has(x.id));
+    added = fresh.length;
+    return [...list, ...fresh].sort((a, b) => b.created - a.created);
+  });
+  return added;
 }
 
 export const newId = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");

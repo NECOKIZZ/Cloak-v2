@@ -39,6 +39,7 @@ export function Claim() {
   const { wallet, priv, unlock, unlocking } = useApp();
   const [link, setLink] = useState<ClaimLink | null>(null);
   const [bad, setBad] = useState("");
+  const [off, setOff] = useState("");
   const [code, setCode] = useState("");
   const [acct, setAcct] = useState<Priv | null>(null);
   const [bals, setBals] = useState<Record<LinkToken, bigint> | null>(null);
@@ -89,6 +90,8 @@ export function Claim() {
       setBusy("");
       if (e instanceof WrongPasscodeError) return setErr(e.message);
       if (l.locked && /passcode|answer/i.test(String((e as Error)?.message))) return setErr((e as Error).message);
+      // not a network hiccup: this site has no payment links, so "try again" would be a lie
+      if (e instanceof Hint) return setOff(e.message);
       return setNetErr(`${friendly(e)}`);
     }
     setAcct(a);
@@ -185,6 +188,15 @@ export function Claim() {
       </div></div>
     );
   }
+  if (off) {
+    return (
+      <div className="claim-wrap"><div className="card claim-card">
+        <h2>This link can't be opened here</h2>
+        <p className="mute">{off} The money is safe in the link: open it on the Cloak site it was made on.</p>
+        <Link to="/app" className="btn btn-ghost">Open Cloak</Link>
+      </div></div>
+    );
+  }
   if (!link) return null;
   const held = bals ? (["HYPE", "USDC"] as LinkToken[]).filter((t) => bals[t] > 0n) : [];
   // the sender's stated amount, when the link holds at least that (the rest is the claim fee they covered)
@@ -201,9 +213,13 @@ export function Claim() {
   return (
     <div className="claim-wrap">
       <div className="card claim-card">
-        <div className="claim-badge"><Icon.lock size={14} />Private payment</div>
-        <p className="mute" style={{ margin: "18px 0 4px" }}>{link.shares ? `${link.from ?? "Someone"} dropped a red envelope. One share is` : link.from ? `${link.from} sent you` : "Someone sent you"}</p>
-        <div className="claim-amount">
+        {done ? <div className="claim-badge ok"><Icon.check size={14} />Claimed</div>
+          : empty?.kind === "claimed" ? <div className="claim-badge gone">{link.shares ? "All shares claimed" : "Already claimed"}</div>
+          : empty?.kind === "unfunded" ? <div className="claim-badge wait"><span className="dot live" />On its way</div>
+          : link.locked && !acct ? <div className="claim-badge"><Icon.lock size={14} />{link.hint ? "Locked with a riddle" : "Locked with a passcode"}</div>
+          : <div className="claim-badge"><Icon.lock size={14} />Private payment</div>}
+        <p className="mute" style={{ margin: "18px 0 4px" }}>{done ? "You claimed" : empty?.kind === "claimed" && !link.shares ? "This link held" : link.shares ? `${link.from ?? "Someone"} dropped a red envelope. One share is` : link.from ? `${link.from} sent you` : "Someone sent you"}</p>
+        <div className={`claim-amount ${!done && empty?.kind === "claimed" ? "gone" : ""}`}>
           {done ? done.map((d) => <div key={d.t}>{fmt(d.t, d.amount)} <span>{d.t}</span></div>)
             : bals && held.length ? held.map((t) => <div key={t}>{fmt(t, show(t))} <span>{t}</span></div>)
             : <div>{link.amount ?? "?"} <span>{link.token ?? ""}</span></div>}
