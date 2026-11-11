@@ -8,6 +8,7 @@ import { Link, useRoute } from "../router";
 import { useApp } from "../state";
 import { friendly } from "../errors";
 import { Icon, More, TokenIcon } from "../ui";
+import { TokenSheet, type SheetToken } from "../tokenPicker";
 import { quoteRoute, useFeePct, useMarkets, useTradeFeePct, vaultOf, type Market } from "./markets";
 import { isHidden } from "../hidden";
 import { usePrivateBalances } from "../balances";
@@ -118,27 +119,14 @@ function useRoundCrowd(batcher: Address | undefined, token: Address | undefined)
 /** Launch and outside tokens show their own image; HYPE and USDC their built-in marks. */
 const iconToken = (m: Market | null) => (m && (m.kind === "launch" || m.kind === "eco") ? m.token : undefined);
 
-function TokenSel({ label, token, onPick, markets, held }: { label: string; token?: string; onPick?: (m: Market) => void; markets?: Market[]; hypeSide?: boolean; held?: Record<string, bigint> }) {
-  const [open, setOpen] = useState(false);
+/** The token button on a swap side: opens the search sheet. */
+function TokenSel({ label, token, onOpen }: { label: string; token?: string; onOpen: () => void }) {
   return (
-    <div style={{ position: "relative" }}>
-      <button className="token-sel" onClick={() => onPick && setOpen(!open)} style={!onPick ? { cursor: "default" } : undefined}>
-        <TokenIcon symbol={label} token={token} />
-        {label}
-        {onPick && <Icon.chev size={14} />}
-      </button>
-      {open && markets && (
-        <div className="menu">
-          {/* test tokens stay off the list, unless you hold some: then you can always swap out */}
-          {markets.filter((m) => !isHidden(m.token) || m.token.toLowerCase() === token?.toLowerCase() || (held?.[m.token] ?? 0n) > 0n).map((m) => (
-            <button key={m.token} onClick={() => { onPick?.(m); setOpen(false); }}>
-              <TokenIcon symbol={m.symbol} token={iconToken(m)} />
-              <span style={{ textAlign: "left" }}>{m.symbol}<div className="xs mute">{m.name}</div></span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <button className="token-sel" onClick={onOpen} aria-haspopup="dialog">
+      <TokenIcon symbol={label} token={token} />
+      {label}
+      <Icon.chev size={14} />
+    </button>
   );
 }
 
@@ -278,14 +266,39 @@ export function Trade() {
   else if (mode === "batch" && split.sizes.length === 0) cta = { label: "Amount too small", disabled: true };
   else cta = { label: mode === "batch" ? `Place ${split.sizes.length} sealed order${split.sizes.length > 1 ? "s" : ""}` : "Swap privately", act: swap };
 
-  // the token traded (any market but the one paid with), and what it's paid with (HYPE or USDC)
-  const marketSel = market && markets ? <TokenSel label={market.symbol} token={iconToken(market)} markets={markets.filter((m) => m.token !== base?.token)} onPick={(m) => { setMarket(m); setRes({}); }} held={bals} /> : null;
-  const hypeChoice = { token: "HYPE" as Address, symbol: "HYPE", name: "Hyperliquid" } as Market;
-  const baseSel = bases.length ? (
-    <TokenSel label={base?.symbol ?? "HYPE"} markets={[hypeChoice, ...bases.filter((m) => m.token !== market?.token)]} onPick={(m) => { setBase(m.token === hypeChoice.token ? null : m); setAmt(""); setRes({}); }} held={bals} />
-  ) : (
-    <TokenSel label="HYPE" hypeSide />
-  );
+  // Either side takes any token: HYPE, USDC and other assets (once the router is live), and every launch token. One
+  // side is always HYPE or an asset, so picking two launch tokens puts HYPE back on the other side.
+  const [sheet, setSheet] = useState<"pay" | "receive" | null>(null);
+  const HYPE = "HYPE";
+  const keyOf = (m: Market | null) => (m ? m.token : HYPE);
+  const byKey = (k: string) => (k === HYPE ? null : markets?.find((m) => m.token === k) ?? null);
+  const isMain = (m: Market | null) => !m || m.kind === "asset";
+  const listed = (markets ?? []).filter((m) => !isHidden(m.token) || m.token === market?.token || (bals[m.token] ?? 0n) > 0n);
+  const sheetTokens: SheetToken[] = [
+    { key: HYPE, symbol: "HYPE", name: "Hyperliquid", bal: priv && balLoaded ? hype(bals.HYPE ?? 0n) : undefined },
+    ...[...listed].sort((a, b) => Number(b.kind === "asset") - Number(a.kind === "asset")).map((m) => ({
+      key: m.token, symbol: m.symbol, name: m.name, iconToken: iconToken(m), tag: m.kind === "launch" ? "Launch" : undefined,
+      bal: priv && balLoaded ? fmtOf(m, bals[m.token] ?? 0n) : undefined,
+    })),
+  ];
+  function choose(slot: "pay" | "receive", k: string) {
+    let pay = slot === "pay" ? byKey(k) : from;
+    let rec = slot === "receive" ? byKey(k) : to;
+    // the same token on both sides: the sides swap
+    if (keyOf(pay) === keyOf(rec)) slot === "pay" ? (rec = from) : (pay = to);
+    // two launch tokens (or, before the router, anything but HYPE on the other side): HYPE on the other side
+    const ok = GLOAM?.router ? isMain(pay) || isMain(rec) : !pay !== !rec;
+    if (!ok || keyOf(pay) === keyOf(rec)) slot === "pay" ? (rec = null) : (pay = null);
+    if (!pay && !rec) return;
+    if (pay && !isMain(pay)) (setSide("sell"), setMarket(pay), setBase(rec));
+    else if (rec && !isMain(rec)) (setSide("buy"), setMarket(rec), setBase(pay));
+    else if (!rec) (setSide("sell"), setMarket(pay), setBase(null));
+    else (setSide("buy"), setMarket(rec), setBase(pay));
+    setAmt("");
+    setRes({});
+  }
+  const paySel = <TokenSel label={fromSym} token={iconToken(from)} onOpen={() => setSheet("pay")} />;
+  const receiveSel = <TokenSel label={toSym} token={iconToken(to)} onOpen={() => setSheet("receive")} />;
 
   return (
     <>
@@ -297,6 +310,7 @@ export function Trade() {
       </div>
       {err && <div className="err">{err}</div>}
       {markets?.length === 0 && <div className="empty"><h3>No private markets yet</h3>Private trading opens for a launch once it settles. <Link to="/app/launches" className="link">See launches</Link></div>}
+      {sheet && <TokenSheet title={sheet === "pay" ? "You pay with" : "You receive"} tokens={sheetTokens} value={keyOf(sheet === "pay" ? from : to)} quick={[HYPE, ...bases.map((m) => m.token)]} onPick={(k) => choose(sheet, k)} onClose={() => setSheet(null)} />}
       {market && (
         <div className="swap-wrap">
           <div>
@@ -310,7 +324,7 @@ export function Trade() {
                 }}>Balance {fmtIn(fromBal)}</span>}</div>
                 <div className="amt">
                   <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" aria-label="Amount" />
-                  {side === "buy" ? baseSel : marketSel}
+                  {paySel}
                 </div>
               </div>
               <button className="flip" aria-label="Switch direction" onClick={() => { setSide(side === "buy" ? "sell" : "buy"); setAmt(""); setRes({}); }}><Icon.arrowDown /></button>
@@ -318,7 +332,7 @@ export function Trade() {
                 <div className="k"><span>You receive</span>{priv && !bal && <Skel w="9ch" />}{bal && <span>Balance {fmtOut(bal.to)}</span>}</div>
                 <div className="amt">
                   <input value={q ? fmtOut(q).replace(/,/g, "") : ""} readOnly placeholder="0" aria-label="Estimated output" />
-                  {side === "buy" ? marketSel : baseSel}
+                  {receiveSel}
                 </div>
               </div>
               {base && <div className="summary small" style={{ margin: "0 0 12px" }}>Routed {fromSym} to HYPE to {toSym} in one private swap, through two pools.</div>}

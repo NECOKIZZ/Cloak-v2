@@ -114,8 +114,8 @@ function Demos() {
   );
 }
 
-// An experiment, shown only with ?glass in the address: a pane of fluted ("fractal") glass behind the cloaked figure.
-const GLASS = typeof location !== "undefined" && new URLSearchParams(location.search).has("glass");
+// A pane of fluted ("fractal") glass behind the cloaked figure, bending two soft lights. ?noglass hides it.
+const GLASS = typeof location === "undefined" || !new URLSearchParams(location.search).has("noglass");
 const RIB = 46; // px, one flute
 // each flute's displacement map: red ramps left to right, so the light behind bends across the flute and jumps at its edge
 const RIB_MAP = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${RIB}" height="${RIB}"><defs><linearGradient id="g"><stop offset="0" stop-color="rgb(0,128,0)"/><stop offset="1" stop-color="rgb(255,128,0)"/></linearGradient></defs><rect width="${RIB}" height="${RIB}" fill="url(#g)"/></svg>`)}`;

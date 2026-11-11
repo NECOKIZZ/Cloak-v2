@@ -121,19 +121,63 @@
   .market-price { font-size: 32px; }
 }
 
-/* ───────────── landing experiment (?glass): fluted glass behind the cloaked figure ───────────── */
+/* ───────────── landing: fluted glass behind the cloaked figure ───────────── */
 .uncloak-glass { position: absolute; inset: 0 4% 22%; z-index: -1; pointer-events: none; overflow: hidden;
   --fade: radial-gradient(58% 60% at 50% 42%, #000 35%, rgba(0, 0, 0, 0.5) 62%, transparent 82%);
   -webkit-mask-image: var(--fade); mask-image: var(--fade); }
-.uncloak-glass i { position: absolute; inset: -6% -8%; filter: url(#reeded);
+.uncloak-glass i { position: absolute; inset: -6% -8%; filter: blur(26px) url(#reeded); opacity: 0.7;
   background:
-    radial-gradient(22% 30% at 30% 34%, color-mix(in srgb, var(--brand-signal) 85%, transparent), transparent 72%),
-    radial-gradient(20% 28% at 72% 50%, color-mix(in srgb, var(--brand-seal) 70%, transparent), transparent 72%),
-    radial-gradient(26% 26% at 54% 20%, color-mix(in srgb, var(--brand-ink) 30%, transparent), transparent 70%),
-    radial-gradient(30% 34% at 44% 66%, color-mix(in srgb, var(--brand-signal) 45%, transparent), transparent 74%);
+    radial-gradient(24% 32% at 30% 34%, color-mix(in srgb, var(--brand-signal) 62%, transparent), transparent 74%),
+    radial-gradient(20% 28% at 72% 50%, color-mix(in srgb, var(--brand-seal) 40%, transparent), transparent 74%),
+    radial-gradient(26% 26% at 54% 20%, color-mix(in srgb, var(--brand-ink) 22%, transparent), transparent 70%),
+    radial-gradient(30% 34% at 44% 66%, color-mix(in srgb, var(--brand-signal) 34%, transparent), transparent 76%);
   animation: glass-drift 22s ease-in-out infinite alternate; }
 /* the flutes themselves: a lit edge, a soft body, a dark seam */
 .uncloak-glass::after { content: ""; position: absolute; inset: 0;
   background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0, rgba(255, 255, 255, 0.02) 10px, transparent 26px, rgba(0, 0, 0, 0.16) 44px, rgba(0, 0, 0, 0.30) 46px); }
 @keyframes glass-drift { from { transform: translate3d(-3%, 1%, 0) scale(1.02); } to { transform: translate3d(3%, -2%, 0) scale(1.08); } }
 @media (prefers-reduced-motion: reduce) { .uncloak-glass i { animation: none; } }
+
+/* ───────────── token search sheet (swap, bridge) ───────────── */
+.tsheet { width: min(440px, 100%); padding: 18px 14px 10px; border: 1px solid var(--line); border-radius: 28px; display: flex; flex-direction: column; max-height: min(640px, calc(100svh - 40px)); }
+.tsheet-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 12px; }
+.tsheet-head h3 { font-size: 18px; letter-spacing: -0.02em; }
+.tsheet-head .icon-btn { font-size: 22px; line-height: 1; }
+.tsheet .tsearch-wrap { margin: 0 4px; }
+.tsheet-quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 4px 0; }
+.tsheet-quick .token-sel { height: 36px; padding: 0 12px 0 6px; font-size: 13.5px; box-shadow: none; }
+.tsheet-quick .token-sel.on { border-color: var(--signal-line); background: var(--signal-soft); }
+.tsheet-list { margin-top: 10px; padding-top: 6px; border-top: 1px solid var(--line); overflow-y: auto; display: grid; gap: 2px; align-content: start; flex: 1; min-height: 120px; }
+.tsheet-list .asset-row { cursor: pointer; border-radius: 16px; padding: 10px 12px; }
+.tsheet-list .asset-row.on { background: var(--signal-soft); }
+.tsheet-list .asset-row.off { opacity: 0.45; cursor: not-allowed; }
+.tsheet-list .asset-row .nm b { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.tsheet-list .asset-row .nm .chip { font-size: 10.5px; padding: 2px 7px; }
+.tsheet-list .asset-row .amt .mono { font-size: 14.5px; }
+@media (max-width: 560px) { .modal-bg:has(.tsheet) { align-items: end; padding: 0; } .tsheet { width: 100%; border-radius: 28px 28px 0 0; max-height: 86svh; } }
+
+/* ───────────── bridge: the swap card's shape ───────────── */
+.bridge { max-width: 468px; }
+.flip.still { cursor: default; }
+.flip.still:hover { transform: none; color: var(--text); }
+.token-sel.two { height: 46px; padding-right: 12px; }
+.token-sel.two > span { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+.token-sel.two small { font-size: 10.5px; font-weight: 400; color: var(--mute); }
+.bridge-cta { display: grid; gap: 8px; margin-top: 10px; }
+.bridge-cta .btn { width: 100%; }
+.bridge .summary { margin-bottom: 0; }
+.chip.pick { cursor: pointer; padding: 6px 12px; font: 500 12.5px var(--font-body); border: 1px solid transparent; }
+.chip.pick:hover { color: var(--text); }
+.chip.pick.on { background: var(--signal-soft); color: var(--signal); border-color: var(--signal-line); }
+
+/* ───────────── bidding ───────────── */
+.input-unit { position: relative; }
+.input-unit .input { height: 54px; padding-right: 76px; font-size: 20px; font-weight: 400; letter-spacing: -0.02em; border-radius: 14px; }
+.input-unit > span { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font: 500 11px var(--font-body); letter-spacing: 0.08em; color: var(--mute); pointer-events: none; max-width: 60px; overflow: hidden; text-overflow: ellipsis; }
+.meter .k { font: 500 10.5px/1.3 var(--font-body); letter-spacing: 0.09em; text-transform: uppercase; color: var(--mute); }
+.meter .v { font-size: 26px; font-weight: 300; margin-top: 6px; }
+.buckets { gap: 8px; }
+.bucket { height: 38px; flex: 1; min-width: 44px; padding: 0 6px; font: 500 14px var(--font-num); border: 1px solid var(--line); }
+.bucket.on { border-color: transparent; }
+.card .btn-lg.btn-block { border-radius: 18px; min-height: 54px; }
+.card > .more-list { margin-top: 6px; }

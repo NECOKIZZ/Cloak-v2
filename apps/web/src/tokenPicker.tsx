@@ -62,3 +62,55 @@ export function TokenPicker<K extends string>({ options, value, onChange, search
     </div>
   );
 }
+
+/** One token in the search sheet. `key` is "HYPE" or the token's address; `bal` is the private balance, if any. */
+export type SheetToken = { key: string; symbol: string; name: string; iconToken?: Address; bal?: string; tag?: string; off?: string };
+
+/**
+ * The token search sheet for swapping and bridging: a search box (name, symbol or contract address), quick picks for
+ * the main assets, then every token with its private balance. Opens over the page, closes on Escape or a click outside.
+ */
+export function TokenSheet({ title, tokens, value, quick = [], filters = [], placeholder = "Search name, symbol or address", onPick, onClose }: { title: string; tokens: SheetToken[]; value?: string; quick?: string[]; /** words to narrow the list with one tap (networks, on the bridge) */ filters?: string[]; placeholder?: string; onPick: (key: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, []);
+  const s = q.trim().toLowerCase().replace(/^\$/, "");
+  const shown = tokens.filter((t) => !s || t.symbol.toLowerCase().includes(s) || t.name.toLowerCase().includes(s) || (t.key.startsWith("0x") && t.key.toLowerCase().includes(s)));
+  const quicks = quick.map((k) => tokens.find((t) => t.key === k)).filter((t): t is SheetToken => !!t);
+  const pick = (t: SheetToken) => !t.off && (onPick(t.key), onClose());
+  return (
+    <div className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal tsheet" role="dialog" aria-label={title}>
+        <div className="tsheet-head"><h3>{title}</h3><button className="icon-btn" onClick={onClose} aria-label="Close">×</button></div>
+        <div className="tsearch-wrap"><Icon.search /><input className="input" autoFocus placeholder={placeholder} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown.length === 1 && pick(shown[0])} aria-label="Search tokens" /></div>
+        {!s && quicks.length > 1 && (
+          <div className="tsheet-quick">
+            {quicks.map((t) => (
+              <button key={t.key} className={`token-sel ${t.key === value ? "on" : ""}`} disabled={!!t.off} onClick={() => pick(t)}><TokenIcon symbol={t.symbol} token={t.iconToken} size={22} />{t.symbol}</button>
+            ))}
+          </div>
+        )}
+        {filters.length > 1 && (
+          <div className="tsheet-quick">
+            {filters.map((f) => (
+              <button key={f} className={`chip pick ${s === f.toLowerCase() ? "on" : ""}`} onClick={() => setQ(s === f.toLowerCase() ? "" : f)}>{f}</button>
+            ))}
+          </div>
+        )}
+        <div className="tsheet-list" role="listbox">
+          {shown.length === 0 && <div className="small mute" style={{ padding: "28px 12px", textAlign: "center" }}>No token matches "{q.trim()}".</div>}
+          {shown.map((t) => (
+            <button type="button" role="option" aria-selected={t.key === value} aria-disabled={!!t.off} key={t.key} className={`asset-row ${t.key === value ? "on" : ""} ${t.off ? "off" : ""}`} onClick={() => pick(t)}>
+              <TokenIcon symbol={t.symbol} token={t.iconToken} size={36} />
+              <div className="nm"><b>{t.symbol}{t.tag && <span className="chip">{t.tag}</span>}</b><span className="xs mute">{t.off ?? (t.key.startsWith("0x") ? `${t.name} · ${t.key.slice(0, 6)}…${t.key.slice(-4)}` : t.name)}</span></div>
+              {t.bal !== undefined && <div className="amt"><span className="mono">{t.bal}</span></div>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

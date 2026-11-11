@@ -9,6 +9,7 @@ import { friendly, Hint } from "./errors";
 import { markDone } from "./guide";
 import { compressImage, encodeMeta, loadAllMeta } from "./tokenMeta";
 import { Who } from "./who";
+import { More } from "./ui";
 
 const WAD = 10n ** 18n;
 const errMsg = friendly;
@@ -220,18 +221,18 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
           <span>Highest price you'd pay per token</span>
           <span>from {hype(s.minPrice)} HYPE</span>
         </label>
-        <input className="input" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} inputMode="decimal" />
+        <div className="input-unit"><input className="input" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} inputMode="decimal" aria-label="Highest price per token, in HYPE" /><span>HYPE</span></div>
       </div>
       <div className="field">
         <label>
           <span>How many {s.tokenSymbol}</span>
           <span>{tokens(s.saleSupply)} for sale</span>
         </label>
-        <input className="input" value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" />
+        <div className="input-unit"><input className="input" value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" aria-label={`How many ${s.tokenSymbol}`} /><span>{s.tokenSymbol}</span></div>
       </div>
       <div className="field">
         <label>
-          <span>Amount to lock</span>
+          <span>Amount to lock, in HYPE</span>
           <span>extra comes back</span>
         </label>
         <div className="buckets">
@@ -254,14 +255,17 @@ export function BidCard({ s, wallet, onDone }: { s: AuctionState; wallet: Wallet
         {bidParts > 1 && <div className="row"><span className="mute">Parts</span><span>{bidParts} sealed bids, same price</span></div>}
       </div>
       {problem && <div className="hint">{problem}</div>}
-      <button className="btn btn-ink btn-block" disabled={!!wallet && (!!problem || busy)} onClick={wallet ? submit : () => connect()}>
+      <button className="btn btn-ink btn-lg btn-block" disabled={!!wallet && (!!problem || busy)} onClick={wallet ? submit : () => connect()}>
         {!wallet ? "Connect a wallet to bid" : busy ? status || "Sealing your bid…" : from === "private" ? "Seal bid from private balance" : "Seal bid"}
       </button>
       {err && <div className="err">{err}</div>}
       {ok && <div className="okmsg">Bid sealed. You can close this tab, it opens by itself. <Tx hash={ok} /></div>}
-      <p className="note">
-        Nobody sees your price or amount until bidding closes. Every winner pays the same final price, which can be lower than your max, and whatever you locked beyond that comes back to you.
-      </p>
+      <p className="note">Sealed until bidding closes. Everyone pays one final price, never more than your max.</p>
+      <div className="more-list">
+        <More title="How sealed bidding works">
+          Nobody sees your price or amount until bidding closes. Every winner pays the same final price, which can be lower than your max, and whatever you locked beyond that comes back to you.
+        </More>
+      </div>
     </div>
   );
 }
