@@ -1,0 +1,25 @@
+{
+  "name": "elysium-mainnet-gloak",
+  "chainId": 99901,
+  "rpcUrl": "https://rpc.elysium.kinetiq.xyz",
+  "factoryRecord": "deployments/elysium-mainnet-v2-factory.json",
+  "partnerRecord": "deployments/elysium-mainnet-gloam.json",
+  "_records": "What deploy-v2-factory.mjs and deploy-partner.mjs wrote on mainnet: the factory, hook and token deployer (its door belongs to the owner wallet), and the launch vault, router, batch rounds and private bids that make GLOAK's private zone.",
+  "admin": "FILL IN: the owner wallet. GLOAK's admin, and the only key that can use the door (once).",
+  "launch": {
+    "saleSupply": "295000000000000000000000",
+    "lpReserve": "205000000000000000000000",
+    "_supply": "500,000 GLOAK, no team share: 295,000 for sale, 205,000 to pair with HYPE in the pool. With 70% of the raise in the pool, a sold-out sale uses about 203,400 of the reserve at any price, so almost nothing is burned. An undersold sale burns the unsold part and the unused reserve.",
+    "lpBps": 7000,
+    "_lpBps": "70% of the raise (after the 1.5% launch fee) into the pool, locked forever; 30% to Cloak's treasury for buybacks. Deeper than the usual 50% because GLOAK can't be traded anywhere else. DECIDE.",
+    "minPrice": "200000000000000",
+    "maxPrice": "10000000000000000",
+    "numTicks": 256,
+    "_prices": "0.0002 to 0.01 HYPE per GLOAK in 256 levels (steps of about 0.0000384 HYPE). Sold out at the lowest price: 59 HYPE raised, about 41 HYPE in the pool, all GLOAK worth about 100 HYPE. At the top: 2,950 HYPE raised, about 2,034 HYPE in the pool, all GLOAK worth about 5,000 HYPE. DECIDE: this sets the valuation range.",
+    "noRevealPenaltyBps": 2000,
+    "commitEnd": "FILL IN: when bidding closes, e.g. 2026-12-01T18:00:00Z. The owner wallet's door call must land before it.",
+    "revealMinutes": 30,
+    "_reveal": "The keeper opens every sealed bid with the drand time-lock key just after bidding closes; 30 minutes is plenty. Trading starts when it ends and the launch settles.",
+    "metadataURI": ""
+  }
+}

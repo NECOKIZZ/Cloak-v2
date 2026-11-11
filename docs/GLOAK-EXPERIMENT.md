@@ -88,6 +88,7 @@ if (PoolId.unwrap(id) == PoolId.unwrap(privatePool) && !IPrivatePoolGate(Currenc
 **How this affects every other launch:**
 - **Behaviour: none.** A pool's id is never zero, so for every other pool the check is false and the swap runs exactly as before. The existing tests pass unchanged (219 v4 tests, plus the mainnet fork suite on Uniswap's real Universal Router, Quoter and PositionManager).
 - **Gas:** about 6,000 more once, when the pool opens (two read-only calls), and one more storage read on every swap: about 2,100 gas in a real transaction (roughly 1–2% of a swap).
+- **Is it one-time?** The check is code in the hook, so it stays there for good: deployed code can't remove itself. What is one-time is what it applies to. `privatePool` can be set once, only for the door's token, and the door works once, so after GLOAK's pool opens the check can never apply to any other pool. For every other token it is permanently inert: one extra storage read per swap.
 - **Can it break other launches?** It only reads. Both calls at listing are wrapped so they can't revert. The swap check can only refuse swaps on the door's own pool, and only one pool can ever be recorded, because the door works once. If GLOAK's token misbehaved, only GLOAK's pool would stop.
 - **Deploy:** the hook's bytecode changed, so its address is mined again at deploy, which the deploy script already does. The hook stays at 19.6 KB, under the 24 KB limit. Testnet keeps its old hook, so GLOAK on testnet needs a fresh testnet deploy.
 
@@ -113,16 +114,14 @@ Before deploy, regenerate the SDK's ABIs and bytecode (`pnpm abis`), since the d
 
 ## Running it (owner wallet)
 
-1. **Deploy as planned.** The deployer's door belongs to the owner wallet.
-2. **Deploy `GloakMaker`** with the door (the deployer), the owner wallet as GLOAK's admin, Uniswap's PoolManager, the hook, and GLOAK's private zone:
-   - the launch vault: Receive, Vault;
-   - `CloakRouterV4`: Receive, Feed, Swap, Payee;
-   - `CloakGloamBatcherV4`: Receive, Feed, Payee;
-   - `CloakGloamBids`: Receive. A private bidder's winnings pass from its bid account through this contract into the vault, and it checks it got the exact amount, so without it every private claim would fail (the simulation found this). Fixing the zone in the maker means it can't be forgotten.
-3. **Check the maker's zone** (`zone()`) against the deployed addresses, then **open the launch:** `useDoor(maker, factory, createLaunch("GLOAK", "GLOAK", 0, 0, params, uri))`, with the treasury as creator and `lpLockUntil` set to forever. This is one transaction, and GLOAK is born with its zone approved.
-4. **Nothing to approve before bidding.** The admin can still add or remove roles instantly while in setup.
-5. **After settlement:** the keeper admits GLOAK to the launch vault and registers it for batch rounds. Give the pool's market adapter (`auction.pair()`) Swap if batch rounds should trade GLOAK.
-6. **End setup on GLOAK** (`endSetup`). From then on a new approval waits 3 days in public.
+The scripts are on the `gloak` branch: `e2e-gloam/deploy-gloak.mjs`, `e2e-gloam/gloak-after-settle.mjs` and their library `e2e-gloam/gloak.mjs`. `e2e-gloam/part23-gloak-fork.mjs` rehearses both on a fork of mainnet (it passes in about 35 s).
+
+1. **Deploy mainnet as planned** with this branch's hook and token deployer. The deployer's door belongs to the owner wallet.
+2. **Fill in** `deployments/elysium-mainnet-gloak.input.json` from the example: the owner wallet, when bidding closes, and the launch parameters.
+3. **Check the plan without sending anything:** `node e2e-gloam/deploy-gloak.mjs --config deployments/elysium-mainnet-gloak.input.json --plan`. It checks the door belongs to the owner wallet and is unused, the hook has no private pool, the factory, hook, config and zone all match, and prints what the sale does at its lowest and highest price.
+4. **Deploy the maker:** the same command with `DEPLOYER_PK` and without `--plan`. It deploys `GloakMaker` with GLOAK's private zone (the launch vault, `CloakRouterV4`, `CloakGloamBatcherV4`, `CloakGloamBids`), reads it back, and prints the owner wallet's one transaction: `useDoor(maker, factory, createLaunch(GLOAK))`. The private-bid contract has to be in the zone: a private bidder's winnings pass through it into the vault, and it checks it got the exact amount.
+5. **The owner wallet sends that one transaction** before bidding closes. GLOAK is born with its zone approved.
+6. **After settlement:** `node e2e-gloam/gloak-after-settle.mjs --record deployments/elysium-mainnet-gloak.json --end-setup`. It checks the pool is the hook's private pool and that the keeper admitted and registered GLOAK, then prints the owner wallet's last two calls: approve the pool's batch-round adapter (Swap), and end setup. From then on a new approval waits 3 days in public.
 7. **Another privacy protocol:** once we've vetted their vault and router, queue Receive and Vault for their vault, and Receive, Feed, Swap and Payee for their router. Apply after 3 days.
 
 Bidding uses the normal private-bid flow. Winnings go from the auction into the vault without a surcharge.
