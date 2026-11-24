@@ -1,6 +1,6 @@
 # Cloak on Solana: spec
 
-Status: draft for the Solana hackathon. Nothing is built yet.
+Status: on hold (Nov 24). Not the hackathon entry; kept as the plan if Cloak moves to Solana. Nothing is built yet.
 Sources: Helius's open-source Rings code (`helius-labs/zolana`, read on Nov 23, 2026), the
 `@heliuslabs/spr` 0.9.0-alpha SDK, and Gloam's Solana integration (`gloamtrade/gloam`, PRs #376,
 #379 and #428).
@@ -184,6 +184,69 @@ inventory risk for the bot (start with tight caps).
 - If a policy ring becomes possible, use Helius's curated OFAC blocklist rule (`ring-policy.md`).
 - Precedent: Privacy Cash paused deposits on Nov 4, 2026 after hack proceeds went through it.
   Plan for that on day one.
+
+---
+
+## 3.6 Porting Cloak v2 to Solana
+
+### The app and services
+
+We plug into Helius's deployed pot, programs and circuits, the way Cloak v2 plugs into Gloam's
+vault on Elysium. We don't deploy our own pool.
+
+| Piece | Elysium today | On Solana |
+|---|---|---|
+| Privacy engine | Gloam SDK (`@gloamtrade/sdk`) | Helius `@heliuslabs/spr`. Different key types, one-time registration, balances synced from Helius's indexer |
+| Wallet connection | EVM wallets | Solana wallets (Phantom, Backpack, Solflare). The wallet plumbing is rewritten |
+| Proofs | In the user's browser | Helius's prover (enclave), via a server route that holds the Helius API key |
+| Network fees | User pays HYPE | Our relayer pays SOL. Private accounts hold no SOL |
+| Receive addresses + keeper | `CloakGloamReceive` boxes + keeper | Plain Solana addresses that the keeper deposits from. Keeper rewritten, probably no program needed |
+| Relay top-ups | Works | Relay supports Solana, so mostly config |
+| Card top-up | Spicenet | Check whether Spicenet supports Solana; otherwise Helius's onramp partners |
+| Gloam names, `cloak:` addresses | Work (P-256 keys) | Don't carry over. Rings supports Ed25519/X25519 only, so we need a new address format |
+| Portfolio prices | Elysium markets | Jupiter / Pyth |
+
+### Our contracts
+
+Every Cloak contract is Solidity, so every one that comes to Solana is rewritten in Rust. Most
+also need redesigning, not just translating. They fall into three groups.
+
+**1. Not needed on Solana.** Rings and Solana already provide these.
+
+| Contract | Why not needed |
+|---|---|
+| `CloakLaunchVault`, `CloakEcosystemVault`, `CloakLaunchpadCheck` | Rings takes any SPL token once it's registered, so launch tokens need no vault of their own |
+| `CloakWHYPE` | Solana has wrapped SOL built in |
+| `CloakToken` | A token is an SPL mint made by the token program, not a contract we write |
+
+**2. Plain public contracts: straight Rust ports, using Solana's own building blocks.**
+
+| Contract | On Solana |
+|---|---|
+| `CloakAuction`, `CloakDrop`, `CloakEscrowDrop`, `CloakSpotBook` (sealed bids) | Rust programs. drand time-lock sealing is done off-chain, so the same scheme carries over; the keeper still reveals. NFTs use Metaplex rather than our own collection contract |
+| `CloakFactory`, `CloakConfig`, `CloakVesting` | Rust programs (or existing ones such as Streamflow for vesting) |
+| `CloakPair`, `CloakV2Market`, `CloakSeeder`, `CloakFeeLocker` | Seed launches on Raydium or Meteora pools, whose fee-locking options cover the fee locker. Only write our own pool if we need its exact rules |
+| `CloakV4Hook`, `CloakV4Market` | No Uniswap v4 on Solana. Meteora's dynamic pools come closest; otherwise our own pool program |
+
+**3. Contracts that use the privacy vault: rewritten as Rings "ZK programs".** On Elysium these
+call Gloam's vault and Gloam's verifiers. On Solana each becomes a program with its own small
+circuit that calls Helius's privacy program to move notes, like Helius's swap and escrow
+examples. This is the real work, and it needs new circuits and an audit.
+
+| Contract | On Solana |
+|---|---|
+| `CloakGloamBids` (sealed bids paid from a private balance) | ZK program: lock a note for the bid, refund or settle after the auction |
+| `CloakGloamBatcher`, `CloakGloamBatcherV4` (private batch rounds) | ZK program collecting order notes; net trade on Raydium/Meteora |
+| `CloakLaunchSwap`, `CloakLaunchSwapV4`, `CloakV2PairSwap` (private swaps) | ZK program based on Helius's dynamic-swap / RFQ examples (§3.2) |
+| `CloakTradeFee` | Logic folded into the swap/batch programs |
+| `CloakFundsGate`, `GloamFundsCheck` (proof you hold at least X) | New circuit over Rings notes. Rings has no proof-of-funds circuit |
+| `CloakReceiptCheck` (private receipts) | New circuit, or Rings' per-transaction viewing keys if a disclosed receipt is enough |
+| `CloakGloamReceive` (receive boxes) | Not a ZK program. The keeper deposits from plain addresses (see the services table above) |
+
+Circuits: Helius's examples write them in Rust (arkworks Groth16, via the `spr-program` SDK).
+Our Elysium circuits are Gloam's circom circuits. Circom proofs can also be verified on Solana,
+but each program must commit to Rings' `private_tx_hash`, so these circuits get rewritten either
+way.
 
 ---
 

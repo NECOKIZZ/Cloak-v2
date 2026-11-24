@@ -136,6 +136,10 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
   - Needs a Bridge panel, per-bridge tracking, and the keeper redeeming stuck tickets.
   - Bob: paste or push `PRIVATE-BRIDGE.md`, and fund a v2 key on HyperEVM testnet.
 - [ ] **More swap pairs without an aggregator:** `CloakLaunchSwapV4` on Gloam's vault (USDC/HYPE and ecosystem tokens through hookless v4 pools), after Gloam says yes. Then a venue per non-v4 DEX a partner uses. Check mainnet's pools in its first week (KNTQ/HYPE, stock tokens).
+- [ ] **Confidential tokens on Elysium (big build, later).** A wrapped token (for example "cUSDC") whose balances are encrypted numbers in normal accounts, the same idea as Solana's Token-2022 Confidential Transfers. Today amounts are hidden only inside the vault; this would hide them outside it too.
+  - Still public: wrapping normal USDC into it and unwrapping it, so this moves the visible edge rather than removing it.
+  - Needs new contracts, new circuits (encrypted balances plus a proof for each transfer), wallet support in the app, and an outside audit.
+  - Start with a design doc: the encryption scheme (ElGamal like Token-2022, or another), gas per transfer on Elysium, and how it fits with Gloam's vault.
 - [ ] **Claude:** a smaller bundle (swap heavy Poseidon libraries for `poseidon-lite` where possible).
 - [ ] **Claude:** escrows that post their payout's memo in the same transaction (waiting on Gloam's memo board taking posts before the note is in the vault).
 - [x] Cloak's own private layer removed from v2 (Nov 9): v1's vaults, circuits, SDK classes, keeper loop and site code. Cloak v1 keeps it in its own repository.
