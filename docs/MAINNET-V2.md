@@ -136,6 +136,9 @@ Built, tested and pushed to `main`. All of it runs on Gloam's vault, circuits an
   - Needs a Bridge panel, per-bridge tracking, and the keeper redeeming stuck tickets.
   - Bob: paste or push `PRIVATE-BRIDGE.md`, and fund a v2 key on HyperEVM testnet.
 - [ ] **More swap pairs without an aggregator:** `CloakLaunchSwapV4` on Gloam's vault (USDC/HYPE and ecosystem tokens through hookless v4 pools), after Gloam says yes. Then a venue per non-v4 DEX a partner uses. Check mainnet's pools in its first week (KNTQ/HYPE, stock tokens).
+- [ ] **Cloak OTC** (`docs/OTC-SPEC.md`): the Drops page becomes one OTC page for token blocks, NFTs, WL/GTD spots and later pre-market, by sealed auction or deal link, from a public wallet or a private balance.
+  - Built on `CloakEscrowDrop`'s tested auction core; private bids already work through `CloakGloamBids`.
+  - Decisions for the team are in the spec's section 9. Higher caps only after the audit.
 - [ ] **Confidential tokens on Elysium (big build, later).** A wrapped token (for example "cUSDC") whose balances are encrypted numbers in normal accounts, the same idea as Solana's Token-2022 Confidential Transfers. Today amounts are hidden only inside the vault; this would hide them outside it too.
   - Still public: wrapping normal USDC into it and unwrapping it, so this moves the visible edge rather than removing it.
   - Needs new contracts, new circuits (encrypted balances plus a proof for each transfer), wallet support in the app, and an outside audit.
